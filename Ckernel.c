@@ -1,36 +1,40 @@
-#include "video.h"	//this is used for all screen I/O
+//#include "video.h"	//this is used for all screen I/O
 
 //globals (some of these will go away as I implement the C/C++ standard libraries)
-Video vid;
+//Video vid;
 unsigned long LoopsPerSecond;
 //function declarations
-extern "C" void display(char *);	
+void display(char * chr);	
 	//this will be called from out ASM code
-extern "C" void PrintNumber(unsigned long bob);
+void PrintNumber(unsigned long bob);
 	//this prints an unsigned long number to the screen in hexadecimal
-#include "NewDel.h"
-extern "C" void Memory_Available();
+void Memory_Available();
 	//prints the amount on memory that is currently unused
 void GetSettings();
 	//this retrieves our settings from disk (requires disk I/O to be practical)
 void SetupMemory();
 	//this function sets up all the memory stuff (this is called right after GetSettings() is called)
-extern "C" bool EnableFloppy(void);
+extern unsigned long EnableFloppy();
 	//enables floppy disk functions, returns 1 for success, 0 for failure
-extern "C" void EnablePaging(void);
+extern void EnablePaging();
 	//this function sets the appropiate cr registers to enable paging (protected mode must be enabled for this to work)
 //extern unsigned long int "C "EnableKeyboard(void);
 void EnableMultiTasking();
 	//this enables multitasking, but does not create any other tasks
-extern "C" unsigned long RAM_Left();
+unsigned long RAM_Left();
 	//determines how much RAM is unused
-bool CalcBogo();	//calculates and calibrates the bogomips timing portion of the os
-extern "C" unsigned long Milli();	//returns how many milliseconds its been since boot time
-extern "C" unsigned long getEIP();	//returns EIP of where the function is called from
-bool RangeConflict(unsigned long Base1, unsigned long Length1, unsigned long Base2, unsigned long Length2);
+unsigned long CalcBogo();	//calculates and calibrates the bogomips timing portion of the os
+unsigned long Milli();	//returns how many milliseconds its been since boot time
+unsigned long getEIP();	//returns EIP of where the function is called from
+unsigned long RangeConflict(unsigned long Base1, unsigned long Length1, unsigned long Base2, unsigned long Length2);
 	//determines if the two ranges overlap anywhere
-extern "C" void delay(unsigned long loops);
+void delay(unsigned long loops);
+void put(unsigned char);
+//prints a single character to the screen
 #define CLOCKS_PER_SEC 1000	//this is the number of times our timer variable is incremented per second
+
+unsigned long pos;
+unsigned long off;
 
 //headers to include for random stuff
 #include "disk.h"		//for disk I/O
@@ -47,40 +51,137 @@ int main()		//this is where the C++ portion of the kernel begins
 	EnablePaging();
 		//this is an assembly function (located in kernel.asm)
 	display("We have enabled protected mode with paging.\n");
-	if (CalcBogo())
-		return 1;	//error, stop booting
-	display("BogoMips returns: ");
-	PrintNumber(LoopsPerSecond);
-	display("\n");
+//	if (CalcBogo())
+//		return 1;	//error, stop booting
+//	display("BogoMips returns: ");
+//	PrintNumber(LoopsPerSecond);
+//	display("\n");
 	unsigned long *a;
 	a = (unsigned long*)0x123456;
-	*a = 0;
 	a = (unsigned long *)Allocate(1);
+	*a = 0x12345678;
 	//*a = 0;
 	//asm("int $38");
 	PrintNumber(*a);
 	display("\n");
+	PrintNumber(getEIP());
 	ReadSector((unsigned long)a, 0, 0);
-	display("Did it work?\t");
+	display("\nDid it work?\t");
 	PrintNumber(*a);
 	display("\n");
 	display("We will now do nothing.\n");
 	return 0;	//a non zero return signifies an error, 0 signals all is ok
 }
 
-extern "C" void display(char *chr)
+void display(char *cp)
 {
-	vid.write(chr);
+	char *str = cp, *ch;
+	for (ch = str; *ch; ch++)
+	{
+		put(*ch);
+	}
 }
 
-extern "C" void delay(unsigned long loops)
+void put(unsigned char c)
+{
+	unsigned short *videomem = (unsigned short*) 0xB8000;
+	if (pos >= 80)
+	{
+		pos = 0;
+		off += 80;
+	}
+	if (off >= (80 * 25))
+	{
+					//to scroll the screen, read all data except the top row from the screen
+					//then write it back, with the bottom row being "clear"
+		//clear(); 		//should scroll the screen, but for now, just clear
+	}
+	//time to check for special ASCII values like newline and tab
+	switch(c) {
+		case 0: case 1: case 2: case 3: //do nothing becuase these are non printing characters that mean nothing
+		case 4: case 5: case 6: case 31: //these will eventually cause a beep (beep)
+		case 11: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
+		case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
+		case 30:
+		{
+			break;
+		}
+		case 7:
+		{	//beep
+			break;
+		}
+		case 8:	//backspace (this will be weird)
+		{	//if not on the beginning of a line, make the previous spot a space and make the current space the previous space
+			if (pos != 0)
+			{
+				pos--;
+				videomem[off + pos] = (unsigned char) ' ' | 0x0700;
+			}
+			else if (pos == 0)
+			{	//decrease the current spot until we find a non blank spot, then go to the spot after that one
+				pos = 79;
+				off -= 80;
+				while ((videomem[off + pos] == ' '))
+				{
+					pos--;
+				}
+				videomem[off + pos] = (unsigned char) ' ' | 0x0700;
+			}
+			break;
+		}
+		case 127:	//delete (this one will be weird)
+		{
+			break;
+		}
+		case 9:	//tab to four spaces (at least one space required)
+		{
+			if (pos > 75)	//pointless to tab to the last character, newline instead
+			{	//we wont end up filling up the screen all the way yet
+				pos = 0;
+				off += 80;
+				break;	//don't tab
+			}
+			do
+			{
+				videomem[off + pos] = (unsigned char) ' ' | 0x0700;	//one space as required
+				pos++;
+			} while ((pos % 4) != 0);
+			break;	//this is very important
+		}
+		case 10:	//this is newline (or is this just bring cursor to beginning of the line)
+		{		//easy to test
+			pos = 0;
+			off += 80;
+			break;
+		}
+		case 12:	//maybe we should clear the screen?
+		{
+			break;
+		}
+		case 13:	//carriage return 		
+		{
+			pos = 0;
+			break;
+		}
+		default:	//all printable characters
+		{
+			videomem[off + pos] = (unsigned char) c | 0x0700;
+			pos++;
+			break;
+		}
+	}
+}
+
+void delay(unsigned long loops)
 {
 	long i;
 	for (i = loops; i >= 0 ; i--);
 }
 
-bool CalcBogo()
+unsigned long CalcBogo()
 {
+	display("Address:\t");
+	PrintNumber(getEIP());
 	unsigned long loops_per_sec = 1;
 	unsigned long ticks;
 	while ((loops_per_sec <<= 1))
@@ -98,7 +199,7 @@ bool CalcBogo()
 	return 1;	//failure code
 }
 
-extern "C" void Memory_Available()
+void Memory_Available()
 {
 	return;
 }	
@@ -107,7 +208,8 @@ void PrintNumber(unsigned long bob)
 {	//this prints a 32 bit number (8 hex digits)
 	unsigned long Temp = 0;
 	display("0x");
-	for (int counter = 7; counter >= 0; counter--)
+	int counter = 7;
+	for (counter = 7; counter >= 0; counter--)
 	{	//this is a countdown, because we write the most signifigant nibble first
 		Temp = ((bob >> (counter * 4)) & 0xF);
 		if (Temp > 9)
@@ -118,7 +220,7 @@ void PrintNumber(unsigned long bob)
 		{
 			Temp += '0';
 		}
-		vid.put((unsigned char)(Temp));
+		put((unsigned char)(Temp));
 	}
 }
 
@@ -130,6 +232,8 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 	//because it could be as large as 4MB, which is too large for conventional memory (<=640K)
 	unsigned long * Place = (unsigned long *) 0x9F000;
 	unsigned long AccessHere = 0x7FC / 4;
+	off = 80;
+	pos = 0;	//set up video "driver" to start on the second line
 	//scan the structures present and find the last valid entry
 	//Place[AccessHere] = base
 	//Place[AccessHere - 1] = length
@@ -333,10 +437,11 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 	return;
 }
 
-extern "C" unsigned long RAM_Left()
+unsigned long RAM_Left()
 {
 	unsigned long FreeRam = 0;
-	for (unsigned long counter = 0; counter < PageNum; counter++)
+	unsigned long counter = 0;
+	for (counter = 0; counter < PageNum; counter++)
 	{	//check each bit in the heap and add 0x1000 if it is set to 1
 		if ((Heap1[HeaderSize + (counter>>5)] & 1<<((counter % 32))) > 0)
 			FreeRam += 0x1000;	
@@ -344,7 +449,7 @@ extern "C" unsigned long RAM_Left()
 	return FreeRam;
 }
 
-bool RangeConflict(unsigned long Base1, unsigned long Length1, unsigned long Base2, unsigned long Length2)
+unsigned long RangeConflict(unsigned long Base1, unsigned long Length1, unsigned long Base2, unsigned long Length2)
 {	//[1 1][2 2]   [1 [2 1] 2]   [1 [2 2] 1]
 	//[12 12]
 	//[2 [1 2] 1]   [2 [1 1] 2]   [2 2][1 1]

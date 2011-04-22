@@ -1,9 +1,7 @@
 [BITS 32]
 cpu 386
-[global _starting]
-[extern main]			;this is in our C++ code (it is the function that starts it all off)
-[extern _main]			;this is in our C support code
-[extern _atexit] 		;this is in our C support code
+[global start]
+[extern main]			;this is in our C code (it is the function that starts it all off)
 [extern display]		;void display(char *chr)
 [global EnablePaging]	;void EnablePaging(void)
 [extern PrintNumber]	;void PrintNumber(unsigned long)
@@ -16,7 +14,7 @@ cpu 386
 [extern delay]		;void delay(unsigned long a)
 [global getEIP]		;returns eip
 
-	_starting:
+	start:
 	mov ax, 0x10
 	mov ds, ax			;set the segment registers
 	mov ss, eax			;and stack
@@ -30,13 +28,27 @@ cpu 386
 	mov esp, eax
 	lidt [idt_desc]	;load the IDT
 	sti			;enable interrupts
+	;initialize the PIC
+	mov al, 00010001b
+	out 0x20, al
+	out 0xA0, al	;begin initialing master and slave PIC
+	mov al, 0x20	;IRQ 0 for master goes to INT 32d
+	out 0x21, al	
+	mov al, 0x28	;IRQ 0 for slave goes to INT 40d
+	out 0xA1, al
+	mov al, 00000100b	;slave PIC connected to IRQ 2 of master PIC
+	out 0x21, al
+	mov al, 0x2		;slave PIC is connected to IRQ2
+	out 0xA1, al
+	mov al, 1		;Intel, manual EOI
+	out 0x21, al
+	out 0xA1, al
+	mov al, 0	;enable IRQ's
+	out 0x21, al	;enable IRQ's
 	;mov al, 0x0
 	;mov dx, 0x3F2
 	;out dx, al		;reset the floppy drive controller and turn off all motors
 	call enableA20
-	;re-enable interrupts
-	mov al, 0	;enable IRQ's
-	out 0x21, al	;enable IRQ's
 	;setup the clock (irq 0) to have a frequency of about 1000 Hz
 	;1193180 / Hz is the number to send through to port 0x40
 	mov al, 0x34
@@ -52,7 +64,6 @@ cpu 386
 ;	mov ah, 0x9B
 ;	mov bl, 0x2E
 ;	call MakeNoise
-	call _main
 	call main 		;call int main(void), which is located in our C++ code
 	cmp eax, 0
 	jmp Yay
@@ -60,16 +71,18 @@ cpu 386
 	je Yay
 Evil:
 	push Bad
-	call display		;print string (C++ function)
+	call display		;print string (C function)
 	pop eax
 	jmp Yay2
 Yay:
 	push Good
-	call display		;print string (C++ function)
+	call display		;print string (C function)
 	pop eax
 	Yay2:
-	call _atexit
-	jmp $
+END:
+	nop
+	nop
+	jmp END
 
 getEIP:
 	mov eax, [esp]
@@ -82,8 +95,7 @@ WaitForKeyboard:
 	and al, 0x02
 	jnz .1
 	pop ax
-	ret
-
+	ret
 MakeNoise:
 	;low byte	-bl
 	;high byte	-ah
@@ -506,7 +518,6 @@ irqM1_Multi5:	;there are five bytes in the scancode buffer
 	xor ebx, ebx
 	mov [Buffer], ebx
 	mov [Buffer + 4], bl	;this should clear 6 bytes the easy way
-	nop
 	jmp irqM1_end
 	
 irqM1_end:	;when all handling for the current scancode byte is complete
@@ -1095,36 +1106,36 @@ ReadSector:		;reads one sector from a floppy disk (0x0F03)
 	call FdcStart
 	mov ebx, [BytesDone]
 	;time to call the read sector command
-;	mov dx, 0x3F5
-;	mov al, 0x46
-;	call WaitFDC
-;	out dx, al
-;	mov al, 0
-;	call WaitFDC
-;	out dx, al
-;	mov al, 0
-;	call WaitFDC
-;	out dx, al
-;	mov al, 0
-;	call WaitFDC
-;	out dx, al
-;	mov al, 1
-;	call WaitFDC
-;	out dx, al
-;	mov al, 2	;track length / max sector number (which one do i choose)
-;	call WaitFDC
-;	out dx, al
-;	mov al, [gap_length]
-;	call WaitFDC
-;	out dx, al
-;	mov al, 0xFF
-;	call WaitFDC
-;	out dx, al
-;	call FDCInt
-;	push Yes
-;	call display
-;	pop eax
-;	call FdcEnd
+	mov dx, 0x3F5
+	mov al, 0x46
+	call WaitFDC
+	out dx, al
+	mov al, 0
+	call WaitFDC
+	out dx, al
+	mov al, 0
+	call WaitFDC
+	out dx, al
+	mov al, 0
+	call WaitFDC
+	out dx, al
+	mov al, 1
+	call WaitFDC
+	out dx, al
+	mov al, 2	;track length / max sector number (which one do i choose)
+	call WaitFDC
+	out dx, al
+	mov al, [gap_length]
+	call WaitFDC
+	out dx, al
+	mov al, 0xFF
+	call WaitFDC
+	out dx, al
+	call FDCInt
+	push Yes
+	call display
+	pop eax
+	call FdcEnd
 	mov esp, ebp
 	popad
 	ret
@@ -1132,3 +1143,6 @@ ReadSector:		;reads one sector from a floppy disk (0x0F03)
 ReadSectors:		;reads sectors from a floppy disk by making calls to ReadSector
 	mov eax, 0
 	ret
+
+
+db 'This is the end of the kernel.asm file.'

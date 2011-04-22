@@ -2,7 +2,7 @@
 //defines the things necessary to get new and delete working
 //I hope this operator overloading works
 typedef unsigned int size_t;
-void *operator new (size_t size)
+/*void *operator new (size_t size)
 //void *__builtin_new(size_t size)
 {	//for now, if memory is full, this function will loop until it becomes available
 	//scan the first heap, looking for available memory
@@ -45,4 +45,4 @@ void operator delete[] (void* address)
 	display("Deallocate address[]:\t");
 	PrintNumber((unsigned long)address);
 	display("\n");
-}
+}*/

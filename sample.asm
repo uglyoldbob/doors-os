@@ -6,7 +6,7 @@ SectorsLeft dd 0x0000			;number of sectors we havent already read in the kernel
 PreCluster dw 0x0000			;stores the number of bytes before the clusters
 Cluster dw 0x0000				;stores the cluster
 FatLoc dd 0x00000000			;where the FAT is located
-FixMe dd 0x00000000			;I hope this fixes something
+;FixMe dd 0x00000000			;I hope this fixes something
 BytesSector dw 0x0000			;read from BPB
 SectorsCluster db 0x00			;read from BPB
 SectorsTrack dw 0x0000			;read from BPB
@@ -125,6 +125,27 @@ Done:
 ;time to check memory sizes and some other stuff
 ;use newer calls first, and if they dont work, use the older calls
 ;check conventional memory
+;create a stack (grows downward, starts at 0x9F800, ends with base 0, size 0
+;entry is 8 bytes long aka 2 * eax ...
+;mov eax, [length]
+;mov [Address], eax
+;sub [Address], 4
+;mov eax, [base]
+;mov [address], eax 
+;sub [address], 4
+;will ready eax to write an entry to ram
+;mov eax, [somewhere]
+;mov [base], eax
+;add [somewhere], 4
+;mov eax, [somewhere]
+;mov [length], eax
+;add [somewhere], 4
+;this will retrieve one entry
+;base, length
+	mov eax, 0x9000
+	mov fs, eax
+	mov eax, 0xF7FC
+	mov [Address], eax
 	mov BYTE [Type], 1		;OS usable memory
 	call extmem_int15_e820
 	jc OldComputer
@@ -135,21 +156,20 @@ Done:
 	jnc ok
 OldComputer:				;does not support the special calls
 ; before trying other BIOS calls, use INT 12h to get conventional memory size
-	int 12h
-; convert from K in AX to bytes in CX:BX		;i think this is where i figure out how the formula works
-	xor ch, ch	
-	xor ch,ch
-	mov cl,ah
-	mov bh,al
-	xor bl,bl
-	shl bx,1
-	rcl cx,1
-	shl bx,1
-	rcl cx,1
-; set range base (in DX:AX) to 0 and display it
-	xor dx,dx
-	xor ax,ax
-	call display_range
+	int 0x12
+	push ax
+	xor eax, eax
+	pop ax
+	;ax contains the number of kilobytes starting at 0	
+	shl eax, 10
+	;eax now contains length in bytes
+	mov ebx, [Address]
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
+	mov ebx, [Address]
+	xor eax, eax
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
 ; try INT 15h AX=E801h
 	call extmem_int15_e801
 	jnc ok
@@ -160,30 +180,17 @@ OldComputer:				;does not support the special calls
 	mov si,err_msg
 	call DisplayMessage
 ok:
-;initialize the PIC
-	mov al, 00010001b
-	out 0x20, al
-	out 0xA0, al	;begin initialing master and slave PIC
-	mov al, 0x20	;IRQ 0 for master goes to INT 32d
-	out 0x21, al	
-	mov al, 0x28	;IRQ 0 for slave goes to INT 40d
-	out 0xA1, al
-	mov al, 00000100b	;slave PIC connected to IRQ 2 of master PIC
-	out 0x21, al
-	mov al, 0x2		;slave PIC is connected to IRQ2
-	out 0xA1, al
-	mov al, 1		;Intel, manual EOI
-	out 0x21, al
-	out 0xA1, al
-	mov al, 0		;enable IRQ's
-	out 0x21, al	;enable IRQ's
-
-	
-
+	;dont forget to set the blank entry at the bottom
+	mov ebx, [Address]
+	xor eax, eax
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
+	mov ebx, [Address]
+	mov [fs:ebx], eax
 ;jump to the kernel now
 	cli
 	mov al, 0xFF	;disable IRQ's
-	out 0x21, al	
+	out 0x21, al
 	xor ax, ax
 	mov ds, ax              
 	lgdt [gdt_desc + 0x0500]
@@ -191,41 +198,12 @@ ok:
 	or al, 1			
 	mov cr0, eax
 	jmp 0x08:0x0900
-mem_msg2 db 'Other Ranges:', 13, 10, 0
-mem_msg db 'Memory ranges:'
-crlf_msg db 13, 10, 0
-base_msg db 'base=0x', 0
-size_msg db ', size=0x', 0
+;mem_msg2 db 'Other Ranges:', 13, 10, 0
+;mem_msg db 'Memory ranges:'
+;crlf_msg db 13, 10, 0
+;base_msg db 'base=0x', 0
+;size_msg db ', size=0x', 0
 err_msg db 'BIOS calls failed', 13, 10, 0
-;ROUTINES
-display_range:
-	pusha
-; if size==0, do nothing
-;dx:ax is base
-;cx:bx is size
-	mov si, cx
-	or si, bx
-	je display_range_1
-	mov si, base_msg
-	call DisplayMessage
-	push bx
-	mov bx, 16
-	call wrnum
-	mov si, size_msg
-	call DisplayMessage
-	pop ax	
-	mov dx, cx
-	call wrnum
-	mov si, crlf_msg
-	call DisplayMessage
-display_range_1:
-	popa
-	ret
-
-
-	times 40 db 0
-num_buf:
-	db 0
 
 buffer_e820:
 	times 20h db 0
@@ -254,16 +232,14 @@ extmem_e820_1:
 	pop eax
 	jne extmem_e820_2
 	push bx
-	mov ax, [es:di + 0] ; base
-	mov dx, [es:di + 2]
-	mov bx, [es:di + 8] ; size
-	mov cx, [es:di + 10]
-;or with [es:di + 2]
-;if equal, then were done
-;
-;
-;
-	call display_range
+	mov ebx, [Address]
+	mov eax, [es:di + 8]	;length
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
+	mov ebx, [Address]
+	mov eax, [es:di]	;base
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
 	pop bx
 extmem_e820_2:
 	or ebx,ebx
@@ -295,52 +271,32 @@ extmem_int15_e801:
 extmem_e801_1:
 	push bx
 ; convert from Kbytes in AX to bytes in CX:BX
-	xor ch,ch
-	mov cl,ah
-	mov bh,al
-	xor bl,bl
-	shl bx,1
-	rcl cx,1
-	shl bx,1
-	rcl cx,1
-; set range base (in DX:AX) to 1 meg and display it
-	mov dx,10h
-	xor ax,ax
-	call display_range
+	push ax
+	xor eax, eax
+	pop ax
+	shl ax, 16
+	mov ax, bx
+	shl eax, 10
+;eax contains bytes now
+	mov ebx, [Address]
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
+	mov ebx, [Address]
+	mov eax, 0x100000
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
 ; convert stacked value from 64K-blocks to bytes in CX:BX
 	pop cx
-	xor bx,bx
-; set range base (in DX:AX) to 16 meg and display it
-	mov dx,100h
-	xor ax,ax
-	call display_range
+	mov ax, cx
+	shl eax, 16
+	mov ebx, [Address]
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
+	mov ebx, [Address]
+	mov eax, 0x1000000	;64M
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
 extmem_e801_2:
-	popa
-	ret
-
-wrnum:
-	pusha
-	mov si,num_buf			;temporary variable, not referred to anywhere else
-wrnum1:
-	push ax
-	mov ax,dx
-	xor dx,dx
-	div bx			;dx:ax / bx   = ax, remainder dx
-	mov cx,ax		;cx rem dx
-	pop ax			;dx:ax / bx  = ax, rem dx
-	div bx			
-	xchg dx,cx		;
-	add cl,'0'
-	cmp cl,'9'
-	jbe wrnum2
-	add cl,('A'-('9'+1))
-wrnum2:
-	dec si
-	mov [si],cl
-	mov cx,ax
-	or cx,dx
-	jne wrnum1
-	call DisplayMessage
 	popa
 	ret
 
@@ -356,17 +312,19 @@ extmem_int15_88:
 	stc
 	je extmem_int15_2
 extmem_int15_1:
-	xor ch,ch
-	mov cl,ah
-	mov bh,al
-	xor bl,bl
-	shl bx,1
-	rcl cx,1
-	shl bx,1
-	rcl cx,1
-	mov dx,10h
-	xor ax,ax
-	call display_range
+;ax is number of KB at 1MB
+	push ax
+	xor eax, eax
+	pop ax
+	shl eax, 10
+;eax contains bytes at 1MB
+	mov ebx, [Address]
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
+	mov ebx, [Address]
+	mov eax, 0x100000
+	mov [fs:ebx], eax
+	sub DWORD [Address], 4
 extmem_int15_2:
 	popa
 	ret
@@ -387,6 +345,29 @@ DisplayMessage:
 	pop bx
 	pop ax
 	ret
+
+gdt:                    ; Address for the GDT
+gdt_null:               ; Null Segment
+	dd 0
+	dd 0
+gdt_code:               ; Code segment, read/execute, nonconforming
+	dw 0xFFFF
+	dw 0x0000
+	db 0
+	db 10011010b	;non-system descriptor (bit 4)
+	db 11001111b
+	db 0
+gdt_data:               ; Data segment, read/write
+	dw 0xFFFF
+	dw 0x0000
+	db 0
+	db 10010010b	;non system descriptor (bit 4)
+	db 11001111b
+	db 0
+gdt_end:				; Used to calculate the size of the GDT
+gdt_desc:				; The GDT descriptor
+	dw gdt_end - gdt - 1	; Limit (size)
+	dd gdt + 0x0500		; Address of the GDT
 
 Cylinder db 0x00			;for the ReadSectors routine
 Sector db 0x00			;for the ReadSectors routine
@@ -444,28 +425,7 @@ ClusterLBA: 		;converts a FAT cluster number to LBA
 	add ax, WORD [PreCluster]	;add in sectors before the first cluster
 	ret			;go back to where yee came from :)
 
-gdt:                    ; Address for the GDT
-gdt_null:               ; Null Segment
-	dd 0
-	dd 0
-gdt_code:               ; Code segment, read/execute, nonconforming
-	dw 0xFFFF
-	dw 0x0000
-	db 0
-	db 10011010b	;non-system descriptor (bit 4)
-	db 11001111b
-	db 0
-gdt_data:               ; Data segment, read/write
-	dw 0xFFFF
-	dw 0x0000
-	db 0
-	db 10010010b	;non system descriptor (bit 4)
-	db 11001111b
-	db 0
-gdt_end:				; Used to calculate the size of the GDT
-gdt_desc:				; The GDT descriptor
-	dw gdt_end - gdt - 1	; Limit (size)
-	dd gdt + 0x0500		; Address of the GDT
+Address dd 0
 
 times 1024-($-$$) db '?'	;this is the size of the future protected mode stack, if we go any larger, we will go
 				;into kernel memory space, and that is VERY bad (1024 = 0x0400)
