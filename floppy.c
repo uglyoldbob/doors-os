@@ -1,11 +1,16 @@
 #include "floppy.h"
 #include "memory.h"
 #include "dma.h"
-extern unsigned int inportb(unsigned int port);		//entrance.asm
-extern unsigned int outportb(unsigned int value, unsigned int port);	//entrance.asm
-extern int WaitFloppyInt();	//entrance.asm
+#include "video.h"
+#include "entrance.h"
 
-extern unsigned int timer;	//entrance.asm
+//c++
+
+extern "C" unsigned int inportb(unsigned int port);		//entrance.asm
+extern "C" unsigned int outportb(unsigned int value, unsigned int port);	//entrance.asm
+extern "C" int WaitFloppyInt();	//entrance.asm
+
+extern "C" unsigned int timer;	//entrance.asm
 
 unsigned long sector_buffer;
 	//this is used so that a specialized memory allocater will not be required
@@ -69,7 +74,7 @@ floppy_parameters floppy_disk;
 //this structure is loaded when initialize_floppy is called
 //it is loaded with information taken directly from what is setup when the computer booted up
 
-waitRecieveFloppy(unsigned int base)
+int waitRecieveFloppy(unsigned int base)
 {
 	//while ((inportb(base + CHECK_DRIVE_STATUS) & 0xC0) != 0xC0){};
 	unsigned int temp;
@@ -78,7 +83,7 @@ waitRecieveFloppy(unsigned int base)
 		temp = inportb(base + CHECK_DRIVE_STATUS);
 		if ((temp & 0xD0) == 0xD0)	//only let it retrieve data while the controller is not busy?
 		{
-			return;
+			return 0;
 		}
 		else if ((temp & 0xD0) == 0x80)
 		{
@@ -88,10 +93,11 @@ waitRecieveFloppy(unsigned int base)
 		}
 		Delay(1000);
 	}
+	return 0;
 }
 
 
-sendFloppyCommand(unsigned int base, unsigned char command)
+void  sendFloppyCommand(unsigned int base, unsigned char command)
 {
 	unsigned int temp;
 	while (1)
@@ -113,7 +119,7 @@ sendFloppyCommand(unsigned int base, unsigned char command)
 	}
 }
 
-check_floppy_status(unsigned int base, unsigned int *st0, unsigned int *cylinder)
+void check_floppy_status(unsigned int base, unsigned int *st0, unsigned int *cylinder)
 {	//performs the FDC instruction and returns all applicable results
 	//waitSendFloppy(base);
 	sendFloppyCommand(base, CHECK_INTERRUPT_STATUS);
@@ -158,7 +164,7 @@ int calibrate_drive(unsigned int base,char drive)
 	} while (cylinder != 0);
 	display("Finished with calibrate drive command\n");
 	//repeat until the floppy drive is over cylinder 0
-	return;
+	return 0;
 }
 
 int seek_to_cylinder(unsigned int cylinder, unsigned int head, unsigned int base, unsigned char drive)
@@ -174,7 +180,7 @@ int seek_to_cylinder(unsigned int cylinder, unsigned int head, unsigned int base
 		check_floppy_status(base, &st0, &cylinder_check);
 	} while (cylinder_check != cylinder);
 
-	return;
+	return 0;
 }
 
 int reset_floppy(unsigned int base, char drive)
@@ -308,7 +314,7 @@ int floppy_read_sector(unsigned int sector_number, unsigned char drive,unsigned 
 	//check_floppy_status(base, &st0, &cylinder);
 	getResults(&st0, &st1, &st2, &cylinder_r, &head_r, &sector_r, &size_r, base);
 	display("Copying data\n");
-	memcopy(buffer, sector_buffer, length);
+	memcopy((void *)buffer, (void *)sector_buffer, length);
 	display("Done copying data\n");
 	//turn off floppy disk motor
 	outportb(0, base + DIGITAL_OUTPUT_REG);
@@ -344,19 +350,6 @@ char * assign_drive(unsigned char drive, unsigned char *prefix)
 	//returns the value assigned
 	//ex: "/floppya/"
 	
-}
-
-void * (*get_function(int which))()
-{
-	switch (which)
-	{
-		case 1:
-			return &initialize;
-			break;
-		default:
-			return 0;
-			break;
-	} 
 }
 
 //add functions to read files from the root directory of the disk

@@ -1,6 +1,10 @@
 #include "spinlock.h"
 #include "memory.h"
 #include "entrance.h"
+#include "PIC.h"
+#include "video.h"
+
+
 /*
 the spinlock states are discrete levels
 a spinlock of level 5 will prevent entering spinlock level 4

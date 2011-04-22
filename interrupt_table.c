@@ -3,8 +3,10 @@
 //;0 - 31 are reserved, 32-39 used for master IRQ 0 - 7, 40 - 47 slave IRQ 0 - 7, 
 //	;48-255 are usable for anything
 
+struct idt_s idt;
 
-struct idt_desc *setupIdt()
+//called from assembly
+EXTERNC struct idt_desc *setupIdt()
 {
 	int counter;
 	idt.description.address = (unsigned int)(&(idt.list[0]));
@@ -140,4 +142,10 @@ struct idt_desc *setupIdt()
 		idt.list[counter].flags = 0x0E;
 	}
 	return &(idt.description);
+}
+
+EXTERNC void set_int_handler(void *address, unsigned int which_int)
+{
+	idt.list[which_int].low_address = ((unsigned)address & 0xFFFF);
+	idt.list[which_int].upper_address = ((unsigned)address >> 16);
 }

@@ -1,19 +1,18 @@
 #include "memory.h"
 
-struct task *sys_tasks;
+extern "C" struct task *sys_tasks;
+extern "C" unsigned long *multi_tss_begin;	//located in entrance.asm
+extern "C" unsigned char enable_multi;
+extern "C" struct TSS *get_current_tss();
 
-extern unsigned long *multi_tss_begin;	//located in entrance.asm
-extern unsigned char enable_multi;
-extern struct TSS *get_current_tss();
-
-unsigned long get_sys_tasks();
+extern "C" unsigned long get_sys_tasks();
 int add_task_next(const struct TSS *new_task, struct task *list);
 int add_task_before(const struct TSS *new_task, struct task *list);
 struct task * remove_current_task(struct task *list);
 int remove_next_task(struct task *list);
 int remove_previous_task(struct task *list);
 int init_first_task(struct task *list);
-struct task * next_state(unsigned long valid_previous, struct task *list, unsigned long *multi_tss, unsigned long *prev_tss);
+extern "C" struct task * next_state(unsigned long valid_previous, struct task *list, unsigned long *multi_tss, unsigned long *prev_tss);
 void secondary_task();
 
 
@@ -82,3 +81,8 @@ struct task
 
 //modify to use two TSS's (mix of hardware and software task switching)
 
+class process_management
+{	//this class will handle the switching of processes
+	//this will be difficult to make a class to manage because of the assembly code required
+		//it can be done, but still difficult because of that
+};

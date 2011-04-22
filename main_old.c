@@ -129,8 +129,7 @@ char *key_show[] = {
 "PAUSE "
 };
 
-#include <stdio.h>
-
+//called from assembly
 int main(struct multiboot_info *boot_info, unsigned long size)
 {	//DONE: enable paging
 	//DONE: memory management
@@ -153,7 +152,6 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	display("PIC initialized and interrupts enabled\n");
 	setupPIC();
 	PrintNumber(getEIP());
-	printf("test\n");
 	//unsigned char drive;	//stores information about the drive Doors was loaded from
 	unsigned long counter;
 	unsigned char *first_page;	//pointer to the relocated first page

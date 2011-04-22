@@ -24,43 +24,43 @@ for allocating more than one page (it's pretty slow i think)
 #include "video.h"
 #include "entrance.h"
 
+memory global_memory;
+
 //page granularity binary tree
 //1 - indicate the presence of a free page
 	//will be used to allocate >= 1 page
 
 const unsigned int BYTE_GRANULARITY = sizeof(unsigned int *);
 	//this is the granularity of an allocation that is less than 4KB
-
-unsigned int *page_table;		//stores the address of the PDT, the heart of the paging system
-unsigned int size_tree;			//this is the size of the binary tree (in unsigned ints)
-unsigned int *single_pages;	//total memory / 0x1000 bits
-															//stores which pages were allocated one at a time
-unsigned int *page_tree;			//this is the binary tree for pages
-unsigned int largest_address;//the largest address that the tree deals with
-
-struct page_range
-{
-	struct page_range *previous;
-	unsigned int address;
-	unsigned int length;	//number of pages
-	struct page_range *next;
-};
+	//TODO: after compiling works again, try changing this over to a define statement
 
 struct page_range *first_pages_range;	//the last element in this linked list will be 0,0,0
 
-void pdtEntry(unsigned int address, unsigned int table_address)
+char *strcpy(char *destination, const char *source )
+{
+	int counter = 0;
+	do
+	{
+		destination[counter] = source[counter];
+		counter++;
+	} while (source[counter - 1] != 0);
+	return destination;
+}
+
+void memory::pdtEntry(unsigned int address, unsigned int table_address)
 {	//fills in the entry in the PDT regarding the address (0-4GB)
 	//it will point to table_address for that memory range
 	page_table[address] = table_address + 3; //read/write, present, supervisor
 }
 
-void tableEntry(unsigned int address)
+void memory::tableEntry(unsigned int address)
 {	//fills in the page table entry for address
 	//retrieves the page table address from the page directory table
 	unsigned int *table_address = (unsigned int *)(page_table[address / 0x400000] & 0xFFFFF000);
 	table_address[(address / 0x1000) % 0x400] = address + 3;
 }
 
+/*
 void printPDT(unsigned int *address)
 {	//this prints the PDT, with the appropiate key breaks so the screen doesnt overflow
 	display("Press puase/break to show the PDT\n");
@@ -79,8 +79,9 @@ void printPDT(unsigned int *address)
 		clear_screen();
 	}
 }
+*/
 
-unsigned int getBit(unsigned int bitNum, unsigned int* tree_address)
+unsigned int memory::getBit(unsigned int bitNum, unsigned int* tree_address)
 {	//this retrieves the bitNum'th bit from the binary tree at [tree_address] 
 	unsigned int value;
 	value = tree_address[bitNum /(sizeof(unsigned int) * 8)] & 1<<(bitNum % (sizeof(unsigned int) * 8));
@@ -88,13 +89,13 @@ unsigned int getBit(unsigned int bitNum, unsigned int* tree_address)
 	return value;
 }
 
-unsigned int getAddress(unsigned int address, unsigned int *table_address, unsigned int table_size)
+unsigned int memory::getAddress(unsigned int address, unsigned int *table_address, unsigned int table_size)
 {	//table_size is size in bytes
 	//table_address is the address of the binary tree
 	return getBit(table_size * sizeof(unsigned int) + address, table_address);
 }
 
-void setBit(unsigned int bit_num, int stat, unsigned int *table_address)
+void memory::setBit(unsigned int bit_num, int stat, unsigned int *table_address)
 {	//sets the nth bit in the binary tree at table_address to stat (1 or 0)
 	if (stat)
 	{
@@ -108,7 +109,7 @@ void setBit(unsigned int bit_num, int stat, unsigned int *table_address)
 	}
 }
 
-void setAddress(unsigned int address, int stat, unsigned int *tree_address, unsigned int table_size)
+void memory::setAddress(unsigned int address, int stat, unsigned int *tree_address, unsigned int table_size)
 {	//makes a setBit call after it does math to find the proper bit to set
 	//caller is required to divide address by the granularity achieved by the table (4 KB = 0x1000);
 	//table_size = bytes
@@ -116,7 +117,7 @@ void setAddress(unsigned int address, int stat, unsigned int *tree_address, unsi
 	setBit(table_size * sizeof(unsigned int) + address, stat, tree_address);
 }
 
-unsigned int countPages()
+unsigned int memory::countPages()
 {	//returns the number of usable pages
 	unsigned int pages = 0;
 	unsigned int counter;
@@ -130,7 +131,7 @@ unsigned int countPages()
 	return pages;
 }
 
-unsigned int *alloc_page(unsigned int size, unsigned int* table, unsigned int granularity)
+unsigned int *memory::alloc_page(unsigned int size, unsigned int* table, unsigned int granularity)
 {	//returns the address of 1 free page
 	//size is the size of the tree in bytes
 	unsigned int unused_page = 1;
@@ -162,7 +163,7 @@ unsigned int *alloc_page(unsigned int size, unsigned int* table, unsigned int gr
 	return (unsigned int *)unused_page;
 }
 
-void free_page(unsigned int address, unsigned int size, unsigned int *table, unsigned int granularity)
+void memory::free_page(unsigned int address, unsigned int size, unsigned int *table, unsigned int granularity)
 {	//frees 1 page and updates the binary tree
 	//size is the size of the table in bytes, 4 is the constant to get the bit number of the first bit in the last row from bytes
 	unsigned int bit_num = size * 0x4 + address / granularity;
@@ -174,10 +175,9 @@ void free_page(unsigned int address, unsigned int size, unsigned int *table, uns
 	}
 }
 
-void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *table_address, unsigned int code)
+void memory::pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *table_address, unsigned int code)
 {	//fills out the PDT, and PTE for a given memory range
 //0, 0x100000, &table_address, 2
-	//display("::test1\n");
 	unsigned int pdt_calc;
 	for (pdt_calc = address / 0x400000;
 			pdt_calc <= ((address + length - 1) / 0x400000);
@@ -190,7 +190,6 @@ void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *tabl
 			//fill out the PageTableDirectory we just assigned
 		}
 	}
-	//display("::test1.1\n");
 	for (pdt_calc = address - (address % 0x1000);
 			 pdt_calc <= (address + length); pdt_calc+= 0x1000)
 	{	//starts at the first page boundary at or before the memory range starts
@@ -201,26 +200,13 @@ void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *tabl
 		tableEntry(pdt_calc);
 		//determine if memory is in range
 	}
-	//display("::test1.2\n");
 	if (code == 1)
 	{	//find the largest memory address that can possibly be allocated
 		largest_address = address + length - 1;
 	}
-	//display("::test1.3\n");
 }
 
-unsigned int *page_address;
-	//0-(sizeof(unsigned int*) - 1)
-	 //the size of the binary tree
-	//next page (sizeof(unsigned int))
-	//binary tree
-	//each allocation is (size_requested + sizeof(unsigned int *))
-	//add sizeof(unsigned int *) to the retrieved address and return that
-	//when freeing, take the address given and subtract sizeof(unsigned int*)
-
-
-
-unsigned int *alloc_bytes(unsigned int bytes)
+unsigned int *memory::alloc_bytes(unsigned int bytes)
 {	//searches for number_bytes of unused bytes
 	//then adds it the the list of assigned addresses
 	//returns the address number_bytes of contiguous memory (at least)
@@ -306,13 +292,13 @@ unsigned int *alloc_bytes(unsigned int bytes)
 }
 
 //overload the operator "new"
-void * operator new (uint_t size)
+void * operator new (size_t size)
 {
     return malloc(size);
 }
 
 //overload the operator "new[]"
-void * operator new[] (uint_t size)
+void * operator new[] (size_t size)
 {
     return malloc(size);
 }
@@ -329,6 +315,14 @@ void operator delete[] (void * p)
     free(p);
 }
 
+void *memset ( void * ptr, int value, size_t num )
+{	//set the first num bytes of ptr to value
+	for (int counter = 0; counter < num; counter++)
+	{
+		((unsigned char*)ptr)[counter] = (unsigned char)value;
+	}
+}
+
 void *malloc(unsigned int size)
 {	//size is in bytes
 	void *use_me = 0;
@@ -342,8 +336,8 @@ void *malloc(unsigned int size)
 	struct page_range *fill_me;
 	if (size == 0x1000)
 	{
-		use_me = alloc_page(size_tree * 4, page_tree, 0x1000);
-		setBit((unsigned int)use_me / 0x1000, 1, single_pages);
+		use_me = global_memory.alloc_page(global_memory.size_tree * 4, global_memory.page_tree, 0x1000);
+		global_memory.setBit((unsigned int)use_me / 0x1000, 1, global_memory.single_pages);
 		return use_me;
 	}
 	else if (size < 0x1000)
@@ -352,7 +346,7 @@ void *malloc(unsigned int size)
 		//find the closest group of memory that is large enough
 		//if no open spots are large enough, go to the next page
 		//if it is the last page, then allocate another page
-		return alloc_bytes(size);
+		return global_memory.alloc_bytes(size);
 	}
 	else
 	{	//size > 0x1000
@@ -368,9 +362,11 @@ void *malloc(unsigned int size)
 		actual_size /= 0x1000;	//number of contiguous pages needed
 		address_current = address_search;
 		length_current = 0;
-		for (address_search = 0; address_search < largest_address; address_search += 0x1000)
+		for (address_search = 0; address_search < global_memory.largest_address; address_search += 0x1000)
 		{
-			if (getAddress(address_search / 0x1000, page_tree, size_tree * sizeof(unsigned int)) == 1)
+			if (global_memory.getAddress(address_search / 0x1000,
+																		global_memory.page_tree,
+																		global_memory.size_tree * sizeof(unsigned int)) == 1)
 			{
 				length_current++;
 			}
@@ -397,14 +393,18 @@ void *malloc(unsigned int size)
 		}
 		for (address_search = address; address_search < ((address + 0x1000 * actual_size) - 1); address_search += 0x1000)
 		{
-			setAddress(address_search / 0x1000, 0, page_table, size_tree * sizeof(unsigned int));
+			global_memory.setAddress(address_search / 0x1000, 0, global_memory.page_table, global_memory.size_tree * sizeof(unsigned int));
 		}
 		//update the entire tree
-		for (counter = size_tree * 0x8; counter >= 1; counter /= 2)
+		for (counter = global_memory.size_tree * 0x8; counter >= 1; counter /= 2)
 		{	//have to start on the second lowest layer
 			for (counter2 = counter; counter2 < (counter * 2); counter2++)
 			{
-				setBit(counter2, getBit(2 * counter2, page_tree) | getBit(2 * counter2 + 1, page_tree), page_tree);
+				global_memory.setBit(counter2,
+														global_memory.getBit(2 * counter2, global_memory.page_tree) | 
+															global_memory.getBit(2 * counter2 + 1,
+																									global_memory.page_tree),
+														global_memory.page_tree);
 			}
 		}
 		//add the proper structure to the linked list
@@ -431,7 +431,7 @@ void free(void *address)
 		return;
 	//was less than a page allocated?
 	//check to see if the address resides in one of the (<4KB) allocate pages
-	for (counter = (unsigned int)page_address; counter != 0; counter = ((unsigned int*)counter)[0x3FF])
+	for (counter = (unsigned int)global_memory.page_address; counter != 0; counter = ((unsigned int*)counter)[0x3FF])
 	{	//loads the address of each page used for byte allocations into counter
 		if (((unsigned int)address - ((unsigned int)address % 0x1000)) == counter)
 		{
@@ -441,14 +441,23 @@ void free(void *address)
 		}
 	}
 	//is it an exact page that was allocated?
-	if (getBit((unsigned int)address / 0x1000, single_pages) == 1)
+	if (global_memory.getBit((unsigned int)address / 0x1000, global_memory.single_pages) == 1)
 	{
-		free_page((unsigned int)address, sizeof(unsigned int) * size_tree, page_tree, 0x1000);
-		setBit((unsigned int)address / 0x1000, 0, single_pages);
-		temp = (unsigned int)address / 0x1000 + size_tree * sizeof(unsigned int) * 0x4;
+		global_memory.free_page((unsigned int)address, 
+														sizeof(unsigned int) * global_memory.size_tree,
+														global_memory.page_tree, 
+														0x1000);
+		global_memory.setBit((unsigned int)address / 0x1000, 
+													0, 
+													global_memory.single_pages);
+		temp = (unsigned int)address / 0x1000 + global_memory.size_tree * sizeof(unsigned int) * 0x4;
 		for (counter = temp / 2; counter >= 1; counter /= 2)
 		{
-			setBit(counter, getBit(2 * counter, page_tree) | getBit(2 * counter + 1, page_tree), page_tree);
+			global_memory.setBit(counter, 
+														global_memory.getBit(2 * counter, global_memory.page_tree) |
+															global_memory.getBit(2 * counter + 1,
+														global_memory.page_tree),
+														global_memory.page_tree);
 		}
 		return;
 	}
@@ -458,7 +467,10 @@ void free(void *address)
 		{	//free that memory
 			for (counter = fill_me->address; counter < (fill_me->address + 0x1000 * fill_me->length - 1); counter += 0x1000)
 			{	//free these pages
-				free_page((unsigned int)counter, sizeof(unsigned int) * size_tree, page_tree, 0x1000);
+				global_memory.free_page((unsigned int)counter,
+																sizeof(unsigned int) * global_memory.size_tree,
+																global_memory.page_tree,
+																0x1000);
 			}
 			fill_me->previous->next = fill_me->next;
 			free(fill_me);
@@ -488,13 +500,19 @@ void *memcpy(void* s1, const void* s2, unsigned int n)
 	return s1;
 }
 
-void setup_paging(struct multiboot_info *boot_info, unsigned int size)
+memory::memory()
+{	//this won't do much, not even initialization
+}
+
+void memory::setup_paging(struct multiboot_info *boot_info, unsigned int size)
 {	//necessary information, and last byte in memory used by the kernel
 	page_table = (unsigned int *)(size + (0x1000 - (size % 0x1000)));
 		//this is the page (4KB) where the entire PDT goes
 	unsigned int table_address = (size + (0x1000 - (size % 0x1000)) + 0x1000);
 	unsigned int counter;
 	unsigned int counter2;
+		//these two counter variables are used for looping
+		//counter2 is used for the loop that loops inside another loop
 	unsigned int pages = 0;
 	unsigned int *memory_look;			//used to read the memory tables
 		//this stores where the NEXT page table will go (first one right after PDT)
@@ -508,22 +526,18 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 	display("\tSetting up the page directory table and page table entries\n");
 	for (counter = 0; counter < 0x400; counter++)
 	{	//4MB * 1024 (0x400) = 4GB
+		//each entry in the page_table refers to a 4MB section of memory
 		page_table[counter] = 0;
 	}
-	//display("test1\n");
 	if (boot_info->flags & 64)
 	{
 		memory_look = (unsigned int*)boot_info->mmap_addr;
-		//display("test1.1\n");
 		for (memory_look = (unsigned int*)boot_info->mmap_addr;
 					(unsigned int)memory_look < (boot_info->mmap_addr + boot_info->mmap_length);
 					memory_look += (memory_look[0]) / sizeof(unsigned int) + 1)
 		{	//scan each memory range
-			//display("1.15\n");
 			pdt_ptd_range(memory_look[1], memory_look[3], &table_address, memory_look[5]);
-			//display("1.2\n");
 		}
-		//display("test2\n");
 		pdt_ptd_range(0, 0x100000, &table_address, 2);
 		//now we can start initializing our binary tree
 		//need to repeat the entire loop again, the first time we didn't have the most important piece of imformation
@@ -538,7 +552,6 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 		{	//initialize the tree to all memory used to prevent bugs
 			page_tree[counter] = 0;
 		}
-		//display("test3\n");
 		//number of unsigned ints it takes to make the entire table
 		memory_look = (unsigned int*)boot_info->mmap_addr;	//need to reinitialize
 		for (memory_look = (unsigned int*)boot_info->mmap_addr;
@@ -564,7 +577,6 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 				}
 			}
 		}
-		//display("test4\n");
 	}
 	else if (boot_info->flags & 1)
 	{
@@ -661,5 +673,4 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 	PrintNumber(pages);
 	display("\n");
 }
-
 

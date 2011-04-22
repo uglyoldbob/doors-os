@@ -1,6 +1,7 @@
 #include "keyboard.h"
 #include "message.h"
 #include "entrance.h"
+#include "video.h"
 
 //unsigned int BootType;	//warm or cold boot; 0 = cold, 1 = warm
 	//not valid on all computers
@@ -11,22 +12,209 @@
 	//via a spinlock aware function
 
 
-void wait_to_write()
+//00 means that that flag doesnt do anything
+	//for caps lock it means shift does the same thing
+	//for num lock it means it has no effect
+	//for shift, it means no effect
+	//a regular 0 means a multi-byte
+EXTERNC const char ASCII_TRANSLATE[] = {
+	//regular, shift, caps, numlock
+	//for keys that have a regular of 27, shift refers to the multibyte number of the regular code, 
+		//and numlock is another multibyte number (0 refers to the numlock having no effect)
+	0, 0, 0, 0, //this entry is unused (keyboard chart starts at 1)
+	27, 0, 0, 0,
+	49, 33, 0, 0,
+	50, 64, 0, 0,
+	51, 35, 0, 0,
+	52, 36, 0, 0,
+	53, 37, 0, 0,
+	54, 94, 0, 0,
+	55, 38, 0, 0,
+	56, 42, 0, 0,
+	57, 40, 0, 0,
+	48, 41, 0, 0,
+	45, 95, 0, 0,
+	61, 43, 0, 0,
+	8, 0, 0, 0,
+	9, 0, 0, 0,
+	113, 81, 81, 0,
+	119, 87, 87, 0,
+	101, 69, 69, 0,
+	114, 82, 82, 0,
+	116, 84, 84, 0,
+	121, 89, 89, 0,
+	117, 85, 85, 0,
+	105, 73, 73, 0,
+	111, 79, 79, 0,
+	112, 80, 80, 0,
+	91, 123, 0, 0,
+	93, 125, 0, 0,
+	10, 0, 0, 0,
+	0, 0, 0, 0,	//lctrl -1
+	97, 65, 65, 0,
+	115, 83, 83, 0,
+	100, 68, 68, 0,
+	102, 70, 70, 0,
+	103, 71, 71, 0,
+	104, 72, 72, 0,
+	106, 74, 74, 0,
+	107, 75, 75, 0,
+	108, 76, 76, 0,
+	59, 58, 0, 0,
+	39, 34, 0, 0,
+	96, 126, 0, 0,
+	0, 0, 0, 0, 	//LSHIFT -1
+	92, 124, 0, 0,
+	122, 90, 90, 0,
+	120, 88, 88, 0,
+	99, 67, 67, 0,
+	118, 86, 86, 0,
+	98, 66, 66, 0,
+	110, 78, 78, 0,
+	109, 77, 77, 0,
+	44, 60, 0, 0,
+	46, 62, 0, 0,
+	47, 63, 0, 0,
+	0, 0, 0, 0, //RSHIFT -1
+	42, 0, 0, 0,
+	0, 0, 0, 0, //LALT -1
+	32, 0, 0, 0,
+	0, 0, 0, 0, //CAPS lock -1
+	27, 1, 0, 0, //F1 -1 need to find out what this is
+	27, 2, 0, 0, //F2 -1
+	27, 3, 0, 0, //F3 -1
+	27, 4, 0, 0, //F4 -1
+	27, 5, 0, 0, //F5 -1
+	27, 6, 0, 0, //F6 -1
+	27, 7, 0, 0, //F7 -1
+	27, 8, 0, 0, //F8 -1
+	27, 9, 0, 0, //F9 -1
+	27, 10, 0, 0, //F10 -1
+	0, 0, 0, 0, //numlock -1
+	0, 0, 0, 0, //scrolllock -1
+	27, 11, 0, 20,	//needs numlock info - numpad 7
+	27, 12, 0, 21, //needs numlock info - numpad 8
+	27, 13, 0, 22, //needs numlock info - numpad 9
+	45, 30, 0, 0, //- numpad
+	27, 14, 0, 23, //needs numlock info - numpad 4
+	53, 32, 0, 0, //numpad 5
+	27, 15, 0, 24, //needs numlock info - numpad 6
+	43, 34, 0, 0, //numpad +
+	27, 16, 0, 25, //needs numlock info - numpad 1
+	27, 17, 0, 26, //needs numlock info - numpad 2
+	27, 18, 0, 27, //needs numlock info - numpad 3
+	27, 19, 0, 28, //needs numlock info - numpad 0
+	127, 0, 0, 46,	//numpad . delete
+	0, 0, 0, 0, //RCTRL -1
+	47, 0, 0, 0, //numpad /
+	27, 29, 0, 0, //print screen -1
+	27, 30, 0, 0, //f11 -1
+	27, 31, 0, 0, //f12 -1
+	0, 0, 0, 0, //RALT -1
+	13, 0, 0, 0, //numpad enter
+	27, 32, 0, 0, //home -1
+	27, 33, 0, 0, //up -1
+	27, 34, 0, 0,	//pgup -1
+	27, 35, 0, 0,	//left -1
+	27, 36, 0, 0,	//right -1
+	27, 37, 0, 0,	//end -1
+	27, 38, 0, 0,	//down -1
+	27, 39, 0, 0,	//pgdown -1
+	27, 40, 0, 0,	//insert -1
+	127, 0, 0, 0, //delete -1
+	0, 0, 0, 0,	//lwin -1
+	0, 0, 0, 0,	//rwin -1
+	0, 0, 0, 0,	//menu -1
+	0, 0, 0, 0,	//pause/break -1
+
+};
+
+//[0x1B:0x4F:0x53]
+
+EXTERNC const char *ASCII_MULTIBYTE [] = {
+"\x1B\x00",	//escape character (not actually a multi-byte, but this is here because of the way the code might act)
+"\x00", //f1
+"\x1B\x4F\x51\x00", //f2
+"\x1B\x4F\x52\x00", //f3
+"\x1B\x4F\x53\x00", //f4
+"\x1B\x5B\x31\x36\x7E\x00", //f5
+"\x1B\x5B\x31\x37\x7E\x00", //f6
+"\x1B\x5B\x31\x38\x7E\x00", //f7
+"\x1B\x5B\x31\x39\x7E\x00", //f8
+"\x1B\x5B\x32\x30\x7E\x00", //f9
+"\x00", //f10
+"\x00", //numpad 7
+"\x00", //numpad 8
+"\x00", //numpad 9
+"\x00", //numpad 4
+"\x00", //numpad 6
+"\x00", //numpad 1
+"\x00", //numpad 2
+"\x00", //numpad 3
+"\x00", //numpad 0
+"\x37\x00", //numpad 7 (with numlock on)
+"\x38\x00", //numpad 8 (with numlock on)
+"\x39\x00", //numpad 9 (with numlock on)
+"\x34\x00", //numpad 4 (with numlock on)
+"\x36\x00", //numpad 6 (with numlock on)
+"\x31\x00", //numpad 1 (with numlock on)
+"\x32\x00", //numpad 2 (with numlock on)
+"\x33\x00", //numpad 3 (with numlock on)
+"\x30\x00", //numpad 0 (with numlock on)
+"\x00",	//print screen
+"\x00",	//f11
+"\x1B\x5B\x32\x34\x7E\x00",	//f12
+"\x1B\x5B\x31\x7E\x00", //home
+"\x1B\x5B\x41\x00",	//up
+"\x1B\x5B\x35\x7E\x00", //pgup
+"\x1B\x5B\x44\x00",	//left
+"\x1B\x5B\x43\x00",	//right
+"\x1B\x4F\x46\x00",	//end
+"\x1B\x5B\x42\x00",	//down
+"\x1B\x5B\x36\x7E\x00",	//pgdown
+"\x1B\x5B\x32\x7E\x00",	//insert
+};
+
+int wait_to_write()
 {	//waits until the output buffer for the keyboard is clear
 	//use before you send a command byte to port 0x60
-	while ((inportb(0x64) & 0x03) != 0);
+	unsigned int counter = 0;
+	while ((inportb(0x64) & 0x02) != 0)
+	{
+		Delay(10);
+		counter += 10;
+		if (counter == 100)
+			return -1;
+	}
 	//waits until input buffer and output buffer are both empty
+	return 0;
 }
 
-void wait_2_write()
+int wait_2_write()
 {	//used when writing commands to port 0x64
-	while ((inportb(0x61) & 0x4) == 0x4);	//maybe should be 0
+	unsigned int counter = 0;
+	while ((inportb(0x61) & 0x4) == 0x4)
+	{	
+		Delay(10);
+		counter += 10;
+		if (counter == 100)
+			return -1;
+	};	//maybe should be 0
+	return 0;
 }
 
-void wait_to_read()
+int wait_to_read()
 {	//waits until the output buffer has data in it
 	//source says bit 5 may have to be checked alsos
-	while ((inportb(0x64) & 0x01) != 0x01);
+	unsigned int counter = 0;
+	while ((inportb(0x64) & 0x01) != 0x01)
+	{
+		Delay(10);
+		counter += 10;
+		if (counter == 100)
+			return -1;
+	}
+	return 0;
 }
 
 //keyboard controller command byte
@@ -54,40 +242,48 @@ void verify_scancode_receipt()
 	outportb(temp, 0x61);
 }
 
-void init_keyboard()
+int init_keyboard()
 {	//performs initialization of the keyboard
 	num_elements_used = 0;
 	unsigned int response;
 	display("\tSetting keyboard to scancode set 2\n");
 	//set keyboard to scancode set 2
-//	wait_to_write();
-//	outportb(0xF0, 0x60);
-//	wait_to_write();
-//	outportb(0x2, 0x60);
-//	do
-//	{
-//		response = getResponse();
-//	} while (response == 0);
-//	if (response == 0xFE)
-//		display("\tFailed to set keyboard mode\n");
-	add_me.who = KEYBOARD;
-	add_me.fields = 1;
-	display("\tEnabling scancode translation\n");
-	//enable translation, not working on some computers
-	wait_2_write();
-	outportb(0x20, 0x64);
-	wait_to_write();
+	if (wait_to_write() == -1)
+		return -1;
+	outportb(0xF0, 0x60);
+	if (wait_to_write() == -1)
+		return -1;
+	outportb(0x2, 0x60);
 	do
 	{
 		response = getResponse();
 	} while (response == 0);
+	if (response == 0xFE)
+		display("\tFailed to set keyboard mode\n");
+	add_me.who = KEYBOARD;
+	add_me.fields = 2;
+//	display("\tEnabling scancode translation\n");
+	//enable translation, not working on some computers
+//	if (wait_2_write() == -1)
+//		return -1;
+//	outportb(0x20, 0x64);
+//	if (wait_to_write() == -1)
+//		return -1;
+//	do
+//	{
+//		response = getResponse();
+//	} while (response == 0);
 
 	response = 0x43;	//enable mouse, keyboard, scancode conversion
-	wait_2_write();
+	if (wait_2_write() == -1)
+		return -1;
 	outportb(0x60, 0x64);
-	wait_to_write();
+	if (wait_to_write() == -1)
+		return -1;
 	outportb(response, 0x60);
-	wait_to_write();
+	if (wait_to_write() == -1)
+		return -1;
+	display("Exiting keyboard initializer\n");
 }
 
 //format of the processed scancodes (4 bytes for each key event)
@@ -103,9 +299,64 @@ void postMakeCode(unsigned int code)
 {	//short work for posting a code
 	//flags such as shift will not be changed in this function
 	//also the scancode buffer is cleared
+	//this is where translation for VT100 stuff will be done
+	//games will probably want to use the make and break codes, as well as anything that wants "extra" keyboard keys
+		//like ctrl, shift, alt, etc
 	add_me.data1 = (add_me.data1 | code | MAKE);	//set the code and the make flag
+	if (ASCII_TRANSLATE[code * 4] == 0)
+	{	//key has no mapping
+		add_me.data2 = 0;
+	}
+	else
+	{	//this key has a mapping
+		if (ASCII_TRANSLATE[code * 4] != 0x1B)
+		{	//single byte
+			if (((add_me.data1 & CAPSL) > 0) && (ASCII_TRANSLATE[code * 4 + 2] != 0))
+			{	//caps lock key is engaged and the shift actually changes the keycode for this scancode
+				if ((add_me.data1 & (LSHFT | RSHFT)) == 0)
+				{	//a shift key is not being pressed
+					//and caps lock is down
+					add_me.data2 = ASCII_TRANSLATE[code * 4 + 2];
+				}
+				else
+				{	//shift and caps lock = normal key output
+					add_me.data2 = ASCII_TRANSLATE[code * 4];
+				}
+			}
+			else if ((add_me.data1 & (LSHFT | RSHFT)) > 0)
+			{	//a shift key is being pressed (and caps lock has no effect
+				add_me.data2 = ASCII_TRANSLATE[code * 4 + 1];
+			}
+			else
+			{	//neither the shift key or the caps lock is down
+				add_me.data2 = ASCII_TRANSLATE[code * 4];
+			}
+		}
+		else
+		{
+			if (code == 1)
+			{	//the escape key is a single byte code
+				add_me.data2 = 0x1B;
+			}
+			else
+			{	//code is actually a multi-byte sequence (at least theoretically)
+				//check to see if numlock is active and if the code cares about numlock
+				add_me.data1 = add_me.data1 | MULTI;
+				if (((add_me.data1 & NUMBL) > 0) && (ASCII_TRANSLATE[code * 4 + 3] != 0))
+				{	//numlock active and the code has a different code when numlock is active
+					add_me.data2 = (unsigned long)ASCII_MULTIBYTE[ASCII_TRANSLATE[code * 4 + 3]];
+				}
+				else
+				{	//either numlock is not active or it doesn't matter if it is active
+					add_me.data2 = (unsigned long)ASCII_MULTIBYTE[ASCII_TRANSLATE[code * 4 + 1]];
+				}
+			}
+		}
+	}
 	add_system_event(&add_me);
 	add_me.data1 = (add_me.data1 & 0xFFFFFF00);	//clear the key specific data
+	add_me.data1 = (add_me.data1 & ~MULTI);
+	add_me.data2 = 0;
 	num_elements_used = 0;
 }
 
@@ -115,15 +366,17 @@ void postBreakCode(unsigned int code)
 	add_me.data1 = (add_me.data1 & ~MAKE);	//set the code and clear the MAKE flag
 	add_system_event(&add_me);
 	add_me.data1 = (add_me.data1 & 0xFFFFFF00);	//clear the key specific data
+	add_me.data2 = 0;
 	num_elements_used = 0;
 }
 
+//this function is called from assembly
 void handleScancode(unsigned int code)
 {	//only the bottom byte of code is non-zero
 	//need to handle set 2 scancodes
 	//PrintNumber(code);
 	switch (num_elements_used)
-	{
+	{ 
 		case 0:
 		{	//this is the first byte of the scancode
 			switch (code)
@@ -156,6 +409,13 @@ void handleScancode(unsigned int code)
 					break;
 				case 0x38:	//left alt key press
 					add_me.data1 = (add_me.data1 | LALTT);
+					postMakeCode(code);
+					break;
+				case 0x3A:	//caps lock key press
+					if ((add_me.data1 & CAPSL) > 0)
+						add_me.data1 = (add_me.data1 & ~CAPSL);
+					else
+						add_me.data1 = (add_me.data1 | CAPSL);
 					postMakeCode(code);
 					break;
 				case 0xA8:	//left alt key release
@@ -433,110 +693,247 @@ void handleScancode(unsigned int code)
 }
 
 
+	
 
 /*keycode order (translated)
-esc (0)
-1!
-2@
-3#
-4$
-5%
-6^
-7&
-8*
-9(
-0)
--_
-=+
-backspace
-tab
-qQ
-wW
-eE
-rR
-tT
-yY
-uU
-iI
-oO
-pP
-[{
-]}
-enter
+//everything that doesnt have an ASCII code right now could potentially have an escape sequence for it
+(translated value) [ASCII value] [esc:esc:esc:esc]
+esc (0) [27]
+1! [49, 33]
+2@ [50, 64]
+3# [51, 35]
+4$ [52, 36]
+5% (5) [53, 37]
+6^ [54, 94]
+7& [55, 38]
+8* [56, 42]
+9( [57, 40]
+0)(10) [48, 41]
+-_ [45, 95]
+=+ [61, 43]
+backspace [8]
+tab [9]
+qQ (15) [113, 81]
+wW [119, 87]
+eE [101, 69]
+rR [114, 82]
+tT [116, 84]
+yY (20) [121, 89]
+uU [117, 85]
+iI [105, 73]
+oO [111, 79]
+pP [112, 80]
+[{ (25) [91, 123]
+]} [93, 125]
+enter [13]
 lCTRL
-aA
-sS
-dD
-fF
-gG
-hH
-jJ
-kK
-lL
-;:
-'"
-`~
+aA [97, 65]
+sS (30) [115, 83]
+dD [100, 68]
+fF [102, 70]
+gG [103, 71]
+hH [104, 72]
+jJ (35) [106, 74]
+kK [107, 75]
+lL [108, 76]
+;: [59, 58]
+'" [39, 34]
+`~ (40) [96, 126]
 LSHIFT
-\|
-zZ
-xX
-cC
-vV
-bB
-nN
-mM
-,<
-.>
-/?
+\| [92, 124]
+zZ [122, 90]
+xX [120, 88]
+cC (45) [99, 67]
+vV [118, 86]
+bB [98, 66]
+nN [110, 78]
+mM [109, 77]
+,< (50) [44, 60]
+.> [46, 62]
+/? [47, 63]
 RSHIFT
-*
-LALT
-' '
+* [42]
+LALT (55)
+' ' [32]
 capslock
-f1
-f2
-f3
-f4
-f5
-f6
-f7
-f8
-f9
+f1 
+f2 [0x1B:0x4F:0x51]
+f3 (60) [0x1B:0x4F:0x52]
+f4 [0x1B:0x4F:0x53]
+f5 [0x1B:0x5B:0x31:0x36:0x7E]
+f6 [0x1B:0x5B:0x31:0x37:0x7E]
+f7 [0x1B:0x5B:0x31:0x38:0x7E]
+f8 (65) [0x1B:0x5B:0x31:0x39:0x7E]
+f9.[0x1B:0x5B:0x32:0x30:0x7E]
 f10
 numlock
-scrolllock
-home 7
-up 8
-pageup 9
--
-left 4
-5
-right 6
-+
-end 1
-down 2
-pagedown 3
-insert 0
-del .
-RCTRL (0x54)
-/ (0x55)
-printscreen (0x56)
+scrolllock	//items below this are switched by numlock lock, not capslock or shift
+home 7 (70) [x, 55]	//these values need to be tested with a real keyboard
+up 8 [x, 56]
+pageup 9 [x, 60]
+- [45]
+left 4 [x, 52]
+5 (75) [53]
+right 6 [x, 54]
++ [43]
+end 1 [x, 49]
+down 2 [x, 50]
+pagedown 3 (80) [x, 51]
+insert 0 [x, 48]
+del . [127, 46]
+RCTRL (0x54) [x]	//items above this are controlled by num lock
+/ (0x55) [47]
+printscreen (0x56) (85)
 f11 (0x57)
-f12 (0x58)
+f12 (0x58) [0x1B:0x5B:0x32:0x34:0x7E]
 RALT (0x59)
-numpad_enter (0x5A)
-home (0x5B)
-up
-pgup
-left (0x5E)
-right
-end
-down (0x61)
-pgdwn
-insert
-del (0x64)
-lwin
+numpad_enter (0x5A) [13]
+home (0x5B) (90) [0x1B:0x5B:0x31:0x7E]
+up [0x1B:0x5B:0x41]
+pgup [0x1B:0x5B:0x35:0x7E]
+left (0x5E) [0x1B:0x5B:0x44]
+right [0x1B:0x5B:0x43]
+end (95) [0x1B:0x4F:0x46]
+down (0x61) [0x1B:0x5B:0x42]
+pgdwn [0x1B:0x5B:0x36:0x7E]
+insert [0x1B:0x5B:0x32:0x7E]
+del (0x64) [127]
+lwin (100)
 rwin
 menu (0x67)
 pause/break (0x68)
 */
+
+//create a conversion table for the keyboard right here
+
+enum
+{
+ASCII_NUL = 0,
+ASCII_SOH,	//start of heading
+ASCII_STX,	//start of text
+ASCII_ETX,	//end of text
+ASCII_EOT,	//end of transmission
+ASCII_ENQ,	//enquuiry
+ASCII_ACK,	//acknowledge
+ASCII_BEL,	//bell
+ASCII_BS,		//backspace
+ASCII_TAB,
+ASCII_LF,		//NL line feed, new line
+ASCII_VT,		//vertical tab
+ASCII_FF,		//NP form feed, new page
+ASCII_CR,		//carriage return
+ASCII_SO,		//shift out
+ASCII_SI,		//shift in
+ASCII_DLE,	//data link escape
+ASCII_DC1,	//device control 1
+ASCII_DC2,	//device control 2
+ASCII_DC3,	//device control 3
+ASCII_DC4,	//device control 4
+ASCII_NAK,	//negative acknowledgement
+ASCII_SYN,	//synchronous idle
+ASCII_ETB,	//end of transmission block
+ASCII_CAN,	//cancel
+ASCII_EM,		//end of medium
+ASCII_SUB,	//substitute
+ASCII_ESC,	//escape
+ASCII_FS,		//file seperator
+ASCII_GS,		//group seperator
+ASCII_RS,		//record seperator
+ASCII_US,		//unit seperator
+ASCII_SPACE,
+ASCII_EXCL,	// !
+ASCII_DQ,	//"
+ASCII_POUND,
+ASCII_DOLLAR,
+ASCII_PERCENT,
+ASCII_AMP,
+ASCII_TICK,
+ASCII_OPAR,
+ASCII_CPAR,
+ASCII_MUL,
+ASCII_ADD,
+ASCII_COMMA,
+ASCII_SUBTRACT,
+ASCII_DOT,
+ASCII_FSLASH,
+ASCII_0,
+ASCII_1,
+ASCII_2,
+ASCII_3,
+ASCII_4,
+ASCII_5,
+ASCII_6,
+ASCII_7,
+ASCII_8,
+ASCII_9,
+ASCII_COLON,
+ASCII_SEMCLN,
+ASCII_LESSER,
+ASCII_EQUAL,
+ASCII_GREATER,
+ASCII_QSTN,
+ASCII_AT,
+ASCII_A,
+ASCII_B,
+ASCII_C,
+ASCII_D,
+ASCII_E,
+ASCII_F,
+ASCII_G,
+ASCII_H,
+ASCII_I,
+ASCII_J,
+ASCII_K,
+ASCII_L,
+ASCII_M,
+ASCII_N,
+ASCII_O,
+ASCII_P,
+ASCII_Q,
+ASCII_R,
+ASCII_S,
+ASCII_T,
+ASCII_U,
+ASCII_V,
+ASCII_W,
+ASCII_X,
+ASCII_Y,
+ASCII_Z,
+ASCII_OBRACK,
+ASCII_BSLASH,
+ASCII_CBRACK,
+ASCII_POW,	//^
+ASCII_UNDERSCORE,
+ASCII_BACKTICK,	//`
+ASCII_LOWA,
+ASCII_LOWB,
+ASCII_LOWC,
+ASCII_LOWD,
+ASCII_LOWE,
+ASCII_LOWF,
+ASCII_LOWG,
+ASCII_LOWH,
+ASCII_LOWI,
+ASCII_LOWJ,
+ASCII_LOWK,
+ASCII_LOWL,
+ASCII_LOWM,
+ASCII_LOWN,
+ASCII_LOWO,
+ASCII_LOWP,
+ASCII_LOWQ,
+ASCII_LOWR,
+ASCII_LOWS,
+ASCII_LOWT,
+ASCII_LOWU,
+ASCII_LOWV,
+ASCII_LOWW,
+ASCII_LOWX,
+ASCII_LOWY,
+ASCII_LOWZ,
+ASCII_OCBRACK,	//{
+ASCII_BAR,	//|
+ASCII_CCBRACK,	//}
+ASCII_TILDE,	//~
+ASCII_DELETE
+};

@@ -1,8 +1,11 @@
 #include "fat.h"
 #include "floppy.h"
 #include "memory.h"
+#include "video.h"
 
-int load_boot_sector(unsigned int drive_num, struct FatBootSector *sector, unsigned char *store)
+//all filesystem drivers will also be restructured for C++
+
+int load_boot_sector(disk *somewhere, struct FatBootSector *sector, unsigned char *store)
 {	//interprets data from a buffer where a boot sector is to be preloaded
 	//if this function returns -1, then the boot sector is not FAT12/16/32
 

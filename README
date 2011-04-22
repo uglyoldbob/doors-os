@@ -42,6 +42,10 @@ Next will be FAT drivers.
 I am working on porting newlib. OS dependent calls will probably fail until I have support for them coded.
 There will also be tools for compiling a cross compiler. It seems to be sensitive to what is in the folders that the script is run from and things that are in the tools folder. Copying the entire folder tools to a seperate directory to build the cross-compiler seems to solve the problem. I'm not sure what causes this.
 
+v0.17
+	Switched over to allow C++ and C code mixed with assembly. This will allow the disk drivers to have a cleaner interface, although in order for disk drivers to be "loadable" (that is, not having to be compiled into the kernel) dynamic linking will have to be supported, although that is probably a given regardless of whether C++ classes are used or not.
+
+
 -----------
 Thomas Epperson
 thomas.epperson@gmail.com

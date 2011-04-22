@@ -6,6 +6,9 @@
 [extern main]			;int main(
 [extern memcopy]
 [extern get_sys_tasks]
+[extern main]	;this is in our C++ code
+[extern _main]	;this is in our C support code
+[extern _atexit] ;this is in our C support code
 [global timer]
 [global syscall1]
 
@@ -74,14 +77,20 @@ flush2:
 	;lidt [idt_desc]	;load the IDT
 
 	[extern kernel_end]
+	[extern __cxa_finalize]
 	mov eax, kernel_end
 	push eax	;kernel size is the second argument
 	mov eax, ebx
 	;mov eax, [bootInfo]
 	;use this instead if ebx is changed
+	;call _main
 	push eax	;pointer is the first argument
 	call main
 	pop eax
+	push DWORD 0
+	call __cxa_finalize
+	pop eax
+	;call _atexit
 END:
 	hlt
 	jmp END
@@ -476,7 +485,7 @@ dump_cpu:
 	call display
 	pop eax
 	mov eax, [save_eax]
-ret
+	ret
 
 [global irqM0]
 [global irqM1]
@@ -537,7 +546,8 @@ get_current_tss:
 .1
 	ret
 
-irqM0:	inc dword [timer]
+irqM0:
+	inc dword [timer]
 	dec DWORD [task_timer]
 	;manual EOI before the interrupt has ended	
 	push ax			;save ax
@@ -621,6 +631,7 @@ Delay:	;delays for some number of irq0 firings (each of which are about 1 millis
 	mov eax, [timer]
 	add eax, [esp + 12]		;eax = delay + time
 .wait
+	hlt
 	mov ebx, [timer]
 	cmp eax, ebx
 	jg .wait
@@ -642,7 +653,7 @@ WaitKey:
 	pop ax
 	ret
 
-;this has to match what is found in sys/syscalls.h
+;this has to match what is found in sys/syscalls.h (part of the doors port of newlib)
 SYS_close	equ	1 ;1
 SYS_execve	equ	2 ;3
 SYS_exit	equ	3 ;0
@@ -838,7 +849,6 @@ IRQM6 db 'FDC has fired an interrupt!', 10, 13, 0
 irqM6:
 ;this is IRQ 6 from the master PIC
 	push ax
-	;determine what this means
 	inc dword [BytesDone]
 ;	push IRQM6
 ;	call display
@@ -944,7 +954,8 @@ HD_INTS dd 0	;number of times the Hard drive controller IRQ has fired
 IRQM14 db 'IRQ14', 13, 10, 0
 irqM14:
 	push eax
-	inc DWORD [HD_INTS]
+	inc DWORD [HD_INTS]
+
 	push IRQM14
 	call display
 	pop eax
@@ -957,7 +968,8 @@ irqM14:
 
 IRQM15 db 'IRQ15', 13, 10, 0
 irqM15:
-	push eax
+	push eax
+
 	push IRQM15
 	call display
 	pop eax
@@ -1138,7 +1150,7 @@ isr6:
 	push ax		;add stuff to the stack for a proper iret
 	iret
 .Other
-	;chech for cpuid
+	;check for cpuid
 	jmp $
 Seven db 'Device not available', 10, 0
 isr7:

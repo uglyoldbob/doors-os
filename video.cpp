@@ -1,19 +1,17 @@
-//video.c
 #include "video.h"
 #include "spinlock.h"
+#include "serial.h"
 
-unsigned int pos;
-unsigned int off;
+video vid;
 
-void display(char *cp)
+video::video()
 {
-	//put('z');
+}
+
+void video::display(const char *cp)
+{
 	enter_spinlock(SL_DISPLAY);
-	//put('Z');
-	char *str = cp, *ch;
-	//PrintNumber(getEIP());
-	//put('\n');
-	//while(1){};
+	const char *str = cp, *ch;
 	for (ch = str; *ch; ch++)
 	{
 		put(*ch);
@@ -21,7 +19,7 @@ void display(char *cp)
 	leave_spinlock(SL_DISPLAY);
 }
 
-void PrintNumber(unsigned int bob)
+void video::PrintNumber(unsigned int bob)
 {	//this prints a 32 bit number (8 hex digits)
 	enter_spinlock(SL_DISPLAY);
 	unsigned int Temp = 0;
@@ -44,12 +42,13 @@ void PrintNumber(unsigned int bob)
 	leave_spinlock(SL_DISPLAY);
 }
 
-void put(unsigned char c)
+void video::put(unsigned char c)
 {
 	//enter_spinlock(SL_DIS2);
 	unsigned short *videomem = (unsigned short*) 0xB8000;
 	if (pos >= 80)
 	{
+		kellogs.write_serial(13);
 		pos = 0;
 		off += 80;
 	}
@@ -61,7 +60,8 @@ void put(unsigned char c)
 		off = (80 * 24);
 	}
 	//time to check for special ASCII values like newline and tab
-	switch(c) {
+	switch(c) 
+	{
 		case 0: case 1: case 2: case 3: //do nothing becuase these are non printing characters that mean nothing
 		case 4: case 5: case 6: case 31: //these will eventually cause a beep (beep)
 		case 11: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
@@ -72,10 +72,12 @@ void put(unsigned char c)
 		}
 		case 7:
 		{	//beep
+			kellogs.write_serial(7);
 			break;
 		}
 		case 8:	//backspace (this will be weird)
 		{	//if not on the beginning of a line, make the previous spot a space and make the current space the previous space
+			kellogs.write_serial(8);
 			if (pos != 0)
 			{
 				pos--;
@@ -95,10 +97,12 @@ void put(unsigned char c)
 		}
 		case 127:	//delete (this one will be weird)
 		{
+			kellogs.write_serial(127);
 			break;
 		}
 		case 9:	//tab to four spaces (at least one space required)
 		{
+			kellogs.write_serial(9);
 			if (pos > 75)	//pointless to tab to the last character, newline instead
 			{	//we wont end up filling up the screen all the way yet
 				pos = 0;
@@ -114,6 +118,7 @@ void put(unsigned char c)
 		}
 		case 10:	//this is newline (or is this just bring cursor to beginning of the line)
 		{		//easy to test
+			kellogs.write_serial(13);
 			pos = 0;
 			off += 80;
 			break;
@@ -124,11 +129,13 @@ void put(unsigned char c)
 		}
 		case 13:	//carriage return 		
 		{
+			kellogs.write_serial(13);
 			pos = 0;
 			break;
 		}
 		default:	//all printable characters
-		{
+		{	
+			kellogs.write_serial(c);
 			videomem[off + pos] = (unsigned char) c | 0x0700;
 			pos++;
 			break;
@@ -137,7 +144,7 @@ void put(unsigned char c)
 	//leave_spinlock(SL_DIS2);
 }
 
-void clear_screen()
+EXTERNC void video::clear_screen()
 {	//this also is an initializer
 	unsigned short *videomem = (unsigned short*) 0xB8000;
 	int counter;
@@ -148,7 +155,7 @@ void clear_screen()
 	off = 0; pos = 0;
 }
 
-void scroll_screen()
+void video::scroll_screen()
 {
 	unsigned short *destination = (unsigned short*) 0xB8000;
 	unsigned short *source = (unsigned short*) 0xB8000 + 80;
@@ -161,4 +168,26 @@ void scroll_screen()
 	{
 		destination[counter] = (unsigned char) ' ' | 0x0700;
 	}
+}
+
+void display(const char *cp)
+{
+	vid.display(cp);
+	//make call to the class function
+}
+
+void PrintNumber(unsigned int bob)
+{
+	vid.PrintNumber(bob);
+	//transfer the call appropriately
+}
+
+void put(unsigned char letter)
+{
+	vid.put(letter);
+}
+//prints a single character to the screen
+void clear_screen()
+{
+	vid.clear_screen();
 }

@@ -3,6 +3,10 @@
 #include "floppy.h"
 #include "memory.h"
 #include "entrance.h"
+#include "video.h"
+#include "floppy.h"
+
+//this should be restructured for C++
 
 //file naming convention
 /* /(drive name)/ ex floppy1 floppy2 cd1 cd2 cd3
@@ -44,10 +48,10 @@ struct sectorReturn readSector(unsigned char driveNum, unsigned long sectorNumbe
 {	//general purpose read sector
 	struct sectorReturn sector;
 	sector.size = 0x1000;		//TODO: need a function to find out the correct sector size
-	sector.data = malloc(sector.size);
+	sector.data = (unsigned char *)malloc(sector.size);
 	if (driveNum < 4)
 	{	//floppy drive
-		if (floppy_read_sector(sectorNumber, driveNum, sector.data, 0x3F0) == -1)
+		if (floppy_read_sector(sectorNumber, driveNum, (unsigned int)sector.data, 0x3F0) == -1)
 		{	//error occurred while reading, try other floppy controller?
 			free(sector.data);
 			sector.size = 0;	//this will indicate that an error happened

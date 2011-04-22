@@ -209,7 +209,7 @@ void secondary_task()
 		if (counter == 0x10000)
 		{
 			display("Task 2.");
-			Delay(2000);
+			Delay(20000);
 			counter = 0;
 		}
 	}

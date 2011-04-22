@@ -1,4 +1,11 @@
-void init_keyboard();	//performs initialization of the keyboard
+#ifdef __cplusplus
+#define EXTERNC extern "C"
+#else
+#define EXTERNC
+#endif 
+
+#ifndef _KEYBOARD_H_
+#define _KEYBOARD_H_
 
 #define MAKE 	0x00100	//the opposite is break
 #define LSHFT 0x00200
@@ -10,6 +17,8 @@ void init_keyboard();	//performs initialization of the keyboard
 #define CAPSL 0x08000
 #define NUMBL	0x10000
 #define SCRLL 0x20000
+#define MULTI 0x40000	//is this a multi byte ASCII sequence? 
+											//(if so, data2 points to the address of the sequence(null terminated)
 
 //define numbers/constants used for all keys
 enum
@@ -120,4 +129,8 @@ KEY_MENU,
 KEY_PAUSE
 };
 
-void init_keyboard();
+EXTERNC int init_keyboard();	//performs initialization of the keyboard
+
+EXTERNC void handleScancode(unsigned int code);
+
+#endif
