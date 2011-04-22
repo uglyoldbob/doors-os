@@ -1,3 +1,4 @@
+
 //memory.c
 
 //this should only be used for kernel memory management
@@ -215,47 +216,6 @@ void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *tabl
 	}
 }
 
-
-//#14 (512 bytes)
-
-/*
-#0  isr14 () at x86/entrance.s:826
-#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
-#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
-#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
-#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
-#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
-#6  0x00106734 in setupFloppy () at x86/main.cpp:265()*/
-
-/*
-#0  isr14 () at x86/entrance.s:826
-#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
-#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
-#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
-#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
-#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
-#6  0x00106734 in setupFloppy () at x86/main.cpp:265*/
-
-/*
-#0  isr14 () at x86/entrance.s:826
-#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
-#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
-#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
-#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
-#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
-#6  0x00106734 in setupFloppy () at x86/main.cpp:265*/
-
-/*
-#0  isr14 () at x86/entrance.s:826
-#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
-#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
-#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
-#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
-#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
-#6  0x00106734 in setupFloppy () at x86/main.cpp:265*/
-
-
-
 unsigned int *alloc_bytes(unsigned int bytes)
 {	//searches for number_bytes of unused bytes
 	//then adds it the the list of assigned addresses
@@ -354,14 +314,6 @@ void operator delete[] (void * p)
     kfree(p);
 }
 
-void *memset ( void * ptr, int value, size_t num )
-{	//set the first num bytes of ptr to value
-	for (int counter = 0; counter < num; counter++)
-	{
-		((unsigned char*)ptr)[counter] = (unsigned char)value;
-	}
-}
-
 void chart_memory()
 {
 	unsigned int counter;
@@ -403,7 +355,7 @@ void chart_memory()
 	display("\n");
 }
 
-void *kmalloc(unsigned int size)
+void *kmalloc(size_t size)
 {	//size is in bytes
 //	PrintNumber(getCallerEIP(0x4C));
 //	display("\t");
@@ -600,7 +552,7 @@ void kfree(void *address)
 }
 
 //called from assembly
-void *memcopy(void* s1, const void* s2, unsigned int n)
+void *memcopy(void* s1, const void* s2, size_t n)
 {
 	unsigned long counter;
 	for (counter = 0; counter < (n / sizeof(unsigned char)); counter++)
@@ -610,7 +562,7 @@ void *memcopy(void* s1, const void* s2, unsigned int n)
 	return s1;
 }
 
-void *memcpy(void* s1, const void* s2, unsigned int n)
+void *memcpy(void* s1, const void* s2, size_t n)
 {
 	unsigned long counter;
 	for (counter = 0; counter < (n / sizeof(unsigned char)); counter++)
@@ -621,7 +573,7 @@ void *memcpy(void* s1, const void* s2, unsigned int n)
 }
 
 
-void setup_paging(struct multiboot_info *boot_info, unsigned int size)
+void setup_paging(struct multiboot_info *boot_info, size_t size)
 {	//necessary information, and last byte in memory used by the kernel
 	page_table = (unsigned int *)(size + (PAGE_SIZE - (size % PAGE_SIZE)));
 		//this is the page (4KB) where the entire PDT goes

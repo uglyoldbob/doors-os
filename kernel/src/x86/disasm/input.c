@@ -5,8 +5,6 @@
  * All rights reserved. See LICENSE
  * -----------------------------------------------------------------------------
  */
-#include "entrance.h"
-
 #include "extern.h"
 #include "types.h"
 #include "input.h"
@@ -23,17 +21,17 @@ inp_buff_hook(struct ud* u)
   else	return -1;
 }
 
-//#ifndef __UD_STANDALONE__
+#ifndef __UD_STANDALONE__
 /* -----------------------------------------------------------------------------
  * inp_file_hook() - Hook for FILE inputs.
  * -----------------------------------------------------------------------------
  */
-//static int 
-//inp_file_hook(struct ud* u)
-//{
-//  return fgetc(u->inp_file);
-//}
-//#endif /* __UD_STANDALONE__*/
+static int 
+inp_file_hook(struct ud* u)
+{
+  return fgetc(u->inp_file);
+}
+#endif /* __UD_STANDALONE__*/
 
 /* =============================================================================
  * ud_inp_set_hook() - Sets input hook.
@@ -59,19 +57,19 @@ ud_set_input_buffer(register struct ud* u, uint8_t* buf, size_t len)
   inp_init(u);
 }
 
-//#ifndef __UD_STANDALONE__
+#ifndef __UD_STANDALONE__
 /* =============================================================================
  * ud_input_set_file() - Set buffer as input.
  * =============================================================================
  */
-//extern void 
-//ud_set_input_file(register struct ud* u, FILE* f)
-//{
-//  u->inp_hook = inp_file_hook;
-//  u->inp_file = f;
-//  inp_init(u);
-//}
-//#endif /* __UD_STANDALONE__ */
+extern void 
+ud_set_input_file(register struct ud* u, FILE* f)
+{
+  u->inp_hook = inp_file_hook;
+  u->inp_file = f;
+  inp_init(u);
+}
+#endif /* __UD_STANDALONE__ */
 
 /* =============================================================================
  * ud_input_skip() - Skip n input bytes.

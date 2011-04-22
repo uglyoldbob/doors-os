@@ -42,13 +42,29 @@
 #include "serial.h"
 #include "vmm.h"
 #include "elf.h"
-#include "string.h"
+
+#include <assert.h>
+#include <string.h>
+#include <stdio.h>
+#include <stddef.h>
+#include <stdint.h>
+
+//includes for the disassembler
+#include "disasm/types.h"
+#include "disasm/extern.h"
+#include "disasm/decode.h"
+#include "disasm/input.h"
+#include "disasm/itab.h"
+#include "disasm/syn.h"
+
+#include "debug.h"
+
 
 #include <sys/syscalls.h>
 
 #define CLOCKS_PER_SEC 1000	//this is the number of times our timer variable is incremented per second (real close)
 
-unsigned long setupFloppy();	//sets up floppy information (seperate task)
+unsigned long setupFloppy();	//sets up floppy information
 extern "C" void hellraiser();
 void readSerial();
 
@@ -108,6 +124,13 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 		display("\n");
 	}
 	
+	//setup data for the debugger
+//	ud_t disasm;
+//	ud_set_input_hook(&disasm, getdisasmb);
+//	ud_set_pc(&disasm, 0);
+//	ud_set_syntax(&disasm, UD_SYN_ATT);	//i prefer the intel style assembly, but since my source is in at&t syntax...
+//	ud_disassemble(&disasm);
+	
 //	display("Setting up data for multi-tasking\n");
 
 	//initialize multi-tasking and setup the first task
@@ -166,31 +189,38 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	display("Configuring keyboard\n");
 	if (init_keyboard() == -1)
 		display("Could not initialize keyboard\n");
+	assert(1);
+	printf(", %i\n", printf ("Characters: %c %c", 'a', 65));
+	printf(", %i\n", printf ("Decimals: %d %ld", 1977, 650000));
+	printf(", %i\n", printf ("Preceding with blanks: %10d", 1977));
+	printf(", %i\n", printf ("Preceding with zeros: %010d", 1977));
+	printf(", %i\n", printf ("Some different radixes: %d %x %o %#x %#o", 100, 100, 100, 100, 100));
+	printf(", %i\n", printf ("floats: %4.2f %+.0e %E", 3.1416, 3.1416, 3.1416));
+	printf(", %i\n", printf ("Width trick: %*d", 5, 10));
+	printf(", %i\n", printf ("%s", "A string"));
 
-	printf ("Characters: %c %c \n", 'a', 65);
-	printf ("Decimals: %d %ld\n", 1977, 650000);
-	printf ("Preceding with blanks: %10d \n", 1977);
-	printf ("Preceding with zeros: %010d \n", 1977);
-	printf ("Some different radixes: %d %x %o %#x %#o \n", 100, 100, 100, 100, 100);
-	printf ("floats: %4.2f %+.0e %E \n", 3.1416, 3.1416, 3.1416);
-	printf ("Width trick: %*d \n", 5, 10);
-	printf ("%s \n", "A string");
-
-	printf ("Test printing of characters\n");	
-	printf ("TEST:%%%+5c%%\n", 'a');
-	printf ("TEST:%%%-5c%%\n", 'a');
-	printf ("TEST:%%% 5c%%\n", 'a');
-	printf ("TEST:%%%05c%%\n", 'a');
-	printf ("TEST:%%%#5c%%\n", 'a');
-	printf ("TEST:%%%05c%%\n", 'a');	
+	printf ("0         1         2         3         4         5         6         7\n");
+	printf ("01234567890123456789012345678901234567890123456789012345678901234567890\n");	
+	printf ("Test functionality of c\n");
+	printf(", %i\n", printf ("TEST:%%%c%%", 'a'));
+	printf(", %i\n", printf ("TEST:%%%-5c%%", 'a'));
+	printf(", %i\n", printf ("TEST:%%%+5c%%", 'a'));
+	printf(", %i\n", printf ("TEST:%%%#5c%%", 'a'));
+	printf(", %i\n", printf ("TEST:%%% 5c%%", 'a'));
+	printf(", %i\n", printf ("TEST:%%%05c%%", 'a'));
+	printf(", %i\n", printf ("TEST:%%%5.2c%%", 'a'));
 	
 	printf ("Test printing of strings\n");
-	printf ("TEST:%%%-5.1s%%\n", "asdfghjk");
-	printf ("TEST:%%%s%%\n", "asdfghjk");
-	printf ("TEST:%%%s%%\n", "asdf");
-	printf ("TEST:%%%-5s%%\n", "asdf");
+	printf(", %i\n", printf ("TEST:%%%-5.1s%%", "asdfghjk"));
+	printf(", %i\n", printf ("TEST:%%%s%%", "asdfghjk"));
+	printf(", %i\n", printf ("TEST:%%%s%%", "asdf"));
+	printf(", %i\n", printf ("TEST:%%%-5s%%", "asdf"));
 
+	printf(", %i\n", printf ("Test printing of decimals (d) and integers (i)\n"));
+	printf(", %i\n", printf ("%%%- d%%", 12345));
+	printf(", %i\n", printf ("%%%12d%%", 12345));
 
+	printf("Sizeof (intmax_t): %i\n", sizeof(intmax_t));
 	for (;;);
 	setupFloppy();	
 

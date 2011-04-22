@@ -6,10 +6,8 @@
  * -----------------------------------------------------------------------------
  */
 
-#include "entrance.h"
-
-//#include <assert.h>
-//#include <string.h>
+#include <assert.h>
+#include <string.h>
 
 #include "types.h"
 #include "itab.h"

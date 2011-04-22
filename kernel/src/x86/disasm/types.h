@@ -8,7 +8,7 @@
 #ifndef UD_TYPES_H
 #define UD_TYPES_H
 
-//#include <stdio.h>
+#include <stdio.h>
 
 #ifdef _MSC_VER
 # define FMT64 "%I64"
@@ -136,7 +136,7 @@ struct ud
   int 			(*inp_hook) (struct ud*);
   uint8_t		inp_curr;
   uint8_t		inp_fill;
-//  FILE*			inp_file;
+  FILE*			inp_file;
   uint8_t		inp_ctr;
   uint8_t*		inp_buff;
   uint8_t*		inp_buff_end;

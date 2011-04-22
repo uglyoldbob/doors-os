@@ -32,28 +32,29 @@ AM_CONDITIONAL([BOOTIMAGE_CD], [test x$bootimage = xcd])
 
 
 case $host in
-	i*86*-*-*) KERNEL_SYSTEM='x86/dma.$(OBJEXT)				\
-							  x86/entrance.$(OBJEXT) 		\
-							  x86/gdt.$(OBJEXT)				\
-							  x86/floppy.$(OBJEXT) 			\
-							  x86/interrupt_table.$(OBJEXT)	\
-							  x86/keyboard.$(OBJEXT)		\
-							  x86/main.$(OBJEXT)			\
-							  x86/memory.$(OBJEXT)			\
-							  x86/PIC.$(OBJEXT)				\
-							  x86/serial.$(OBJEXT)			\
-							  x86/spinlock.$(OBJEXT)		\
-							  x86/tss.$(OBJEXT)				\
-							  x86/video.$(OBJEXT)			\
-							  x86/vmm.$(OBJEXT)				\
-							  x86/debug.$(OBJEXT)			\
-							  x86/disasm/decode.$(OBJEXT)	\
-							  x86/disasm/input.$(OBJEXT)	\
-							  x86/disasm/itab.$(OBJEXT)		\
-							  x86/disasm/syn.$(OBJEXT)		\
-							  x86/disasm/syn-att.$(OBJEXT)	\
-							  x86/disasm/syn-intel.$(OBJEXT)\
-							  x86/disasm/udis86.$(OBJEXT)'
+	i*86*-*-*) KERNEL_SYSTEM='\
+		x86/dma.$(OBJEXT)\
+		x86/entrance.$(OBJEXT)\
+		x86/gdt.$(OBJEXT)\
+		x86/floppy.$(OBJEXT)\
+		x86/interrupt_table.$(OBJEXT)\
+		x86/keyboard.$(OBJEXT)\
+		x86/main.$(OBJEXT)\
+		x86/memory.$(OBJEXT)\
+		x86/PIC.$(OBJEXT)\
+		x86/serial.$(OBJEXT)\
+		x86/spinlock.$(OBJEXT)\
+		x86/tss.$(OBJEXT)\
+		x86/video.$(OBJEXT)\
+		x86/vmm.$(OBJEXT)\
+		x86/debug.$(OBJEXT)\
+		x86/disasm/decode.$(OBJEXT)\
+		x86/disasm/input.$(OBJEXT)\
+		x86/disasm/itab.$(OBJEXT)\
+		x86/disasm/syn.$(OBJEXT)\
+		x86/disasm/syn-att.$(OBJEXT)\
+		x86/disasm/syn-intel.$(OBJEXT)\
+		x86/disasm/udis86.$(OBJEXT)'
 				cp x86/link.ld link.ld
 				set_X86=true
 				AC_MSG_NOTICE($KERNEL_SYSTEM)

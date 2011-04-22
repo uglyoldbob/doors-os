@@ -8,19 +8,18 @@
 #ifndef _MEMORY_H_
 #define _MEMORY_H_
 #include "boot_info.h"
+#include <stddef.h>
 #include "entrance.h"
 
-//EXTERNC void *malloc(unsigned int size);
 //EXTERNC void free(void *address);
 
-EXTERNC void *kmalloc(unsigned int size);
+EXTERNC void *kmalloc(size_t size);
 EXTERNC void kfree(void *address);
 
-EXTERNC void *memcpy(void *s1, const void *s2, unsigned int n);
-EXTERNC void *memcopy(void *s1, const void *s2, unsigned int n);
-EXTERNC void *memset(void *ptr, int value, size_t num );
+EXTERNC void *memcpy(void *s1, const void *s2, size_t n);
+EXTERNC void *memcopy(void *s1, const void *s2, size_t n);
 
-EXTERNC void setup_paging(struct multiboot_info *boot_info, unsigned int size);
+EXTERNC void setup_paging(struct multiboot_info *boot_info, size_t size);
 
 struct page_range
 {

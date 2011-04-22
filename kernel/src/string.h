@@ -5,18 +5,13 @@
 #else
 #define EXTERNC
 #endif 
-
-#include <stdarg.h>
-
-EXTERNC int vsprintf (char * str, const char * format, va_list arg );
-
-EXTERNC int sprintf( char *buffer, const char *format, ... );
-
-EXTERNC int printf(const char * format, ...);
+#include <stddef.h>
 
 EXTERNC int strlen(char *);
 	//returns the number of characters in the string minus the null terminator
 	//TODO: look up the actual argument types, until then the ones i have selected should be sufficient
+
+EXTERNC void *memset(void *s, int c, size_t n);
 
 EXTERNC char *strcpy(char *destination, const char *source );
 	//TODO: lookup return value

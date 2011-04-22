@@ -1,16 +1,9 @@
 #ifdef __cplusplus
-	#define EXTERNC extern "C"
-	#define NULL 0
+#define EXTERNC extern "C"
 #else
-	#define EXTERNC
-	#define NULL ((void*)0)
+#define EXTERNC
 #endif 
 
-//place ifdef statements to select the proper size fot size_t?
-#define size_t unsigned long
-#define assert(ignore) ((void) 0)
-
-	//hopefully this will be good for x86 architecture
 
 EXTERNC volatile unsigned int inportb(unsigned int port);	
 EXTERNC unsigned int outportb(unsigned int value, unsigned int port);

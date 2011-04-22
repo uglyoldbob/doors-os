@@ -6,9 +6,9 @@
  * -----------------------------------------------------------------------------
  */
 
-//#include <stdlib.h>
-//#include <stdio.h>
-//#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "input.h"
 #include "extern.h"
@@ -24,9 +24,9 @@ ud_init(struct ud* u)
   ud_set_mode(u, 16);
   u->mnemonic = UD_Iinvalid;
   ud_set_pc(u, 0);
-//#ifndef __UD_STANDALONE__
-//  ud_set_input_file(u, stdin);
-//#endif /* __UD_STANDALONE__ */
+#ifndef __UD_STANDALONE__
+  ud_set_input_file(u, stdin);
+#endif /* __UD_STANDALONE__ */
 }
 
 /* =============================================================================

@@ -5,12 +5,11 @@
  * All rights reserved. See LICENSE
  * -----------------------------------------------------------------------------
  */
-#include "entrance.h"
-
 #ifndef UD_INPUT_H
 #define UD_INPUT_H
 
 #include "types.h"
+#include <stddef.h>
 
 uint8_t inp_next(struct ud*);
 uint8_t inp_peek(struct ud*);

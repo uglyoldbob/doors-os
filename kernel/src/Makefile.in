@@ -43,11 +43,12 @@ CONFIG_CLEAN_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 binPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 PROGRAMS = $(bin_PROGRAMS)
+am__dirstamp = $(am__leading_dot)dirstamp
 am_kernel_OBJECTS = boot_info.$(OBJEXT) disk.$(OBJEXT) elf.$(OBJEXT) \
 	fat.$(OBJEXT) file.$(OBJEXT) filesystem.$(OBJEXT) \
-	message.$(OBJEXT) module.$(OBJEXT) string.$(OBJEXT) \
-	support.$(OBJEXT)
-am__dirstamp = $(am__leading_dot)dirstamp
+	message.$(OBJEXT) module.$(OBJEXT) support.$(OBJEXT) \
+	stdio/stdio.$(OBJEXT) stdlib/stdlib.$(OBJEXT) \
+	string/string.$(OBJEXT) assert/assert.$(OBJEXT)
 kernel_OBJECTS = $(am_kernel_OBJECTS)
 am__DEPENDENCIES_1 =
 DEFAULT_INCLUDES = -I. -I$(top_builddir)@am__isrc@
@@ -167,40 +168,43 @@ AM_CCASFLAGS = -g -O0 -gdwarf-2
 AM_LDFLAGS = -T link.ld
 CLEANFILES = $(bin_SCRIPTS)
 kernel_SOURCES = \
-	boot_info.c 	\
-	disk.cpp 		\
-	elf.cpp 		\
-	fat.cpp 		\
-	file.cpp 		\
-	filesystem.cpp 	\
-	message.c 		\
-	module.cpp 		\
-	string.cpp 		\
-	support.c
+	boot_info.c\
+	disk.cpp\
+	elf.cpp\
+	fat.cpp\
+	file.cpp\
+	filesystem.cpp\
+	message.c\
+	module.cpp\
+	support.c\
+	stdio/stdio.c\
+	stdlib/stdlib.c\
+	string/string.c\
+	assert/assert.c
 
 EXTRA_kernel_SOURCES = \
-	x86/entrance.s			\
-	x86/gdt.c				\
-	x86/dma.c				\
-	x86/floppy.cpp			\
-	x86/interrupt_table.c	\
-	x86/keyboard.c			\
-	x86/main.cpp			\
-	x86/memory.cpp			\
-	x86/PIC.c				\
-	x86/serial.cpp 			\
-	x86/spinlock.c			\
-	x86/tss.cpp				\
-	x86/video.cpp			\
-	x86/vmm.cpp				\
-	x86/debug.c				\
-	x86/disasm/decode.c		\
-	x86/disasm/input.c		\
-	x86/disasm/itab.c		\
-	x86/disasm/opgen.py		\
-	x86/disasm/syn.c		\
-	x86/disasm/syn-att.c	\
-	x86/disasm/syn-intel.c	\
+	x86/entrance.s\
+	x86/gdt.c\
+	x86/dma.c\
+	x86/floppy.cpp\
+	x86/interrupt_table.c\
+	x86/keyboard.c\
+	x86/main.cpp\
+	x86/memory.cpp\
+	x86/PIC.c\
+	x86/serial.cpp\
+	x86/spinlock.c\
+	x86/tss.cpp\
+	x86/video.cpp\
+	x86/vmm.cpp\
+	x86/debug.c\
+	x86/disasm/decode.c\
+	x86/disasm/input.c\
+	x86/disasm/itab.c\
+	x86/disasm/opgen.py\
+	x86/disasm/syn.c\
+	x86/disasm/syn-att.c\
+	x86/disasm/syn-intel.c\
 	x86/disasm/udis86.c
 
 kernel_LDADD = $(KERNEL_SYSTEM)
@@ -261,6 +265,38 @@ uninstall-binPROGRAMS:
 
 clean-binPROGRAMS:
 	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
+stdio/$(am__dirstamp):
+	@$(MKDIR_P) stdio
+	@: > stdio/$(am__dirstamp)
+stdio/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) stdio/$(DEPDIR)
+	@: > stdio/$(DEPDIR)/$(am__dirstamp)
+stdio/stdio.$(OBJEXT): stdio/$(am__dirstamp) \
+	stdio/$(DEPDIR)/$(am__dirstamp)
+stdlib/$(am__dirstamp):
+	@$(MKDIR_P) stdlib
+	@: > stdlib/$(am__dirstamp)
+stdlib/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) stdlib/$(DEPDIR)
+	@: > stdlib/$(DEPDIR)/$(am__dirstamp)
+stdlib/stdlib.$(OBJEXT): stdlib/$(am__dirstamp) \
+	stdlib/$(DEPDIR)/$(am__dirstamp)
+string/$(am__dirstamp):
+	@$(MKDIR_P) string
+	@: > string/$(am__dirstamp)
+string/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) string/$(DEPDIR)
+	@: > string/$(DEPDIR)/$(am__dirstamp)
+string/string.$(OBJEXT): string/$(am__dirstamp) \
+	string/$(DEPDIR)/$(am__dirstamp)
+assert/$(am__dirstamp):
+	@$(MKDIR_P) assert
+	@: > assert/$(am__dirstamp)
+assert/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) assert/$(DEPDIR)
+	@: > assert/$(DEPDIR)/$(am__dirstamp)
+assert/assert.$(OBJEXT): assert/$(am__dirstamp) \
+	assert/$(DEPDIR)/$(am__dirstamp)
 x86/$(am__dirstamp):
 	@$(MKDIR_P) x86
 	@: > x86/$(am__dirstamp)
@@ -315,6 +351,10 @@ kernel$(EXEEXT): $(kernel_OBJECTS) $(kernel_DEPENDENCIES)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
+	-rm -f assert/assert.$(OBJEXT)
+	-rm -f stdio/stdio.$(OBJEXT)
+	-rm -f stdlib/stdlib.$(OBJEXT)
+	-rm -f string/string.$(OBJEXT)
 	-rm -f x86/PIC.$(OBJEXT)
 	-rm -f x86/debug.$(OBJEXT)
 	-rm -f x86/disasm/decode.$(OBJEXT)
@@ -349,8 +389,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/filesystem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/message.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/module.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/string.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/support.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@assert/$(DEPDIR)/assert.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@stdio/$(DEPDIR)/stdio.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@stdlib/$(DEPDIR)/stdlib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@string/$(DEPDIR)/string.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@x86/$(DEPDIR)/PIC.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@x86/$(DEPDIR)/debug.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@x86/$(DEPDIR)/dma.Po@am__quote@
@@ -513,6 +556,14 @@ clean-generic:
 
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
+	-rm -f assert/$(DEPDIR)/$(am__dirstamp)
+	-rm -f assert/$(am__dirstamp)
+	-rm -f stdio/$(DEPDIR)/$(am__dirstamp)
+	-rm -f stdio/$(am__dirstamp)
+	-rm -f stdlib/$(DEPDIR)/$(am__dirstamp)
+	-rm -f stdlib/$(am__dirstamp)
+	-rm -f string/$(DEPDIR)/$(am__dirstamp)
+	-rm -f string/$(am__dirstamp)
 	-rm -f x86/$(DEPDIR)/$(am__dirstamp)
 	-rm -f x86/$(am__dirstamp)
 	-rm -f x86/disasm/$(DEPDIR)/$(am__dirstamp)
@@ -526,7 +577,7 @@ clean: clean-am
 clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
 
 distclean: distclean-am
-	-rm -rf ./$(DEPDIR) x86/$(DEPDIR) x86/disasm/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) assert/$(DEPDIR) stdio/$(DEPDIR) stdlib/$(DEPDIR) string/$(DEPDIR) x86/$(DEPDIR) x86/disasm/$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -560,7 +611,7 @@ install-ps: install-ps-am
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-	-rm -rf ./$(DEPDIR) x86/$(DEPDIR) x86/disasm/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) assert/$(DEPDIR) stdio/$(DEPDIR) stdlib/$(DEPDIR) string/$(DEPDIR) x86/$(DEPDIR) x86/disasm/$(DEPDIR)
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
