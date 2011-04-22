@@ -21,17 +21,16 @@ Cylinder db 00h						;stores the cylinder value for int 13
 Head db 00h							;stores the head value for int 13
 Sector db 00h						;stores the sector value for int 13
 FileName db 'DOORS   BIN'				;the name of the kernel file
-Message db 'Kernel time!', 13, 10, 0		;the success message
+Message db 'Doors loading!', 13, 10, 0		;the success message
 Oops db 'Oops!', 13, 10, 0				;error message
-Place dw 0							;this is where the kernel is loaded to
 main:
 	cli					;disable interupts while we set up a stack
 	mov ax, 07C0h
 	mov ds, ax
 	mov es, ax				;setup our segments
-	mov ax, 0250h			;the stack goes in the lower portion of conventional memory
-	mov ss, ax				;it takes up 200h bytes
-	mov sp, 0x0200
+	mov ax, 0050h			;the stack goes in the lower portion of conventional memory
+	mov ss, ax				;it takes up 1FFh bytes
+	mov sp, 0x01FF
 	sti
 ;enable A20
 	in	al, 92h
@@ -45,7 +44,6 @@ main:
 	mov si, Oops
 	call DisplayMessage
 Enabled:
-
 ;now that we have set up our required stuff for our bootsector to work properly (this has been tested for verification)
 ;we need to do something useful :)
 ;find where the root directory begins
@@ -97,17 +95,10 @@ FatRead:
 	mov bx, 0200h			;the location where we read the FAT to (7C00:200)
 	call ReadSectors			;read the sectors into memory
 ;we have located the bottom of the FAT table in RAM				
-;read kernel into memory (07E0:sizeofFAT, then "return" to it, transferring control to the kernel
-	mov ax, 0x07E0          ;destination of image CS
-	mov es, ax
-	mov al, BYTE [10h]	;number of FATS
-	mul WORD [16h]		;multiply by sectors per FAT (answer stored in ax)
-	cmp dx, 0			;if not equal, ax++
-	je ItsGood
-	inc ax
-ItsGood:
-	mov [Place], ax		;store the value for where the kernel goes
-	mov bx, ax			;past the bootsector
+;read kernel into memory (070:0000, then "return" to it, transferring control to the kernel
+	mov ax, 0x0070          ;destination of image CS
+	mov es, ax			;forgot to do this
+	mov bx, 00h
 	push    bx
 Load:
 	mov ax, WORD [Cluster]		;cluster to read
@@ -137,17 +128,14 @@ Done:
 	mov WORD [Cluster], dx		;store the new cluster value
 	cmp dx, 0FF0h			;test for EOF
 	jb Load				;keep reading if not done
-	push WORD 07E0h
-	push WORD [Place]
+	push WORD 0070h
+	push WORD 0000h
+
 	mov si, Message
 	call DisplayMessage
-	;divide place by 10, then add to 7E00h
-	xor dx, dx				;so we can divide
-	mov ax, [Place]
-	mov cx, 10h
-	div cx				;to create the DS
-	add ax, 7E0h
-	mov ds, ax				;set the new data segment
+
+	mov ax, 70h				;set the new data segment
+	mov ds, ax
 	retf					;return to the kernel
 
 
