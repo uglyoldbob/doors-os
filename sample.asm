@@ -1,7 +1,7 @@
 [BITS 16]
 jmp Main
 FileName db 'DOORS   BIN'		;the name of the kernel file
-Oops db 'Oops...', 13, 10, 0		;error message
+Oops db 'DoorsBin missing', 13, 10, 0		;error message
 SectorsLeft dd 0x0000			;number of sectors we havent already read in the kernel
 PreCluster dw 0x0000			;stores the number of bytes before the clusters
 Cluster dw 0x0000				;stores the cluster
@@ -175,6 +175,9 @@ ok:
 	mov al, 1		;Intel, manual EOI
 	out 0x21, al
 	out 0xA1, al
+	mov al, 0		;enable IRQ's
+	out 0x21, al	;enable IRQ's
+
 	
 
 ;jump to the kernel now

@@ -49,15 +49,34 @@ void Video::put(unsigned char c)
 	//time to check for special ASCII values like newline and tab
 	switch(c) {
 		case 0: case 1: case 2: case 3: //do nothing becuase these are non printing characters that mean nothing
-		case 4: case 5: case 6: case 7: //these will eventually cause a beep (beep)
+		case 4: case 5: case 6: case 31: //these will eventually cause a beep (beep)
 		case 11: case 15: case 16: case 17: case 18: case 19: case 20: case 21:
 		case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
-		case 30: case 31:
+		case 30:
 		{
 			break;
 		}
+		case 7:
+		{	//beep
+			break;
+		}
 		case 8:	//backspace (this will be weird)
-		{	
+		{	//if not on the beginning of a line, make the previous spot a space and make the current space the previous space
+			if (pos != 0)
+			{
+				pos--;
+				videomem[off + pos] = (unsigned char) ' ' | 0x0700;
+			}
+			else if (pos == 0)
+			{	//decrease the current spot until we find a non blank spot, then go to the spot after that one
+				pos = 79;
+				off -= 80;
+				while ((videomem[off + pos] == ' '))
+				{
+					pos--;
+				}
+				videomem[off + pos] = (unsigned char) ' ' | 0x0700;
+			}
 			break;
 		}
 		case 127:	//delete (this one will be weird)

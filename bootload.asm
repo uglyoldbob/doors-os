@@ -16,7 +16,7 @@ db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x20, 0x12, 0xED, 0x17, 0x4E, 0x4F,
 db 0x4D, 0x45, 0x20, 0x20, 0x20, 0x20, 0x46, 0x41, 0x54, 0x31, 0x32, 0x20, 0x20, 0x20
 ;times 3Bh db 0
 begin:
-jmp 0x07C0:main	;fix CS so that my jumps will work on every computer?
+jmp 0x07C0:main	;fix CS so that my jumps will work on every computer
 ;skip data so we don't go insane or crash the CPU
 PreCluster dw 0h					;this stores the number of sectors in the partition before the first cluster 
 							;(used when reading kernel)
@@ -26,7 +26,8 @@ Head db 00h							;stores the head value for int 13
 Sector db 00h						;stores the sector value for int 13
 FileName db 'SECOND  BIN'				;the name of the kernel file
 Message db 'Loading...', 13, 10, 0	;the success message
-Oops db 'XX', 7, 13, 10, 0				;error message (beep twice)
+Oops db 'Second.bin not found', 7, 13, 10, 0				;error message (beep)
+Beep db 7, 0
 Space db ' ', 0						;this is for the screen clearing
 main:
 	cli					;disable interupts while we set up a stack
@@ -57,6 +58,8 @@ Clear:
 	mov ah, 0x02
 	xor dx, dx				;row = 0, column = 0
 	int 0x10
+	mov si, Beep
+	call DisplayMessage
 ;now that we have set up our required stuff for our bootsector to work properly (this has been tested for verification)
 ;we need to do something useful :)
 ;find where the root directory begins
