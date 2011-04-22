@@ -21,13 +21,13 @@ Cylinder db 00h						;stores the cylinder value for int 13
 Head db 00h							;stores the head value for int 13
 Sector db 00h						;stores the sector value for int 13
 FileName db 'DOORS   BIN'				;the name of the kernel file
-Message db 'Doors loading!', 13, 10, 0		;the success message
-Oops db 'Oops!', 13, 10, 0				;error message
+Message db 'Doors loading', 13, 10, 0		;the success message
+Oops db 'Oops', 13, 10, 0				;error message
 main:
 	cli					;disable interupts while we set up a stack
 	mov ax, 07C0h
-	mov ds, ax
-	mov es, ax				;setup our segments
+	mov ds, ax	
+	mov es, ax				;required for the first call to ReadSectors
 	mov ax, 0050h			;the stack goes in the lower portion of conventional memory
 	mov ss, ax				;it takes up 1FFh bytes
 	mov sp, 0x01FF
@@ -128,20 +128,19 @@ Done:
 	mov WORD [Cluster], dx		;store the new cluster value
 	cmp dx, 0FF0h			;test for EOF
 	jb Load				;keep reading if not done
-	push WORD 0070h
-	push WORD 0000h
-
 	mov si, Message
 	call DisplayMessage
+	cli
+	xor ax, ax
+	mov ds, ax              
+	lgdt [gdt_desc + 0x7C00]
+	mov eax, cr0		;enable pmode
+	or al, 1			
+	mov cr0, eax
+	jmp 0x08:0x0900		;go to the kernel
 
-	mov ax, 70h				;set the new data segment
-	mov ds, ax
-	retf					;return to the kernel
-
-
-
+[BITS 16]
 ;ROUTINES GO BELOW HERE
-
 ClusterLBA: 		;converts a FAT cluster number to LBA
 	sub ax, 0002h	;cluster number starts at 2
 	xor cx, cx		;cx = 0
@@ -183,7 +182,7 @@ ReadSectors:			;this reads multiple sectors in a row, one sector at a time
 	pop bx
 	pop ax
 	jnz .SectorLoop		;read again if there was an error
-;int 18h??????
+;	int 18h
 .Success
 	pop cx
 	pop bx
@@ -205,6 +204,28 @@ DisplayMessage:
 	jmp     DisplayMessage
 .DONE:
 	ret
+gdt:                    ; Address for the GDT
+gdt_null:               ; Null Segment
+	dd 0
+	dd 0
+gdt_code:               ; Code segment, read/execute, nonconforming
+	dw 0FFFFh
+	dw 0x0000
+	db 0
+	db 10011010b
+	db 11001111b
+	db 0
+gdt_data:               ; Data segment, read/write
+	dw 0xFFFF
+	dw 0x0000
+	db 0
+	db 10010010b
+	db 11001111b
+	db 0
+gdt_end:				; Used to calculate the size of the GDT
+gdt_desc:				; The GDT descriptor
+	dw gdt_end - gdt - 1	; Limit (size)
+	dd gdt + 0x7c00		; Address of the GDT
 
 times 510-($-$$) db '?'	; Fill the rest of the sector with zeros (disable to see how much space is left)
 dw 0xAA55		; Boot signature
