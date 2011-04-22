@@ -531,47 +531,6 @@ void postBreakCode(unsigned int code)
 }
 
 //0xE0 0x2A 0xE0, 0x53
-asm("keyb_handle: ");
-asm("        pusha");
-asm("        xorl %eax,%eax");
-asm("        inb $0x60,%al");
-asm("        movb %al,LastResponse");
-asm("        pushl %eax");
-asm("        call handleScancode");
-asm("        popl %eax");
-asm("        movb %al,%bl");
-			//save retrieved byte
-asm("        inb $0x61,%al");
-asm("        movb %al,%ah");
-			//Save keyboard status
-asm("        orb $0x80,%al");
-			//Disable
-asm("        outb %al, $0x61");
-asm("        movb %ah,%al"); 
-			//Enable
-asm("        outb %al, $0x61");
-asm("        movb %bl,%al");
-			//restore byte recieved
-asm("        incl NumKeyInts");
-
-asm("        movb $0x20,%al");
-asm("        outb %al, $0x20");
-asm("        popa");
-asm("        iret");
-
-
-asm(".globl getResponse");
-asm("getResponse:"); 
-asm("        pushl %ecx");
-asm("        movl $NumKeyInts, %ecx");
-asm("getResponse.waitForIt:"); 
-asm("        cmpl NumKeyInts,%ecx");
-asm("        je getResponse.waitForIt");
-asm("        movl LastResponse,%eax");
-asm("        movl $0,%ecx");
-asm("        movl %ecx,LastResponse");
-asm("        popl %ecx");
-asm("        ret");
 
 
 //this function is called from assembly

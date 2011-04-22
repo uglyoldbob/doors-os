@@ -6,6 +6,14 @@
 #define EXTERNC
 #endif 
 
+#include <stdarg.h>
+
+EXTERNC int vsprintf (char * str, const char * format, va_list arg );
+
+EXTERNC int sprintf( char *buffer, const char *format, ... );
+
+EXTERNC int printf(const char * format, ...);
+
 EXTERNC int strlen(char *);
 	//returns the number of characters in the string minus the null terminator
 	//TODO: look up the actual argument types, until then the ones i have selected should be sufficient
@@ -23,7 +31,7 @@ EXTERNC int strlenw(unsigned short *);
 	//returns the number of characters in the string minus the null terminator
 	//TODO: look up the actual argument types, until then the ones i have selected should be sufficient
 
-EXTERNC unsigned short *strcpyw(unsigned short *destination, const unsigned short *source );
+//EXTERNC unsigned short *strcpyw(unsigned short *destination, const unsigned short *source );
 	//TODO: lookup return value
 
 EXTERNC unsigned short *precatenatew(unsigned short *original, unsigned short *insert);

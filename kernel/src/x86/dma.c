@@ -23,12 +23,13 @@ void startDMA(unsigned int address, unsigned int length, unsigned char channel,
 	//make sure mode is using the right channel
 	mode |= channel;
 	//clear interrupts
-	asm("cli");
+	DisableInts();
 	//mask the DMA so errors wont pop up
 	outportb(0x04 | channel, MaskReg[channel]);
 	
 	//clear any data transfers currently executing (maybe should wait for them to finish?)
-	//outportb(0, ClearReg[channel]);
+		//mod
+	outportb(0, ClearReg[channel]);
 
 	//send the desired mode to the DMA
 	outportb(mode, ModeReg[channel]);
@@ -54,5 +55,5 @@ void startDMA(unsigned int address, unsigned int length, unsigned char channel,
 	outportb(channel, MaskReg[channel]);
 
 	//enable interrupts
-	asm("sti");
+	EnableInts();
 }

@@ -337,71 +337,24 @@ dir_item *fat::list_contents()
 			}
 			if (temp[entry].short_name[0] != 0xE5)
 			{
-				if ( ((temp[entry].attribute & (ATTR_LONG_NAME_MASK)) == (ATTR_LONG_NAME))  )
-				{	//active long name part (this will take quite a bit of work)
-					//display("LFN\n");
-					//display("Longname attribute: ");
-					//PrintNumber(((long_directory*)temp)[entry].attr);
-					//display("\n");
-					if ((temp[entry].attribute & 0x40) == 0x40)
-					{	//this is the last entry (but the last entry is the first entry that this will 			 
-						//find because the entries are arranged in a backwards fashion
-						long_name = extract_filename(&((long_directory*)temp)[entry]);
-							//make the longname string to the temp string
-							//because there are no additional letters
-						long_check = ((long_directory*)temp)[entry].checksum;
-							//set the checksum number
-					}
-					else if (long_check != 0)
-					{//check to make sure the checksum for this element and the first element match
-						//display("Second part of a long filename\n");
-						unsigned short *temp_longname;
-						if ( long_check == ((long_directory*)temp)[entry].checksum )
-						{	//only do operations on this if the checksum matches
-							unsigned int a, b;
-							temp_longname = extract_filename(&((long_directory*)temp)[entry]);
-								//place this before the currently existing string
-							lengthen = long_name;
-							long_name = precatenatew(lengthen, temp_longname);
-							delete [] lengthen;
-						}
-						else
-						{	//checksum does not match
-							long_check = 0;
-						}
-						//if the checksum matches, figure out how many letters are valid
-						//if it does not match, zero out the checksum
-						//copy longname data to a temporary buffer
-						//resize the longname buffer
-						//copy the current element into the longname buffer
-						//copy the temporary buffer back into the longname buffer
-					}
-				}
-				else
-				{	//what is it besides an active long name?
+				//{	//what is it besides an active long name?
 					//for everything else besides the invalid case
 						//check for a previously read long filename
 						//check to see that the long filename checksum matches
 						//apply filename and item attributes to the master list
 					if ( (temp[entry].attribute & (ATTR_DIRECTORY | ATTR_VOLUME_ID) ) == 0x00)
 					{	//file
-						if (long_check != 0)
-							display("Previous long filename detected\n");
 						display("FILENAME: ");
 						display((char *)temp[entry].short_name);
 						display(",\tSize: ");
 						PrintNumber(temp[entry].file_size);
 						display("\n");
 						stuff[final_entry] = prepare_entry(temp[entry]);
-						//PrintNumber(stuff[final_entry].anything1);
-						//display("\n");
 						stuff[final_entry].type = DIR_ITEM_FILE;
 						final_entry++;						
 					}
 					else if ( (temp[entry].attribute & (ATTR_DIRECTORY | ATTR_VOLUME_ID) ) == ATTR_DIRECTORY)
 					{	//directory
-						if (long_check != 0)
-							display("Previous long filename detected\n");
 						display("FOLDER: ");
 						display((char *)temp[entry].short_name);
 						display(", ");
@@ -409,25 +362,17 @@ dir_item *fat::list_contents()
 							(unsigned long)temp[entry].first_cluster_lo);
 						display("\n");
 						stuff[final_entry] = prepare_entry(temp[entry]);
-						stuff[final_entry] = prepare_entry(temp[entry]);
-						//PrintNumber(stuff[final_entry].anything1);
-						//display("\n");
 						stuff[final_entry].type = DIR_ITEM_FOLD;
 						final_entry++;
 					}
 					else if ( (temp[entry].attribute & (ATTR_DIRECTORY | ATTR_VOLUME_ID) ) == ATTR_VOLUME_ID)
 					{	//volume label
-						if (long_check != 0)
-							display("Previous long filename detected\n");
-						display("VOLUME: ");
-						display((char *)temp[entry].short_name);
-						display("\n");
 					}
 					else
 					{	//INVALID
 						display("INVALID entry\n");
 					}
-				}
+				//}
 			}
 		}
 		if (current_directory != 0)
@@ -440,7 +385,10 @@ dir_item *fat::list_contents()
 		else
 		{
 			sector_offset++;
-			if (sector_offset >= (sector.RootDirSectors))
+			display("There are ");
+			PrintNumber(sector.RootDirSectors);
+			display(" root directory sectors.\n");
+			if ((sector_offset + sector_number) >= (sector.RootDirSectors))
 				keep_going = 0;
 		}
 	} while (keep_going == 1);				
@@ -503,8 +451,7 @@ dir_item fat::prepare_entry(directory_entry &sample)
 {	//if there is a long name that belongs here, then the caller of this function can deallocate the memory for the
 		//filename and extension and allocate it itself
 	dir_item ret_val;
-	char *temp;
-	unsigned int a;
+	unsigned int a = 0;
 	ret_val.size = sample.file_size;
 	ret_val.permissions = sample.attribute;
 	ret_val.type = DIR_ITEM_FILE;
@@ -522,23 +469,18 @@ dir_item fat::prepare_entry(directory_entry &sample)
 	ret_val.date_acc2 = ((sample.access_date & 0xF)<<17);
 	ret_val.anything1 = (((unsigned long)sample.first_cluster_high * 0x10000) + 
 							(unsigned long)sample.first_cluster_lo);
-	temp = new char[9];			//maximum possible size after the null character is added
-	for (a = 0; a < 8; a++)
+
+	ret_val.name = new char[12];
+	display("Address assigned: ");
+	PrintNumber((unsigned long)ret_val.name);
+	display("\n");
+	for (a = 0; a < 11; a++)
 	{
-		if (sample.short_name[a] == ' ')
-			break;
-		temp[a] = sample.short_name[a];
+		ret_val.name[a] = sample.short_name[a];
 	}
-	temp[a] = '\0';
-	ret_val.name = new char[a + 1];
-	strcpy(ret_val.name, temp);
-	for (a = 0; a < 3; a++)
-	{
-		temp[a] = sample.short_name[a + 8];
-	}
-	temp[a] = '\0';
-	ret_val.extension = new char[a + 1];
-	strcpy(ret_val.extension, temp);
+	ret_val.name[11] = '\0';
+	ret_val.extension = new char[5];
+	ret_val.extension[0] = '\0';
 	return ret_val;
 }
 
@@ -587,10 +529,6 @@ int fat::get_cluster_entry(disk *local_drive, unsigned int drive_num, unsigned i
 		fat_offset = cluster_num + (cluster_num / 2);	//non floating point multiply by 1.5 rounds down
 		fat_sec_num = sector.ReservedSectorCount + (fat_offset / sector.BytesPerSector);
 		fat_sec_offset = fat_offset % sector.BytesPerSector;
-//		display("\nFAT entry @ sector: ");
-//		PrintNumber(fat_sec_num);
-//		display(", offset: ");
-//		PrintNumber(fat_sec_offset + 0x400);
 		buffer = new unsigned char[0x1000];
 		local_drive->read_sector(drive_num, fat_sec_num, (unsigned int*)buffer);
 		if (fat_sec_offset == (sector.BytesPerSector - 1))
@@ -605,21 +543,14 @@ int fat::get_cluster_entry(disk *local_drive, unsigned int drive_num, unsigned i
 //		cluster_value += ((unsigned char) buffer[fat_sec_offset / sizeof(unsigned char) + 1])<<8;
 						*((unsigned short *) &buffer[fat_sec_offset]);
 		delete[] buffer;
-//		display("\nCluster entry unmasked: ");
-//		PrintNumber(cluster_value);
 		if (cluster_num & 0x0001)
 		{
-			//display("\tOdd cluster number\n");
 			cluster_value = (cluster_value >> 4);// + (cluster_value & 0xFF)<<4;
 		}
 		else
 		{
-			//display("\tEven cluster number\n");
 			cluster_value = cluster_value & 0x0FFF;
 		}
-//		display("\nCluster entry value: ");
-//		PrintNumber(cluster_value);
-//		display("\n");
 		return cluster_value;
 	}
 	return INVALID_DRIVE;
@@ -628,9 +559,6 @@ int fat::get_cluster_entry(disk *local_drive, unsigned int drive_num, unsigned i
 int fat::is_eof(unsigned int cluster_value)
 {	//0 - eof
 	//-1 - not eof
-//	display("Testing for eof/eoc: ");
-//	PrintNumber(cluster_value);
-//	display("\n");
 	if (isFat12() == 0)
 	{
 		if (cluster_value >= 0x0FF8)
@@ -721,16 +649,8 @@ int fat::load_cluster(disk *somewhere, unsigned int drive_number, unsigned long 
 	//the extra bytes per sector is to provide padding in the event of a sector size mismatch between filesystem and disk
 	unsigned int offset = 0;	//this is the offset to use for the buffer
 	unsigned int sector_number = FirstSectorOfCluster(cluster_number, sector.SectorsPerCluster, sector.FirstDataSector);
-//	display("\nLoading cluster ");
-//	PrintNumber(cluster_number);
-//	display("\n");
 	for (int counter = 0; counter < sector.SectorsPerCluster; counter++)
 	{	//for now assume only one sector can be read at a time
-//		display("\tLoad sector ");
-//		PrintNumber(sector_number);
-//		display("\tfirst byte:");
-//		PrintNumber(sector_number * sector.BytesPerSector);
-//		display("\n");
 		if (somewhere->read_sector(drive_number, sector_number, (unsigned int*)&buffer[offset]) == -1)
 		{
 			display("ERROR: load_cluster(): read_sector\n");
@@ -754,9 +674,6 @@ unsigned long fat::find_dir(const char* directory)
 {
 	unsigned int eof;
 	dir_item *directory_search;
-	display("Attempting to locate ");
-	display((char *)directory);
-	display("\n");
 	if (isFat12() == 0)
 	{
 		eof = 0x0FF8;
@@ -778,25 +695,18 @@ unsigned long fat::find_dir(const char* directory)
 	{
 		if (directory_search[a].type == DIR_ITEM_FOLD)
 		{
-			display("Compare \'");
-			display(directory_search[a].name);
-			display("\' to \'");
-			display(directory);
-			display("\'...\t");
 			if (stringCompare(directory_search[a].name, directory) == 0)
 			{
-				display("Match ");
-				PrintNumber(directory_search[a].anything1);
-				display("\n");
 				//figure out a way to get the filesystem specific data from the non-specific data
 				//might require the emplacement of some general purpose values in the non-specific data
-				return (directory_search[a].anything1);	//return the first cluster of the folder
+				eof = directory_search[a].anything1;	//folder found
+				break;
 			}
-			display("No match\n");
 		}
 	}
 	delete [] directory_search;
-	return eof;	//unable to find the directory
+	return eof;	//return the first cluster of the folder
+				//if unable to find the given folder, this will indicate it wasn't found with EOF
 }
 
 dir_item *fat::find_file(const char* filename)
@@ -911,28 +821,13 @@ unsigned char fat::get_b(krnl_FILE *descriptor, filesystem *owner)
 	{
 		return -1;
 	}
-	if (0)//((descriptor->offset + 1) > descriptor->buffer_length)
-	{	//something in this if block affects the way the next cluster is loaded or not loaded
-		display("TABLE!@!@ offset:");
-		PrintNumber(descriptor->offset);
-		display("\tbuffer: ");
-		PrintNumber(descriptor->buffer_offset);
-		display("\tbuffer_point:");
-		PrintNumber((descriptor->offset - descriptor->buffer_offset));
-		display("\nlength: ");
-		PrintNumber(descriptor->buffer_length);
-		display("\tbuffer address: ");
-		PrintNumber((unsigned long)descriptor->buffer);
-		display("\n");
-		Delay(2000);
-	}
-	if ((descriptor->offset - descriptor->buffer_offset + sizeof(value) - 1) < descriptor->buffer_length)
+	if ((descriptor->offset - descriptor->buffer_offset) < descriptor->buffer_length)
 	{
 		value = descriptor->buffer[descriptor->offset - descriptor->buffer_offset];
 		descriptor->offset += sizeof(value);
 		return value;
 	}
-	else if ((descriptor->offset - descriptor->buffer_offset + sizeof(value) - 1) == descriptor->buffer_length)
+	else if ((descriptor->offset - descriptor->buffer_offset) == descriptor->buffer_length)
 	{	//value lies completely in the next cluster
 		delete [] descriptor->buffer;		
 		descriptor->buffer = get_buffer(descriptor->offset, descriptor);
@@ -943,15 +838,19 @@ unsigned char fat::get_b(krnl_FILE *descriptor, filesystem *owner)
 		return value;
 	}
 	else
-	{
-		display("BOUNDARY CASE\noffset:");
+	{	//how in the hell do you hit a boundary case when reading only one byte????
+		display("BOUNDARY CASE\nfile offset:");
 		PrintNumber(descriptor->offset);
-		display("\tbuffer: ");
+		display("\tbuffer offset: ");
 		PrintNumber(descriptor->buffer_offset);
-		display("\nlength: ");
+		display("\nbuffer length: ");
 		PrintNumber(descriptor->buffer_length);
 		display("\tread: ");
 		PrintNumber(sizeof(value));
+		display("\nLvalue: ");
+		PrintNumber((descriptor->offset - descriptor->buffer_offset));
+		display("\nRvalue: ");
+		PrintNumber(descriptor->buffer_length);
 		display("\n");
 		for (;;);
 	}
@@ -1012,17 +911,11 @@ unsigned char *fat::get_buffer(unsigned int offset, krnl_FILE *file)
 {	//returns the buffer that contains the proper offset into the file
 	unsigned char *buffer;
 	buffer = new unsigned char[get_buffer_size() / sizeof(unsigned char)];
-//	display("Cluster buffer address: ");
-//	PrintNumber((unsigned long)buffer);
-//	display("\n");
 	unsigned int cluster_number = offset / get_buffer_size() + 1;
 		//which cluster number of the file needs to be loaded?
 	unsigned int current_cluster = ((dir_item*)(file->fs_spec))->anything1;
 		//the current cluster (initialize to the first cluster)
 	unsigned int cluster_count = 1;		//the cluster number order (first, second, third, etc)
-//	display("Looking for cluster order number ");
-//	PrintNumber(cluster_number);
-//	display("\n");
 	//cluster (cluster entry)
 	//1 (5)
 	//5 (4)
@@ -1036,16 +929,8 @@ unsigned char *fat::get_buffer(unsigned int offset, krnl_FILE *file)
 		if (cluster_count == cluster_number)
 		{	//desired cluster number has been found, load it into the buffer and return
 			load_cluster(fat_disk, drive_num, current_cluster, (unsigned char*)buffer);
-//			display("\tafter: ");
-//			PrintNumber(buffer[0]);
-//			display("\n"); 
 			return buffer;
 		}
-//		display("Cluster: ");
-//		PrintNumber(current_cluster);
-//		display(", ");
-//		PrintNumber(get_cluster_entry(fat_disk, drive_num, current_cluster));
-//		display("\n");
 		current_cluster  = get_cluster_entry(fat_disk, drive_num, current_cluster);
 		cluster_count++;
 	}

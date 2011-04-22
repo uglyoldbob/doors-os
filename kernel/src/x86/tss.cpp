@@ -191,6 +191,8 @@ struct task * next_state(unsigned long valid_previous, struct task *list, struct
 	PrintNumber(list->next->me->cs);
 	display(" (");*/
 	memcopy(prev_tss, list->next->me, sizeof(struct TSS));
+		//the memory management routines are assigning the addresses for the tss structures to other people
+			//this is bad
 	/*PrintNumber(prev_tss[19]);
 	display(")\n");*/
 	return list->next;

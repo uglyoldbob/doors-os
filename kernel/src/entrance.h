@@ -1,8 +1,16 @@
 #ifdef __cplusplus
-#define EXTERNC extern "C"
+	#define EXTERNC extern "C"
+	#define NULL 0
 #else
-#define EXTERNC
+	#define EXTERNC
+	#define NULL ((void*)0)
 #endif 
+
+//place ifdef statements to select the proper size fot size_t?
+#define size_t unsigned long
+#define assert(ignore) ((void) 0)
+
+	//hopefully this will be good for x86 architecture
 
 EXTERNC volatile unsigned int inportb(unsigned int port);	
 EXTERNC unsigned int outportb(unsigned int value, unsigned int port);
@@ -10,8 +18,11 @@ EXTERNC volatile unsigned int inportw(unsigned int port);
 EXTERNC unsigned int outportw(unsigned int value, unsigned int port);
 EXTERNC unsigned int getResponse();	//waits for and retrieves a byte response from the keyboard
 EXTERNC unsigned int getEIP();
+EXTERNC unsigned int getCallerEIP(unsigned long);
 EXTERNC volatile unsigned int HD_INTS;
 EXTERNC unsigned int setup_multi_gdt();
+EXTERNC void EnableInts();
+EXTERNC void DisableInts();
 
 EXTERNC unsigned int timer;
 EXTERNC unsigned long getCR3();

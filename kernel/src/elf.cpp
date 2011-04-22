@@ -46,7 +46,6 @@ int load_module(char *filename, filesystem *fs)
 	elf_header load;
 	krnl_FILE *file_test;
 	file_test = open(filename, 0, fs);
-
 	unsigned char *buffer;
 	buffer = (unsigned char*)kmalloc(sizeof(unsigned char) * 17);
 	unsigned long check;

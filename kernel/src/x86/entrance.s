@@ -112,19 +112,35 @@ getEIP:
         movl (%esp),%eax
         ret
 
+.globl getCallerEIP
+getCallerEIP:	#this functions retrieves the eip of the caller based on the number of stack elements to skip
+		lea 4(%esp), %eax	//= arg1
+		add 4(%esp), %eax
+		mov (%eax), %eax
+		ret
 
+.globl setup_gdt
+setup_gdt: 
+	mov 4(%esp), %eax
+	lgdt (%eax)
+	ljmp $0x08, $flush3
+flush3:
+	movl $0x18,%eax
+	ltrw %ax
+	ret
 
 #[extern enter_spinlock]
 #[extern leave_spinlock]
+
 .globl test_and_set
 
 test_and_set: 
-        movl 4(%esp),%eax       #eax = new_value
-        movl 8(%esp),%edx       #edx = lock_pointer
-        lock xchgl %eax,(%edx)                  #swap *lock_pointer and new_value
-        cmpl %eax,(%edx)
-        je test_and_set #only return of the values are different
-        ret                                                             #return the old value of *lock_pointer
+	movl 4(%esp),%eax       #eax = new_value
+	movl 8(%esp),%edx       #edx = lock_pointer
+	lock xchgl %eax,(%edx)                  #swap *lock_pointer and new_value
+#	cmpl %eax,(%edx)
+#	je test_and_set #only return of the values are different
+	ret                                                             #return the old value of *lock_pointer
 
 #most interruptable
 SL_BLANK:
@@ -258,6 +274,16 @@ DelayUntil:	#delays until the timer reaches a certain point
         popl %eax
         ret
 
+.globl EnableInts
+EnableInts:
+	sti
+	ret
+
+.globl DisableInts
+DisableInts:
+	cli
+	ret
+
 
 test_key:
 	.byte 13
@@ -275,11 +301,65 @@ WaitKey.wait:
         popw %ax
         ret
 
+.globl keyb_handle
+keyb_handle: 
+        pusha
+        xorl %eax,%eax
+        inb $0x60,%al
+        movb %al,LastResponse
+        pushl %eax
+        call handleScancode
+        popl %eax
+        movb %al,%bl
+			//save retrieved byte
+        inb $0x61,%al
+        movb %al,%ah
+			//Save keyboard status
+        orb $0x80,%al
+			//Disable
+        outb %al, $0x61
+        movb %ah,%al
+			//Enable
+        outb %al, $0x61
+        movb %bl,%al
+			//restore byte recieved
+        incl NumKeyInts
+
+        movb $0x20,%al
+        outb %al, $0x20
+        popa
+        iret
+
+
+.globl getResponse
+getResponse: 
+        pushl %ecx
+        movl $NumKeyInts, %ecx
+getResponse.waitForIt: 
+        cmpl NumKeyInts,%ecx
+        je getResponse.waitForIt
+        movl LastResponse,%eax
+        movl $0,%ecx
+        movl %ecx,LastResponse
+        popl %ecx
+        ret
+
 
 #the IRQ handler for the keyboard will convert scancodes and then place the code into a buffer
 #the buffer will have a start and length
 #codes will be pulled from the bottom of the buffer
 
+.globl irqM0
+irqM0:
+	incl timer
+	decl task_timer
+#manual EOI before the interrupt has ended
+	pushw %ax               #save ax
+	movb $0x20,%al
+	outb %al, $0x20
+	popw %ax                #restore ax
+#	call irqM0_handler
+	iret
 
 #0xE0 0x2A 0xE0, 0x53
 irqM1: 
@@ -798,24 +878,33 @@ _3Fourteen:
 	 .string "A page that does not exist in RAM has been accessed\n"
 Location:
 	 .long 0
-_EAX:
-	 .long 0
 
 isr14: 
 #fault, special error code format same size though
 #call through task gate, to allow page faulting during task switches
-#first, place all regs 
+#first, place all regs
+		pushl %eax		//eax0, (esp)eax1, error code
+
+		movl %eax, -1(%esp)	//eax0 = eax
+		movl 4(%esp), %eax	//eax = error code
+		movl %eax, (%esp)	//eax1 = eax = error code
+		movl -1(%esp), %eax	//eax = eax0
+		movl %eax, 4(%esp)	//error code = eax = eax0
+			//error code (eax)
+			//eax, error code, eax
+			
+		popl %eax
+
+
         pushl %eax
         movw $0x10,%ax
         movw %ax,%ds                    #data segment (we can use variables with their name now)
-        popl %eax
-        #store eax in a variable, so we can allow for an error code
-        movl %eax,_EAX
-        #get the error code
-        popl %eax
-        movl %eax,Code
-        movl $_EAX, %eax
+
+		#error code is already in eax
+
+        movl %eax, (Code)
         pushal                  #do a popad     before returning to code
+								#and then a pop ebp
         movl %cr2, %eax
         pushl %eax                      #save that address to the stack
         push Fourteen

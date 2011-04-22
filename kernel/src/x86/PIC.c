@@ -12,10 +12,12 @@ void setupPIC()
 	outportb(0x01, 0x21);	//manual EOI
 	outportb(0x01, 0xA1);
 	outportb(0x00, 0x21);	//enable IRQ's
-	asm("sti");						//enable interrupts
+	EnableInts();						//enable interrupts
 }
 
 //TODO: validate the operation of these two functions
+//these functions will probably need slight modification later on 
+//depending on how the spinlock / thread-safeing functions change
 void clearIRQ(unsigned int which)
 {	//clears only IRQ's higher than which (0 - 7)
 	outportb(0xFF<<(which), 0x21);

@@ -1,3 +1,9 @@
+//floppy disk detection scheme does not work
+//qemu network boot detects 8 floppy drives (really 4 because of duplicate ports in the definitions)
+	//but there aren't any floppy drives present
+
+
+
 #include "floppy.h"
 #include "memory.h"
 #include "dma.h"

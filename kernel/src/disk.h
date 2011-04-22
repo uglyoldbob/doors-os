@@ -46,6 +46,7 @@ class disk
 																										// internal disk number (0-num_disks)
 		virtual int bytes_per_sector(unsigned int drive_num);	//returns the size of a sector in bytes
 	private:
+		unsigned long current_unused_drive_num;
 	protected:
 		char 					*drive_name;
 		unsigned int get_drive_num();	//returns a usable drive number

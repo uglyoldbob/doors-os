@@ -23,18 +23,11 @@ void enter_spinlock(unsigned int which)
 	//return;
 	//only if the rules allow it
 	unsigned int counter;
-	switch (which)
-	{	//do any necessary interrupt masking first
-		case SL_IRQ1:
-			asm("cli");
-			clearIRQ(1);
-			break;
-		case SL_MESSAGE: case SL_DISPLAY:
-			asm("cli");
-			break;
-		default:
-			break;
-	}
+	//do any necessary interrupt masking first
+	
+	DisableInts();
+	clearIRQ(0);
+	
 	while ((test_and_set (1, &(spinlock_states[which].imp_enabled))) )
 	{	//&(spinlock_states[which].imp_enabled)
 		//spinlock_states[which].delays++;
@@ -59,6 +52,7 @@ void leave_spinlock(unsigned int which)
 	}
 	else
 	{	//clear the current spinlock, check for the next highest explicitly set spinlock
+		enableIRQ(0);
 		spinlock_states[which].exp_enabled = 0;
 		spinlock_states[which].imp_enabled = 0;
 		counter = which;
@@ -77,18 +71,7 @@ void leave_spinlock(unsigned int which)
 			}
 		}
 	}
-	switch (which)
-	{
-		case SL_IRQ1:
-			enableIRQ(0);
-			asm("sti");
-			break;
-		case SL_MESSAGE: case SL_DISPLAY:
-			asm("sti");
-			break;
-		default:
-			break;
-	}
+	EnableInts();
 }
 
 void initialize_spinlock()

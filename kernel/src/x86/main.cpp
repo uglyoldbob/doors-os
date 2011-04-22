@@ -1,12 +1,27 @@
 //qemu-system-arm -M verdex -pflash flash -monitor null -nographic -m 289
 
-//the issues I am currently facing may be issues with functions not being re-entrant
+//the issues I am currently facing may be issues with functions not being re-entrant / thread safe
 	//and not having code to singularly execute those functions
 	//TODO: research re-entrant functions and how to make a nonreentrant function do that
+
+//TODO: find the format of the core dump that gdb uses
+	//and perform core dump analysis as another method of discovering bugs
+	//format is ELF
+	//not sure about much else of it
 
 //create another thread that will monitor critical kernel data
 	//and raise hell when something goes wrong
 	//and i will call this thread function "hellraiser"
+
+//#define BIG_ENDIAN      0
+//#define LITTLE_ENDIAN   1
+//
+//int TestByteOrder()
+//{
+//   short int word = 0x0001;
+//   char *byte = (char *) &word;
+//   return(byte[0] ? LITTLE_ENDIAN : BIG_ENDIAN);
+//}
 
 //main.c
 //gdb -s kernel.bin -ex 'target remote :1234'
@@ -38,7 +53,6 @@ extern "C" void hellraiser();
 void readSerial();
 
 extern "C" void _main();	//this initializes global objects
-extern memory global_memory;
 
 //called from assembly
 int main(struct multiboot_info *boot_info, unsigned long size)
@@ -71,14 +85,13 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	display("\nConfigured spinlocks data\n");
 	display("PIC initialized and interrupts enabled\n");
 	//set_int_handler((void *)ser_handler, 36);
-	//unsigned char drive;	//stores information about the drive Doors was loaded from
 	unsigned char *first_page;	//pointer to the relocated first page
 
 	struct TSS *newtask;
 	unsigned long *temporary;
 
 	display("Configuring memory management\n");
-	global_memory.setup_paging(boot_info, size);
+	setup_paging(boot_info, size);
 
 	_main();	//^- because some global objects might use new/delete in their constructors
 
@@ -95,61 +108,56 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 		display("\n");
 	}
 	
-	display("Setting up data for multi-tasking\n");
+//	display("Setting up data for multi-tasking\n");
 
 	//initialize multi-tasking and setup the first task
-	sys_tasks = (struct task*)kmalloc (sizeof (struct task));
+//	sys_tasks = (struct task*)kmalloc (sizeof (struct task));
 
-	first_page = (unsigned char*)kmalloc (0x1000);
+//	first_page = (unsigned char*)kmalloc (0x1000);
 
-	memcopy(first_page, 0, 0x1000);
+//	memcopy(first_page, 0, 0x1000);
 
-	setup_multi_gdt();
+//	setup_multi_gdt();
 
-	init_first_task(sys_tasks);
+//	init_first_task(sys_tasks);
 
-	display("Main: ");
-	PrintNumber((unsigned int)main);
-	display("\nsecondary_task: ");
-	PrintNumber((unsigned int)secondary_task);
-	display("\nsetupFloppy: ");
-	PrintNumber((unsigned int)setupFloppy);
-	display("\n");
+//	display("Main: ");
+//	PrintNumber((unsigned int)main);
+//	display("\nsecondary_task: ");
+//	PrintNumber((unsigned int)secondary_task);
+//	display("\nsetupFloppy: ");
+//	PrintNumber((unsigned int)setupFloppy);
+//	display("\n");
 
 	//test multi-tasking by activating another task
 	//asm("cli");
-	temporary = (unsigned long*)kmalloc(0x1000);	//one page for the stack
-	newtask = (struct TSS*)kmalloc(sizeof(struct TSS));
-	newtask->esp = (unsigned long)temporary + 0xFFC;
-	newtask->cs = 0x08;
-	newtask->ds = 0x10;
-	newtask->es = 0x10;
-	newtask->fs = 0x10;
-	newtask->gs = 0x10;
-	newtask->ss = 0x10;
-	newtask->cr3 = getCR3();
-	newtask->ldt_segment_selector = 0;
-	newtask->io_map_base_address = 0;
-	newtask->debug_trap = 1;
-	newtask->eflags = 0x00000202;			//interrupt flag set, enabling interrupts for the task
-	newtask->eip = (unsigned long)secondary_task;
-	add_task_before(newtask, sys_tasks);
+//	temporary = (unsigned long*)kmalloc(0x1000);	//one page for the stack
+//	newtask = (struct TSS*)kmalloc(sizeof(struct TSS));
+//	newtask->esp = (unsigned long)temporary + 0xFFC;
+//	newtask->cs = 0x08;
+//	newtask->ds = 0x10;
+//	newtask->es = 0x10;
+//	newtask->fs = 0x10;
+//	newtask->gs = 0x10;
+//	newtask->ss = 0x10;
+//	newtask->cr3 = getCR3();
+//	newtask->ldt_segment_selector = 0;
+//	newtask->io_map_base_address = 0;
+//	newtask->debug_trap = 0;
+//	newtask->eflags = 0x00000202;			//interrupt flag set, enabling interrupts for the task
+//	newtask->eip = (unsigned long)secondary_task;
+//	add_task_before(newtask, sys_tasks);
 
 
 	//setup a new stack for the new task
-	temporary = (unsigned long*)kmalloc(0x1000);	//one page for the stack
-	newtask->esp = (unsigned long)temporary + 0xFFC;
-	newtask->eip = (unsigned long)setupFloppy;
-	add_task_before(newtask, sys_tasks);	//add another task (hopefully it will work)
-
-	//enable the hellraiser thread/process
 //	temporary = (unsigned long*)kmalloc(0x1000);	//one page for the stack
 //	newtask->esp = (unsigned long)temporary + 0xFFC;
-//	newtask->eip = (unsigned long)hellraiser;
+//	newtask->eip = (unsigned long)setupFloppy;
 //	add_task_before(newtask, sys_tasks);	//add another task (hopefully it will work)
-	
 
-	enable_multi = 1;
+
+
+	enable_multi = 0;//1;
 
 
 	
@@ -158,6 +166,33 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	display("Configuring keyboard\n");
 	if (init_keyboard() == -1)
 		display("Could not initialize keyboard\n");
+
+	printf ("Characters: %c %c \n", 'a', 65);
+	printf ("Decimals: %d %ld\n", 1977, 650000);
+	printf ("Preceding with blanks: %10d \n", 1977);
+	printf ("Preceding with zeros: %010d \n", 1977);
+	printf ("Some different radixes: %d %x %o %#x %#o \n", 100, 100, 100, 100, 100);
+	printf ("floats: %4.2f %+.0e %E \n", 3.1416, 3.1416, 3.1416);
+	printf ("Width trick: %*d \n", 5, 10);
+	printf ("%s \n", "A string");
+
+	printf ("Test printing of characters\n");	
+	printf ("TEST:%%%+5c%%\n", 'a');
+	printf ("TEST:%%%-5c%%\n", 'a');
+	printf ("TEST:%%% 5c%%\n", 'a');
+	printf ("TEST:%%%05c%%\n", 'a');
+	printf ("TEST:%%%#5c%%\n", 'a');
+	printf ("TEST:%%%05c%%\n", 'a');	
+	
+	printf ("Test printing of strings\n");
+	printf ("TEST:%%%-5.1s%%\n", "asdfghjk");
+	printf ("TEST:%%%s%%\n", "asdfghjk");
+	printf ("TEST:%%%s%%\n", "asdf");
+	printf ("TEST:%%%-5s%%\n", "asdf");
+
+
+	for (;;);
+	setupFloppy();	
 
 //	struct driveData * (*test) ();	//declaration for the pointer
 									//same when used as an argument for a function
@@ -239,7 +274,6 @@ unsigned long setupFloppy()
 	disk *local_drive;
 	filesystem **local_fs;
 	fat *fat_fs;
-	//local_fs = new fat;
 	local_drive = new floppy;
 	unsigned int number_fs;
 	number_fs = local_drive->number_drives();
@@ -248,25 +282,25 @@ unsigned long setupFloppy()
 		local_fs = new filesystem*[number_fs];
 		fat_fs = new fat[number_fs];
 		local_fs[0] = &fat_fs[0];
-//		local_fs[1] = &fat_fs[1];
 		local_fs[0]->mount(local_drive, 0);
-//		local_fs[1]->mount(local_drive, 1);
 	}
-//	second_fs[0].mount(local_drive, 1);
 
-	unsigned char *buffer = new unsigned char[0x1000];
+/*	unsigned char *buffer = new unsigned char[0x1000];
 	load_from_disk(local_drive, 0, 0, (unsigned long *)buffer, 0x200);
 	for (unsigned int counter = 0; counter < (0x20 / 4); 	counter++)
 	{	//display contents of buffer to make sure they are accurate (present)
 		PrintNumber(((unsigned long *)buffer)[counter]);
 		Delay(750);
+	}*/
+
+	if (load_module("SERIAL  SO ", local_fs[0]) != 0)
+	{
+		display("Error Loading\n");
+		for (;;);
 	}
-
-	load_module("SERIAL", local_fs[0]);
-
-	//test vm stuff
-	fill_pte_np((unsigned long*)0x110101, 8);
-
+	display("Done loading\n");
+	//issue a reset for increased speed in bug "actuating"
+//	outportb(0xFE, 0x64);	//reboot
 	while(1){};
 }
 

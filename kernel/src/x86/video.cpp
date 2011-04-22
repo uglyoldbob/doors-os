@@ -61,7 +61,7 @@ void video::put(unsigned char c)
 	unsigned short *videomem = (unsigned short*) 0xB8000;
 	if (pos >= 80)
 	{
-		kellogs.write_serial(13);
+//		kellogs.write_serial(13);
 		pos = 0;
 		off += 80;
 	}
@@ -85,12 +85,12 @@ void video::put(unsigned char c)
 		}
 		case 7:
 		{	//beep
-			kellogs.write_serial(7);
+//			kellogs.write_serial(7);
 			break;
 		}
 		case 8:	//backspace (this will be weird)
 		{	//if not on the beginning of a line, make the previous spot a space and make the current space the previous space
-			kellogs.write_serial(8);
+//			kellogs.write_serial(8);
 			if (pos != 0)
 			{
 				pos--;
@@ -110,12 +110,12 @@ void video::put(unsigned char c)
 		}
 		case 127:	//delete (this one will be weird)
 		{
-			kellogs.write_serial(127);
+//			kellogs.write_serial(127);
 			break;
 		}
 		case 9:	//tab to four spaces (at least one space required)
 		{
-			kellogs.write_serial(9);
+//			kellogs.write_serial(9);
 			if (pos > 75)	//pointless to tab to the last character, newline instead
 			{	//we wont end up filling up the screen all the way yet
 				pos = 0;
@@ -131,7 +131,7 @@ void video::put(unsigned char c)
 		}
 		case 10:	//this is newline (or is this just bring cursor to beginning of the line)
 		{		//easy to test
-			kellogs.write_serial(13);
+//			kellogs.write_serial(13);
 			pos = 0;
 			off += 80;
 			break;
@@ -142,13 +142,13 @@ void video::put(unsigned char c)
 		}
 		case 13:	//carriage return 		
 		{
-			kellogs.write_serial(13);
+//			kellogs.write_serial(13);
 			pos = 0;
 			break;
 		}
 		default:	//all printable characters
 		{	
-			kellogs.write_serial(c);
+//			kellogs.write_serial(c);
 			videomem[off + pos] = (unsigned char) c | 0x0700;
 			pos++;
 			break;

@@ -47,6 +47,7 @@
 disk::disk()
 {
 	drive_name = 0;	//null terminated string
+	current_unused_drive_num = 0;
 }
 
 disk::~disk()
@@ -65,7 +66,6 @@ int disk::get_drive_number(int drive_order)
 
 unsigned int disk::get_drive_num()	//returns a usable drive number
 {
-	static unsigned long current_unused_drive_num = 0;
 	display("get_drive_num()\n");
 	current_unused_drive_num++;
 	return (current_unused_drive_num - 1);

@@ -7,6 +7,36 @@
 	//a memory address might have to be located in the bottom of memory to satisfy limitations of hardware (such as DMA that only goes to the bottom megabyte (or two?)
 	//a memory address that will be used for paging structures
 
+	unsigned int *page_table;		//stores the address of the PDT, the heart of the paging system
+
+//page level allocation
+	unsigned int size_tree;			//this is the size of the binary tree (in unsigned ints)
+	unsigned int *single_pages;		//total memory / PAGE_SIZE bits
+											//stores which pages were allocated one at a time
+	unsigned int *page_tree;			//this is the binary tree for pages
+	unsigned int largest_address;	//the largest address that the tree deals with
+
+//less than page size level allocation
+	unsigned int *page_address;		//used for allocations less than PAGE_SIZE
+	//format of this consists of a length
+		//top most bit (0x800000000) defines of that segment is in use (has been allocated)
+	//each allocation is (size_requested + sizeof(unsigned int *))
+	//add BYTE_GRANULARITY to the retrieved address and return that
+	//when freeing, take the address given and subtract sizeof(unsigned int*)
+
+	void pdtEntry(unsigned int address, unsigned int table_address);
+	void tableEntry(unsigned int address);
+	unsigned int getBit(unsigned int bitNum, unsigned int* tree_address);
+	unsigned int getAddress(unsigned int address, unsigned int *table_address, unsigned int table_size);
+	void setBit(unsigned int bit_num, int stat, unsigned int *table_address);
+	void setAddress(unsigned int address, int stat, unsigned int *tree_address, unsigned int table_size);
+	unsigned int countPages();
+	unsigned int *alloc_page(unsigned int size, unsigned int* table, unsigned int granularity);
+	void free_page(unsigned int address, unsigned int size, unsigned int *table, unsigned int granularity);
+	void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *table_address, unsigned int code);
+	unsigned int *alloc_bytes(unsigned int bytes);
+
+
 /*
 paging is enabled here
 the paging structures are assigned 1:1
@@ -33,7 +63,7 @@ for allocating more than one page (it's pretty slow i think)
 #include "entrance.h"
 #include "spinlock.h"
 
-memory global_memory;
+//memory global_memory;
 
 //page granularity binary tree
 //1 - indicate the presence of a free page
@@ -41,7 +71,6 @@ memory global_memory;
 
 const unsigned int BYTE_GRANULARITY = sizeof(unsigned int *);
 	//this is the granularity of an allocation that is less than 4KB
-	//TODO: after compiling works again, try changing this over to a define statement
 const unsigned int PAGE_SIZE = 0x1000;
 	//define the size of a page and eliminate dependencies on pages being a certain size
 
@@ -49,20 +78,20 @@ struct page_range *first_pages_range;	//the last element in this linked list wil
 	//this linked list stores ??????
 
 
-void memory::pdtEntry(unsigned int address, unsigned int table_address)
+void pdtEntry(unsigned int address, unsigned int table_address)
 {	//fills in the entry in the PDT regarding the address (0-4GB)
 	//it will point to table_address for that memory range
 	page_table[address] = table_address + 3; //read/write, present, supervisor
 }
 
-void memory::tableEntry(unsigned int address)
+void tableEntry(unsigned int address)
 {	//fills in the page table entry for address
 	//retrieves the page table address from the page directory table
 	unsigned int *table_address = (unsigned int *)(page_table[address / 0x400000] & 0xFFFFF000);
 	table_address[(address / PAGE_SIZE) % 0x400] = address + 3;
 }
 
-unsigned int memory::getBit(unsigned int bitNum, unsigned int* tree_address)
+unsigned int getBit(unsigned int bitNum, unsigned int* tree_address)
 {	//this retrieves the bitNum'th bit from the binary tree at [tree_address] 
 	unsigned int value;
 	value = tree_address[bitNum /(sizeof(unsigned int) * 8)] & 1<<(bitNum % (sizeof(unsigned int) * 8));
@@ -70,13 +99,13 @@ unsigned int memory::getBit(unsigned int bitNum, unsigned int* tree_address)
 	return value;
 }
 
-unsigned int memory::getAddress(unsigned int address, unsigned int *table_address, unsigned int table_size)
+unsigned int getAddress(unsigned int address, unsigned int *table_address, unsigned int table_size)
 {	//table_size is size in bytes
 	//table_address is the address of the binary tree
 	return getBit(table_size * sizeof(unsigned int) + address, table_address);
 }
 
-void memory::setBit(unsigned int bit_num, int stat, unsigned int *table_address)
+void setBit(unsigned int bit_num, int stat, unsigned int *table_address)
 {	//sets the nth bit in the binary tree at table_address to stat (1 or 0)
 	if (stat)
 	{
@@ -90,7 +119,7 @@ void memory::setBit(unsigned int bit_num, int stat, unsigned int *table_address)
 	}
 }
 
-void memory::setAddress(unsigned int address, int stat, unsigned int *tree_address, unsigned int table_size)
+void setAddress(unsigned int address, int stat, unsigned int *tree_address, unsigned int table_size)
 {	//makes a setBit call after it does math to find the proper bit to set
 	//caller is required to divide address by the granularity achieved by the table (4 KB = 0x1000);
 	//table_size = bytes
@@ -98,7 +127,7 @@ void memory::setAddress(unsigned int address, int stat, unsigned int *tree_addre
 	setBit(table_size * sizeof(unsigned int) + address, stat, tree_address);
 }
 
-unsigned int memory::countPages()
+unsigned int countPages()
 {	//returns the number of usable pages
 	unsigned int pages = 0;
 	unsigned int counter;
@@ -112,7 +141,7 @@ unsigned int memory::countPages()
 	return pages;
 }
 
-unsigned int *memory::alloc_page(unsigned int size, unsigned int* table, unsigned int granularity)
+unsigned int *alloc_page(unsigned int size, unsigned int* table, unsigned int granularity)
 {	//returns the address of 1 free page
 	//size is the size of the tree in bytes
 	unsigned int unused_page = 1;
@@ -143,7 +172,7 @@ unsigned int *memory::alloc_page(unsigned int size, unsigned int* table, unsigne
 	return (unsigned int *)unused_page;
 }
 
-void memory::free_page(unsigned int address, unsigned int size, unsigned int *table, unsigned int granularity)
+void free_page(unsigned int address, unsigned int size, unsigned int *table, unsigned int granularity)
 {	//frees 1 page and updates the binary tree
 	//size is the size of the table in bytes, 4 is the constant to get the bit number of the first bit in the last row from bytes
 	unsigned int bit_num = size * 0x4 + address / granularity;
@@ -155,7 +184,7 @@ void memory::free_page(unsigned int address, unsigned int size, unsigned int *ta
 	}
 }
 
-void memory::pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *table_address, unsigned int code)
+void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *table_address, unsigned int code)
 {	//fills out the PDT, and PTE for a given memory range
 //0, 0x100000, &table_address, 2
 	unsigned int pdt_calc;
@@ -176,7 +205,7 @@ void memory::pdt_ptd_range(unsigned int address, unsigned int length, unsigned i
 		//goes up page by page until it reaches the end of the memory range
 		//fill in page at counter
 		if (pdt_calc < (address - (address % PAGE_SIZE)))
-			break;	//catch any overflow bugs from address 0xFFFFE000
+			break;	//catch/stop any overflow bugs from address 0xFFFFE000
 		tableEntry(pdt_calc);
 		//determine if memory is in range
 	}
@@ -186,30 +215,77 @@ void memory::pdt_ptd_range(unsigned int address, unsigned int length, unsigned i
 	}
 }
 
-unsigned int *memory::alloc_bytes(unsigned int bytes)
+
+//#14 (512 bytes)
+
+/*
+#0  isr14 () at x86/entrance.s:826
+#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
+#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
+#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
+#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
+#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
+#6  0x00106734 in setupFloppy () at x86/main.cpp:265()*/
+
+/*
+#0  isr14 () at x86/entrance.s:826
+#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
+#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
+#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
+#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
+#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
+#6  0x00106734 in setupFloppy () at x86/main.cpp:265*/
+
+/*
+#0  isr14 () at x86/entrance.s:826
+#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
+#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
+#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
+#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
+#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
+#6  0x00106734 in setupFloppy () at x86/main.cpp:265*/
+
+/*
+#0  isr14 () at x86/entrance.s:826
+#1  0x00106e54 in alloc_bytes (bytes=512) at x86/memory.cpp:238
+#2  0x0010729e in kmalloc (size=512) at x86/memory.cpp:398
+#3  0x00100d2a in fat::get_buffer (this=0x13a0, offset=0, file=0x1228) at fat.cpp:956
+#4  0x00101749 in fat::open_file (this=0x13a0, filename=0x10b6a9 "SERIAL  SO ") at fat.cpp:832
+#5  0x00100108 in load_module (filename=0x10b6a9 "SERIAL  SO ", fs=0x13a0) at elf.cpp:48
+#6  0x00106734 in setupFloppy () at x86/main.cpp:265*/
+
+
+
+unsigned int *alloc_bytes(unsigned int bytes)
 {	//searches for number_bytes of unused bytes
 	//then adds it the the list of assigned addresses
 	//returns the address number_bytes of contiguous memory (at least)
 	//size is the size of the tree in bytes
+
+	//page = chunk address
+	//*page = length
+	//page + *page = next chunk
+
 	unsigned int number_bytes;
 	if ((bytes % BYTE_GRANULARITY) == 0)
 		number_bytes = bytes;
 	else
-		number_bytes = bytes + (BYTE_GRANULARITY - (bytes % BYTE_GRANULARITY));
+		number_bytes = bytes + BYTE_GRANULARITY - (bytes % BYTE_GRANULARITY);
 		//align the length to an appropriate value
+	if ((number_bytes + BYTE_GRANULARITY) >= PAGE_SIZE)
+		return 0;
 	unsigned int address = 0;
-	unsigned int length = 0xFFFFFFFF;
-	unsigned int *page;
+	unsigned int length = 0xFFFFFFFF;	//the length of the current best fit area
+	unsigned int *page = page_address;
 	unsigned int *new_page;	//this is so we know where to store the address if another page is required
-	page = page_address;
 	do
 	{
 		for (; *page != 0; page += ((*page & 0x7FFFFFFF) / BYTE_GRANULARITY))
 		{
-			if (*page < 0x80000000)
+			if (!(*page & 0x80000000))
 			{	//only if this segment is unused
 				if (*page >= (number_bytes + BYTE_GRANULARITY))
-				{	//only if the segment is int enough
+				{	//only if the segment is long enough
 					if (*page <= length)
 					{	//length_requested <= this_length <= previous_length (best fit algorithm)
 						length = *page;
@@ -225,7 +301,7 @@ unsigned int *memory::alloc_bytes(unsigned int bytes)
 	//now that the best fit has been found, modify appropriately
 	if (address == 0)
 	{	//allocate another page for allocating memory
-		*new_page = (unsigned int)global_memory.alloc_page(global_memory.size_tree * 4, global_memory.page_tree, PAGE_SIZE);
+		*new_page = (unsigned int)alloc_page(size_tree * 4, page_tree, PAGE_SIZE);
 			//(unsigned int)kmalloc(PAGE_SIZE);	
 			//set the address for the previous page so that this page will be included in the search
 		new_page = (unsigned int *)*new_page;
@@ -286,15 +362,60 @@ void *memset ( void * ptr, int value, size_t num )
 	}
 }
 
+void chart_memory()
+{
+	unsigned int counter;
+	unsigned int *page;	
+	display("Page availability chart:\n");
+	for (counter = 0; counter < 0x3FFF; counter += PAGE_SIZE)
+	{
+		if (getAddress(counter / PAGE_SIZE, page_tree, size_tree * sizeof(unsigned int)))
+		{
+			display("1");
+		}
+		else
+			display("0");
+	}
+	display("\n");
+	page = page_address;
+	do
+	{
+		for (; *page != 0; page += ((*page & 0x7FFFFFFF) / BYTE_GRANULARITY))
+		{
+			if (!(*page & 0x80000000))
+			{	//only if this segment is unused
+				PrintNumber((unsigned long)page);
+				display(",");
+				PrintNumber(*page & 0x7FFFFFFF);
+				display(" not used.\t");
+			}
+			else
+			{
+				PrintNumber((unsigned long)page);
+				display(",");
+				PrintNumber(*page & 0x7FFFFFFF);
+				display(" used\t");
+			}
+		}
+		page += 1;
+		page = (unsigned int*)*page;
+	} while (page	!= 0);
+	display("\n");
+}
+
 void *kmalloc(unsigned int size)
 {	//size is in bytes
-//	enter_spinlock(SL_MEM_MNG);
+//	PrintNumber(getCallerEIP(0x4C));
+//	display("\t");
+	enter_spinlock(SL_MEM_MNG);
+	//check all memory management structures and find out when they take a dump	
 	void *use_me = 0;
 	unsigned int actual_size;
 	unsigned int address_search;	//scans each address
 	unsigned int address_current;	//stores the current address and length
 	unsigned int length_current;
-	unsigned int counter, counter2;
+	unsigned int counter;
+	unsigned int counter2;
 	unsigned int address = 0;		//address and length (in pages) of the current match
 	unsigned int length = 0xFFFFFFFF;
 	struct page_range *fill_me;
@@ -302,22 +423,28 @@ void *kmalloc(unsigned int size)
 		size = 1;
 	if (size == PAGE_SIZE)
 	{	//allocate en exact page from the allocation tree
-		use_me = global_memory.alloc_page(global_memory.size_tree * 4, global_memory.page_tree, PAGE_SIZE);
-		global_memory.setBit((unsigned int)use_me / PAGE_SIZE, 1, global_memory.single_pages);
-//		leave_spinlock(SL_MEM_MNG);
+		use_me = alloc_page(size_tree * 4, page_tree, PAGE_SIZE);
+		setBit((unsigned int)use_me / PAGE_SIZE, 1, single_pages);
+		leave_spinlock(SL_MEM_MNG);
+//display("Return: ");
+//PrintNumber((unsigned long)use_me);
+//display("\n");
 		return use_me;
 	}
-	else if (size < PAGE_SIZE)
+	else if ((size + BYTE_GRANULARITY) < PAGE_SIZE)
 	{	//requires "special" allocation
-		//scan bin_tree at &page_address[2]
 		//find the closest group of memory that is large enough
 		//if no open spots are large enough, go to the next page
 		//if it is the last page, then allocate another page
-//		leave_spinlock(SL_MEM_MNG);
-		return global_memory.alloc_bytes(size);
+		use_me = alloc_bytes(size);
+		leave_spinlock(SL_MEM_MNG);
+//display("Return: ");
+//PrintNumber((unsigned long)use_me);
+//display("\n");
+		return use_me;
 	}
 	else
-	{	//size > PAGE_SIZE
+	{	//size > PAGE_SIZE (or the addition of byte level allocation requires page level allocation)
 		//search memory and find the best fit memory block
 		//allocations are stored in a linked list
 		if ((size % PAGE_SIZE) == 0)
@@ -331,11 +458,11 @@ void *kmalloc(unsigned int size)
 		actual_size /= PAGE_SIZE;	//number of contiguous pages needed
 		address_current = address_search;
 		length_current = 0;
-		for (address_search = 0; address_search < global_memory.largest_address; address_search += PAGE_SIZE)
+		for (address_search = 0; address_search < largest_address; address_search += PAGE_SIZE)
 		{
-			if (global_memory.getAddress(address_search / PAGE_SIZE,
-																		global_memory.page_tree,
-																		global_memory.size_tree * sizeof(unsigned int)) == 1)
+			if (getAddress(address_search / PAGE_SIZE,
+											page_tree,
+											size_tree * sizeof(unsigned int)) == 1)
 			{
 				length_current++;
 			}
@@ -358,23 +485,26 @@ void *kmalloc(unsigned int size)
 		}
 		if (length == 0xFFFFFFFF)
 		{
-//			leave_spinlock(SL_MEM_MNG);
-			return 0;	//memory cannot be allocated right now
+			leave_spinlock(SL_MEM_MNG);
+//display("Return: ");
+//PrintNumber((unsigned long)use_me);
+//display("\n");
+			return 0;	//the whole of memory cannot be allocated right now
 		}
 		for (address_search = address; address_search < ((address + (PAGE_SIZE * actual_size)) - 1); address_search += PAGE_SIZE)
 		{
-			global_memory.setAddress(address_search / PAGE_SIZE, 0, global_memory.page_table, global_memory.size_tree * sizeof(unsigned int));
+			setAddress(address_search / PAGE_SIZE, 0, page_table, size_tree * sizeof(unsigned int));
 		}
 		//update the entire tree
-		for (counter = global_memory.size_tree * 0x8; counter >= 1; counter /= 2)
+		for (counter = size_tree * 0x8; counter >= 1; counter /= 2)
 		{	//have to start on the second lowest layer
 			for (counter2 = counter; counter2 < (counter * 2); counter2++)
 			{
-				global_memory.setBit(counter2,
-									global_memory.getBit(2 * counter2, global_memory.page_tree) | 
-											global_memory.getBit(2 * counter2 + 1,
-									global_memory.page_tree),
-									global_memory.page_tree);
+				setBit(counter2,
+									getBit(2 * counter2, page_tree) | 
+											getBit(2 * counter2 + 1,
+									page_tree),
+									page_tree);
 			}
 		}
 		//add the proper structure to the linked list
@@ -382,61 +512,69 @@ void *kmalloc(unsigned int size)
 		for (fill_me = first_pages_range; fill_me->next != 0; fill_me = fill_me->next);
 		fill_me->address = address;
 		fill_me->length = actual_size;
-		fill_me->next = (struct page_range *)kmalloc(sizeof(struct page_range));
+		fill_me->next = (struct page_range *)alloc_bytes(sizeof(struct page_range));
 		(fill_me->next)->previous = fill_me;	//make sure the new one points back to first one
 		fill_me = fill_me->next;
 		fill_me->address = 0;
 		fill_me->length = 0;
 		fill_me->next = 0;
-//		leave_spinlock(SL_MEM_MNG);
-		return (void*)address;
+		use_me = (void*)address;
+		leave_spinlock(SL_MEM_MNG);
+//display("Return: ");
+//PrintNumber((unsigned long)use_me);
+//display("\n");
+		return use_me;
 	}
-//	leave_spinlock(SL_MEM_MNG);
+	leave_spinlock(SL_MEM_MNG);
+//display("Return: ");
+//PrintNumber((unsigned long)use_me);
+//display("\n");
 	return use_me;
 }
 
 void kfree(void *address)
 {
-//	enter_spinlock(SL_MEM_MNG);
+	enter_spinlock(SL_MEM_MNG);
 	unsigned int temp, counter;
 	struct page_range *fill_me;
 	if ((unsigned int)address == 0)
 	{
-//		leave_spinlock(SL_MEM_MNG);
+		leave_spinlock(SL_MEM_MNG);
 		return;
 	}
 	//was less than a page allocated?
 	//check to see if the address resides in one of the (<4KB) allocate pages
-	for (counter = (unsigned int)global_memory.page_address; counter != 0; counter = ((unsigned int*)counter)[0x3FF])
+	for (counter = (unsigned int)page_address; counter != 0; counter = ((unsigned int*)counter)[0x3FF])
 	{	//loads the address of each page used for byte allocations into counter
 		if (((unsigned int)address - ((unsigned int)address % PAGE_SIZE)) == counter)
 		{
-			*(unsigned int*)((unsigned int)address - BYTE_GRANULARITY) -= 0x80000000;
+//			((unsigned int *)address)[-1] &= 0x7FFFFFFF;
+			*(unsigned int*)((unsigned int)address - BYTE_GRANULARITY) &= 0x7FFFFFFF;
 				//just mark it as unused, don't bother combining contiguous open segments
-//			leave_spinlock(SL_MEM_MNG);
+			leave_spinlock(SL_MEM_MNG);
 			return;
 		}
 	}
 	//is it an exact page that was allocated?
-	if (global_memory.getBit((unsigned int)address / PAGE_SIZE, global_memory.single_pages) == 1)
+	if (getBit((unsigned int)address / PAGE_SIZE, single_pages) == 1)
 	{
-		global_memory.free_page((unsigned int)address, 
-														sizeof(unsigned int) * global_memory.size_tree,
-														global_memory.page_tree, 
+		free_page((unsigned int)address, 
+														sizeof(unsigned int) * size_tree,
+														page_tree, 
 														PAGE_SIZE);
-		global_memory.setBit((unsigned int)address / PAGE_SIZE, 
+		setBit((unsigned int)address / PAGE_SIZE, 
 													0, 
-													global_memory.single_pages);
-		temp = (unsigned int)address / PAGE_SIZE + global_memory.size_tree * sizeof(unsigned int) * 0x4;
+													single_pages);
+		temp = (unsigned int)address / PAGE_SIZE + size_tree * sizeof(unsigned int) * 0x4;
 		for (counter = temp / 2; counter >= 1; counter /= 2)
 		{
-			global_memory.setBit(counter, 
-														global_memory.getBit(2 * counter, global_memory.page_tree) |
-															global_memory.getBit(2 * counter + 1,
-														global_memory.page_tree),
-														global_memory.page_tree);
+			setBit(counter, 
+														getBit(2 * counter, page_tree) |
+															getBit(2 * counter + 1,
+														page_tree),
+														page_tree);
 		}
-//		leave_spinlock(SL_MEM_MNG);
+		leave_spinlock(SL_MEM_MNG);
 		return;
 	}
 	for (fill_me = first_pages_range; fill_me->next != 0; fill_me = fill_me->next)
@@ -445,16 +583,16 @@ void kfree(void *address)
 		{	//free that memory
 			for (counter = fill_me->address; counter < (fill_me->address + PAGE_SIZE * fill_me->length - 1); counter += PAGE_SIZE)
 			{	//free these pages
-				global_memory.free_page((unsigned int)counter,
-										sizeof(unsigned int) * global_memory.size_tree,
-										global_memory.page_tree,
+				free_page((unsigned int)counter,
+										sizeof(unsigned int) * size_tree,
+										page_tree,
 										PAGE_SIZE);
 			}
 			if (fill_me->previous != 0)
 				fill_me->previous->next = fill_me->next;
 			if (fill_me->next != 0)
 				fill_me->next->previous = fill_me->previous;
-//			leave_spinlock(SL_MEM_MNG);
+			leave_spinlock(SL_MEM_MNG);
 			kfree(fill_me);
 			return;
 		}
@@ -482,11 +620,8 @@ void *memcpy(void* s1, const void* s2, unsigned int n)
 	return s1;
 }
 
-memory::memory()
-{	//this won't do much, not even initialization
-}
 
-void memory::setup_paging(struct multiboot_info *boot_info, unsigned int size)
+void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 {	//necessary information, and last byte in memory used by the kernel
 	page_table = (unsigned int *)(size + (PAGE_SIZE - (size % PAGE_SIZE)));
 		//this is the page (4KB) where the entire PDT goes

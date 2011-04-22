@@ -1,0 +1,40 @@
+This is the autotools version of the Doors kernel
+
+Network boot:
+	tftp server
+	bootp/dhcp/rarp server
+	grub compiled for the network on the remote host (--diskless and also enable a driver)
+		the pxegrub output will be the boot file for pxe
+	qemu
+		vnuml (something for /dev/net/tun)
+		deb http://jungla.dit.upm.es/~vnuml/debian binary/
+		vlan xterm bridge-utils screen
+
+
+sudo bootpd -s -d 100
+/etc/bootptab
+	#epia 5000
+	.epia:\
+		hd=/tftpboot:\
+		bf=/via-rhine/pxegrub:\		#/tftpboot/via-rhine/pxegrub
+		ip=192.168.1.89:\
+		sm=255.255.255.0:\
+		sa=192.168.1.2:\
+		gw=192.168.1.1:\
+		ha=004063E33E2B:\
+		T150="(nd)/tftpboot/network.lst":
+
+/tftpboot/images
+/tftpboot/network.lst
+	serial --unit=0 --speed=9600 --word=8 --parity=no --stop=1
+	terminal serial
+	
+	title   Doors OS
+	        root    (nd)
+	        kernel  /tftpboot/kernel.bin
+chmod -R 555 /tftpboot
+chown -R nobody:nogroup /tftpboot
+
+
+
+qemu-system-arm -M verdex -pflash flash -monitor null -nographic -m 289

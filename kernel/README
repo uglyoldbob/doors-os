@@ -1,22 +1,72 @@
-This is the autotools version of the Doors kernel
+DoorsOS version 0.16
+	Switched from compile.sh to using make
+	Keyboard driver is mostly finished. It could use some customization functions to adjust repeat rates and delays. I also want to make some functions so that "extra" (media keys like volume adjust and similar keys) can be used instead of having their keycodes discarded.
+	allocating more than 4KB of memory is functional but slow. It was the first way I thought of to do it that didn't require potentially getting into an infinite loop (I have to allocate memory so I can allocate memory)
+	TODO: measure effectiveness of the memory allocation routines
+
+Make all:
+	Compiles the kernel if necessary and updates the floppy disk and cd boot images
+
+Make cd:
+	Updates the cd boot image and then calls bochs
+
+Make floppy:
+	Updates for floppy boot images and the calls bochs
+	At the moment, the makefile has to mount a loop back device in order to achieve this
+		and that requires root privelages
+	Call this as not root, and when the time comes, it will prompt for the password for root access using sudo
+	*Don't forget to either change the makefile or create a /mnt/floppy directory if making the floppy disk version
+
+make clean:
+	Eliminates all (compiled objects) - object files, the kernel file and the bootable cd image
+
+make test:
+	compiles a sample program using the cross compiler with the ported newlib C library
+	if this compiles properly, then the cross compiler and C library is probably setup correctly
+
+IMPORTANT for making floppy disk images:
+If you want to make a bootable floppy disk image, do not delete Grub.img. If skeleton.img becomes erased or corrupted, then Grub.img is the backup for skeleton.img. The only important thing about these images is that they already have the FAT12 filesystem and GRUB installed on them so only the kernel file (kernel.bin) needs to be copied to them.
+
+Booting from a hard drive.
+	This is a pretty easy task if you already have GRUB or some other MULTIBOOT compliant bootloader installed. DoorsOs does not require that it be in a seperate partition at the moment. It will not currently mess anything up when done like shown below. However, disk reading functions will not functions as they only exist for floppy disk at the moment (and not a lot of them at that).
+
+	An example for GRUB:
+		title		DoorsOs
+		root		(hd0,1)
+		kernel		/home/thomas/DoorsOs/FAT12GRUB/kernel.bin
 
 Network boot:
-	tftp server
-	bootp/dhcp/rarp server
-	grub compiled for the network on the remote host (--diskless and also enable a driver)
-		the pxegrub output will be the boot file for pxe
-	qemu
-		vnuml (something for /dev/net/tun)
-		deb http://jungla.dit.upm.es/~vnuml/debian binary/
-		vlan xterm bridge-utils screen
+	This is possible, but I don't know how to set this up right now.
 
+Next will be FAT drivers.
+I am working on porting newlib. OS dependent calls will probably fail until I have support for them coded.
+There will also be tools for compiling a cross compiler. It seems to be sensitive to what is in the folders that the script is run from and things that are in the tools folder. Copying the entire folder tools to a seperate directory to build the cross-compiler seems to solve the problem. I'm not sure what causes this.
 
-sudo bootpd -s -d 100
-/tftpboot/images
-/tftpboot/network.lst
-/tftpboot/other stuff
+v0.17
+	Switched over to allow C++ and C code mixed with assembly. This will allow the disk drivers to have a cleaner interface, although in order for disk drivers to be "loadable" (that is, not having to be compiled into the kernel) dynamic linking will have to be supported, although that is probably a given regardless of whether C++ classes are used or not.
 
+v0.18
+	Network booting is enabled, althouth I still need to archive a working example. Recompile GRUB for your network card, setup a bootp server, tell it to boot pxegrub (the generated executable from compiling grub -diskless). Optionally you can configure GRUB to use the serial port. At this version, Doors is configured to always output to the serial port and the local monitor. It also accepts input from the serial terminal (somewhat VT100 compatible). The keyboard driver and serial port driver have been updated somewhat to use ASCII code for their representation formats). For the keyboard, the old method (which allowed representation for EVERY key on the keyboard is still there, however, the new ASCII method can be used as a handy method for getting printable characters and might be useful for things like text editors. Handling of ctrl and alt and those keys will be handled by the os itself and the application should not have to worry about it. Please the aforementioned stuff has not been coded and it is just in thought.
+	A gdb stub has been added, but due to current testing methods (which already use the serial port), I will not be able to test to see if it works.
 
+v0.19
+	Removed old C versions of source code objects. Some unneeded compiled object files were removed because they were old versions of the related compiled objects and were wasting space. I should probably check all the previous version archives to see how much extra stuff is there, but I will not do that at this time.
 
+latest version
+	Writing to floppy disk has been tested and working on bochs. All source files together are 7916 lines. Added some code to make it easier to support virtual memory. These functions are designed to move memory from disk to RAM and from RAM to disk. Next on the disk access will be either flash drive or IDE stuff.
 
-qemu-system-arm -M verdex -pflash flash -monitor null -nographic -m 289
+	Added code to allow opening and reading from files. Changed the first sector of a disk from 1 to 0.
+
+	Need to go back and remember how I managed to get a network boot going with only a serial cable and a network cable hooked up to the test machine. I had it set up so that outputs to the local monitor would go through the serial cable. It booted using PXE and grub and grub also obtained its inputs through the serial line via a special configuration option (which I don't remember right now). I also had the option of debugging over the serial line, but I don't think that I actually had this working. Also need to figure out how to get gcc to compile shared object files.
+
+Version 0.3 and newer belows
+
+	19 Sep 2008
+	I remembered and documented network booting with a serial cable and a network cable only. It boots using PXE and GRUB. Another computer is required that has a bootp capable server, and a tftp server. The grub config goes into the tftp directory. I haven't updated the README (this file) to reflect the new version numbering scheme. More detailed instructions can be located in NETBOOT. I am working on a kernel debugger. Current progess is porting a disassembler (I am writing support code atm like printf). I also grabbed a copy of the C99 standard (I know it's old, but I have never really examined the standards documents before and now seemed like a good time to start). Gdb related code has been removed for the time being. I might port all of gdb over later on, but for now I will go ahead and build my own debugger. Modified medium-selection scripts to strip debugging symbols for the media that they build.
+	I started up a website for my kernel/OS programming. I updated the contact information at the bottom of the README.
+
+-----------
+Thomas Epperson
+thomas.epperson@gmail.com
+epperson@doors-software.com
+www.doors-software.com

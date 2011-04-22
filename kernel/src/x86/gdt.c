@@ -6,10 +6,8 @@ unsigned long previous = 0;
 unsigned long task_timer = 50;
 unsigned char enable_multi = 0;
 struct multi_gdt *setup;
-//unsigned long multi_tss_begin = 0;//&setup->tss_info[0];
-//unsigned long multi_tss2_begin = 0;//&setup->tss_info[1];
 
-unsigned long timer = 0;
+unsigned int timer = 0;
 
 struct gdt_entry
 {
@@ -48,17 +46,7 @@ struct TSS *get_current_tss()
 	}
 }
 
-asm(".globl setup_gdt");
-asm("setup_gdt:"); 
-asm("		mov 4(%esp), %eax");
-asm("		lgdt (%eax)");
-asm("		ljmp $0x08, $flush3");
-asm("flush3: ");
-asm("		movl $0x18,%eax");
-asm("		ltrw %ax");
-asm("		ret");
-
-void setup_multi_gdt()
+unsigned int setup_multi_gdt()
 {
 	//setup structures
 	setup = (struct multi_gdt*)0	;
@@ -104,7 +92,7 @@ void setup_multi_gdt()
 	setup->address = setup;
 
 	setup_gdt(&setup->size);
-	
+	return 0;
 }
 
 void print_tss(struct TSS *me)
@@ -168,30 +156,32 @@ void print_tss(struct TSS *me)
 	display("\n");
 }
 
-
 void irqM0_handler()
 {	//handles the stuff that doesn't have to be done in assembly
+	//called from an isr, which is already non-reentrant
+		//so it doesnt have to be reentrant
 	if (enable_multi == 0)
 	{
 		task_timer = 50;
-		asm("pushw %ax               #save ax");
+		outportb(0x20,0x20);
+		/*asm("pushw %ax               #save ax");
 		asm("movb $0x20,%al");
 		asm("outb %al, $0x20");
-		asm("popw %ax                #restore ax");
+		asm("popw %ax                #restore ax");*/
+
 		return;
 	}
 	if (task_timer != 0)
 	{
-		asm("pushw %ax               #save ax");
+		outportb(0x20,0x20);
+		/*asm("pushw %ax               #save ax");
 		asm("movb $0x20,%al");
 		asm("outb %al, $0x20");
-		asm("popw %ax                #restore ax");
-		return;	
+		asm("popw %ax                #restore ax");*/
+
+		return;
 	}
 	task_timer = 50;
-//	display(":");
-//	PrintNumber(getEIP());
-//	display(":\n");
 	if (previous_tss == 1)
 	{
 		previous_tss = 2;
@@ -204,26 +194,19 @@ void irqM0_handler()
 	}
 	previous = 1;
 	//TODO: write code to print the TSS of the task being switched to
-//	unsigned int bob;
 
-	asm("pushw %ax               #save ax");
+	outportb(0x20,0x20);
+	/*asm("pushw %ax               #save ax");
 	asm("movb $0x20,%al");
 	asm("outb %al, $0x20");
-	asm("popw %ax                #restore ax");
+	asm("popw %ax                #restore ax");*/
 	if (previous_tss == 2)
 	{
-		asm("ljmp $0x18, $00");
+		//asm("ljmp $0x18, $00");
 	}
 	else
 	{
-		asm("ljmp $0x20, $00");
+		//asm("ljmp $0x20, $00");
 	}
 }
 
-asm(".globl irqM0");
-asm("irqM0:");
-asm("        incl timer");
-asm("        decl task_timer");
-//manual EOI before the interrupt has ended      ");
-asm("		 call irqM0_handler");
-asm("        iret");
