@@ -16,7 +16,7 @@ struct idt_desc *setupIdt()
 	}
 	idt.list[0].low_address = ((unsigned)isr0 & 0xFFFF);
 	idt.list[0].upper_address = ((unsigned)isr0 >> 16);
-	idt.list[0].flags = 0x8E;
+	idt.list[0].flags = 0x8E;	//segment present, privelage level 0, 32 bits
 	idt.list[1].low_address = ((unsigned)isr1 & 0xFFFF);
 	idt.list[1].upper_address = ((unsigned)isr1 >> 16);
 	idt.list[1].flags = 0x8E;
@@ -128,7 +128,12 @@ struct idt_desc *setupIdt()
 	idt.list[47].low_address = ((unsigned)irqM15 & 0xFFFF);
 	idt.list[47].upper_address = ((unsigned)irqM15 >> 16);
 	idt.list[47].flags = 0x8E;
-	for (counter = 48; counter < NUM_INTS; counter++)
+	//interrupt 48 will be used for system calls (for now)
+	idt.list[48].low_address = ((unsigned)syscall1 & 0xFFFF);
+	idt.list[48].upper_address = ((unsigned)syscall1 >> 16);
+	idt.list[48].flags = 0x8E;
+
+	for (counter = 49; counter < NUM_INTS; counter++)
 	{	//unused entries, these get filled out so the comp wont crash if they get called
 		idt.list[counter].low_address = 0;
 		idt.list[counter].upper_address = 0;

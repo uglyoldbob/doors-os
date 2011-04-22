@@ -2,11 +2,11 @@
 config_interface: textconfig
 display_library: x
 megs: 4
-romimage: file="/usr/local/share/bochs/BIOS-bochs-latest", address=0x00000
+romimage: file="/usr/local/share/bochs/BIOS-bochs-legacy", address=0x00000
 vgaromimage: file="/usr/local/share/bochs/VGABIOS-lgpl-latest"
 boot: floppy
 floppy_bootsig_check: disabled=0
-floppya: 1_44="/home/thomas/DoorsOs/FAT12GRUB/skeleton.img", status=inserted
+floppya: 1_44="/home/thomas/doors-os/FAT12GRUB/skeleton.img", status=inserted
 # no floppyb
 ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
 ata0-master: type=cdrom, path="/mnt/cdrom0", status=inserted, biosdetect=auto, model="Generic 1234"
@@ -34,7 +34,7 @@ sb16: enabled=0
 # no loader
 log: -
 logprefix: %t%e%d
-debugger_log: /home/thomas/DoorsOs/debug.txt
+debugger_log: /home/thomas/doors-os/debug.txt
 panic: action=ask
 error: action=report
 info: action=report

@@ -60,16 +60,16 @@ void init_keyboard()
 	unsigned int response;
 	display("\tSetting keyboard to scancode set 2\n");
 	//set keyboard to scancode set 2
-	wait_to_write();
-	outportb(0xF0, 0x60);
-	wait_to_write();
-	outportb(0x2, 0x60);
-	do
-	{
-		response = getResponse();
-	} while (response == 0);
-	if (response == 0xFE)
-		display("\tFailed to set keyboard mode\n");
+//	wait_to_write();
+//	outportb(0xF0, 0x60);
+//	wait_to_write();
+//	outportb(0x2, 0x60);
+//	do
+//	{
+//		response = getResponse();
+//	} while (response == 0);
+//	if (response == 0xFE)
+//		display("\tFailed to set keyboard mode\n");
 	add_me.who = KEYBOARD;
 	add_me.fields = 1;
 	display("\tEnabling scancode translation\n");
@@ -82,11 +82,7 @@ void init_keyboard()
 		response = getResponse();
 	} while (response == 0);
 
-	display("The keyboard command byte is ");
-	PrintNumber(response & 0xFF);
-	display("\n");
-
-	response = response | 0x40;
+	response = 0x43;	//enable mouse, keyboard, scancode conversion
 	wait_2_write();
 	outportb(0x60, 0x64);
 	wait_to_write();

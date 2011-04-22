@@ -1,11 +1,11 @@
 struct FatBootSector
 {
-	char OemName[9];	//"MSWIN4.1"
-	unsigned short BytesPerSector;
+	char OemName[9];	//usually "MSWIN4.1"
+	unsigned long BytesPerSector;	//usually 0x200
 	unsigned char SectorsPerCluster;
 	unsigned short ReservedSectorCount;	//number of reserved sectors starting with the first sector (usually 1)
 	unsigned char NumberFats;	//number of file allocation tables
-	unsigned short NumberRootEntries;
+	unsigned short NumberRootEntries;	//0x200 for FAT16
 	unsigned short SectorCount16;	//16 bit field for number of sectors
 	unsigned char Media;	//dates back to DOS 1.x, not normally used anymore
 	unsigned short FatSize16;		//16 bit field for the size of the fat in sectors
@@ -26,4 +26,10 @@ struct FatBootSector
 	unsigned long RootCluster;	//the cluster number of the first cluster of the root directory
 	unsigned short FSInfo;	//sector number of the FSInfo structure
 	unsigned short BackupBootSector;	//sector number in the reserved area where a copy of the boot sector	
+
+	//calculated numbers
+	unsigned long RootDirSectors;	//sectors taken up by the root directory (0 for FAT32)
+	unsigned long FirstDataSector;	//start of the data region
+	unsigned long DataSectors;		//number of sectors holding data
+	unsigned long CountOfClusters;	//this is used to determine the FAT type
 };

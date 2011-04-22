@@ -1,15 +1,35 @@
 #include "disk.h"
 #include "interrupt_table.h"
 #include "floppy.h"
+#include "memory.h"
 
 //file naming convention
-/* /(drive name)/ ex floppy0 floppy1 cd0 cd1 cd2
+/* /(drive name)/ ex floppy1 floppy2 cd1 cd2 cd3
 	for hard drives, the second number specifies which partition is being accessed on that particular hard drive
-	hd0/0/ hd1/2/ hd2/1/
+	hd1/1/ hd1/2/ hd2/1/
 /	/floppya/boot/grub/
 	/floppya/kernel.bin
 	/
 */
+
+struct sectorReturn readSector(unsigned char driveNum, unsigned long sectorNumber)
+{	//general purpose read sector
+	struct sectorReturn sector;
+	sector.size = 0x1000;		//TODO: need a function to find out the correct sector size
+	sector.data = malloc(sector.size);
+	if (driveNum < 4)
+	{	//floppy drive
+		if (floppy_read_sector(sectorNumber, driveNum, sector.data, FLOPPY_PRIMARY_BASE) == -1)
+		{	//error occurred while reading, try other floppy controller?
+			free(sector.data);
+			sector.size = 0;	//this will indicate that an error happened
+		}
+		return sector;
+	}
+	free(sector.data);
+	sector.size = 0;	//driveNum in unknown
+	return sector;
+}
 
 
 ////////////////////////
@@ -133,6 +153,7 @@ void examine_ide()
 	}
 	if (flags & 0x01)
 	{	//only do checking if the PRIMARY IDE controller is found
+		display("\t\tDrive diagnostic primary IDE controller\n");
 		temp = execute_drive_diagnostic(IDE_PRIMARY);
 		display("\t\tDrive diagnostic for PRIMARY returns: ");
 		PrintNumber(temp);
@@ -148,6 +169,7 @@ void examine_ide()
 	}
 	if (flags & 0x08)
 	{	//only do checking if the SECONDARY IDE controller is found
+		display("\t\tDrive diagnostic secondary IDE controller\n");
 		temp = execute_drive_diagnostic(IDE_SECONDARY);
 		display("\t\tDrive diagnostic for SECONDARY returns: ");
 		PrintNumber(temp);

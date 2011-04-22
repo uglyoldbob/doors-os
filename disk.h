@@ -1,3 +1,11 @@
+struct sectorReturn
+{	//this is used to send and recieve sectors
+	unsigned char *data;
+	unsigned long size;	//the size of the buffer
+};
+
+struct sectorReturn readSector(unsigned char driveNum, unsigned long sectorNumber);
+
 void examine_ide();
 
 struct disk_info

@@ -1,4 +1,4 @@
-DoorsOS version 0.15
+DoorsOS version 0.16
 	Switched from compile.sh to using make
 	Keyboard driver is mostly finished. It could use some customization functions to adjust repeat rates and delays. I also want to make some functions so that "extra" (media keys like volume adjust and similar keys) can be used instead of having their keycodes discarded.
 	allocating more than 4KB of memory is functional but slow. It was the first way I thought of to do it that didn't require potentially getting into an infinite loop (I have to allocate memory so I can allocate memory)
@@ -16,15 +16,16 @@ Make floppy:
 	At the moment, the makefile has to mount a loop back device in order to achieve this
 		and that requires root privelages
 	Call this as not root, and when the time comes, it will prompt for the password for root access using sudo
+	*Don't forget to either change the makefile or create a /mnt/floppy directory if making the floppy disk version
 
 make clean:
-	Eliminates all object files, the kernel file and the bootable cd image
+	Eliminates all (compiled objects) - object files, the kernel file and the bootable cd image
 
 IMPORTANT for making floppy disk images:
 If you want to make a bootable floppy disk image, do not delete Grub.img. If skeleton.img becomes erased or corrupted, then Grub.img is the backup for skeleton.img. The only important thing about these images is that they already have the FAT12 filesystem and GRUB installed on them so only the kernel file (kernel.bin) needs to be copied to them.
 
 Booting from a hard drive.
-	This is a pretty easy task if you already have GRUB or some other MULTIBOOT compliant bootloader installed. DoorsOs does not require that it be in a seperate partition at the moment. It will not currently mess anything up when done like shown below.
+	This is a pretty easy task if you already have GRUB or some other MULTIBOOT compliant bootloader installed. DoorsOs does not require that it be in a seperate partition at the moment. It will not currently mess anything up when done like shown below. However, disk reading functions will not functions as they only exist for floppy disk at the moment (and not a lot of them at that).
 
 	An example for GRUB:
 		title		DoorsOs
@@ -33,6 +34,9 @@ Booting from a hard drive.
 
 Network boot:
 	This is possible, but I don't know how to set this up right now.
+
+Working on porting newlib for this version. Next will be FAT drivers.
+There will also be tools for compiling a cross compiler. It seems to be sensitive to what is in the folders that the script is run from and things that are in the tools folder. Copying the entire folder tools to a seperate directory to build the cross-compiler seems to solve the problem. I'm not sure what causes this.
 
 -----------
 Thomas Epperson

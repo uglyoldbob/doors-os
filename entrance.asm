@@ -4,35 +4,38 @@
 [extern display]		;void display(char *chr)
 [extern PrintNumber]	;void PrintNumber(unsigned long)
 [extern main]			;int main(
+[extern memcopy]
+[extern get_sys_tasks]
 [global timer]
+[global syscall1]
 
 global start
 start:
-  mov esp, stack     ; This points the stack to our new stack area
-  jmp skip
+	mov esp, stack     ; This points the stack to our new stack area
+	jmp skip
 
 ; This part MUST be 4byte aligned, so we solve that issue using 'ALIGN 4'
 ALIGN 4
 mboot:
-  ; Multiboot macros to make a few lines later more readable
-  MULTIBOOT_PAGE_ALIGN	equ 1<<0
-  MULTIBOOT_MEMORY_INFO	equ 1<<1
-  MULTIBOOT_AOUT_KLUDGE	equ 1<<16
-  MULTIBOOT_HEADER_MAGIC	equ 0x1BADB002
-  MULTIBOOT_HEADER_FLAGS	equ MULTIBOOT_PAGE_ALIGN | MULTIBOOT_MEMORY_INFO | MULTIBOOT_AOUT_KLUDGE
-  MULTIBOOT_CHECKSUM	equ -(MULTIBOOT_HEADER_MAGIC + MULTIBOOT_HEADER_FLAGS)
-  EXTERN code, bss, end
+	; Multiboot macros to make a few lines later more readable
+	MULTIBOOT_PAGE_ALIGN	equ 1<<0
+	MULTIBOOT_MEMORY_INFO	equ 1<<1
+	MULTIBOOT_AOUT_KLUDGE	equ 1<<16
+	MULTIBOOT_HEADER_MAGIC	equ 0x1BADB002
+	MULTIBOOT_HEADER_FLAGS	equ MULTIBOOT_PAGE_ALIGN | MULTIBOOT_MEMORY_INFO | MULTIBOOT_AOUT_KLUDGE
+	MULTIBOOT_CHECKSUM	equ -(MULTIBOOT_HEADER_MAGIC + MULTIBOOT_HEADER_FLAGS)
+	EXTERN code, bss, end
 
- ; This is the GRUB Multiboot header. A boot signature
-  dd MULTIBOOT_HEADER_MAGIC
-  dd MULTIBOOT_HEADER_FLAGS
-  dd MULTIBOOT_CHECKSUM
+	; This is the GRUB Multiboot header. A boot signature
+	dd MULTIBOOT_HEADER_MAGIC
+	dd MULTIBOOT_HEADER_FLAGS
+	dd MULTIBOOT_CHECKSUM
     
-  ; AOUT kludge - must be physical addresses. Make a note of these:
-  ; The linker script fills in the data for these ones!
-  dd mboot
-  dd code
-  dd bss
+	; AOUT kludge - must be physical addresses. Make a note of these:
+	; The linker script fills in the data for these ones!
+	dd mboot
+	dd code
+	dd bss
 	dd end
 	dd start
 
@@ -51,7 +54,7 @@ skip:
 	;mov [bootInfo], ebx	
 	;this will be needed if the ebx register is ever touched
 	;set up GDT and refresh segments
-	lgdt[gdt_desc]
+	lgdt [gdt_desc]
 	mov ax, 0x10
 	mov ds, ax			;set the segment registers
 	mov ss, eax			;and stack
@@ -67,7 +70,6 @@ flush2:
 	call setupIdt		;return value is stored in eax
 	lidt [eax]		;load the idt
 	;lidt [idt_desc]	;load the IDT
-
 
 	[extern kernel_end]
 	mov eax, kernel_end
@@ -86,6 +88,11 @@ idt_point dd 0
 bootInfo dd 0	
 ;this is only needed if ebx is modified
 
+;TODO: change the location of the GDT (with TSS that needs to be added) to a shared page
+;malloc(0x1000)
+;copy to this address
+;it will be the shared page
+;update all GDT information
 gdt:                    ; Address for the GDT
 gdt_null:               ; Null Segment
 	dd 0
@@ -146,16 +153,168 @@ getEIP:
 	mov eax, [esp]
 	ret
 
-[extern enter_spinlock]
-[extern leave_spinlock]
+[global multi_tss_begin]
+
+multi_start:			;address "0"
+multi_gdt:                    ; Address for the GDT
+multi_gdt_null:               ; Null Segment
+	dd 0
+	dd 0
+multi_gdt_code:               ; Code segment, read/execute, nonconforming
+	dw 0xFFFF
+	dw 0x0000
+	db 0
+	db 10011010b	;non-system descriptor (bit 4)
+	db 11001111b
+	db 0
+multi_gdt_data:               ; Data segment, read/write
+	dw 0xFFFF
+	dw 0x0000
+	db 0
+	db 10010010b	;non system descriptor (bit 4)
+	db 11001111b
+	db 0
+multi_gdt_tss:
+	dw multi_tss_end - multi_tss_begin + 1
+	dw multi_tss_begin - multi_start
+	db 0
+	db 10001001b
+	db 00000000b
+	db 0
+multi_gdt_tss2:
+	dw multi_tss2_end - multi_tss2_begin + 1
+	dw multi_tss2_begin - multi_start
+	db 0
+	db 10001001b
+	db 00000000b
+	db 0
+multi_gdt_end:				; Used to calculate the size of the GDT
+multi_gdt_desc:				; The GDT descriptor
+	dw multi_gdt_end - multi_gdt - 1	; Limit (size)
+	dd multi_gdt - multi_start	; Address of the GDT
+;the first TSS
+multi_tss_begin:
+	tss_previous dw 0
+	dw 0	;reserved
+	tss_esp0 dd 0
+	tss_ss0 dw 0
+	dw 0	;reserved
+	tss_esp1 dd 0
+	tss_ss1 dw 0
+	dw 0	;reserved
+	tss_esp2 dd 0
+	tss_ss2 dw 0
+	dw 0	;reserved
+	tss_cr3 dd 0
+	tss_eip dd 0
+	tss_eflags dd 0
+	tss_eax dd 0
+	tss_ecx dd 0
+	tss_edx dd 0
+	tss_ebx dd 0
+	tss_esp dd 0
+	tss_ebp dd 0
+	tss_esi dd 0
+	tss_edi dd 0
+	tss_es dw 0
+	dw 0
+	tss_cs dw 0
+	dw 0
+	tss_ss dw 0
+	dw 0
+	tss_ds dw 0
+	dw 0
+	tss_fs dw 0
+	dw 0
+	tss_gs dw 0
+	dw 0
+	tss_ldtsegment
+	dw 0
+	tss_trapflag dw 0	;the lowest bit is the debug trapflag
+						;all else is reserved
+	tss_iobaseaddress dw 0
+		;end of interrupt redirection bitmap
+		;beginning of I/O permission bitmap
+		;relative to the base of the TSS
+multi_tss_end:
+;the second TSS
+multi_tss2_begin:
+	tss2_previous dw 0
+	dw 0	;reserved
+	tss2_esp0 dd 0
+	tss2_ss0 dw 0
+	dw 0	;reserved
+	tss2_esp1 dd 0
+	tss2_ss1 dw 0
+	dw 0	;reserved
+	tss2_esp2 dd 0
+	tss2_ss2 dw 0
+	dw 0	;reserved
+	tss2_cr3 dd 0
+	tss2_eip dd 0
+	tss2_eflags dd 0
+	tss2_eax dd 0
+	tss2_ecx dd 0
+	tss2_edx dd 0
+	tss2_ebx dd 0
+	tss2_esp dd 0
+	tss2_ebp dd 0
+	tss2_esi dd 0
+	tss2_edi dd 0
+	tss2_es dw 0
+	dw 0
+	tss2_cs dw 0
+	dw 0
+	tss2_ss dw 0
+	dw 0
+	tss2_ds dw 0
+	dw 0
+	tss2_fs dw 0
+	dw 0
+	tss2_gs dw 0
+	dw 0
+	tss2_ldtsegment
+	dw 0
+	tss2_trapflag dw 0	;the lowest bit is the debug trapflag
+						;all else is reserved
+	tss2_iobaseaddress dw 0
+		;end of interrupt redirection bitmap
+		;beginning of I/O permission bitmap
+		;relative to the base of the TSS
+multi_tss2_end:
+multi_end:
+
+[global setup_multi_gdt]
+setup_multi_gdt:
+	push multi_end - multi_start
+	push multi_start
+	push 0
+	call memcopy
+	pop eax
+	pop eax
+	pop eax
+	lgdt [multi_gdt_desc - multi_start]
+	jmp 0x08:flush3
+flush3:
+
+	mov eax, 0x18
+	ltr ax
+
+	ret
+
+
+
+;[extern enter_spinlock]
+;[extern leave_spinlock]
 [global test_and_set]	;unsigned int test_and_set (unsigned int new_value, unsigned int *lock_pointer);
 											;
 test_and_set:
 	mov eax, [esp + 4]	;eax = new_value
 	mov edx, [esp + 8]	;edx = lock_pointer
-	lock
-	xchg [edx], eax			;swap *lock_pointer and new_value
-	ret									;return the old value of *lock_pointer
+	lock xchg [edx], eax			;swap *lock_pointer and new_value
+	cmp [edx], eax
+	je test_and_set	;only return of the values are different
+	ret								;return the old value of *lock_pointer
 
 ;most interruptable
 SL_BLANK dd 0
@@ -164,6 +323,11 @@ SL_IRQ1 dd 2
 SL_MESSAGE dd 3
 ;least interruptable
 ;can go down the table, not up
+
+[global getCR3]
+getCR3:
+	mov eax, cr3
+	ret
 
 [global EnablePaging]
 EnablePaging:
@@ -351,14 +515,87 @@ ret
 
 [global timer]
 timer dd 0	;a measure of time since the system started
+[extern next_state]	;this loads the TSS information for the next task into the unused system TSS
+					;it also stores the TSS information of the previous task
+[global enable_multi]
 
-irqM0:
-	push ax
-	inc dword [timer]
-	;manual EOI before the interrupt has ended
+previous_tss db 2	;defines which tss holds the previous task
+previous dd 0		;is the unused TSS a valid previous task?
+task_timer db 20;	;this is the task timer
+enable_multi db 0;	;should we try to multitask yet?
+
+[global get_current_tss]
+get_current_tss:
+	cmp BYTE [previous_tss], 1
+	je .2
+	mov eax, multi_tss_begin - multi_start
+	jmp .1
+.2
+	mov eax, multi_tss2_begin - multi_start
+.1
+	ret
+
+irqM0:	inc dword [timer]
+	dec BYTE [task_timer]
+	;manual EOI before the interrupt has ended	
+	push ax			;save ax
 	mov al, 0x20
 	out 0x20, al
-	pop ax
+	pop ax			;restore ax
+	cmp BYTE [enable_multi], 0
+	je .noSwitch
+	cmp BYTE [task_timer], 0
+	je .switch
+	;check to see if it is time for a task switch
+	jmp .end
+.noSwitch
+	mov BYTE [task_timer], 20
+	jmp .end
+.switch
+	cli
+	mov BYTE [task_timer], 20
+	push eax	;store eax for after the next_state call
+	cmp BYTE [previous_tss], 2
+	je .2
+	mov eax, multi_tss_begin - multi_start
+	push eax
+	mov BYTE [previous_tss], 2
+	jmp .1
+.2
+	mov eax, multi_tss2_begin - multi_start
+	push eax
+	mov BYTE [previous_tss], 1
+.1
+	call get_sys_tasks
+	push eax
+	xor eax, eax
+	mov ax, [previous]
+	push eax
+	call next_state	;takes three arguments
+	pop eax
+	pop eax	;pop arguments off of the stack
+	pop eax
+	pop eax			;restore eax
+	;either this is the first task switch and the previous tss is invalid (in which case the data was not used)
+	;or this was not the first task switch (data in the tss was used)
+	;either way, once the hardware performs the task switch, the "previous" task will contain information about the current task
+	;jump to the TSS that was just loaded (previous task will point to the currently executing task)
+	push eax
+	mov eax, 1
+	mov [previous], eax
+	pop eax
+	cmp BYTE [previous_tss], 2
+	je .2exec
+	sti
+	jmp 0x20:00
+	jmp .1exec
+.2exec
+	sti
+	jmp 0x18:00
+.1exec
+	;when you return to this task, it will iret and continue normally
+	;hoepfully this will not cause problems with irq 0
+.end
 	iret
 
 [global Delay]
@@ -388,6 +625,66 @@ WaitKey:
 	je .wait
 	pop ax
 	ret
+
+;this has to match what is found in sys/syscalls.h
+SYS_close	equ	1 ;1
+SYS_execve	equ	2 ;3
+SYS_exit	equ	3 ;0
+SYS_fork	equ	4 ;0
+SYS_fstat	equ	5 ;2
+SYS_getpid	equ	6 ;0
+SYS_isatty	equ	7 ;1
+SYS_kill	equ	8 ;2
+SYS_link	equ	9 ;2
+SYS_lseek	equ	10;3
+SYS_open	equ	11;Variable number of arguments
+SYS_read	equ	12;3
+SYS_sbrk	equ	13;1
+SYS_stat	equ	14;2
+SYS_time	equ	15;2
+SYS_times	equ	16;1
+SYS_unlink	equ	17;1
+SYS_wait	equ	18;1
+SYS_write	equ	19;3
+
+SYS_MAX		equ	20
+
+;newline db 13, 10, 0
+
+syscall1:
+	;check for syscalls that have no arguments
+	cmp eax, SYS_exit
+	je .exit
+	cmp eax, SYS_fork
+	je .fork
+	cmp eax, SYS_getpid
+	je .getpid
+	jmp .one
+.exit	;exit the task that called this
+.idle
+	hlt
+	jmp .idle
+.fork
+	mov eax, 0xFFFFFFFF	;return error for now
+	iret
+.getpid
+	mov eax, 1
+	iret
+.one	;one argument
+	cmp eax, SYS_sbrk
+	je .sbrk
+	jmp .two
+.sbrk
+	push ebx
+	call PrintNumber
+	pop ebx
+	push newline
+	call display
+	pop eax
+	mov eax, 0xFFFFFFFF
+	iret
+.two
+	iret
 
 ;the IRQ handler for the keyboard will convert scancodes and then place the code into a buffer
 ;the buffer will have a start and length
@@ -421,10 +718,7 @@ irqM1:
 	xor eax, eax
 	in al, 0x60
 	;check for codes that don't qualify as the last response
-	cmp al, 0xFA
-	je .noResponse
 	mov [LastResponse], al
-	.noResponse
 	push eax
 	call handleScancode
 	pop eax
@@ -509,9 +803,9 @@ WaitFloppyInt:
 	mov eax, 0	;indicate success
 	ret
 .error
-	push FloppyTimeout
-	call display
-	pop eax
+	;push FloppyTimeout
+	;call display
+	;pop eax
 	pop ebx
 	mov eax, 0xFFFFFFFF	;-1 indicates failure
 	ret

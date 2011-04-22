@@ -61,3 +61,5 @@ extern void irqM12();
 extern void irqM13();
 extern void irqM14();
 extern void irqM15();
+
+extern void syscall1();

@@ -181,6 +181,7 @@ void free_page(unsigned int address, unsigned int size, unsigned int *table, uns
 void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *table_address, unsigned int code)
 {	//fills out the PDT, and PTE for a given memory range
 //0, 0x100000, &table_address, 2
+	//display("::test1\n");
 	unsigned int pdt_calc;
 	for (pdt_calc = address / 0x400000;
 			pdt_calc <= ((address + length - 1) / 0x400000);
@@ -193,6 +194,7 @@ void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *tabl
 			//fill out the PageTableDirectory we just assigned
 		}
 	}
+	//display("::test1.1\n");
 	for (pdt_calc = address - (address % 0x1000);
 			 pdt_calc <= (address + length); pdt_calc+= 0x1000)
 	{	//starts at the first page boundary at or before the memory range starts
@@ -203,10 +205,12 @@ void pdt_ptd_range(unsigned int address, unsigned int length, unsigned int *tabl
 		tableEntry(pdt_calc);
 		//determine if memory is in range
 	}
+	//display("::test1.2\n");
 	if (code == 1)
 	{	//find the largest memory address that can possibly be allocated
 		largest_address = address + length - 1;
 	}
+	//display("::test1.3\n");
 }
 
 unsigned int *page_address;
@@ -239,7 +243,12 @@ unsigned int *alloc_bytes(unsigned int bytes)
 	do
 	{
 		for (; *page != 0; page += ((*page & 0x7FFFFFFF) / BYTE_GRANULARITY))
-		{	
+		{
+//			display("Address:");
+//			PrintNumber(page);
+//			display("\tLength:");
+//			PrintNumber(*page);
+//			display("\n");
 			if (*page < 0x80000000)
 			{	//only if this segment is unused
 				if (*page >= (number_bytes + BYTE_GRANULARITY))
@@ -259,6 +268,7 @@ unsigned int *alloc_bytes(unsigned int bytes)
 	//now that the best fit has been found, modify appropriately
 	if (address == 0)
 	{	//allocate another page for allocating memory
+//		display("Need to allocate another page for less than page allocation\n");
 		*new_page = (unsigned int)malloc(0x1000);	//set the address for the previous page so that this page will be included in the search
 		new_page = (unsigned int *)*new_page;
 		if (new_page == 0)
@@ -273,14 +283,29 @@ unsigned int *alloc_bytes(unsigned int bytes)
 	}
 	if (length <= (number_bytes + 3 * BYTE_GRANULARITY))
 	{	//then all you have to do is mark it as used because there is not enough free space for another segment
+//		display("No room for another segment\n");
 		*(unsigned int*)address += 0x80000000; //always length < 0x1000
 	}	//a free segment has to be at least 2*BYTE_GRANULARITY
 	else
 	{	//then modification is required (plenty of room for a blank segment after the end of the new used segment
+//		display("Page:");
+//		PrintNumber(page);
 		page = (unsigned int*)(number_bytes + BYTE_GRANULARITY + address);
+//		display("\tPage:");
+//		PrintNumber(page);
+//		display("\t*Page:");
+//		PrintNumber(*page);
 		*page = length - number_bytes - BYTE_GRANULARITY;
+//		display("\t*Page:");
+//		PrintNumber(*page);
+//		display("\n");
 		*(unsigned int*)address = 0x80000000 + number_bytes + BYTE_GRANULARITY;
 	}
+//	display("Address returned:");
+//	PrintNumber(address + BYTE_GRANULARITY);
+//	display("\tLength:");
+//	PrintNumber(bytes);
+//	display("\n");
 	return (void *)(address + BYTE_GRANULARITY);
 }
 
@@ -424,13 +449,16 @@ void free(void *address)
 
 void *memcopy(void* s1, const void* s2, unsigned int n)
 {
-	display("Copying ");
-	PrintNumber(n);
-	display(" bytes from ");
-	PrintNumber(s2);
-	display(" to ");
-	PrintNumber(s1);
-	display("\n");
+	unsigned long counter;
+	for (counter = 0; counter < (n / sizeof(unsigned char)); counter++)
+	{
+		((unsigned char*)s1)[counter] = ((unsigned char*)s2)[counter];
+	}
+	return s1;
+}
+
+void *memcpy(void* s1, const void* s2, unsigned int n)
+{
 	unsigned long counter;
 	for (counter = 0; counter < (n / sizeof(unsigned char)); counter++)
 	{
@@ -461,15 +489,20 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 	{	//4MB * 1024 (0x400) = 4GB
 		page_table[counter] = 0;
 	}
+	//display("test1\n");
 	if (boot_info->flags & 64)
 	{
 		memory_look = (unsigned int*)boot_info->mmap_addr;
+		//display("test1.1\n");
 		for (memory_look = (unsigned int*)boot_info->mmap_addr;
 					(unsigned int)memory_look < (boot_info->mmap_addr + boot_info->mmap_length);
 					memory_look += (memory_look[0]) / sizeof(unsigned int) + 1)
 		{	//scan each memory range
+			//display("1.15\n");
 			pdt_ptd_range(memory_look[1], memory_look[3], &table_address, memory_look[5]);
+			//display("1.2\n");
 		}
+		//display("test2\n");
 		pdt_ptd_range(0, 0x100000, &table_address, 2);
 		//now we can start initializing our binary tree
 		//need to repeat the entire loop again, the first time we didn't have the most important piece of imformation
@@ -484,6 +517,7 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 		{	//initialize the tree to all memory used to prevent bugs
 			page_tree[counter] = 0;
 		}
+		//display("test3\n");
 		//number of unsigned ints it takes to make the entire table
 		memory_look = (unsigned int*)boot_info->mmap_addr;	//need to reinitialize
 		for (memory_look = (unsigned int*)boot_info->mmap_addr;
@@ -509,6 +543,7 @@ void setup_paging(struct multiboot_info *boot_info, unsigned int size)
 				}
 			}
 		}
+		//display("test4\n");
 	}
 	else if (boot_info->flags & 1)
 	{

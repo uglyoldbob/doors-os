@@ -1,18 +1,24 @@
 //video.c
 #include "video.h"
-
+#include "spinlock.h"
 
 void display(char *cp)
 {
+	enter_spinlock(SL_DISPLAY);
 	char *str = cp, *ch;
+	//PrintNumber(getEIP());
+	//put('\n');
+	//while(1){};
 	for (ch = str; *ch; ch++)
 	{
 		put(*ch);
 	}
+	leave_spinlock(SL_DISPLAY);
 }
 
 void PrintNumber(unsigned int bob)
 {	//this prints a 32 bit number (8 hex digits)
+	enter_spinlock(SL_DIS2);
 	unsigned int Temp = 0;
 	display("0x");
 	int counter = 7;
@@ -29,6 +35,7 @@ void PrintNumber(unsigned int bob)
 		}
 		put((unsigned char)(Temp));
 	}
+	leave_spinlock(SL_DIS2);
 }
 
 void put(unsigned char c)
@@ -123,7 +130,7 @@ void put(unsigned char c)
 }
 
 void clear_screen()
-{
+{	//this also is an initializer
 	unsigned short *videomem = (unsigned short*) 0xB8000;
 	int counter;
 	for (counter = 0; counter < (80 * 25); counter++)

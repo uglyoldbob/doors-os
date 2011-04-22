@@ -4,9 +4,22 @@ File access
 
 The syntax for file access will be similar to Linux
 Starts with a '/'
-Then the "drive" name (different partitions on a hard drive will have different names)
-FORM: /device/folder/folder/file
-EX: /floppya, /floppyb, /floppyc, /floppyd
+Then the "drive" name
+After the drive name will come the partition number
+FORM: /device/partition number/folder/folder/file
+EX: /floppy1/1, /floppy2/1, /hd1/1, /hd1/2, /cd1/1, /cd2/1
+A floppy disk is assumed to not have partitions, but still a partition specifier is required
+The first partition is partition 1, not partition 0
+
+Disk access. Everything is in the path name to find the partition required. Both drive number and partition number are given. The text string will need to be run through an interpreter (which might eventually be unicode aware). Once the bootsector for the partition has been located, it will be sent to each file system driver until a match is found.
+EX: access for /hd1/2/loser.txt is needed.
+	Access hd1. Locate Partition 2.
+	Load bootsector for partition 2. The MBR should tell us what kind of filesystem is there. If for some reason, using that driver returns an error, every file system driver will be queried. If no drivers return a success code, then the partition is not usable for some reason. That should generate an error code.
+		The FAT driver should/will return an error when reading an NTFS.
+
+findPartition(floppy1/1)
+readFile(/floppy1/1/file.txt)
+	
 
 Certain information will need to be stored for each drive accessible by this method.
 	Drive name (floppya, floppyb, ...)

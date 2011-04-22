@@ -10,9 +10,13 @@
 #include "message.h"
 #include "disk.h"
 #include "fat.h"
+#include "tss.h"
+
+#include <sys/syscalls.h>
 
 #define CLOCKS_PER_SEC 1000	//this is the number of times our timer variable is incremented per second (real close)
 extern unsigned int timer;		//entrance.asm
+extern unsigned long getCR3();	//entrance.asm
 
 char *key_show[] = {
 "NULL",
@@ -129,80 +133,156 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	//DONE: event notification
 	//build floppy disk driver
 	//done: complete keyboard driver (buffer for the driver, when a byte is added, post a message about it)
+	//TODO: upgrade keyboard driver, allow custom mappings, conform to a standard of some sort regarding the values for keystrokes
+		//UTF-8 is a likely candidate for this, ASCII can be used, but does not allow for representation of every keystroke (not easily)
+		//also UTF-8 is compatible with ASCII
+	//TODO: repair spinlocks (they don't work)
 	//enable virtual memory
-	//enable multi-tasking
-	unsigned char drive;	//stores information about the drive Doors was loaded from
-	unsigned long counter;
+	//enable multi-tasking (software / hardware mix for the moment, fully hardware multitasking is too restrictive 
+		//- each task needs a seperate entry in the gdt)
 	clear_screen();
+	initialize_spinlock();
+	display("\nConfigured spinlocks data\n");
+	display("PIC initialized and interrupts enabled\n");
+	setupPIC();
+	
+	//unsigned char drive;	//stores information about the drive Doors was loaded from
+	unsigned long counter;
+	unsigned char *first_page;	//pointer to the relocated first page
+
+//	struct FatBootSector floppya;
+	struct TSS *newtask;
+	unsigned long *temporary;
+
+	enter_spinlock(SL_MEM_MNG);
+	leave_spinlock(SL_MEM_MNG);
+
+	display("Configuring system timer for ");
+	PrintNumber(CLOCKS_PER_SEC);
+	display(" hertz\n");
+	setupTimer(CLOCKS_PER_SEC);
+
+	display("Configuring memory management\n");
+	setup_paging(boot_info, size);
+
+
 	if (boot_info->flags & 0x2)
-	{	//0x00xxxxxxxx = floppy, 0xE0xxxxxxxx = CD
+	{	//0x00xxxxxx = floppy, 0xE0xxxxxx = CD, 0x80xxxxxx = hard drive
 		display("Boot device: ");
 		PrintNumber(boot_info->boot_device);
 		display("\n");
 	}
 	if (boot_info->flags & 0x4)
 	{	//check for a commandline given to the kernel
+		display("Command line: ");
 		display((char*)boot_info->cmdline);
 		display("\n");
 	}
-	display("Initializing spinlock data\n");
-	initialize_spinlock();
-	display("Configuring memory management\n");
-	setup_paging(boot_info, size);
+	
+	display("Setting up data for multi-tasking\n");
+
+	//initialize multi-tasking and setup the first task
+	sys_tasks = malloc (sizeof (struct task));
+	first_page = malloc (0x1000);
+	memcopy(first_page, 0, 0x1000);
+	setup_multi_gdt();
+	init_first_task(sys_tasks);
+
+	//test multi-tasking by activating another task
+	//asm("cli");
+	temporary = malloc(0x1000);	//one page for the stack
+	newtask = malloc(sizeof(struct TSS));
+	newtask->esp = (unsigned long)temporary + 0xFFC;
+	newtask->cs = 0x08;
+	newtask->ds = 0x10;
+	newtask->es = 0x10;
+	newtask->fs = 0x10;
+	newtask->gs = 0x10;
+	newtask->ss = 0x10;
+	newtask->cr3 = getCR3();
+	newtask->ldt_segment_selector = 0;
+	newtask->eip = (unsigned long)secondary_task;
+	newtask->eflags = 0x00000202;			//interrupt flag set, enabling interrupts for the task
+	add_task_before(newtask, sys_tasks);
+	display("\nReturned to main ");
+	PrintNumber(getEIP());
+	display("\n");
+	enable_multi = 1;
+	//asm("sti");
+
 	display("Initializing message delivery subsystem\n");
 	init_messaging();
-	display("Configuring system timer for ");
-	PrintNumber(CLOCKS_PER_SEC);
-	display(" hertz\n");
-	setupTimer(CLOCKS_PER_SEC);
-	display("Setting up PIC and enabling interrupts\n");
-	setupPIC();
 	display("Looking for floppy drives\n");
 	initialize_floppy();
 	display("Checking for drives connected to IDE controllers.\n");
 	examine_ide();
 	display("Configuring keyboard\n");
 	init_keyboard();
-	unsigned char *storage;
-	unsigned char *OemName;
-	OemName = malloc(9);
-	OemName[0] = 0;
-	storage = malloc(storage);
-	display("Reading a sector from the floppy drive:\n");
-	if (read_sector(0, 0, storage, FLOPPY_PRIMARY_BASE) == -1)
+
+//	unsigned char *storage;
+//	unsigned char *OemName;
+//	OemName = malloc(9);
+//	OemName[0] = 0;
+//	storage = malloc(sector_size);
+//	display("Reading a sector from the floppy drive:\n");
+//	if (floppy_read_sector(0, 0, storage, FLOPPY_PRIMARY_BASE) == -1)
+//		display("Error reading sector from floppy drive\n");
+
+/*	struct sectorReturn floppy_boot;
+	floppy_boot = readSector(0, 0);
+	if (floppy_boot.size == 0)
+	{
 		display("Error reading sector from floppy drive\n");
-	display("First sector information is loaded at:");
-	PrintNumber(sector_size);
-	display("\n");
+	}
+	else
+	{
+		load_boot_sector(0, &floppya, floppy_boot.data);
+	}*/
+
 //	display("Information as follows:\n");
 //	for (counter = 0; counter < sector_size / sizeof(unsigned long); counter++)
 //		PrintNumber(((unsigned long*)storage)[counter]);
 //	display("\n");
-	memcopy(OemName, &storage[3], 8);
-	display("The Disk is named: ");
-	display(OemName);
-	display("\nBytes per sector:");
-	PrintNumber(storage[12] * 0x100 + storage[11]);
-	display("\nSectors per cluster:");
-	PrintNumber(storage[13]);
-	display("\nNumber of reserved sectors:");
-	PrintNumber(storage[15] * 0x100 + storage[14]);
-	display("\nNumber of FAT tables:");
-	PrintNumber(storage[16]);
-	display("\nEntries in the root directory:");
-	PrintNumber(storage[18] * 0x100 + storage[17]);
-	display("\nTotal number of sectors:");
-	PrintNumber(storage[20] * 0x100 + storage[19]);
-	display("\nThis is negative 1:");
-	PrintNumber(-1);
-	display("\n");
+	
+//	memcopy(OemName, &floppy_boot.data[3], 8);
+//	display("The Disk is named: ");
+//	display(OemName);
+//	display("\tBytes per sector:");
+//	PrintNumber(floppy_boot.data[12] * 0x100 + floppy_boot.data[11]);
+//	display("\nSectors per cluster:");
+//	PrintNumber(floppy_boot.data[13]);
+//	display("\tNumber of reserved sectors:");
+//	PrintNumber(floppy_boot.data[15] * 0x100 + floppy_boot.data[14]);
+//	display("\nNumber of FAT tables:");
+//	PrintNumber(floppy_boot.data[16]);
+//	display("\tEntries in the root directory:");
+//	PrintNumber(floppy_boot.data[18] * 0x100 + floppy_boot.data[17]);
+//	display("\nTotal number of sectors:");
+//	PrintNumber(floppy_boot.data[20] * 0x100 + floppy_boot.data[19]);
+//	display("\tFat size in sectors:");
+//	PrintNumber(floppy_boot.data[23] * 0x100 + floppy_boot.data[22]);
+//	display("\n");
+
 	//enter_spinlock(SL_MEM_MNG);
 	struct message examine;	//this will be used to retrieve messages from the system buffer
 	display("\nEntering message scan loop\n");
+/*	counter = 0;
+	while(1)
+	{
+		counter++;
+		if (counter == 0x100000)
+		{
+			counter = 0;
+			display("Main task still running. ");
+		}
+	}*/
 	while (1)
 	{
 		unsigned int check;
-		do {check_system_event(&check);} while (check == 0);
+		do 
+		{
+			check_system_event(&check);
+		} while (check == 0);
 		//wait until there is an event to process
 		get_system_event(&examine);
 		//retrieve the message
@@ -214,7 +294,7 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 					switch (examine.data1 & 0xFF)
 					{	//here is where specific actions for keyboard buttons will be handled
 						case KEY_ESCAPE:
-							outportb(0xFE, 0x64);	//reboot
+							//outportb(0xFE, 0x64);	//reboot
 							display("\nThe escape key has been pressed\n");
 							break;
 						default:
