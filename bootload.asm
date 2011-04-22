@@ -10,7 +10,11 @@ start:
 jmp short begin
 nop
 
-times 3Bh db 0
+db                   0x2E, 0x42, 0x50, 0x2E, 0x38, 0x49, 0x48, 0x43, 0x00, 0x02, 0x01, 0x01, 0x00
+db 0x02, 0xE0, 0x00, 0x40, 0x0B, 0xF0, 0x09, 0x00, 0x12, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00
+db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x20, 0x12, 0xED, 0x17, 0x4E, 0x4F, 0x20, 0x4E, 0x41
+db 0x4D, 0x45, 0x20, 0x20, 0x20, 0x20, 0x46, 0x41, 0x54, 0x31, 0x32, 0x20, 0x20, 0x20
+;times 3Bh db 0
 begin:
 jmp 0x07C0:main	;fix CS so that my jumps will work on every computer?
 ;skip data so we don't go insane or crash the CPU
@@ -21,10 +25,9 @@ Cylinder db 00h						;stores the cylinder value for int 13
 Head db 00h							;stores the head value for int 13
 Sector db 00h						;stores the sector value for int 13
 FileName db 'SECOND  BIN'				;the name of the kernel file
-Message db 'Secondary loading...', 13, 10, 0	;the success message
-Oops db 'Oops', 7, 13, 10, 0				;error message (beep twice)
+Message db 'Loading...', 13, 10, 0	;the success message
+Oops db 'XX', 7, 13, 10, 0				;error message (beep twice)
 Space db ' ', 0						;this is for the screen clearing
-A20Y db 'A20 Enabled', 13, 10, 0
 main:
 	cli					;disable interupts while we set up a stack
 	mov ax, 07C0h
@@ -138,21 +141,6 @@ Done:
 	mov WORD [Cluster], dx		;store the new cluster value
 	cmp dx, 0x0FF0			;test for EOF
 	jb Load				;keep reading if not done
-;enabling A20 line
-	;enable A20
-	in	al, 92h
-	or	al, 2
-	out	92h, al
-;check for it
-	xor AX, AX
-	in AL, 92h
-	bt ax, 1
-	jc Enabled
-	jmp short NotEnabled
-Enabled:
-	mov si, A20Y
-	call DisplayMessage
-NotEnabled:
 	mov si, Message
 	call DisplayMessage
 	push WORD 0x0050

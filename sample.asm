@@ -128,10 +128,10 @@ Done:
 	mov BYTE [Type], 1		;OS usable memory
 	call extmem_int15_e820
 	jc OldComputer
-	mov si, mem_msg2
-	call DisplayMessage
-	mov BYTE [Type], 2		;unusable memory
-	call extmem_int15_e820
+	;mov si, mem_msg2
+	;call DisplayMessage
+	;mov BYTE [Type], 2		;unusable memory
+	;call extmem_int15_e820
 	jnc ok
 OldComputer:				;does not support the special calls
 ; before trying other BIOS calls, use INT 12h to get conventional memory size
@@ -160,9 +160,27 @@ OldComputer:				;does not support the special calls
 	mov si,err_msg
 	call DisplayMessage
 ok:
+;initialize the PIC
+	mov al, 00010001b
+	out 0x20, al
+	out 0xA0, al	;begin initialing master and slave PIC
+	mov al, 0x20	;IRQ 0 for master goes to INT 32d
+	out 0x21, al	
+	mov al, 0x28	;IRQ 0 for slave goes to INT 40d
+	out 0xA1, al
+	mov al, 00000100b	;slave PIC connected to IRQ 2 of master PIC
+	out 0x21, al
+	mov al, 0x2		;slave PIC is connected to IRQ2
+	out 0xA1, al
+	mov al, 1		;Intel, manual EOI
+	out 0x21, al
+	out 0xA1, al
+	
 
 ;jump to the kernel now
 	cli
+	mov al, 0xFF	;disable IRQ's
+	out 0x21, al	
 	xor ax, ax
 	mov ds, ax              
 	lgdt [gdt_desc + 0x0500]
@@ -175,7 +193,7 @@ mem_msg db 'Memory ranges:'
 crlf_msg db 13, 10, 0
 base_msg db 'base=0x', 0
 size_msg db ', size=0x', 0
-err_msg db 'BIOS calls to determine memory size has failed', 13, 10, 0
+err_msg db 'BIOS calls failed', 13, 10, 0
 ;ROUTINES
 display_range:
 	pusha
