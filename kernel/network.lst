@@ -1,0 +1,4 @@
+title   Doors OS
+		bootp --with-configfile
+        root    (nd)
+        kernel  /tftpboot/kernel.bin

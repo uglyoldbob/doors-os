@@ -1,8 +1,0 @@
-load_cluster
-cluster_number
-
-
-first_cluster = dir_item.anything1;
-cluster_n = cluster_entry(cluster_n-1)
-
-
