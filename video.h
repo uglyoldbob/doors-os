@@ -1,18 +1,13 @@
-//Video.h
-#ifndef VIDEO_H
-#define VIDEO_H 				//so we don't get multiple definitions of Video
+unsigned long pos;
+unsigned long off;
 
-class Video
-{
-public:
-	Video();
-	~Video();
-	void clear();
-	void write(char *cp);
-	void put(unsigned char c);
-private:
-	unsigned short *videomem; 	//pointer to video memory
-	unsigned int off;			//offset, used like a y cord
-	unsigned int pos;			//position, used like x cord
-}; 						//don't forget the semicolon!
-#endif
+void display(char * chr);
+	//this will be called from out ASM code
+void PrintNumber(unsigned long bob);
+	//this prints an unsigned long number to the screen in hexadecimal
+void put(unsigned char);
+//prints a single character to the screen
+void clear_screen();
+//clears the screen
+void scroll_screen();
+//scrolls the screen up one line
