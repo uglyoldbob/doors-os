@@ -9,7 +9,7 @@ public:
 	~Video();
 	void clear();
 	void write(char *cp);
-	void put(char c);
+	void put(unsigned char c);
 private:
 	unsigned short *videomem; 	//pointer to video memory
 	unsigned int off;			//offset, used like a y cord

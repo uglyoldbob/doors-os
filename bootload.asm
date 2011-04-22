@@ -12,7 +12,7 @@ nop
 
 times 3Bh db 0
 begin:
-jmp short main
+jmp 0x07C0:main	;fix CS so that my jumps will work on every computer?
 ;skip data so we don't go insane or crash the CPU
 PreCluster dw 0h					;this stores the number of sectors in the partition before the first cluster 
 							;(used when reading kernel)

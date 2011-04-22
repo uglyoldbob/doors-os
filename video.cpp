@@ -33,7 +33,7 @@ void Video::write(char *cp)	//must be null terminated
 	}
 }
 
-void Video::put(char c)
+void Video::put(unsigned char c)
 {
 	if (pos >= 80)
 	{

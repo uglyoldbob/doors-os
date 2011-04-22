@@ -1,10 +1,14 @@
 [BITS 32]
 [global start] 
-[extern _main]	;this is in our C++ code
-[extern __main]	;this is in our C support code
-[extern __atexit] ;this is in our C support code
-[extern __Z7displayPc]	;this is our display(char*) function
-
+[extern _main]			;this is in our C++ code (it is the function that starts it all off)
+[extern __main]			;this is in our C support code
+[extern __atexit] 		;this is in our C support code
+[extern __Z7displayPc]		;void display(char *chr)
+[global __Z12EnablePagingv]	;void EnablePaging(void)
+[global __Z6GetCr3v]		;unsigned long GetCr3()
+[extern __Z11PrintNumberm]	;void PrintNumber(unsigned long)
+[global __Z11ReadSectorsmmh]	;bool ReadSectors(unsigned long SectorNumber,unsigned long NumSectors,unsigned char DriveNum)
+[global __Z10ReadSectormh]	;bool ReadSector(unsigned long SectorNumber, unsigned char DriveNum)
 	mov ax, 0x10
 	mov ds, ax			;set the segment registers
 	mov ss, eax			;and stack
@@ -12,7 +16,7 @@
 	mov es, eax
 	mov fs, eax
 	mov gs, eax
-	lgdt [gdt_desc + 0x0900]
+	lgdt [ds:gdt_desc]
 		;this is so the place where the GDT used to be wont be a problem when the stack overwrites it
 	mov eax, 0x0900
 	mov esp, eax
@@ -24,28 +28,29 @@
 	call __atexit
 	cli
 	hlt 			;halt the CPU
+	jmp $
 gdt:                    ; Address for the GDT
 gdt_null:               ; Null Segment
 	dd 0
 	dd 0
 gdt_code:               ; Code segment, read/execute, nonconforming
-	dw 0FFFFh
+	dw 0xFFFF
 	dw 0x0000
 	db 0
-	db 10011010b
+	db 10011010b	;non-system descriptor (bit 4)
 	db 11001111b
 	db 0
 gdt_data:               ; Data segment, read/write
 	dw 0xFFFF
 	dw 0x0000
 	db 0
-	db 10010010b
+	db 10010010b	;non system descriptor (bit 4)
 	db 11001111b
 	db 0
 gdt_end:				; Used to calculate the size of the GDT
 gdt_desc:				; The GDT descriptor
 	dw gdt_end - gdt - 1	; Limit (size)
-	dd gdt + 0x0900		; Address of the GDT
+	dd gdt			; Address of the GDT
 
 ;interrupt descriptor format
 ;interrupt gate
@@ -58,121 +63,121 @@ gdt_desc:				; The GDT descriptor
 idt:				;address for the IDT
 ;10, 14 - use task gate
 idt0:	;interrupt gate
-      dw (isr0+0x0900-$$-2) & 0xFFFF  ;get the lower word for the offset
+      dw (isr0+0x0900-$$) & 0xFFFF  ;get the lower word for the offset
 	dw 0x08				;the code segment for our segment
 	db 0
 	db 10001110b
 	dw (isr0+0x0900-$$) >> 16	;the upper byte of the offset
 idt1:	;interrupt gate
-	dw (isr1-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr1-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr1-$$+0x0900) >> 16	;the upper byte of the offset
-idt2:	;interrupt gate
-	dw (isr2-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+idt2:	;interrupt gate @@@
+	dw (isr2-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 00001110b	;flags byte (not present, supposedly reserved)
 	dw (isr2-$$+0x0900) >> 16	;the upper byte of the offset
 idt3:	;interrupt gate
-	dw (isr3-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr3-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr3-$$+0x0900) >> 16	;the upper byte of the offset
 idt4:	;interrupt gate
-	dw (isr4-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr4-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr4-$$+0x0900) >> 16	;the upper byte of the offset
 idt5:	;interrupt gate
-	dw (isr5-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr5-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr5-$$+0x0900) >> 16	;the upper byte of the offset
 idt6:	;interrupt gate
-	dw (isr6-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr6-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr6-$$+0x0900) >> 16	;the upper byte of the offset
 idt7:	;interrupt gate
-	dw (isr7-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr7-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr7-$$+0x0900) >> 16	;the upper byte of the offset
 idt8:	;interrupt gate
-	dw (isr8-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr8-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr8-$$+0x0900) >> 16	;the upper byte of the offset
 idt9:	;interrupt gate
-	dw (isr9-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr9-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr9-$$+0x0900) >> 16	;the upper byte of the offset
 idt10:	;interrupt gate
-	dw (isr10-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr10-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr10-$$+0x0900) >> 16	;the upper byte of the offset
 idt11:	;interrupt gate
-	dw (isr11-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr11-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr11-$$+0x0900) >> 16	;the upper byte of the offset
 idt12:	;interrupt gate
-	dw (isr12-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr12-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr12-$$+0x0900) >> 16	;the upper byte of the offset
 idt13:	;interrupt gate
-	dw (isr13-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr13-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr13-$$+0x0900) >> 16	;the upper byte of the offset
 idt14:	;interrupt gate
-	dw (isr14-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr14-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr14-$$+0x0900) >> 16	;the upper byte of the offset
-idt15:	;interrupt gate
-	dw (isr9-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+idt15:	;interrupt gate @@@
+	dw (isr10-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 00001110b	;flags byte (not present, reserved)
-	dw (isr9-$$+0x0900) >> 16	;the upper byte of the offset
+	dw (isr10-$$+0x0900) >> 16	;the upper byte of the offset
 idt16:	;interrupt gate
-	dw (isr16-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr16-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr16-$$+0x0900) >> 16	;the upper byte of the offset
 idt17:	;interrupt gate
-	dw (isr17-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr17-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr17-$$+0x0900) >> 16	;the upper byte of the offset
 idt18:	;interrupt gate
-	dw (isr18-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr18-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
 	dw (isr18-$$+0x0900) >> 16	;the upper byte of the offset
 idt19:	;interrupt gate
-	dw (isr19-$$+0x0900-2) & 0xFFFF	;get the lower word for the offset
+	dw (isr19-$$+0x0900) & 0xFFFF	;get the lower word for the offset
 	dw 0x08		;the code segment for our segment
 	db 0			;a zero byte
 	db 10001110b	;flags byte
@@ -297,7 +302,7 @@ Ten db 'Invalid TSS exception', 10, 0
 isr10:
 ;fault, error code present
 ;must use a task gate, to preserve stability
-mov ax, 10h
+	mov ax, 10h
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Ten
 	call __Z7displayPc		;print string (C++ function)
@@ -310,7 +315,7 @@ isr11:
 	mov ax, 10h
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Eleven
-	call __Z7displayPc		;print string (C++ function)
+	call __Z7displayPc	;print string (C++ function)
 	pop eax
 	cli				;disable interrupts
 	hlt				;hang
@@ -320,7 +325,7 @@ isr12:
 	mov ax, 10h
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Twelve
-	call __Z7displayPc		;print string (C++ function)
+	call __Z7displayPc	;print string (C++ function)
 	pop eax
 	cli				;disable interrupts
 	hlt				;hang
@@ -330,7 +335,7 @@ isr13:
 	mov ax, 10h
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Thirteen
-	call __Z7displayPc		;print string (C++ function)
+	call __Z7displayPc	;print string (C++ function)
 	pop eax
 	cli				;disable interrupts
 	hlt				;hang
@@ -382,3 +387,23 @@ isr19:
 	call __Z7displayPc		;print string (C++ function)
 	cli				;disable interrupts
 	hlt				;hang
+
+__Z12EnablePagingv:
+	mov eax, 0x0100000	;set the base of the page directory (1 MB)
+	mov cr3, eax		;time to set the paging bit
+	mov eax, cr0
+	or eax, 1110000000000000000000000000000b
+	mov cr0, eax
+	ret
+
+__Z6GetCr3v:
+	mov eax, cr3
+	ret				;return value goes in eax
+
+__Z10ReadSectormh:		;reads one sector from a floppy disk
+	mov eax, 0
+	ret
+
+__Z11ReadSectorsmmh:		;reads sectors from a floppy disk by making calls to ReadSector
+	mov eax, 0
+	ret

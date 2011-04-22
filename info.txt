@@ -80,11 +80,12 @@ romimage: file=$BXSHARE/BIOS-bochs-latest, address=0xf0000
 #=======================================================================
 #megs: 256
 #megs: 128
-#megs: 64
+megs: 64
 #megs: 32
 #megs: 16
 #megs: 8
-megs: 2
+#megs: 4
+#megs: 2
 
 #=======================================================================
 # OPTROMIMAGE[1-4]:
@@ -132,7 +133,7 @@ vgaromimage: $BXSHARE/VGABIOS-elpin-2.40
 # supported on Windows 95 and 98.
 #=======================================================================
 #floppya: 1_44=/dev/fd0, status=inserted
-floppya: 1_44=I:\doors.img, status=inserted
+floppya: 1_44=D:\doors.img, status=inserted
 #floppya: file=../1.44, status=inserted
 #floppya: 1_44=/dev/fd0H1440, status=inserted
 #floppya: 1_2=../1_2, status=inserted
@@ -234,7 +235,7 @@ ata0-master: type=disk, mode=flat, path="30M.sample", cylinders=615, heads=6, sp
 #   boot: c
 #   boot: a
 #=======================================================================
-boot: a
+boot: floppy
 #boot: disk
 
 #=======================================================================

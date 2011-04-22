@@ -1,0 +1,582 @@
+Usage: gcc.exe [options] file...
+Options:
+  -pass-exit-codes         Exit with highest error code from a phase
+  --help                   Display this information
+  --target-help            Display target specific command line options
+  -dumpspecs               Display all of the built in spec strings
+  -dumpversion             Display the version of the compiler
+  -dumpmachine             Display the compiler's target processor
+  -print-search-dirs       Display the directories in the compiler's search path
+  -print-libgcc-file-name  Display the name of the compiler's companion library
+  -print-file-name=<lib>   Display the full path to library <lib>
+  -print-prog-name=<prog>  Display the full path to compiler component <prog>
+  -print-multi-directory   Display the root directory for versions of libgcc
+  -print-multi-lib         Display the mapping between command line options and
+                           multiple library search directories
+  -print-multi-os-directory Display the relative path to OS libraries
+  -Wa,<options>            Pass comma-separated <options> on to the assembler
+  -Wp,<options>            Pass comma-separated <options> on to the preprocessor
+  -Wl,<options>            Pass comma-separated <options> on to the linker
+  -Xlinker <arg>           Pass <arg> on to the linker
+  -save-temps              Do not delete intermediate files
+  -pipe                    Use pipes rather than intermediate files
+  -time                    Time the execution of each subprocess
+  -specs=<file>            Override built-in specs with the contents of <file>
+  -std=<standard>          Assume that the input sources are for <standard>
+  -B <directory>           Add <directory> to the compiler's search paths
+  -b <machine>             Run gcc for target <machine>, if installed
+  -V <version>             Run gcc version number <version>, if installed
+  -v                       Display the programs invoked by the compiler
+  -###                     Like -v but options quoted and commands not executed
+  -E                       Preprocess only; do not compile, assemble or link
+  -S                       Compile only; do not assemble or link
+  -c                       Compile and assemble, but do not link
+  -o <file>                Place the output into <file>
+  -x <language>            Specify the language of the following input files
+                           Permissible languages include: c c++ assembler none
+                           'none' means revert to the default behavior of
+                           guessing the language based on the file's extension
+
+Options starting with -g, -f, -m, -O, -W, or --param are automatically
+ passed on to the various sub-processes invoked by gcc.exe.  In order to pass
+ other options on to these processes the -W<letter> options must be used.
+Switches:
+  -include <file>           Include the contents of <file> before other files
+  -imacros <file>           Accept definition of macros in <file>
+  -iprefix <path>           Specify <path> as a prefix for next two options
+  -iwithprefix <dir>        Add <dir> to the end of the system include path
+  -iwithprefixbefore <dir>  Add <dir> to the end of the main include path
+  -isystem <dir>            Add <dir> to the start of the system include path
+  -idirafter <dir>          Add <dir> to the end of the system include path
+  -I <dir>                  Add <dir> to the end of the main include path
+  -I-                       Fine-grained include path control; see info docs
+  -nostdinc                 Do not search system include directories
+                             (dirs specified with -isystem will still be used)
+  -nostdinc++               Do not search system include directories for C++
+  -o <file>                 Put output into <file>
+  -trigraphs                Support ISO C trigraphs
+  -std=<std name>           Specify the conformance standard; one of:
+                            gnu89, gnu99, c89, c99, iso9899:1990,
+                            iso9899:199409, iso9899:1999, c++98
+  -w                        Inhibit warning messages
+  -W[no-]trigraphs          Warn if trigraphs are encountered
+  -W[no-]comment{s}         Warn if one comment starts inside another
+  -W[no-]traditional        Warn about features not present in traditional C
+  -W[no-]undef              Warn if an undefined macro is used by #if
+  -W[no-]import             Warn about the use of the #import directive
+  -W[no-]error              Treat all warnings as errors
+  -W[no-]system-headers     Do not suppress warnings from system headers
+  -W[no-]all                Enable most preprocessor warnings
+  -M                        Generate make dependencies
+  -MM                       As -M, but ignore system header files
+  -MD                       Generate make dependencies and compile
+  -MMD                      As -MD, but ignore system header files
+  -MF <file>                Write dependency output to the given file
+  -MG                       Treat missing header file as generated files
+  -MP			    Generate phony targets for all headers
+  -MQ <target>              Add a MAKE-quoted target
+  -MT <target>              Add an unquoted target
+  -D<macro>                 Define a <macro> with string '1' as its value
+  -D<macro>=<val>           Define a <macro> with <val> as its value
+  -A<question>=<answer>     Assert the <answer> to <question>
+  -A-<question>=<answer>    Disable the <answer> to <question>
+  -U<macro>                 Undefine <macro> 
+  -v                        Display the version number
+  -H                        Print the name of header files as they are used
+  -C                        Do not discard comments
+  -dM                       Display a list of macro definitions active at end
+  -dD                       Preserve macro definitions in output
+  -dN                       As -dD except that only the names are preserved
+  -dI                       Include #include directives in the output
+  -f[no-]preprocessed       Treat the input file as already preprocessed
+  -ftabstop=<number>        Distance between tab stops for column reporting
+  -P                        Do not generate #line directives
+  -remap                    Remap file names when including files
+  --help                    Display this information
+  -ffixed-<register>      Mark <register> as being unavailable to the compiler
+  -fcall-used-<register>  Mark <register> as being corrupted by function calls
+  -fcall-saved-<register> Mark <register> as being preserved across functions
+  -finline-limit=<number> Limits the size of inlined functions to <number>
+  -fmessage-length=<number> Limits diagnostics messages lengths to <number> characters per line.  0 suppresses line-wrapping
+  -fdiagnostics-show-location=[once | every-line] Indicates how often source location information should be emitted, as prefix, at the beginning of diagnostics when line-wrapping
+  -ftls-model=[global-dynamic | local-dynamic | initial-exec | local-exec] Indicates the default thread-local storage code generation model
+  -fstack-limit-register=<register>  Trap if the stack goes past <register>
+  -fstack-limit-symbol=<name>  Trap if the stack goes past symbol <name>
+  -frandom-seed=<string>  Make compile reproducible using <string>
+  -fnew-ra                Use graph coloring register allocation.
+  -ftrapv                 Trap for signed overflow in addition / subtraction / multiplication
+  -fmem-report            Report on permanent memory allocation at end of run
+  -ftime-report           Report time taken by each compiler pass at end of run
+  -fsingle-precision-constant Convert floating point constant to single precision constant
+  -fbounds-check          Generate code to check bounds before indexing arrays
+  -fsignaling-nans        Disable optimizations observable by IEEE signaling NaNs
+  -funsafe-math-optimizations Allow math optimizations that may violate IEEE or ANSI standards
+  -ftrapping-math         Floating-point operations can trap
+  -fmath-errno            Set errno after built-in math functions
+  -fguess-branch-probability Enables guessing of branch probabilities
+  -ffinite-math-only      Assume no NaNs or +-Infs are generated
+  -fpeephole2             Enables an rtl peephole pass run before sched2
+  -fident                 Process #ident directives
+  -fleading-underscore    External symbols have a leading underscore
+  -fssa-dce               Enable aggressive SSA dead code elimination
+  -fssa-ccp               Enable SSA conditional constant propagation
+  -fssa                   Enable SSA optimizations
+  -fzero-initialized-in-bss Put zero initialized data in the bss section
+  -finstrument-functions  Instrument function entry/exit with profiling calls
+  -fdump-unnumbered       Suppress output of instruction numbers and line number notes in debugging dumps
+  -fmerge-all-constants   Attempt to merge identical constants and constant variables
+  -fmerge-constants       Attempt to merge identical constants across compilation units
+  -falign-functions       Align the start of functions
+  -falign-labels          Align all labels
+  -falign-jumps           Align labels which are only reached by jumping
+  -falign-loops           Align the start of loops
+  -fstrict-aliasing       Assume strict aliasing rules apply
+  -fargument-noalias-global Assume arguments do not alias each other or globals
+  -fargument-noalias      Assume arguments may alias globals but not each other
+  -fargument-alias        Specify that arguments may alias each other & globals
+  -fstack-check           Insert stack checking code into the program
+  -fpack-struct           Pack structure members together without holes
+  -foptimize-register-move Do the full regmove optimization pass
+  -fregmove               Enables a register move optimization
+  -fgnu-linker            Output GNU ld formatted global initializers
+  -fverbose-asm           Add extra commentary to assembler output
+  -fdata-sections         place data items into their own section
+  -ffunction-sections     place each function into its own section
+  -finhibit-size-directive Do not generate .size directives
+  -fcommon                Do not put uninitialized globals in the common section
+  -fcprop-registers       Do the register copy-propagation optimization pass
+  -frename-registers      Do the register renaming optimization pass
+  -freorder-functions     Reorder functions to improve code placement
+  -freorder-blocks        Reorder basic blocks to improve code placement
+  -fprofile               Enable basic program profiling code
+  -fbranch-probabilities  Use profiling information for branch probabilities
+  -ftest-coverage         Create data files needed by gcov
+  -fprofile-arcs          Insert arc based program profiling code
+  -fnon-call-exceptions   Support synchronous non-call exceptions
+  -fasynchronous-unwind-tables Generate unwind tables exact at each instruction boundary
+  -funwind-tables         Just generate unwind tables for exception handling
+  -fexceptions            Enable exception handling
+  -fpic                   Generate position independent code, if possible
+  -fbranch-count-reg      Replace add,compare,branch with branch on count reg
+  -fsched-spec-load-dangerous Allow speculative motion of more loads
+  -fsched-spec-load       Allow speculative motion of some loads
+  -fsched-spec            Allow speculative motion of non-loads
+  -fsched-interblock      Enable scheduling across basic blocks
+  -fschedule-insns2       Reschedule instructions after register allocation
+  -fschedule-insns        Reschedule instructions before register allocation
+  -fdelete-null-pointer-checks Delete useless null pointer checks
+  -frerun-loop-opt        Run the loop optimizer twice
+  -frerun-cse-after-loop  Run CSE pass after loop optimizations
+  -fif-conversion2        Perform conversion of conditional jumps to conditional execution
+  -fif-conversion         Perform conversion of conditional jumps to branchless equivalents
+  -fcrossjumping          Perform cross-jumping optimization
+  -floop-optimize         Perform the loop optimizations
+  -fgcse-sm               Perform store motion after global subexpression elimination
+  -fgcse-lm               Perform enhanced load motion during global subexpression elimination
+  -fgcse                  Perform the global common subexpression elimination
+  -fdelayed-branch        Attempt to fill delay slots of branch instructions
+  -freg-struct-return     Return 'short' aggregates in registers
+  -fpcc-struct-return     Return 'short' aggregates in memory, not registers
+  -fcaller-saves          Enable saving registers around function calls
+  -fshared-data           Mark data as shared rather than private
+  -fsyntax-only           Check for syntax errors, then stop
+  -fkeep-static-consts    Emit static const variables even if they are not used
+  -finline                Pay attention to the 'inline' keyword
+  -fkeep-inline-functions Generate code for funcs even if they are fully inlined
+  -finline-functions      Integrate simple functions into their callers
+  -ffunction-cse          Allow function addresses to be held in registers
+  -fforce-addr            Copy memory address constants into regs before using
+  -fforce-mem             Copy memory operands into registers before using
+  -fpeephole              Enable machine specific peephole optimizations
+  -fwritable-strings      Store strings in writable data section
+  -freduce-all-givs       Strength reduce all loop general induction variables
+  -fmove-all-movables     Force all loop invariant computations out of loops
+  -fprefetch-loop-arrays  Generate prefetch instructions, if available, for arrays in loops
+  -funroll-all-loops      Perform loop unrolling for all loops
+  -funroll-loops          Perform loop unrolling when iteration count is known
+  -fstrength-reduce       Perform strength reduction optimizations
+  -fthread-jumps          Perform jump threading optimizations
+  -fexpensive-optimizations Perform a number of minor, expensive optimizations
+  -fcse-skip-blocks       When running CSE, follow conditional jumps
+  -fcse-follow-jumps      When running CSE, follow jumps to their targets
+  -ftracer                Perform superblock formation via tail duplication
+  -foptimize-sibling-calls Optimize sibling and tail recursive calls
+  -fomit-frame-pointer    When possible do not generate stack frames
+  -fdefer-pop             Defer popping functions args from stack until later
+  -fvolatile-static       Consider all mem refs to static data to be volatile
+  -fvolatile-global       Consider all mem refs to global data to be volatile
+  -fvolatile              Consider all mem refs through pointers as volatile
+  -ffloat-store           Do not store floats in registers
+  -feliminate-dwarf2-dups Perform DWARF2 duplicate elimination
+  -O[number]              Set optimization level to [number]
+  -Os                     Optimize for space rather than speed
+  --param ggc-min-heapsize=<value>     Minimum heap size before we start collecting garbage, in kilobytes.
+  --param ggc-min-expand=<value>       Minimum heap expansion to trigger garbage collection, as a percentage of the total size of the heap.
+  --param max-crossjump-edges=<value>  The maximum number of incoming edges to consider for crossjumping
+  --param tracer-min-branch-probability=<value> Stop forward growth if the probability of best edge is less than this threshold (in percents). Used when profile feedback is not available
+  --param tracer-min-branch-probability-feedback=<value> Stop forward growth if the probability of best edge is less than this threshold (in percents). Used when profile feedback is available
+  --param tracer-min-branch-ratio=<value> Stop reverse growth if the reverse probability of best edge is less than this threshold (in percents)
+  --param tracer-max-code-growth=<value> Maximal code growth caused by tail duplication (in percents)
+  --param tracer-dynamic-coverage=<value> The percentage of function, weighted by execution frequency, that must be covered by trace formation. Used when profile feedback is not available
+  --param tracer-dynamic-coverage-feedback=<value> The percentage of function, weighted by execution frequency, that must be covered by trace formation. Used when profile feedback is available
+  --param hot-bb-frequency-fraction=<value> Select fraction of the maximal frequency of executions of basic block in function given basic block needs to have to be considered hot
+  --param hot-bb-count-fraction=<value> Select fraction of the maximal count of repetitions of basic block in program given basic block needs to have to be considered hot
+  --param max-unrolled-insns=<value>   The maximum number of instructions to consider to unroll in a loop
+  --param max-gcse-passes=<value>      The maximum number of passes to make when doing GCSE
+  --param max-gcse-memory=<value>      The maximum amount of memory to be allocated by GCSE
+  --param max-pending-list-length=<value> The maximum length of scheduling's pending operations list
+  --param max-delay-slot-live-search=<value> The maximum number of instructions to consider to find accurate live register information
+  --param max-delay-slot-insn-search=<value> The maximum number of instructions to consider to fill a delay slot
+  --param max-inline-insns-rtl=<value> The maximum number of instructions for the RTL inliner
+  --param min-inline-insns=<value>     The number of instructions in a single functions still eligible to inlining after a lot recursive inlining
+  --param max-inline-slope=<value>     The slope of the linear function throttling inlining after the recursive inlining limit has been reached is given by the negative reciprocal value of this parameter
+  --param max-inline-insns=<value>     The maximum number of instructions by repeated inlining before gcc starts to throttle inlining
+  --param max-inline-insns-auto=<value> The maximum number of instructions when automatically inlining
+  --param max-inline-insns-single=<value> The maximum number of instructions in a single function eligible for inlining
+  -pedantic               Issue warnings needed by strict compliance to ISO C
+  -pedantic-errors        Like -pedantic except that errors are produced
+  -w                      Suppress warnings
+  -W                      Enable extra warnings
+  -Wstrict-aliasing       Warn about code which might break the strict aliasing rules
+  -Wmissing-noreturn      Warn about functions which might be candidates for attribute noreturn
+  -Wdeprecated-declarations Warn about uses of __attribute__((deprecated)) declarations
+  -Wdisabled-optimization Warn when an optimization pass is disabled
+  -Wpadded                Warn when padding is required to align struct members
+  -Wpacked                Warn when the packed attribute has no effect on struct layout
+  -Winline                Warn when an inlined function cannot be inlined
+  -Wuninitialized         Warn about uninitialized automatic variables
+  -Wunreachable-code      Warn about code that will never be executed
+  -Wcast-align            Warn about pointer casts which increase alignment
+  -Waggregate-return      Warn about returning structures, unions or arrays
+  -Wswitch-enum           Warn about all enumerated switches missing a specific case
+  -Wswitch-default        Warn about enumerated switches missing a default case
+  -Wswitch                Warn about enumerated switches, with no default, missing a case
+  -Wshadow                Warn when one local variable shadows another
+  -Werror                 Treat all warnings as errors
+  -Wsystem-headers        Do not suppress warnings from system headers
+  -Wunused-value          Warn when an expression value is unused
+  -Wunused-variable       Warn when a variable is unused
+  -Wunused-parameter      Warn when a function parameter is unused
+  -Wunused-label          Warn when a label is unused
+  -Wunused-function       Warn when a function is unused
+  -Wunused                Enable unused warnings
+  -Wlarger-than-<number>  Warn if an object is larger than <number> bytes
+  -p                      Enable function profiling
+  -o <file>               Place output into <file> 
+  -G <number>             Put global and static data smaller than <number>
+                          bytes into a special section (on some targets)
+  -gcoff                  Generate COFF format debug info
+  -gdwarf-2               Generate DWARF-2 debug info
+  -gstabs+                Generate extended STABS format debug info
+  -gstabs                 Generate STABS format debug info
+  -ggdb                   Generate debugging info in default extended format
+  -g                      Generate debugging info in default format
+  -aux-info <file>        Emit declaration info into <file>
+  -quiet                  Do not display functions compiled or elapsed time
+  -version                Display the compiler's version
+  -d[letters]             Enable dumps from specific passes of the compiler
+  -dumpbase <file>        Base name to be used for dumps from specific passes
+  -fsched-verbose=<number> Set the verbosity level of the scheduler
+  --help                  Display this information
+
+Language specific options:
+  -ansi                   Compile just for ISO C90
+  -std=                   Determine language standard
+  -funsigned-bitfields    Make bit-fields by unsigned by default
+  -fsigned-char           Make 'char' be signed by default
+  -funsigned-char         Make 'char' be unsigned by default
+  -fno-asm                Do not recognize the 'asm' keyword
+  -fno-builtin            Do not recognize any built in functions
+  -fhosted                Assume normal C execution environment
+  -ffreestanding          Assume that standard libraries & main might not exist
+  -fcond-mismatch         Allow different types as args of ? operator
+  -fdollars-in-identifier Allow the use of $ inside identifiers
+  -fshort-double          Use the same size for double as for float
+  -fshort-enums           Use the smallest fitting integer to hold enums
+  -fshort-wchar           Override the underlying type for wchar_t to `unsigned short'
+  -Wall                   Enable most warning messages
+  -Wbad-function-cast     Warn about casting functions to incompatible types
+  -Wmissing-format-attrib Warn about functions which might be candidates for format attributes
+  -Wcast-qual             Warn about casts which discard qualifiers
+  -Wchar-subscripts       Warn about subscripts whose type is 'char'
+  -Wcomment               Warn if nested comments are detected
+  -Wcomments              Warn if nested comments are detected
+  -Wconversion            Warn about possibly confusing type conversions
+  -Wno-div-by-zero        Do not warn about compile-time integer division by zero
+  -Wfloat-equal           Warn about testing equality of floating point numbers
+  -Wformat                Warn about printf/scanf/strftime/strfmon format anomalies
+  -Wno-format-extra-args  Don't warn about too many arguments to format functions
+  -Wformat-nonliteral     Warn about non-string-literal format strings
+  -Wformat-security       Warn about possible security problems with format functions
+  -Wno-format-y2k         Don't warn about strftime formats yielding 2 digit years
+  -Wimplicit-function-dec Warn about implicit function declarations
+  -Wimplicit-int          Warn when a declaration does not specify a type
+  -Wimport                Warn about the use of the #import directive
+  -Wno-long-long          Do not warn about using 'long long' when -pedantic
+  -Wmain                  Warn about suspicious declarations of main
+  -Wmissing-braces        Warn about possibly missing braces around initializers
+  -Wmissing-declarations  Warn about global funcs without previous declarations
+  -Wmissing-prototypes    Warn about global funcs without prototypes
+  -Wmultichar             Warn about use of multicharacter literals
+  -Wnested-externs        Warn about externs not at file scope level
+  -Wparentheses           Warn about possible missing parentheses
+  -Wpointer-arith         Warn about function pointer arithmetic
+  -Wredundant-decls       Warn about multiple declarations of the same object
+  -Wreturn-type           Warn whenever a function's return-type defaults to int
+  -Wsequence-point        Warn about possible violations of sequence point rules
+  -Wsign-compare          Warn about signed/unsigned comparisons
+  -Wstrict-prototypes     Warn about non-prototyped function decls
+  -Wtraditional           Warn about constructs whose meanings change in ISO C
+  -Wtrigraphs             Warn when trigraphs are encountered
+  -Wunknown-pragmas       Warn about unrecognized pragmas
+  -Wwrite-strings         Mark strings as 'const char *'
+
+ Options for Ada:
+  -gnat                   Specify options to GNAT
+  -I                      Name of directory to search for sources
+  -nostdinc               Don't use system library for sources
+
+ Options for C++:
+  -fno-access-control     Do not obey access control semantics
+  -falt-external-template Change when template instances are emitted
+  -fcheck-new             Check the return value of new
+  -fconserve-space        Reduce size of object files
+  -fno-const-strings      Make string literals `char[]' instead of `const char[]'
+  -fdump-translation-unit Dump the entire translation unit to a file
+  -fno-default-inline     Do not inline member functions by default
+  -fno-rtti               Do not generate run time type descriptor information
+  -fno-enforce-eh-specs   Do not generate code to check exception specifications
+  -fno-for-scope          Scope of for-init-statement vars extends outside
+  -fno-gnu-keywords       Do not recognize GNU defined keywords
+  -fhuge-objects          Enable support for huge objects
+  -fno-implement-inlines  Export functions even if they can be inlined
+  -fno-implicit-templates Only emit explicit template instantiations
+  -fno-implicit-inline-te Only emit explicit instantiations of inline templates
+  -fms-extensions         Don't pedwarn about uses of Microsoft extensions
+  -foperator-names        Recognize and/bitand/bitor/compl/not/or/xor
+  -fno-optional-diags     Disable optional diagnostics
+  -fpermissive            Downgrade conformance errors to warnings
+  -frepo                  Enable automatic template instantiation
+  -fstats                 Display statistics accumulated during compilation
+  -ftemplate-depth-       Specify maximum template instantiation depth
+  -fuse-cxa-atexit        Use __cxa_atexit to register destructors
+  -fvtable-gc             Discard unused virtual functions
+  -fvtable-thunks         Implement vtables using thunks
+  -fweak                  Emit common-like symbols as weak symbols
+  -fxref                  Emit cross referencing information
+  -Wreturn-type           Warn about inconsistent return types
+  -Woverloaded-virtual    Warn about overloaded virtual function names
+  -Wno-ctor-dtor-privacy  Don't warn when all ctors/dtors are private
+  -Wnon-virtual-dtor      Warn about non virtual destructors
+  -Wextern-inline         Warn when a function is declared extern, then inline
+  -Wreorder               Warn when the compiler reorders code
+  -Wsynth                 Warn when synthesis behavior differs from Cfront
+  -Wno-pmf-conversions    Don't warn when type converting pointers to member functions
+  -Weffc++                Warn about violations of Effective C++ style rules
+  -Wsign-promo            Warn when overload promotes from unsigned to signed
+  -Wold-style-cast        Warn if a C style cast is used in a program
+  -Wno-non-template-frien Don't warn when non-templatized friend functions are declared within a template
+  -Wno-deprecated         Don't announce deprecation of compiler features
+
+ Options for Fortran:
+  -fversion               Print g77-specific compiler version info, run internal tests
+  -ff66                   Program is written in typical FORTRAN 66 dialect
+  -ff77                   Program is written in typical Unix f77 dialect
+  -fno-f77                Program does not use Unix-f77 dialectal features
+  -ff90                   Program is written in Fortran-90-ish dialect
+  -fno-automatic          Treat local vars and COMMON blocks as if they were named in SAVE statements
+  -fdollar-ok             Allow $ in symbol names
+  -fno-f2c                f2c-compatible code need not be generated
+  -fno-f2c-library        Unsupported; do not generate libf2c-calling code
+  -fflatten-arrays        Unsupported; affects code-generation of arrays
+  -ffree-form             Program is written in Fortran-90-ish free form
+  -fpedantic              Warn about use of (only a few for now) Fortran extensions
+  -fvxt                   Program is written in VXT (Digital-like) FORTRAN
+  -fno-ugly               Disallow all ugly features
+  -fno-ugly-args          Hollerith and typeless constants not passed as arguments
+  -fugly-assign           Allow ordinary copying of ASSIGN'ed vars
+  -fugly-assumed          Dummy array dimensioned to (1) is assumed-size
+  -fugly-comma            Trailing comma in procedure call denotes null argument
+  -fugly-complex          Allow REAL(Z) and AIMAG(Z) given DOUBLE COMPLEX Z
+  -fno-ugly-init          Initialization via DATA and PARAMETER is type-compatible
+  -fugly-logint           Allow INTEGER and LOGICAL interchangeability
+  -fxyzzy                 Print internal debugging-related info
+  -finit-local-zero       Initialize local vars and arrays to zero
+  -fno-backslash          Backslashes in character/hollerith constants not special (C-style)
+  -femulate-complex       Have front end emulate COMPLEX arithmetic to avoid bugs
+  -fno-underscoring       Disable the appending of underscores to externals
+  -fno-second-underscore  Never append a second underscore to externals
+  -fintrin-case-initcap   Intrinsics spelled as e.g. SqRt
+  -fintrin-case-upper     Intrinsics in uppercase
+  -fintrin-case-any       Intrinsics letters in arbitrary cases
+  -fmatch-case-initcap    Language keywords spelled as e.g. IOStat
+  -fmatch-case-upper      Language keywords in uppercase
+  -fmatch-case-any        Language keyword letters in arbitrary cases
+  -fsource-case-upper     Internally convert most source to uppercase
+  -fsource-case-preserve  Internally preserve source case
+  -fsymbol-case-initcap   Symbol names spelled in mixed case
+  -fsymbol-case-upper     Symbol names in uppercase
+  -fsymbol-case-lower     Symbol names in lowercase
+  -fcase-strict-upper     Program written in uppercase
+  -fcase-strict-lower     Program written in lowercase
+  -fcase-initcap          Program written in strict mixed-case
+  -fcase-upper            Compile as if program written in uppercase
+  -fcase-lower            Compile as if program written in lowercase
+  -fcase-preserve         Preserve all spelling (case) used in program
+  -fbadu77-intrinsics-del Delete libU77 intrinsics with bad interfaces
+  -fbadu77-intrinsics-dis Disable libU77 intrinsics with bad interfaces
+  -fbadu77-intrinsics-hid Hide libU77 intrinsics with bad interfaces
+  -ff2c-intrinsics-delete Delete non-FORTRAN-77 intrinsics f2c supports
+  -ff2c-intrinsics-disabl Disable non-FORTRAN-77 intrinsics f2c supports
+  -ff2c-intrinsics-hide   Hide non-FORTRAN-77 intrinsics f2c supports
+  -ff90-intrinsics-delete Delete non-FORTRAN-77 intrinsics F90 supports
+  -ff90-intrinsics-disabl Disable non-FORTRAN-77 intrinsics F90 supports
+  -ff90-intrinsics-hide   Hide non-FORTRAN-77 intrinsics F90 supports
+  -fgnu-intrinsics-delete Delete non-FORTRAN-77 intrinsics g77 supports
+  -fgnu-intrinsics-disabl Disable non-FORTRAN 77 intrinsics F90 supports
+  -fgnu-intrinsics-hide   Hide non-FORTRAN 77 intrinsics F90 supports
+  -fmil-intrinsics-delete Delete MIL-STD 1753 intrinsics
+  -fmil-intrinsics-disabl Disable MIL-STD 1753 intrinsics
+  -fmil-intrinsics-hide   Hide MIL-STD 1753 intrinsics
+  -funix-intrinsics-delet Delete libU77 intrinsics
+  -funix-intrinsics-disab Disable libU77 intrinsics
+  -funix-intrinsics-hide  Hide libU77 intrinsics
+  -fvxt-intrinsics-delete Delete non-FORTRAN-77 intrinsics VXT FORTRAN supports
+  -fvxt-intrinsics-disabl Disable non-FORTRAN-77 intrinsics VXT FORTRAN supports
+  -fvxt-intrinsics-hide   Hide non-FORTRAN-77 intrinsics VXT FORTRAN supports
+  -fzeros                 Treat initial values of 0 like non-zero values
+  -fdebug-kludge          Emit special debugging information for COMMON and EQUIVALENCE (disabled)
+  -fonetrip               Take at least one trip through each iterative DO loop
+  -fno-silent             Print names of program units as they are compiled
+  -fno-globals            Disable fatal diagnostics about inter-procedural problems
+  -ftypeless-boz          Make prefix-radix non-decimal constants be typeless
+  -fbounds-check          Generate code to check subscript and substring bounds
+  -ffortran-bounds-check  Fortran-specific form of -fbounds-check
+  -Wno-globals            Disable warnings about inter-procedural problems
+  -Wsurprising            Warn about constructs with surprising meanings
+  -I                      Add a directory for INCLUDE searching
+  -ffixed-line-length-    Set the maximum line length
+
+ Options for Objective C:
+  -gen-decls              Dump decls to a .decl file
+  -fgnu-runtime           Generate code for GNU runtime environment
+  -fnext-runtime          Generate code for NeXT runtime environment
+  -Wselector              Warn if a selector has multiple methods
+  -Wno-protocol           Do not warn if inherited methods are unimplemented
+  -print-objc-runtime-inf Generate C header of platform specific features
+  -fconstant-string-class Specify the name of the class for constant strings
+
+Target specific options:
+  -mbnu210                  Ignored (obsolete)
+  -mno-bnu210               Ignored (obsolete)
+  -mno-red-zone             Do not use red-zone in the x86-64 code
+  -mred-zone                Use red-zone in the x86-64 code
+  -m32                      Generate 32bit i386 code
+  -m64                      Generate 64bit x86-64 code
+  -m96bit-long-double       sizeof(long double) is 12
+  -m128bit-long-double      sizeof(long double) is 16
+  -mno-sse2                 Do not support MMX, SSE and SSE2 built-in functions and code generation
+  -msse2                    Support MMX, SSE and SSE2 built-in functions and code generation
+  -mno-sse                  Do not support MMX and SSE built-in functions and code generation
+  -msse                     Support MMX and SSE built-in functions and code generation
+  -mno-3dnow                Do not support 3DNow! built-in functions
+  -m3dnow                   Support 3DNow! built-in functions
+  -mno-mmx                  Do not support MMX built-in functions
+  -mmmx                     Support MMX built-in functions
+  -mno-accumulate-outgoing- Do not use push instructions to save outgoing arguments
+  -maccumulate-outgoing-arg Use push instructions to save outgoing arguments
+  -mno-push-args            Do not use push instructions to save outgoing arguments
+  -mpush-args               Use push instructions to save outgoing arguments
+  -mno-inline-all-stringops Do not inline all known string operations
+  -minline-all-stringops    Inline all known string operations
+  -mno-align-stringops      Do not align destination of the string operations
+  -malign-stringops         Align destination of the string operations
+  -mstack-arg-probe         Enable stack probing
+  -momit-leaf-frame-pointer Omit the frame pointer in leaf functions
+  -mfancy-math-387          Generate sin, cos, sqrt for FPU
+  -mno-fancy-math-387       Do not generate sin, cos, sqrt for FPU
+  -mno-fp-ret-in-387        Do not return values of functions in FPU registers
+  -mfp-ret-in-387           Return values of functions in FPU registers
+  -mno-ieee-fp              Do not use IEEE math for fp comparisons
+  -mieee-fp                 Use IEEE math for fp comparisons
+  -mno-svr3-shlib           Uninitialized locals in .data
+  -msvr3-shlib              Uninitialized locals in .bss
+  -mno-align-double         Align doubles on word boundary
+  -malign-double            Align some doubles on dword boundary
+  -mno-rtd                  Use normal calling convention
+  -mrtd                     Alternate calling convention
+  -mno-soft-float           Use hardware fp
+  -msoft-float              Do not use hardware fp
+  -mhard-float              Use hardware fp
+  -mno-80387                Do not use hardware fp
+  -m80387                   Use hardware fp
+  -mtls-dialect=            Use given thread-local storage dialect
+  -masm=                    Use given assembler dialect
+  -mcmodel=                 Use given x86-64 code model
+  -mbranch-cost=            Branches are this expensive (1-5, arbitrary units)
+  -mpreferred-stack-boundar Attempt to keep stack aligned to this power of 2
+  -malign-functions=        Function starts are aligned to this power of 2
+  -malign-jumps=            Jump targets are aligned to this power of 2
+  -malign-loops=            Loop code aligned to this power of 2
+  -mregparm=                Number of registers used to pass integer arguments
+  -march=                   Generate code for given CPU
+  -mfpmath=                 Generate floating point mathematics using given instruction set
+  -mcpu=                    Schedule code for given CPU
+
+There are undocumented target specific options as well.
+Usage: c:/djgpp/bin/as.exe [option...] [asmfile...]
+Options:
+  -a[sub-option...]	  turn on listings
+                      	  Sub-options [default hls]:
+                      	  c      omit false conditionals
+                      	  d      omit debugging directives
+                      	  h      include high-level source
+                      	  l      include assembly
+                      	  m      include macro expansions
+                      	  n      omit forms processing
+                      	  s      include symbols
+                      	  =FILE  list to FILE (must be last sub-option)
+  -D                      produce assembler debugging messages
+  --defsym SYM=VAL        define symbol SYM to given value
+  -f                      skip whitespace and comment preprocessing
+  --gstabs                generate stabs debugging information
+  --gdwarf2               generate DWARF2 debugging information
+  --help                  show this message and exit
+  --target-help           show target specific options
+  -I DIR                  add DIR to search list for .include directives
+  -J                      don't warn about signed overflow
+  -K                      warn when differences altered for long displacements
+  -L,--keep-locals        keep local symbols (e.g. starting with `L')
+  -M,--mri                assemble in MRI compatibility mode
+  --MD FILE               write dependency information in FILE (default none)
+  -nocpp                  ignored
+  -o OBJFILE              name the object-file output OBJFILE (default a.out)
+  -R                      fold data section into text section
+  --statistics            print various measured statistics from execution
+  --strip-local-absolute  strip local absolute symbols
+  --traditional-format    Use same format as native assembler when possible
+  --version               print assembler version number and exit
+  -W  --no-warn           suppress warnings
+  --warn                  don't suppress warnings
+  --fatal-warnings        treat warnings as errors
+  --itbl INSTTBL          extend instruction set to include instructions
+                          matching the specifications defined in file INSTTBL
+  -w                      ignored
+  -X                      ignored
+  -Z                      generate object file even after errors
+  --listing-lhs-width     set the width in words of the output data column of
+                          the listing
+  --listing-lhs-width2    set the width in words of the continuation lines
+                          of the output data column; ignored if smaller than
+                          the width of the first line
+  --listing-rhs-width     set the max width in characters of the lines from
+                          the source file
+  --listing-cont-lines    set the maximum number of continuation lines used
+                          for the output data column of the listing
+  -q                      quieten some warnings
+
+Report bugs to bug-binutils@gnu.org
+stubify for djgpp V2.X executables, Copyright (C) 1995 DJ Delorie
+
+For bug reporting instructions, please see:
+<URL:http://gcc.gnu.org/bugs.html>

@@ -12,6 +12,7 @@ SectorsCluster db 0x00			;read from BPB
 SectorsTrack dw 0x0000			;read from BPB
 NumHeads dw 0x0000			;read from BPB
 DriveNum db 0x00				;read from BPB
+Type db 0x00				;this is used to get several types of memory (for int15 ax = E820)
 Main:
 	mov ax, 0x50
 	mov ds, ax		;set the data segment to allow data access
@@ -124,9 +125,15 @@ Done:
 ;time to check memory sizes and some other stuff
 ;use newer calls first, and if they dont work, use the older calls
 ;check conventional memory
-	
+	mov BYTE [Type], 1		;OS usable memory
+	call extmem_int15_e820
+	jc OldComputer
+	mov si, mem_msg2
+	call DisplayMessage
+	mov BYTE [Type], 2		;unusable memory
 	call extmem_int15_e820
 	jnc ok
+OldComputer:				;does not support the special calls
 ; before trying other BIOS calls, use INT 12h to get conventional memory size
 	int 12h
 ; convert from K in AX to bytes in CX:BX		;i think this is where i figure out how the formula works
@@ -163,12 +170,12 @@ ok:
 	or al, 1			
 	mov cr0, eax
 	jmp 0x08:0x0900
-
+mem_msg2 db 'Other Ranges:', 13, 10, 0
 mem_msg db 'Memory ranges:'
 crlf_msg db 13, 10, 0
 base_msg db 'base=0x', 0
 size_msg db ', size=0x', 0
-err_msg db '*** All BIOS calls to determine extended memory size have failed ***', 13, 10, 0
+err_msg db 'BIOS calls to determine memory size has failed', 13, 10, 0
 ;ROUTINES
 display_range:
 	pusha
@@ -217,7 +224,11 @@ extmem_e820_1:
 	cmp eax, 534D4150h	; "SMAP"
 	stc
 	jne extmem_e820_4
-	cmp dword [es:di + 16],1 ; type 1 memory (available to OS)
+	push eax
+	xor eax, eax
+	mov al, [Type]
+	cmp dword [es:di + 16], eax ; type [Type] memory (available to OS)
+	pop eax
 	jne extmem_e820_2
 	push bx
 	mov ax, [es:di + 0] ; base
@@ -398,7 +409,7 @@ ReadSectors:			;this reads multiple sectors in a row, one sector at a time
 	ret
 
 ClusterLBA: 		;converts a FAT cluster number to LBA
-	sub ax, 0002h	;cluster number starts at 2
+	sub ax, 0x0002	;cluster number starts at 2
 	xor cx, cx		;cx = 0
 	mov cl, BYTE [SectorsCluster];sectors per cluster
 	mul cx
@@ -410,17 +421,17 @@ gdt_null:               ; Null Segment
 	dd 0
 	dd 0
 gdt_code:               ; Code segment, read/execute, nonconforming
-	dw 0FFFFh
+	dw 0xFFFF
 	dw 0x0000
 	db 0
-	db 10011010b
+	db 10011010b	;non-system descriptor (bit 4)
 	db 11001111b
 	db 0
 gdt_data:               ; Data segment, read/write
 	dw 0xFFFF
 	dw 0x0000
 	db 0
-	db 10010010b
+	db 10010010b	;non system descriptor (bit 4)
 	db 11001111b
 	db 0
 gdt_end:				; Used to calculate the size of the GDT
