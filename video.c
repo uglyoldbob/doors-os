@@ -2,9 +2,14 @@
 #include "video.h"
 #include "spinlock.h"
 
+unsigned int pos;
+unsigned int off;
+
 void display(char *cp)
 {
+	//put('z');
 	enter_spinlock(SL_DISPLAY);
+	//put('Z');
 	char *str = cp, *ch;
 	//PrintNumber(getEIP());
 	//put('\n');
@@ -18,9 +23,10 @@ void display(char *cp)
 
 void PrintNumber(unsigned int bob)
 {	//this prints a 32 bit number (8 hex digits)
-	enter_spinlock(SL_DIS2);
+	enter_spinlock(SL_DISPLAY);
 	unsigned int Temp = 0;
-	display("0x");
+	put('0');
+	put('x');
 	int counter = 7;
 	for (counter = 7; counter >= 0; counter--)
 	{	//this is a countdown, because we write the most signifigant nibble first
@@ -35,11 +41,12 @@ void PrintNumber(unsigned int bob)
 		}
 		put((unsigned char)(Temp));
 	}
-	leave_spinlock(SL_DIS2);
+	leave_spinlock(SL_DISPLAY);
 }
 
 void put(unsigned char c)
 {
+	//enter_spinlock(SL_DIS2);
 	unsigned short *videomem = (unsigned short*) 0xB8000;
 	if (pos >= 80)
 	{
@@ -127,6 +134,7 @@ void put(unsigned char c)
 			break;
 		}
 	}
+	//leave_spinlock(SL_DIS2);
 }
 
 void clear_screen()

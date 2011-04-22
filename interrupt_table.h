@@ -63,3 +63,6 @@ extern void irqM14();
 extern void irqM15();
 
 extern void syscall1();
+
+struct idt_desc *setupIdt();
+

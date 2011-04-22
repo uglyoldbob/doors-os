@@ -1,5 +1,5 @@
-#ifndef _KEYBOARD_H_
-#define _KEYBOARD_H_
+//#ifndef _KEYBOARD_H_
+//#define _KEYBOARD_H_
 struct message
 {
 	unsigned int who;			//determines who the message is from (keyboard...)
@@ -17,4 +17,7 @@ void check_system_event(unsigned int *ret_val);
 
 void get_system_event(struct message* move_here);
 //copies a message to the given message structure
-#endif
+
+void init_messaging();
+
+//#endif

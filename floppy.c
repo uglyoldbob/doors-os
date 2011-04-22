@@ -7,11 +7,16 @@ extern int WaitFloppyInt();	//entrance.asm
 
 extern unsigned int timer;	//entrance.asm
 
-unsigned char driveA;
-unsigned char driveB;
+unsigned long sector_buffer;
+	//this is used so that a specialized memory allocater will not be required
+	//but it is required that this buffer be allocated early so that it can claim a spot in lower memory
 
 	//waits for the floppy drive to signal with an interrupt
 //actually only the bottom two bytes of port and the bottom byte of the return value is used
+
+//the base IO address for floppy drive communication
+#define FLOPPY_PRIMARY_BASE     0x03F0
+#define FLOPPY_SECONDARY_BASE   0x0370
 
 //offsets for the various registers
 #define STATUS_REG_A            0x0000 /*PS2 SYSTEMS*/
@@ -45,17 +50,17 @@ unsigned char driveB;
 
 typedef struct
 {	//the table as BIOS fills it out at the above address
-  unsigned char steprate_headunload;
-  unsigned char headload_ndma;
-  unsigned char motor_delay_off; /*specified in clock ticks*/
-  unsigned char bytes_per_sector;
-  unsigned char sectors_per_track;
-  unsigned char gap_length;
-  unsigned char data_length; /*used only when bytes per sector == 0*/
-  unsigned char format_gap_length;
-  unsigned char filler;
-  unsigned char head_settle_time; /*specified in milliseconds*/
-  unsigned char motor_start_time; /*specified in 1/8 seconds*/
+	unsigned char steprate_headunload;
+	unsigned char headload_ndma;
+	unsigned char motor_delay_off; /*specified in clock ticks*/
+	unsigned char bytes_per_sector;
+	unsigned char sectors_per_track;
+	unsigned char gap_length;
+	unsigned char data_length; /*used only when bytes per sector == 0*/
+	unsigned char format_gap_length;
+	unsigned char filler;
+	unsigned char head_settle_time; /*specified in milliseconds*/
+	unsigned char motor_start_time; /*specified in 1/8 seconds*/
 }__attribute__ ((packed)) floppy_parameters;
 
 floppy_parameters floppy_disk; 
@@ -64,7 +69,7 @@ floppy_parameters floppy_disk;
 //this structure is loaded when initialize_floppy is called
 //it is loaded with information taken directly from what is setup when the computer booted up
 
-void waitRecieveFloppy(unsigned int base)
+waitRecieveFloppy(unsigned int base)
 {
 	//while ((inportb(base + CHECK_DRIVE_STATUS) & 0xC0) != 0xC0){};
 	unsigned int temp;
@@ -86,7 +91,7 @@ void waitRecieveFloppy(unsigned int base)
 }
 
 
-void sendFloppyCommand(unsigned int base, unsigned char command)
+sendFloppyCommand(unsigned int base, unsigned char command)
 {
 	unsigned int temp;
 	while (1)
@@ -108,7 +113,7 @@ void sendFloppyCommand(unsigned int base, unsigned char command)
 	}
 }
 
-void check_floppy_status(unsigned int base, unsigned int *st0, unsigned int *cylinder)
+check_floppy_status(unsigned int base, unsigned int *st0, unsigned int *cylinder)
 {	//performs the FDC instruction and returns all applicable results
 	//waitSendFloppy(base);
 	sendFloppyCommand(base, CHECK_INTERRUPT_STATUS);
@@ -118,21 +123,23 @@ void check_floppy_status(unsigned int base, unsigned int *st0, unsigned int *cyl
 	*cylinder = inportb(base+DATA_REGISTER);
 }
 
-void floppy_configure_drive(unsigned int base)
+void configure_drive(unsigned int base)
 {
-  sendFloppyCommand(base,FIX_DRIVE_DATA);/*config/specify command*/
-  sendFloppyCommand(base,floppy_disk.steprate_headunload);
-  sendFloppyCommand(base,floppy_disk.headload_ndma);	//set bit 0 for nondma transfer, clear it for DMA transfer
-	//no results
+	sendFloppyCommand(base,FIX_DRIVE_DATA);/*config/specify command*/
+	sendFloppyCommand(base,floppy_disk.steprate_headunload);
+	sendFloppyCommand(base,floppy_disk.headload_ndma);	//set bit 0 for nondma transfer, clear it for DMA transfer
+		//no results
+	return;
 }
 
-int floppy_calibrate_drive(unsigned int base,char drive)
+int calibrate_drive(unsigned int base,char drive)
 {	//drive = 0,1,2,3
 	unsigned int st0, cylinder, command;
 	command = (0x10<<drive);
 	command += 0x0C + drive;
 	outportb(command, base + DIGITAL_OUTPUT_REG);
 	//make sure motor is turned on
+	display("Issuing calibrate drive command.\n");
 	do
 	{
 		sendFloppyCommand(base,CALIBRATE_DRIVE); /*Calibrate drive*/
@@ -146,14 +153,15 @@ int floppy_calibrate_drive(unsigned int base,char drive)
 		{
 			display("Error in calibrate drive, st0:");
 			PrintNumber(st0);
-			return -1;
 		}
+		display("Still issuing calibrate command\n");
 	} while (cylinder != 0);
+	display("Finished with calibrate drive command\n");
 	//repeat until the floppy drive is over cylinder 0
-	return 0;
+	return;
 }
 
-int floppy_seek_to_cylinder(unsigned int cylinder, unsigned int head, unsigned int base, unsigned char drive)
+int seek_to_cylinder(unsigned int cylinder, unsigned int head, unsigned int base, unsigned char drive)
 {
 	unsigned int st0, cylinder_check;
 	do
@@ -166,7 +174,7 @@ int floppy_seek_to_cylinder(unsigned int cylinder, unsigned int head, unsigned i
 		check_floppy_status(base, &st0, &cylinder_check);
 	} while (cylinder_check != cylinder);
 
-	return 0;
+	return;
 }
 
 int reset_floppy(unsigned int base, char drive)
@@ -185,13 +193,12 @@ int reset_floppy(unsigned int base, char drive)
 	check_floppy_status(base, &st0, &cylinder);
 	check_floppy_status(base, &st0, &cylinder);
 	outportb(0, base + CONFIG_CONTROL_REG);
-	floppy_configure_drive(base);
-	if (floppy_calibrate_drive(base, drive) == -1)
+	configure_drive(base);
+	if (calibrate_drive(base, drive) == -1)
 		return -1;
-	return 0;
 }
 
-void floppy_getResults(unsigned int *st0, unsigned int *st1, unsigned int *st2, unsigned int *cylinder_r, 
+void getResults(unsigned int *st0, unsigned int *st1, unsigned int *st2, unsigned int *cylinder_r, 
 					unsigned int *head_r, unsigned int *sector_r, unsigned int *size_r, unsigned int base)
 {	//recieves the results from the floppy drive after a sector/track read/write command
 	waitRecieveFloppy(base);
@@ -210,7 +217,7 @@ void floppy_getResults(unsigned int *st0, unsigned int *st1, unsigned int *st2, 
 	*size_r = inportb(base+DATA_REGISTER);
 }
 
-int floppy_read_track(unsigned int sector_number, unsigned char drive,unsigned int buffer, unsigned int base)
+int read_track(unsigned int sector_number, unsigned char drive,unsigned int buffer, unsigned int base)
 {	//doesn't seem to work properly on bochs
 	unsigned int st0, st1, st2, cylinder_r, head_r, sector_r, size_r;//, cylinder_check;
 	//these store the results from the read command
@@ -234,7 +241,7 @@ int floppy_read_track(unsigned int sector_number, unsigned char drive,unsigned i
 	//configure the DMA (channel 2)
 	startDMA(buffer, length - 1, 2, 0x45);
 	//give the seek track command
-	floppy_seek_to_cylinder(cylinder, head, base, drive);
+	seek_to_cylinder(cylinder, head, base, drive);
 	Delay(floppy_disk.head_settle_time);
 	//the length of time in milliseconds it takes for the head to settle after moving
 	sendFloppyCommand(base, READ_TRACK);
@@ -249,8 +256,7 @@ int floppy_read_track(unsigned int sector_number, unsigned char drive,unsigned i
 	if (WaitFloppyInt() == -1)
 			return -1;	//wait for the completion of the command or a timeout
 	//check_floppy_status(base, &st0, &cylinder);
-	floppy_getResults(&st0, &st1, &st2, &cylinder_r, &head_r, &sector_r, &size_r, base);
-	return 0;
+	getResults(&st0, &st1, &st2, &cylinder_r, &head_r, &sector_r, &size_r, base);
 }
 
 
@@ -271,9 +277,10 @@ int floppy_read_sector(unsigned int sector_number, unsigned char drive,unsigned 
 	for (counter = 0; counter < floppy_disk.bytes_per_sector; counter++)
 		length *= 2;
 	length *= 128;
-	sector_size = length;
+	//sector_size = length;
 		//size of the sector in bytes
 	//set floppy disk status to known state
+	display("Issue reset floppy drive commnad\n");
 	if (reset_floppy(base, drive) == -1)
 		return -1;
 	//enable the motor for the drive (reset_floppy should do this already)
@@ -281,9 +288,9 @@ int floppy_read_sector(unsigned int sector_number, unsigned char drive,unsigned 
 //	command += 0x0C + drive;
 //	outportb(command, DIGITAL_OUTPUT_REG);
 	//configure the DMA (channel 2)
-	startDMA(sector_buffer, length - 1, 2, 0x45);	//dma always copies at least 1 byte
+	startDMA(sector_buffer, length - 1, 2, 0x45);
 	//give the seek track command
-	if (floppy_seek_to_cylinder(cylinder, head, base, drive) == -1)
+	if (seek_to_cylinder(cylinder, head, base, drive) == -1)
 		return -1;
 	Delay(floppy_disk.head_settle_time);
 	//the length of time in milliseconds it takes for the head to settle after moving
@@ -299,47 +306,28 @@ int floppy_read_sector(unsigned int sector_number, unsigned char drive,unsigned 
 	if (WaitFloppyInt() == -1)
 			return -1;	//wait for the completion of the command
 	//check_floppy_status(base, &st0, &cylinder);
-	floppy_getResults(&st0, &st1, &st2, &cylinder_r, &head_r, &sector_r, &size_r, base);
+	getResults(&st0, &st1, &st2, &cylinder_r, &head_r, &sector_r, &size_r, base);
+	display("Copying data\n");
 	memcopy(buffer, sector_buffer, length);
+	display("Done copying data\n");
 	//turn off floppy disk motor
 	outportb(0, base + DIGITAL_OUTPUT_REG);
-	return 0;
 }
 
-void initialize_floppy()
+struct driveData * initialize()
 {	//checks for the existence of floppy drives first
 	unsigned int check = 0;
 	unsigned int length = 0;
 	unsigned int counter;
-	//new detection routine
-	for (counter = 0; counter< 4; counter++)
-	{
-		if (reset_floppy(FLOPPY_PRIMARY_BASE, counter) == 0)
-		{
-			display("Floppy drive ");
-			PrintNumber(counter);
-			display(" is present on primary controller\n");
-			outportb(0, FLOPPY_PRIMARY_BASE + DIGITAL_OUTPUT_REG);
-		}
-		if (reset_floppy(FLOPPY_SECONDARY_BASE, counter) == 0)
-		{
-			display("Floppy drive ");
-			PrintNumber(counter);
-			display(" is present on secondary controller\n");
-			outportb(0, FLOPPY_SECONDARY_BASE + DIGITAL_OUTPUT_REG);
-		}
-	}
-	display("\n");
-	//old detection routine, doesn't work on all computers properly
-//	outportb(0x10, 0x70);	//send command to port 0x70
-//	check = inportb(0x71);
-//	driveA = (check & 0xF0)>>4;
-//	driveB = (check & 0xF);
-//	display("\tFirst drive code: ");
-//	PrintNumber(driveA);
-//	display("\n\tSecond drive code: ");
-//	PrintNumber(driveB);
-//	display("\n");
+	outportb(0x10, 0x70);	//send command to port 0x70
+	check = inportb(0x71);
+	//driveA = (check & 0xF0)>>4;
+	//driveB = (check & 0xF);
+	//display("\tFirst drive code: ");
+	//PrintNumber(driveA);
+	//display("\n\tSecond drive code: ");
+	//PrintNumber(driveB);
+	//display("\n");
 	memcopy(&floppy_disk, (unsigned char *)DISK_PARAMETER_ADDRESS, sizeof(floppy_parameters));
 	//initialize the floppy disk information structure
 //	reset_floppy(base, 0);
@@ -348,10 +336,7 @@ void initialize_floppy()
 	for (counter = 0; counter < floppy_disk.bytes_per_sector; counter++)
 		length *= 2;
 	length *= 128;
-	if (length == 0)
-		length = 0x200;
-	sector_buffer = (unsigned long)malloc(0x1000);	//0x1000 is the longest sector possible
-	sector_size = length;
+	sector_buffer = (unsigned int)malloc(length);
 }
 
 char * assign_drive(unsigned char drive, unsigned char *prefix)
@@ -359,6 +344,19 @@ char * assign_drive(unsigned char drive, unsigned char *prefix)
 	//returns the value assigned
 	//ex: "/floppya/"
 	
+}
+
+void * (*get_function(int which))()
+{
+	switch (which)
+	{
+		case 1:
+			return &initialize;
+			break;
+		default:
+			return 0;
+			break;
+	} 
 }
 
 //add functions to read files from the root directory of the disk

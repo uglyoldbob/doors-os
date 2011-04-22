@@ -2,6 +2,7 @@
 #include "interrupt_table.h"
 #include "floppy.h"
 #include "memory.h"
+#include "entrance.h"
 
 //file naming convention
 /* /(drive name)/ ex floppy1 floppy2 cd1 cd2 cd3
@@ -12,6 +13,33 @@
 	/
 */
 
+//process filename, return (drive and partition number information)
+//figure out which drive access code is required from the drive number
+	//access the partition and hopefully we have a filesystem driver for it
+	//and hopefully the partition is formatted
+//lookup table for drives
+	//drive name (floppy0, floppy1, hd1, cd3, rd1)
+	//drive number
+
+/*The kernel and disk driver will keep copies of disk structure information
+	The filesystem driver will be run by the kernel, so there will be no need for the filesystem driver to keep that information
+	It can keep a copy of the information, but I don't see any reason for it at the moment*/
+
+//general structure of the disk driver (not the filesystem driver)
+	//initialize function (this function is responsible for initializing and detecting drives
+		//this should allow support for unsupported storage devices to be easily added
+		//this function should return an array of devices detected by the driver
+	//function selector: returns a pointer for each various functions of the driver
+		//ex: function_pointer get_function(DISK_READ_SECTOR);
+	//common functions used by filesystem drivers (read sector(s), write sector(s))
+		//the driver does not necessarily have to give the command to the drive that the function is named
+		//the floppy driver can issue a read track command instead of the read sectors command (since there is no read sectors command that I am aware of)
+		//the function names have to be present, but can return an error if the device does not support that feature
+			//cd drivers probably will not support write functions
+
+//structure of filesystem driver
+	//if the operating system is expected to boot from a filesystem it is recommended that a small read only driver be compiled into the kernel
+
 struct sectorReturn readSector(unsigned char driveNum, unsigned long sectorNumber)
 {	//general purpose read sector
 	struct sectorReturn sector;
@@ -19,7 +47,7 @@ struct sectorReturn readSector(unsigned char driveNum, unsigned long sectorNumbe
 	sector.data = malloc(sector.size);
 	if (driveNum < 4)
 	{	//floppy drive
-		if (floppy_read_sector(sectorNumber, driveNum, sector.data, FLOPPY_PRIMARY_BASE) == -1)
+		if (floppy_read_sector(sectorNumber, driveNum, sector.data, 0x3F0) == -1)
 		{	//error occurred while reading, try other floppy controller?
 			free(sector.data);
 			sector.size = 0;	//this will indicate that an error happened
@@ -31,18 +59,9 @@ struct sectorReturn readSector(unsigned char driveNum, unsigned long sectorNumbe
 	return sector;
 }
 
-
 ////////////////////////
 //ATA / ATAPI-4 driver//
 ////////////////////////
-extern unsigned int inportb(unsigned int port);		//entrance.asm
-extern unsigned int outportb(unsigned int value, unsigned int port);	//entrance.asm
-extern unsigned int inportw(unsigned int port);		//entrance.asm
-extern unsigned int outportw(unsigned int value, unsigned int port);	//entrance.asm
-extern volatile unsigned int HD_INTS;	//entrance.asm
-
-extern unsigned int test_and_set (unsigned int new_value, unsigned int *lock_pointer);
-//use this to set an (unsigned int) that is shared
 
 #define IDE_PRIMARY 		0x1F0
 #define IDE_SECONDARY 	0x170
@@ -86,7 +105,6 @@ extern unsigned int test_and_set (unsigned int new_value, unsigned int *lock_poi
 
 #define DEV_CTR_REG			0x206	//write
 	//device control register
-
 
 //execute a drive diagnostic
 //this function executes on both master and slave drives on a given IDE controller

@@ -5,7 +5,16 @@ struct task *sys_tasks;
 extern unsigned long *multi_tss_begin;	//located in entrance.asm
 extern unsigned char enable_multi;
 extern struct TSS *get_current_tss();
+
 unsigned long get_sys_tasks();
+int add_task_next(const struct TSS *new_task, struct task *list);
+int add_task_before(const struct TSS *new_task, struct task *list);
+struct task * remove_current_task(struct task *list);
+int remove_next_task(struct task *list);
+int remove_previous_task(struct task *list);
+int init_first_task(struct task *list);
+struct task * next_state(unsigned long valid_previous, struct task *list, unsigned long *multi_tss, unsigned long *prev_tss);
+void secondary_task();
 
 
 struct TSS
@@ -61,8 +70,6 @@ struct task
 	struct task *next;
 };
 
-int init_first_task(struct task *list);
-void secondary_task();
 
 //task management will center on the timer function (which will fire once per millisecond)
 //maybe use the PIC for this instead

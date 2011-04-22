@@ -1,6 +1,5 @@
 #include "PIC.h"
-extern unsigned int inportb(unsigned int port);		//entrance.asm
-extern unsigned int outportb(unsigned int value, unsigned int port);	//entrance.asm
+#include "entrance.h"
 
 void setupPIC()
 {	//sets up the PIC and then enables interrupts

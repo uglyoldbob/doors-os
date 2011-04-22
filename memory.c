@@ -25,13 +25,6 @@ for allocating more than one page (it's pretty slow i think)
 //1 - indicate the presence of a free page
 	//will be used to allocate >= 1 page
 
-extern void WaitKey();
-	//waits for the pause/break key to be pressed
-extern void EnablePaging(unsigned int address);
-	//assembly code to signal the processor to enable paging
-extern void Delay(unsigned int);
-	//delays for mmmm milliseconds
-
 const unsigned int BYTE_GRANULARITY = sizeof(unsigned int *);
 	//this is the granularity of an allocation that is less than 4KB
 

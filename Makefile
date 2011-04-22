@@ -17,10 +17,10 @@ KRNL_CFLAGS =  -O1 -nostdlib
 
 APP_CFLAGS = -O1
 
-# Linker flags go here. 
-KRNL_LDFLAGS = -s -T link.ld
+# Linker flags go here. -s strips debug info
+KRNL_LDFLAGS = -T link.ld
 
-APP_LDFLAGS = -s -T app-link.ld
+APP_LDFLAGS = -T app-link.ld
 
 #arguments to send to the assembler
 KRNL_ASFLAGS = -O1 -f elf
@@ -84,7 +84,7 @@ $(CD): $(KERNEL)
 
 # rule to link the KERNEL
 $(KERNEL): $(OBJS)
-	$(LD) $(KRNL_LDFLAGS) $(OBJS) -o $(KERNEL)
+	$(LD) $(KRNL_LDFLAGS) $(OBJS) ../cross/i386-elf-doors/lib/libc.a -o $(KERNEL)
 	cp $(KERNEL) iso/$(KERNEL)
 
 $(TEST): test.o

@@ -27,5 +27,3 @@ void setup_spinlock_data();
 ///sets up data structure for spinlocks to work
 void initialize_spinlock();
 //must be called before interrupts and IRQ's are enabled
-extern unsigned long test_and_set (unsigned long new_value, unsigned long *lock_pointer);
-//use this to set an (unsigned int) that is shared

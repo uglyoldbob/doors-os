@@ -119,3 +119,5 @@ KEY_RIGHT_WIN,
 KEY_MENU,
 KEY_PAUSE
 };
+
+void init_keyboard();

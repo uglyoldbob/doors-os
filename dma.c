@@ -1,4 +1,5 @@
 #include "dma.h"
+#include "entrance.h"
 
 // Quick-access registers and ports for each DMA channel.
 unsigned char MaskReg[8]   = { 0x0A, 0x0A, 0x0A, 0x0A, 0xD4, 0xD4, 0xD4, 0xD4 };
@@ -14,7 +15,7 @@ void startDMA(unsigned int address, unsigned int length, unsigned char channel,
 {	//programs the DMA
 	//0x12345 becomes 0x1000:0x2345
 	unsigned int page, segment, offset;
-  page = address>>16;	//what page is it on (if using 64KB pages)
+  	page = address>>16;	//what page is it on (if using 64KB pages)
 	offset = address & 0xFFFF; //the offset (0 - FFFF)
 
 	//make sure mode is using the right channel

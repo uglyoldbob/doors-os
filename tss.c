@@ -21,10 +21,17 @@ int add_task_before(const struct TSS *new_task, struct task *list)
 //	display("add_task: start\n");
 
 	struct task *intermediate;
-	PrintNumber(getEIP());
-	display(" debug here\n");
+	/*PrintNumber(getEIP());
+	display(" debug here\n");*/
 	intermediate = malloc (sizeof(struct task));	
 	intermediate->me = malloc ( sizeof(struct TSS) );
+
+	display("Task information located at: ");
+	PrintNumber(intermediate);
+	display("\nTask tss located at: ");
+	PrintNumber(intermediate->me);
+	display("\n");
+
 //	display("add_task: malloc success\n");
 	intermediate->next = list;
 	intermediate->previous = list->previous;
@@ -34,23 +41,31 @@ int add_task_before(const struct TSS *new_task, struct task *list)
 	if (list->next == list)
 		list->next = intermediate;
 //	display("add_task: Setting pointers to new object success\n");
-	display("Destination: ");
+	/*display("Destination: ");
 	PrintNumber(intermediate->me);
-	display("\n");
+	display("\n");*/
+
+	//intermediate->me = new_task;
 	memcopy(intermediate->me, new_task, sizeof(struct TSS));
-	display("Source: ");
+
+/*	display("Source: ");
 	PrintNumber(new_task);
 	display("\n");
 	PrintNumber(new_task->cs);
-	display(": cs\n");
-//	PrintNumber(list->previous);
-//	display(", ");
-//	PrintNumber(list);
-//	display(", ");
-//	PrintNumber(list->next);
+	display(": cs\n");*/
+	PrintNumber(list->previous->previous);
+	display(", ");
+	PrintNumber(list->previous);
+	display(", ");
+	PrintNumber(list);
+	display(", ");
+	PrintNumber(list->next);
+	display(", ");
+	PrintNumber(list->next->next);
+	display("\n");
 //	display("\nadd_task: full success\n");
 
-	PrintNumber(list->previous);
+/*	PrintNumber(list->previous);
 	display(" ");
 	PrintNumber(list);
 	display(" ");
@@ -61,12 +76,12 @@ int add_task_before(const struct TSS *new_task, struct task *list)
 	PrintNumber(list->next);
 	display(" ");
 	PrintNumber(list->next->next);
-	display("\n");
+	display("\n");*/
 
 	return 0;
 }
 
-int remove_current_task(struct task *list)
+struct task * remove_current_task(struct task *list)
 {	//removes the current task and advances to the next task
 	struct task *intermediate;
 	list->previous->next = list->next;
@@ -75,7 +90,7 @@ int remove_current_task(struct task *list)
 	list = list->next;
 	free (intermediate->me);
 	free (intermediate);
-	return 0;
+	return list;
 }
 
 int remove_next_task(struct task *list)
@@ -105,6 +120,13 @@ int init_first_task(struct task *list)
 	list->next = list;
 	list->previous = list;
 	list->me = malloc (sizeof(struct TSS));
+
+	display("Task information located at: ");
+	PrintNumber(list);
+	display("\nTask tss located at: ");
+	PrintNumber(list->me);
+	display("\n");
+
 	list->me->cs = 0x08;
 	list->me->ds = 0x10;
 	list->me->es = 0x10;
@@ -113,44 +135,75 @@ int init_first_task(struct task *list)
 	list->me->ss = 0x10;
 	list->me->cr3 = getCR3();
 	list->me->ldt_segment_selector = 0;
-	PrintNumber(get_current_tss());
-	display(" is where information for the first task is being copied to\n");
+	//PrintNumber(get_current_tss());
+	//display(" is where information for the first task is being copied to\n");
 	memcopy(get_current_tss(), list->me, sizeof(struct TSS));
 	//the TSS data for the current task is meaningless
 	//TSS data is only useful when a task has been suspended/(is not currently executing)
 }
 
-int next_state(unsigned long valid_previous, struct task *list, unsigned long *multi_tss)
+struct task * next_state(unsigned long valid_previous, struct task *list, unsigned long *multi_tss, unsigned long *prev_tss)
 {	//store data for the previous task
 	//load data for the next task
-//	if (list->previous == list->next)
-//		return 0;
+	/*display("\nTask: ");
+	PrintNumber(list->me);
+	display("\n");*/
+	/*display(", Previous tss: ");
+	PrintNumber(prev_tss);
+	display(", Current tss: ");
+	PrintNumber(multi_tss);
+	display("\n");*/
 
-//	display("\nBegin next_state: ");
-//	PrintNumber(list);
-//	display(" @ ");
-//	PrintNumber(multi_tss);
-//	display("\n");
 	if (valid_previous == 1)
-		memcopy(list->previous->me, multi_tss, sizeof(struct TSS));
-	list = list->next;
-	memcopy(multi_tss, list->me, sizeof(struct TSS));
+	{
+		/*display("Backup state from ");
+		PrintNumber(prev_tss);
+		display(" to: ");
+		PrintNumber(list->previous->me);
+		display("\nPrevious CS: ");
+		PrintNumber(prev_tss[19]);*/
+		
+		//the cpu is properly storing the previous task
+		//memcopy is overwriting the information that we want to keep
+		memcopy(list->previous->me, prev_tss, sizeof(struct TSS));
+		
+		/*display(" (");
+		PrintNumber(list->previous->me->cs);
+		display(")\n");
+		display("The other TSS CS: ");
+		PrintNumber(multi_tss[19]);
+		display("\n");*/
+	}
+	else
+	{
+		display("\n");
+	}
+	/*display("Copy task tss from ");
+	PrintNumber(list->next->me);
+	display(" to ");
+	PrintNumber(prev_tss);
+	display("\nNew cs:");
+	PrintNumber(list->next->me->cs);
+	display(" (");*/
+	memcopy(prev_tss, list->next->me, sizeof(struct TSS));
+	/*PrintNumber(prev_tss[19]);
+	display(")\n");*/
+	return list->next;
 }
 
 unsigned long get_sys_tasks()
-{	return sys_tasks;	}
+{	return &sys_tasks;	}
 
 void secondary_task()
 {
-	int counter;
+	unsigned long counter;
 	while (1)
 	{
 		counter++;
-		if (counter == 0x1000)
+		if (counter == 0x10000)
 		{
 			display("Task 2.");
 			counter = 0;
 		}
-		Delay(1);
 	}
 }

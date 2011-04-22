@@ -51,6 +51,8 @@ skip:
 	jmp $
 .hooray
 	cli		;interrupt flag should already be cleared, but i'll disable them as an extra precaution
+	mov al, 0xFF	;disable PIC interrupts
+	out 0x21, al	;disable PIC interrupts
 	;mov [bootInfo], ebx	
 	;this will be needed if the ebx register is ever touched
 	;set up GDT and refresh segments
@@ -521,7 +523,7 @@ timer dd 0	;a measure of time since the system started
 
 previous_tss db 2	;defines which tss holds the previous task
 previous dd 0		;is the unused TSS a valid previous task?
-task_timer db 20;	;this is the task timer
+task_timer dd 50;	;this is the task timer
 enable_multi db 0;	;should we try to multitask yet?
 
 [global get_current_tss]
@@ -536,7 +538,7 @@ get_current_tss:
 	ret
 
 irqM0:	inc dword [timer]
-	dec BYTE [task_timer]
+	dec DWORD [task_timer]
 	;manual EOI before the interrupt has ended	
 	push ax			;save ax
 	mov al, 0x20
@@ -544,38 +546,51 @@ irqM0:	inc dword [timer]
 	pop ax			;restore ax
 	cmp BYTE [enable_multi], 0
 	je .noSwitch
-	cmp BYTE [task_timer], 0
+	cmp DWORD [task_timer], 0
 	je .switch
 	;check to see if it is time for a task switch
 	jmp .end
 .noSwitch
-	mov BYTE [task_timer], 20
+	mov DWORD [task_timer], 50
 	jmp .end
 .switch
-	cli
-	mov BYTE [task_timer], 20
+	;cli
+	mov DWORD [task_timer], 50
 	push eax	;store eax for after the next_state call
-	cmp BYTE [previous_tss], 2
-	je .2
+	push ebx	;store ebx
+	cmp BYTE [previous_tss], 1
+	je .2	;push the previous tss address then the current tss address
+	mov eax, multi_tss2_begin - multi_start
+	push eax	;fourth argument for next_state
 	mov eax, multi_tss_begin - multi_start
-	push eax
-	mov BYTE [previous_tss], 2
+	push eax	;third argument for next_state
+	mov BYTE [previous_tss], 1
 	jmp .1
 .2
+	mov eax, multi_tss_begin - multi_start
+	push eax	;fourth argument for next_state
 	mov eax, multi_tss2_begin - multi_start
-	push eax
-	mov BYTE [previous_tss], 1
+	push eax	;third argument for next_state
+	mov BYTE [previous_tss], 2
 .1
-	call get_sys_tasks
-	push eax
+	call get_sys_tasks	;places address of sys_tasks into eax
+	push DWORD [eax]
+	mov ebx, eax	;store the address for sys_tasks
 	xor eax, eax
 	mov ax, [previous]
 	push eax
-	call next_state	;takes three arguments
+	call next_state	;takes four arguments
+					;eax contains the new value for sys_tasks
+	mov [ebx], eax
+
 	pop eax
-	pop eax	;pop arguments off of the stack
 	pop eax
+	pop eax
+	pop eax
+
+	pop ebx			;restore ebx
 	pop eax			;restore eax
+
 	;either this is the first task switch and the previous tss is invalid (in which case the data was not used)
 	;or this was not the first task switch (data in the tss was used)
 	;either way, once the hardware performs the task switch, the "previous" task will contain information about the current task
@@ -584,6 +599,7 @@ irqM0:	inc dword [timer]
 	mov eax, 1
 	mov [previous], eax
 	pop eax
+.catchall
 	cmp BYTE [previous_tss], 2
 	je .2exec
 	sti
@@ -650,9 +666,17 @@ SYS_write	equ	19;3
 SYS_MAX		equ	20
 
 ;newline db 13, 10, 0
+syscall_print db 'Entered a syscall', 13, 10, 0
 
 syscall1:
 	;check for syscalls that have no arguments
+
+	push eax
+	push syscall_print
+	call display
+	pop eax
+	pop eax
+
 	cmp eax, SYS_exit
 	je .exit
 	cmp eax, SYS_fork
@@ -717,7 +741,6 @@ irqM1:
 	pusha
 	xor eax, eax
 	in al, 0x60
-	;check for codes that don't qualify as the last response
 	mov [LastResponse], al
 	push eax
 	call handleScancode
@@ -727,8 +750,8 @@ irqM1:
 	mov ah, al	;Save keyboard status
 	or  al, 80h	;Disable
 	out 61h, al
-	mov al, ah	;Enable (If it was disabled at first, you wouldn't
-	out 61h, al	; be doing this anyway :-)
+	mov al, ah	;Enable
+	out 61h, al	;
 	mov al, bl	;restore byte recieved
 	inc dword [NumKeyInts]
 

@@ -1,9 +1,9 @@
 #include "keyboard.h"
 #include "message.h"
-extern unsigned int inportb(unsigned int port);		//entrance.asm
-extern unsigned int outportb(unsigned int value, unsigned int port);	//entrance.asm
-extern unsigned int getResponse();	//waits for and retrieves a byte response from the keyboard
-unsigned int BootType;	//warm or cold boot; 0 = cold, 1 = warm
+#include "entrance.h"
+
+//unsigned int BootType;	//warm or cold boot; 0 = cold, 1 = warm
+	//not valid on all computers
 
 //the keyboard is initalized to use translated scancode set 2 (sources I have read say it is practically gauranteed to work on all keyboards (sets 1 and 3 might not work on all for some weird reason)
 //the keyboard only sends codes one byte at a time, so each scancode is processed with a buffer

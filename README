@@ -3,7 +3,6 @@ DoorsOS version 0.16
 	Keyboard driver is mostly finished. It could use some customization functions to adjust repeat rates and delays. I also want to make some functions so that "extra" (media keys like volume adjust and similar keys) can be used instead of having their keycodes discarded.
 	allocating more than 4KB of memory is functional but slow. It was the first way I thought of to do it that didn't require potentially getting into an infinite loop (I have to allocate memory so I can allocate memory)
 	TODO: measure effectiveness of the memory allocation routines
-	TODO: finish the spinlock mechanisms (right now only 1 level is functional)
 
 Make all:
 	Compiles the kernel if necessary and updates the floppy disk and cd boot images
@@ -21,6 +20,10 @@ Make floppy:
 make clean:
 	Eliminates all (compiled objects) - object files, the kernel file and the bootable cd image
 
+make test:
+	compiles a sample program using the cross compiler with the ported newlib C library
+	if this compiles properly, then the cross compiler and C library is probably setup correctly
+
 IMPORTANT for making floppy disk images:
 If you want to make a bootable floppy disk image, do not delete Grub.img. If skeleton.img becomes erased or corrupted, then Grub.img is the backup for skeleton.img. The only important thing about these images is that they already have the FAT12 filesystem and GRUB installed on them so only the kernel file (kernel.bin) needs to be copied to them.
 
@@ -35,7 +38,8 @@ Booting from a hard drive.
 Network boot:
 	This is possible, but I don't know how to set this up right now.
 
-Working on porting newlib for this version. Next will be FAT drivers.
+Next will be FAT drivers.
+I am working on porting newlib. OS dependent calls will probably fail until I have support for them coded.
 There will also be tools for compiling a cross compiler. It seems to be sensitive to what is in the folders that the script is run from and things that are in the tools folder. Copying the entire folder tools to a seperate directory to build the cross-compiler seems to solve the problem. I'm not sure what causes this.
 
 -----------

@@ -1,6 +1,3 @@
-unsigned int pos;
-unsigned int off;
-
 void display(char * chr);
 	//this will be called from out ASM code
 void PrintNumber(unsigned int bob);
