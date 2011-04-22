@@ -4,12 +4,13 @@ display_library: x
 megs: 4
 romimage: file="/usr/local/share/bochs/BIOS-bochs-latest", address=0x00000
 vgaromimage: file="/usr/local/share/bochs/VGABIOS-lgpl-latest"
-boot: floppy
+boot: cdrom
 floppy_bootsig_check: disabled=0
 floppya: 1_44="/home/thomas/DoorsOs/FAT12GRUB/skeleton.img", status=inserted
 # no floppyb
 ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
-ata0-master: type=cdrom, path="/mnt/cdrom0", status=inserted, biosdetect=auto, model="Generic 1234"
+ata0-master: type=cdrom, path="grub.iso", status=inserted, biosdetect=auto, model="Generic 1234"
+ata0-slave: type=cdrom, path="/media/cdrom0", status=inserted, biosdetect=auto, model="Generic 1234"
 ata1: enabled=1, ioaddr1=0x170, ioaddr2=0x370, irq=15
 ata2: enabled=0
 ata3: enabled=0

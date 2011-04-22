@@ -1,5 +1,6 @@
 #include "spinlock.h"
 #include "message.h"
+#include "memory.h"
 //message.c
 //these spinlock controlled functions will control the messaging system for the kernel
 

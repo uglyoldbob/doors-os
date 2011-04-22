@@ -1,5 +1,5 @@
 #insert the location of this file here
-location="/home/thomas/DoorsOs/FAT12GRUB/v0.14"
+location="/home/thomas/DoorsOs/FAT12GRUB"
 #where the floppy disk gets mounted to (virtual)
 floppyDisk="/dev/loop/0"
 #the other virtual virtual floppy disk

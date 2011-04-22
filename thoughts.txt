@@ -1,0 +1,25 @@
+Thoughts on things to do.
+
+File access
+
+The syntax for file access will be similar to Linux
+Starts with a '/'
+Then the "drive" name (different partitions on a hard drive will have different names)
+FORM: /device/folder/folder/file
+EX: /floppya, /floppyb, /floppyc, /floppyd
+
+Certain information will need to be stored for each drive accessible by this method.
+	Drive name (floppya, floppyb, ...)
+	Hardware device that data comes from (hardware devices can be emulated to provide support for image files)
+	the sector number for the bootsector (contains information about the filesystem)
+	
+Hardware devices access
+	sector_number ranges from 0-whatever
+	buffer
+	read,write sector
+	the appropriate locks so that only one process or thread attempts to access a device at one time
+	
+	
+	
+	
+	

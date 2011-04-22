@@ -1,5 +1,9 @@
 #include "interrupt_table.h"
 
+//;0 - 31 are reserved, 32-39 used for master IRQ 0 - 7, 40 - 47 slave IRQ 0 - 7, 
+//	;48-255 are usable for anything
+
+
 struct idt_desc *setupIdt()
 {
 	int counter;
@@ -100,7 +104,31 @@ struct idt_desc *setupIdt()
 	idt.list[39].low_address = ((unsigned)irqM7 & 0xFFFF);
 	idt.list[39].upper_address = ((unsigned)irqM7 >> 16);
 	idt.list[39].flags = 0x8E;
-	for (counter = 40; counter < NUM_INTS; counter++)
+	idt.list[40].low_address = ((unsigned)irqM8 & 0xFFFF);
+	idt.list[40].upper_address = ((unsigned)irqM8 >> 16);
+	idt.list[40].flags = 0x8E;
+	idt.list[41].low_address = ((unsigned)irqM9 & 0xFFFF);
+	idt.list[41].upper_address = ((unsigned)irqM9 >> 16);
+	idt.list[41].flags = 0x8E;
+	idt.list[42].low_address = ((unsigned)irqM10 & 0xFFFF);
+	idt.list[42].upper_address = ((unsigned)irqM10 >> 16);
+	idt.list[42].flags = 0x8E;
+	idt.list[43].low_address = ((unsigned)irqM11 & 0xFFFF);
+	idt.list[43].upper_address = ((unsigned)irqM11 >> 16);
+	idt.list[43].flags = 0x8E;
+	idt.list[44].low_address = ((unsigned)irqM12 & 0xFFFF);
+	idt.list[44].upper_address = ((unsigned)irqM12 >> 16);
+	idt.list[44].flags = 0x8E;
+	idt.list[45].low_address = ((unsigned)irqM13 & 0xFFFF);
+	idt.list[45].upper_address = ((unsigned)irqM13 >> 16);
+	idt.list[45].flags = 0x8E;
+	idt.list[46].low_address = ((unsigned)irqM14 & 0xFFFF);
+	idt.list[46].upper_address = ((unsigned)irqM14 >> 16);
+	idt.list[46].flags = 0x8E;
+	idt.list[47].low_address = ((unsigned)irqM15 & 0xFFFF);
+	idt.list[47].upper_address = ((unsigned)irqM15 >> 16);
+	idt.list[47].flags = 0x8E;
+	for (counter = 48; counter < NUM_INTS; counter++)
 	{	//unused entries, these get filled out so the comp wont crash if they get called
 		idt.list[counter].low_address = 0;
 		idt.list[counter].upper_address = 0;

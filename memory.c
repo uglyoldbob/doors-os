@@ -422,12 +422,19 @@ void free(void *address)
 	}
 }
 
-void *memcpy(void* s1, const void* s2, unsigned int n)
+void *memcopy(void* s1, const void* s2, unsigned int n)
 {
-	unsigned int counter;
-	for (counter = 0; counter < (n / sizeof(unsigned int)); counter++)
+	display("Copying ");
+	PrintNumber(n);
+	display(" bytes from ");
+	PrintNumber(s2);
+	display(" to ");
+	PrintNumber(s1);
+	display("\n");
+	unsigned long counter;
+	for (counter = 0; counter < (n / sizeof(unsigned char)); counter++)
 	{
-		((unsigned int*)s1)[counter] = ((unsigned int*)s2)[counter];
+		((unsigned char*)s1)[counter] = ((unsigned char*)s2)[counter];
 	}
 	return s1;
 }

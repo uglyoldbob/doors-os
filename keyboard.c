@@ -2,11 +2,12 @@
 #include "message.h"
 extern unsigned int inportb(unsigned int port);		//entrance.asm
 extern unsigned int outportb(unsigned int value, unsigned int port);	//entrance.asm
-extern unsigned int getResponse();	//waits for an retrieves a byte response from the keyboard
+extern unsigned int getResponse();	//waits for and retrieves a byte response from the keyboard
+unsigned int BootType;	//warm or cold boot; 0 = cold, 1 = warm
 
 //the keyboard is initalized to use translated scancode set 2 (sources I have read say it is practically gauranteed to work on all keyboards (sets 1 and 3 might not work on all for some weird reason)
-//the keyboard only sends codes one byte at a time, so each byte is processed with a buffer
-//when the last byte of a scancode is recieved, it is translated any placed in the system notification buffer
+//the keyboard only sends codes one byte at a time, so each scancode is processed with a buffer
+//when the last byte of a scancode is recieved, it is translated and placed in the system notification buffer
 	//via a spinlock aware function
 
 
@@ -71,8 +72,8 @@ void init_keyboard()
 		display("\tFailed to set keyboard mode\n");
 	add_me.who = KEYBOARD;
 	add_me.fields = 1;
-/*display("\tDisabling scancode translation\n");
-	//disable translation
+	display("\tEnabling scancode translation\n");
+	//enable translation, not working on some computers
 	wait_2_write();
 	outportb(0x20, 0x64);
 	wait_to_write();
@@ -80,12 +81,17 @@ void init_keyboard()
 	{
 		response = getResponse();
 	} while (response == 0);
-	response = response & 0xBF;
+
+	display("The keyboard command byte is ");
+	PrintNumber(response & 0xFF);
+	display("\n");
+
+	response = response | 0x40;
 	wait_2_write();
 	outportb(0x60, 0x64);
 	wait_to_write();
 	outportb(response, 0x60);
-	wait_to_write();*/
+	wait_to_write();
 }
 
 //format of the processed scancodes (4 bytes for each key event)
@@ -270,7 +276,7 @@ void handleScancode(unsigned int code)
 						display("Unknown two byte scancode: ");
 						PrintNumber(code_buffer[0]);
 						display(",");
-						PrintNumber(code_buffer[1]);
+						PrintNumber(code);
 						display("!");
 					num_elements_used = 0;
 					break;
@@ -296,7 +302,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[1]);
 						display(",");
-						PrintNumber(code_buffer[2]);
+						PrintNumber(code);
 						display("!");
 					num_elements_used = 0;
 					break;	
@@ -354,7 +360,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[2]);
 						display(",");
-						PrintNumber(code_buffer[3]);
+						PrintNumber(code);
 						display("!");
 					num_elements_used = 0;
 					break;	
@@ -384,7 +390,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[3]);
 						display(",");
-						PrintNumber(code_buffer[4]);
+						PrintNumber(code);
 						display("!");
 					num_elements_used = 0;
 					break;	
@@ -412,7 +418,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[4]);
 						display(",");
-						PrintNumber(code_buffer[5]);
+						PrintNumber(code);
 						display("!");
 					num_elements_used = 0;
 					break;	

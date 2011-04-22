@@ -125,6 +125,22 @@ outportb:
 	pop edx
 	ret
 
+[global inportw]
+inportw:
+	mov edx, [esp + 4]
+	xor eax, eax
+	in ax, dx
+	ret
+
+[global outportw]
+outportw:
+	push edx
+	mov eax, [esp + 8]
+	mov edx, [esp + 12]
+	out dx, ax
+	pop edx
+	ret
+
 [global getEIP]
 getEIP:
 	mov eax, [esp]
@@ -304,6 +320,14 @@ ret
 [global irqM5]
 [global irqM6]
 [global irqM7]
+[global irqM8]
+[global irqM9]
+[global irqM10]
+[global irqM11]
+[global irqM12]
+[global irqM13]
+[global irqM14]
+[global irqM15]
 [global isr0]
 [global isr1]
 [global isr2]
@@ -396,7 +420,11 @@ irqM1:
 	pusha
 	xor eax, eax
 	in al, 0x60
+	;check for codes that don't qualify as the last response
+	cmp al, 0xFA
+	je .noResponse
 	mov [LastResponse], al
+	.noResponse
 	push eax
 	call handleScancode
 	pop eax
@@ -464,14 +492,28 @@ irqM5:
 	pop eax
 	iret
 
+FloppyTimeout db 'Timeout waiting for floppy drive', 10, 13, 0
+
 [global WaitFloppyInt]
 WaitFloppyInt:
-	push eax
+	push ebx
 	mov eax, [BytesDone]
+	mov ebx, [timer]
+	add ebx, 0x200
 .notThereYet
+	cmp ebx, [timer]
+	jl .error
 	cmp eax, [BytesDone]
 	je .notThereYet
+	pop ebx
+	mov eax, 0	;indicate success
+	ret
+.error
+	push FloppyTimeout
+	call display
 	pop eax
+	pop ebx
+	mov eax, 0xFFFFFFFF	;-1 indicates failure
 	ret
 	
 BytesDone dd 0	;the number of times the interrupt has been fired
@@ -501,6 +543,116 @@ irqM7:
 	out 0x20, al
 	pop eax
 	iret
+
+IRQM8 db 'IRQ8', 13, 10, 0
+irqM8:
+	push eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC	
+	push IRQM8
+	call display
+	pop eax
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+IRQM9 db 'IRQ9', 13, 10, 0
+irqM9:
+	push eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC	
+	push IRQM9
+	call display
+	pop eax
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+IRQM10 db 'IRQ10', 13, 10, 0
+irqM10:
+	push eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC	
+	push IRQM10
+	call display
+	pop eax
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+IRQM11 db 'IRQ11', 13, 10, 0
+irqM11:
+	push eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC	
+	push IRQM11
+	call display
+	pop eax
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+IRQM12 db 'IRQ12', 13, 10, 0
+irqM12:
+	push eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC	
+	push IRQM12
+	call display
+	pop eax
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+IRQM13 db 'IRQ13', 13, 10, 0
+irqM13:
+	push eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC	
+	push IRQM13
+	call display
+	pop eax
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+[global HD_INTS]
+HD_INTS dd 0	;number of times the Hard drive controller IRQ has fired
+IRQM14 db 'IRQ14', 13, 10, 0
+irqM14:
+	push eax
+	inc DWORD [HD_INTS]
+	push IRQM14
+	call display
+	pop eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+IRQM15 db 'IRQ15', 13, 10, 0
+irqM15:
+	push eax
+	push IRQM15
+	call display
+	pop eax
+	;manual EOI before the interrupt has ended required for both master and slave PIC
+	mov al, 0x20
+	out 0x20, al
+	out 0xA0, al
+	pop eax
+	iret
+
+
+
 
 Code dd 0	;this stores any error code that needs to be examined in the following routines
 Zero db 'Divide by zero error!', 10, 0
