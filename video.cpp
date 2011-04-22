@@ -1,22 +1,25 @@
 #include "video.h"
 Video::Video()
 {
-	pos=0;
-	off=0;
+	pos = 0;
+	off = 0;
 	videomem = (unsigned short*) 0xB8000;
+	while ((videomem[pos + off] & 0xFF) != 0x20)
+	{
+		off += 80;
+	}
 }
 
 Video::~Video() {}
 
-void Video::clear()
+void Video::clear()	//does not work
 {
-	off = 0;
+	off = 160;		
 	pos = 0;
 	for (int counter = 0; counter < (80 * 25); counter++)
 	{
 		put(' ');
-	}	//address of off = 0x3004
-		//address of pos = 0x3008
+	}
 	off = 0;
 	pos = 0;
 }

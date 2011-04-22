@@ -22,7 +22,7 @@
 	call __main
 	call _main 		;call int main(void), which is located in our C++ code
 	call __atexit
-	cli 			;interrupts could disturb the halt
+	cli
 	hlt 			;halt the CPU
 gdt:                    ; Address for the GDT
 gdt_null:               ; Null Segment

@@ -20,32 +20,40 @@ Cluster dw 0000h						;stores the cluster for the kernel when we read it from di
 Cylinder db 00h						;stores the cylinder value for int 13
 Head db 00h							;stores the head value for int 13
 Sector db 00h						;stores the sector value for int 13
-FileName db 'DOORS   BIN'				;the name of the kernel file
-Message db 'Doors loading', 13, 10, 0		;the success message
-Oops db 'Oops', 13, 10, 0				;error message
+FileName db 'SECOND  BIN'				;the name of the kernel file
+Message db 'Secondary loading...', 13, 10, 0	;the success message
+Oops db 'Oops', 7, 13, 10, 0				;error message (beep twice)
+Space db ' ', 0						;this is for the screen clearing
+A20Y db 'A20 Enabled', 13, 10, 0
 main:
 	cli					;disable interupts while we set up a stack
 	mov ax, 07C0h
 	mov ds, ax	
 	mov es, ax				;required for the first call to ReadSectors (where we read in the root directory)
 						;the root directory is no longer required after we begin reading/writing the FAT table
-	mov ax, 0050h			;the stack goes in the lower portion of conventional memory
-	mov ss, ax				;it takes up 1FFh bytes
-	mov sp, 0x01FF
+	mov ax, 0xFFFF			;the stack goes in conventional memory
+	mov ss, ax				;it takes up 200h bytes
+	mov sp, 0x0200
 	sti
-;enable A20
-	in	al, 92h
-	or	al, 2
-	out	92h, al
-;check for it
-	xor AX, AX
-	in AL, 92h
-	bt ax, 1
-	jc Enabled
-	mov si, Oops
+;set screen cursor to "begining"
+;discover video information
+	mov ah, 0x0F
+	int 0x10				;ah = columns, al = display mode, bh = active page
+;set cursor position
+	mov ah, 0x02
+	xor dx, dx				;row = 0, column = 0
+	int 0x10
+	mov cx, 0x07D0			;time to clear the screen
+Clear:
+	mov si, Space
 	call DisplayMessage
-Enabled:
-;********************************
+	cmp cx, 0
+	dec cx
+	jne Clear
+;set cursor position (again)
+	mov ah, 0x02
+	xor dx, dx				;row = 0, column = 0
+	int 0x10
 ;now that we have set up our required stuff for our bootsector to work properly (this has been tested for verification)
 ;we need to do something useful :)
 ;find where the root directory begins
@@ -93,12 +101,12 @@ FatRead:
 	mov al, BYTE [10h]		;the number of FATs
 	mul WORD [16h]			;sectors per FAT
 	mov cx, ax
-	mov ax, WORD [0Eh]		;reserved sectors (sectors before the first FAT)
+	mov ax, WORD [0Eh]		;reserved sectors (sectors before the first FAT) 
 	mov bx, 0200h			;the location where we read the FAT to (7C00:200)
 	call ReadSectors			;read the sectors into memory
 ;we have located the bottom of the FAT table in RAM				
-;read kernel into memory (090:0000, then "return" to it, transferring control to the kernel
-	mov ax, 0x0090          ;destination of image CS
+;read kernel into memory (050:0000, then "return" to it, transferring control to the kernel
+	mov ax, 0x0050          ;destination of image CS
 	mov es, ax			;forgot to do this
 	mov bx, 00h
 	push    bx
@@ -128,18 +136,32 @@ Odd:
 	shr dx, 0004h			;take high twelve bits
 Done:
 	mov WORD [Cluster], dx		;store the new cluster value
-	cmp dx, 0FF0h			;test for EOF
+	cmp dx, 0x0FF0			;test for EOF
 	jb Load				;keep reading if not done
+;enabling A20 line
+	;enable A20
+	in	al, 92h
+	or	al, 2
+	out	92h, al
+;check for it
+	xor AX, AX
+	in AL, 92h
+	bt ax, 1
+	jc Enabled
+	jmp short NotEnabled
+Enabled:
+	mov si, A20Y
+	call DisplayMessage
+NotEnabled:
 	mov si, Message
 	call DisplayMessage
-	cli
-	xor ax, ax
-	mov ds, ax              
-	lgdt [gdt_desc + 0x7C00]
-	mov eax, cr0		;enable pmode
-	or al, 1			
-	mov cr0, eax
-	jmp 0x08:0x0900
+	push WORD 0x0050
+	push WORD 0x0000
+	mov ax, 0x0050                 ;set the new data segment
+	mov ds, ax
+	retf					;return to the kernel
+
+	
 
 [BITS 16]
 ;ROUTINES GO BELOW HERE
@@ -206,27 +228,5 @@ DisplayMessage:
 	jmp     DisplayMessage
 .DONE:
 	ret
-gdt:                    ; Address for the GDT
-gdt_null:               ; Null Segment
-	dd 0
-	dd 0
-gdt_code:               ; Code segment, read/execute, nonconforming
-	dw 0FFFFh
-	dw 0x0000
-	db 0
-	db 10011010b
-	db 11001111b
-	db 0
-gdt_data:               ; Data segment, read/write
-	dw 0xFFFF
-	dw 0x0000
-	db 0
-	db 10010010b
-	db 11001111b
-	db 0
-gdt_end:				; Used to calculate the size of the GDT
-gdt_desc:				; The GDT descriptor
-	dw gdt_end - gdt - 1	; Limit (size)
-	dd gdt + 0x7C00		; Address of the GDT
 times 510-($-$$) db '?'	; Fill the rest of the sector with zeros (disable to see how much space is left)
 dw 0xAA55		; Boot signature
