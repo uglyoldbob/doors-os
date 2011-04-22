@@ -3,8 +3,8 @@
 struct idt_desc *setupIdt()
 {
 	int counter;
-	idt.description.address = (unsigned long)(&(idt.list[0]));
-	idt.description.length = (unsigned long)(&(idt.description)) - (unsigned long)(&(idt.list[0])) + 1;
+	idt.description.address = (unsigned int)(&(idt.list[0]));
+	idt.description.length = (unsigned int)(&(idt.description)) - (unsigned int)(&(idt.list[0])) + 1;
 	for (counter = 0; counter < NUM_INTS; counter++)
 	{
 		idt.list[counter].segment = 0x08;

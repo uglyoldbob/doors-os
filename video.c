@@ -11,9 +11,9 @@ void display(char *cp)
 	}
 }
 
-void PrintNumber(unsigned long bob)
+void PrintNumber(unsigned int bob)
 {	//this prints a 32 bit number (8 hex digits)
-	unsigned long Temp = 0;
+	unsigned int Temp = 0;
 	display("0x");
 	int counter = 7;
 	for (counter = 7; counter >= 0; counter--)
@@ -137,7 +137,7 @@ void scroll_screen()
 {
 	unsigned short *destination = (unsigned short*) 0xB8000;
 	unsigned short *source = (unsigned short*) 0xB8000 + 80;
-	unsigned long counter;
+	unsigned int counter;
 	for (counter = 0; counter < (79 * 25); counter++)
 	{
 		destination[counter] = source[counter];

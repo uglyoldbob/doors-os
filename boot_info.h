@@ -18,6 +18,8 @@
      /* Macros. */
      
      /* The magic number for the Multiboot header. */
+#ifndef _boot_info_
+#define _boot_info_
      #define MULTIBOOT_HEADER_MAGIC          0x1BADB002
      
      /* The flags for the Multiboot header. */
@@ -139,6 +141,8 @@
        unsigned long length_low;
        unsigned long length_high;
        unsigned long type;					//1 indicates usable RAM
-     } memory_map_t;
+     } __attribute__((packed)) memory_map_t;
      
      #endif /* ! ASM */
+
+#endif

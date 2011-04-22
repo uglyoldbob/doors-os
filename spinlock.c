@@ -1,0 +1,100 @@
+#include "spinlock.h"
+/*
+the spinlock states are discrete levels
+a spinlock of level 5 will prevent entering spinlock level 4
+also any interrupts or IRQ's that can interfere (or cause a deadlock) are disabled when the spinlock is entered
+they are re-enabled when the spinlock is exited
+*/
+
+
+struct SL_STATES spinlock_states[NUMBER_TYPES];
+
+void enter_spinlock(unsigned int which)
+{	//enters the requested spinlock level
+	//only if the rules allow it
+	unsigned int counter;
+	//display("*ENTERING*\n");
+	switch (which)
+	{	//do any necessary interrupt masking first
+		case SL_IRQ1:
+			clearIRQ(1);
+			break;
+		case SL_MESSAGE:
+			asm("cli");
+			break;
+		default:
+			break;
+	}
+	while (test_and_set (1, &spinlock_states[which].imp_enabled)) {}
+	//display("ENTERED\n");
+	spinlock_states[which].exp_enabled = 1;
+	//manually set the explicit enable flag after entering the
+	//protected side of the spinlock
+	for (counter = (which + 1); counter > 0; counter--)
+	{	//set all lesser important spinlocks to implicitly locked
+		spinlock_states[which - 1].imp_enabled = 1;
+	}
+}
+
+void leave_spinlock(unsigned int which)
+{	//can't leave a spinlock level if we are not there already
+	//display("*LEAVING*\n");
+	unsigned int counter;
+	if (spinlock_states[which].exp_enabled != 1)
+	{
+		display("ERROR occured in leaving a spinlock!\n");
+	}
+	else
+	{	//clear the current spinlock, check for the next highest explicitly set spinlock
+		counter = which;
+		while (counter != 0)
+		{	//process until you hit the most interruptable spinlock
+			if (which != counter)
+			{	//don't count the spinlock that was already explicitly set
+				if (spinlock_states[counter].exp_enabled == 1)
+				{	//the search is over
+					break;
+				}
+				else
+				{
+					spinlock_states[counter].exp_enabled = 0;
+					spinlock_states[counter].imp_enabled = 0;
+					counter--;
+				}
+			}
+			else
+			{
+				spinlock_states[counter].exp_enabled = 0;
+				spinlock_states[counter].imp_enabled = 0;
+				counter--;
+			}
+		}
+		//display("Activated SL: ");
+		//PrintNumber(counter);
+		//display("\n");
+	}
+	switch (which)
+	{
+		case SL_IRQ1:
+			enableIRQ(0);
+			//asm("sti");
+			break;
+		case SL_MESSAGE:
+			asm("sti");
+			break;
+		default:
+			break;
+	}
+	//display("*LEFT*\n");
+}
+
+void initialize_spinlock()
+{
+	unsigned int counter;
+	for (counter = 0; counter < NUMBER_TYPES; counter++)
+	{
+		spinlock_states[counter].exp_enabled = 0;
+		spinlock_states[counter].imp_enabled = 0;
+		spinlock_states[counter].delays = 0;
+	}
+}

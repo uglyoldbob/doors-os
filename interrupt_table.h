@@ -15,7 +15,7 @@ struct idt_entry
 struct idt_desc
 {
 	unsigned short length;
-	unsigned long address;
+	unsigned int address;
 } __attribute__((packed));
 
 struct idt_s

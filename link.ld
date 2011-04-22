@@ -9,6 +9,7 @@ SECTIONS
 {
 code = .; _code = .; __code = .;
 *(.text)
+*(.rodata)
 . = ALIGN(4096);
 }
 

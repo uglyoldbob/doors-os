@@ -37,9 +37,6 @@ mboot:
 	dd start
 
 Error db 'ERROR: The system was not booted with a multiboot compliant loader', 0
-;Success db 'test', 13, 10, 0
-set3 db 'Using scancode set 3', 13, 10, 0
-bad db 'Using scancode set 1', 13, 10, 0
 
 skip:
 ;ebx contains the address of an important structure, multiboot_info
@@ -50,6 +47,7 @@ skip:
 	pop eax
 	jmp $
 .hooray
+	cli		;interrupt flag should already be cleared, but i'll disable them as an extra precaution
 	;mov [bootInfo], ebx	
 	;this will be needed if the ebx register is ever touched
 	;set up GDT and refresh segments
@@ -64,66 +62,13 @@ skip:
 	;refresh CS with a far jump
 	jmp 0x08:flush2
 flush2:
+
 	[extern setupIdt]
 	call setupIdt		;return value is stored in eax
 	lidt [eax]		;load the idt
 	;lidt [idt_desc]	;load the IDT
-	;initialize the PIC
-	mov al, 00010001b
-	out 0x20, al
-	out 0xA0, al	;begin initialing master and slave PIC
-	mov al, 0x20	;IRQ 0 for master goes to INT 32d
-	out 0x21, al	
-	mov al, 0x28	;IRQ 0 for slave goes to INT 40d
-	out 0xA1, al
-	mov al, 00000100b	;slave PIC connected to IRQ 2 of master PIC
-	out 0x21, al
-	mov al, 0x2		;slave PIC is connected to IRQ2
-	out 0xA1, al
-	mov al, 1		;Intel, manual EOI
-	out 0x21, al
-	out 0xA1, al
-	mov al, 0	;enable IRQ's
-	out 0x21, al	;enable IRQ's
-	sti	;enable interrupts
-	;setup the clock (irq 0) to have a frequency of about 1000 Hz
-	;1193180 / Hz is the number to send through to port 0x40
-	mov al, 0x34
-	out 0x43, al
-	mov al, 0xA9	;lower byte
-	out 0x40, al
-	mov al, 0x04	;upper byte
-	out 0x40, al
-	;try to initialize the keyboard to the easiest scan-code set
-;	mov al, 0
-;	mov [LastResponse], al
-;.wait1
-;	in al, 0x60
-;	and al, 00000010b
-;	jnz .wait1
-;	mov al, 0xF0
-;	out 0x60, al
-;.wait2
-;	in al, 0x60
-;	and al, 00000010b
-;	jnz .wait2
-;	mov al, 3
-;	out 0x60, al
-;.wait3
-;	mov al, [LastResponse]
-;	cmp al, 0xFE
-;	je .bad
-;	cmp al, 0xFA
-;	jne .wait3
-;	push set3
-;	call display
-;	pop eax
-;	jmp .good
-;.bad
-	push bad
-	call display
-	pop eax
-.good
+
+
 	[extern kernel_end]
 	mov eax, kernel_end
 	push eax	;kernel size is the second argument
@@ -134,12 +79,11 @@ flush2:
 	call main
 	pop eax
 END:
-	nop
-	nop
+	hlt
 	jmp END
 
 idt_point dd 0
-;bootInfo dd 0	
+bootInfo dd 0	
 ;this is only needed if ebx is modified
 
 gdt:                    ; Address for the GDT
@@ -165,16 +109,51 @@ gdt_desc:				; The GDT descriptor
 	dw gdt_end - gdt - 1	; Limit (size)
 	dd gdt			; Address of the GDT
 
+[global inportb]
+inportb:
+	mov edx, [esp + 4]
+	xor eax, eax
+	in al, dx
+	ret
+
+[global outportb]
+outportb:
+	push edx
+	mov eax, [esp + 8]
+	mov edx, [esp + 12]
+	out dx, al
+	pop edx
+	ret
+
 [global getEIP]
 getEIP:
 	mov eax, [esp]
 	ret
 
+[extern enter_spinlock]
+[extern leave_spinlock]
+[global test_and_set]	;unsigned int test_and_set (unsigned int new_value, unsigned int *lock_pointer);
+											;
+test_and_set:
+	mov eax, [esp + 4]	;eax = new_value
+	mov edx, [esp + 8]	;edx = lock_pointer
+	lock
+	xchg [edx], eax			;swap *lock_pointer and new_value
+	ret									;return the old value of *lock_pointer
+
+;most interruptable
+SL_BLANK dd 0
+SL_MEM_MNG dd 1
+SL_IRQ1 dd 2
+SL_MESSAGE dd 3
+;least interruptable
+;can go down the table, not up
+
 [global EnablePaging]
 EnablePaging:
 	mov eax, [esp + 4]    ;get the base of the page directory (right above the kernel)
 	mov cr3, eax		;time to set the paging bit
-	mov eax, cr0
+	mov eax, cr0		;also set the cache disable bit
 	or eax, 0xE0000000
 	mov cr0, eax
 .keepgoing
@@ -346,6 +325,7 @@ ret
 [global isr18]
 [global isr19]
 
+[global timer]
 timer dd 0	;a measure of time since the system started
 
 irqM0:
@@ -358,7 +338,7 @@ irqM0:
 	iret
 
 [global Delay]
-Delay:
+Delay:	;delays for some number of irq0 firings (each of which are about 1 millisecond)
 	push eax
 	push ebx
 	mov eax, [timer]
@@ -385,130 +365,50 @@ WaitKey:
 	pop ax
 	ret
 
-ScanSet db 0, '1234567890-=', 8, 9, 'qwertyuiop[]', 0, 0, 'asdfghjkl;', 0x27, '`', 0, '\zxcvbnm,./', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0 ,0 ,0 ,0, 0, 0, 0, 0, '789-456+1230', 0
-ShiftSet db 0,'!@#$%^&*()_+', 8, 9, 'QWERTYUIOP{}', 0, 0, 'ASDFGHJKL:"~', 0, '|ZXCVBNM<>?', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '789-456+1230', 0
-;these arrays will be used to retrieve ASCII information from the keyboard
-convert db 0, 0, 0	;this is used to store the converted scan code
-Newline db 13, 10, 0	;this is needed because when you press enter, two bytes need to be sent for it to work properly
-Buffer db 0,0,0,0,0,0	;used to process multi byte scancodes
-Shift db 0		;determines if a shift is currently being held down
-Alt db 0		;determines if an alt key is being held down
-Ctrl db 0		;same thing for ctrl key
+;the IRQ handler for the keyboard will convert scancodes and then place the code into a buffer
+;the buffer will have a start and length
+;codes will be pulled from the bottom of the buffer
+
+[global getResponse] ;waits for an retrieves a byte response from the keyboard
+getResponse:
+	push ecx
+	mov ecx, NumKeyInts
+.waitForIt
+	cmp ecx, [NumKeyInts]
+	je .waitForIt
+	mov eax, [LastResponse]
+	mov ecx, 0
+	mov [LastResponse], ecx
+	pop ecx
+	ret
+
+[extern handleScancode]
+[global num_elements_used]
+[global code_buffer]
+num_elements_used dd 0
+code_buffer dd 1, 2, 3, 4, 5, 6
+
 LastResponse db 0	;stores the last response from a command (not a scancode)
-;OneByte db ' One byte code*', 0
-;TwoByte db 'Two byte code*', 0
-SixByte db 'Six byte code*', 0
-;FourByte db 'Four byte code*', 0
+NumKeyInts dd 0
 
 ;0xE0 0x2A 0xE0, 0x53
 irqM1:
 	pusha
 	xor eax, eax
 	in al, 0x60
-	;have we already recieved the first byte of a multi-byte scancode, if so go to the handler for multibyte scancodes
-	mov bl, [Buffer]
-	cmp bl, 0
-	jnz irqM1_Multi
-	;is this the first byte of a multi-byte scancode?
-	;0xE0 and 0xE1 are the only two bytes that are not single byte scancodes
-	cmp al, 0xE0
-	jne irqM1_single
-	mov [Buffer], al
-	jmp irqM1_end
-irqM1_single:
-	cmp al, 0xE1
-	jne irqM1_reallySingle
-	mov [Buffer], al
-	jmp irqM1_end
-irqM1_reallySingle:
-;@handle 1byte scancodes
-;	push eax
-;	call PrintNumber
-;	pop eax
-	cmp al, 0xFE
-	jne .notFE
 	mov [LastResponse], al
-	jmp .notFA
-.notFE
-	cmp al, 0xFA
-	jne .notFA
-	mov [LastResponse], al
-.notFA
-;	push OneByte
-;	call display
-;	pop ebx
-	jmp irqM1_end
-irqM1_Multi:	;handles multi-byte scancodes (2,4,6)
-	;we know there is one byte in the scancode buffer
-	mov bl, [Buffer + 1]
-	cmp bl, 0
-	jne irqM1_Multi2	;we do not have the second byte but we might have the 3,4,5, or 6 byte
-	mov [Buffer + 1], al
-	;is the second byte of a longer scancode? (if so, processing is done with this byte)
-	;0x2A, 0xB7, 0x1D (check first byte of buffer)
-	cmp al, 0x2A
-	je irqM1_end
-	cmp al, 0xB7
-	je irqM1_end
-	mov bl, [Buffer]
-	cmp bl, 0xE1
-	je irqM1_end
-;@handle 2 byte scancodes
-;	push TwoByte
-;	call display
-;	pop ebx
-	;done handling 2 byte scancodes
-	xor bx, bx
-	mov [Buffer], bx	;this will clear two bytes of the buffer
-	jmp irqM1_end
-irqM1_Multi2:	;we know that there are two bytes in the scancode buffer
-	mov bl, [Buffer + 2]
-	cmp bl, 0
-	jnz irqM1_Multi3
-	mov [Buffer + 2], al
-	;there are no three byte scancodes that i know of
-	jmp irqM1_end
-irqM1_Multi3:	;there are three bytes in the scancode buffer
-	mov bl, [Buffer + 3]
-	cmp bl, 0
-	jnz irqM1_Multi4
-	mov [Buffer + 3], al
-	;check for scancodes that are longer and do not need to be processed yet
-	mov bl, [Buffer]
-	cmp bl, 0xE1	;afaik, pause/break is the only 6 byte scancode
-	je irqM1_end
-;@handle 4 byte scancodes
-;	push FourByte
-;	call display
-;	pop ebx
-	;done handling scancode
-	xor ebx, ebx
-	mov [Buffer], ebx	;this will clear 4 bytes of the buffer
-	jmp irqM1_end
-irqM1_Multi4:	;there are four bytes in the scancode buffer
-	mov bl, [Buffer + 4]
-	cmp bl, 0
-	jnz irqM1_Multi5
-	mov [Buffer + 4], al
-	;there are no 5 byte scancodes that i know of
-	jmp irqM1_end
-irqM1_Multi5:	;there are five bytes in the scancode buffer
-;@handle 6 byte scancodes
-	mov [Buffer + 5], al
-	mov al, 1
-	mov [PauseKey], al
-;	push SixByte
-;	call display
-;	pop ebx
-;	jmp $
-	;done handling 6 byte scancode(s)
-	xor ebx, ebx
-	mov [Buffer], ebx
-	mov [Buffer + 4], bl	;this should clear 6 bytes the easy way
-	jmp irqM1_end
-
-irqM1_full_code:	;when the last byte of a scancode has been read
-
+	push eax
+	call handleScancode
+	pop eax
+	mov bl, al	;save retrieved byte
+	in  al, 61h
+	mov ah, al	;Save keyboard status
+	or  al, 80h	;Disable
+	out 61h, al
+	mov al, ah	;Enable (If it was disabled at first, you wouldn't
+	out 61h, al	; be doing this anyway :-)
+	mov al, bl	;restore byte recieved
+	inc dword [NumKeyInts]
 
 irqM1_end:	;when all handling for the current scancode byte is complete
 	mov al, 0x20
@@ -564,18 +464,30 @@ irqM5:
 	pop eax
 	iret
 
-BytesDone dd 0	;defines what the interrupt should be expecting to do when called
+[global WaitFloppyInt]
+WaitFloppyInt:
+	push eax
+	mov eax, [BytesDone]
+.notThereYet
+	cmp eax, [BytesDone]
+	je .notThereYet
+	pop eax
+	ret
+	
+BytesDone dd 0	;the number of times the interrupt has been fired
 IRQM6 db 'FDC has fired an interrupt!', 10, 13, 0
 irqM6:
 ;this is IRQ 6 from the master PIC
-	pusha
+	push ax
 	;determine what this means
 	inc dword [BytesDone]
 ;	push IRQM6
 ;	call display
 ;	pop eax
 	;now return to wherever execution was before this interrupt
-	popa
+	mov al, 0x20
+	out 0x20, al
+	pop ax
 	iret
 
 IRQM7 db 'IRQ7', 13, 10, 0
@@ -595,27 +507,96 @@ Zero db 'Divide by zero error!', 10, 0
 isr0:
 ;fault, no error code
 ;display message, stop, because returning brings it back
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Zero
 	call display		;print string (C++ function)
 	pop eax
 	jmp $
-One db 'Debug exception', 10, 0
+
+One db 'Debug exception, ', 0
+sinStep db 'Single Step, ', 0
+regAcc db 'Debug register was accessed, ', 0
+task db 'Trap flag for task is set,' , 0
+breakpoint db 'Breakpoint hit,' , 0
+number dd 0	;counts the number of times this is called
 isr1:
 ;trap or fault, no error code
-;examine DR6 and other debug registers to determine type (not necessary though)
-	mov ax, 10h
-	mov ds, ax			;data segment (we can use variables with their name now)
+;examine DR6 and other debug registers to determine type
+	push eax
+	inc dword [number]
 	push One
-	call display		;print string (C++ function)
+	call display
+	pop eax
+	mov eax, dr6
+	test eax, 0x4000
+jz .notSingleStep
+	push sinStep
+	call display
+	pop eax
+.notSingleStep
+	test eax, 0x2000
+	jz .notregAcc
+	push regAcc
+	call display
+	pop eax
+.notregAcc
+	test eax, 0x8000
+	jz .notTaskSwitch
+	push task
+	call display
+	pop eax
+.notTaskSwitch
+	;test for each breakpoint being hit
+	test eax, 1
+	jz .not1
+	push breakpoint
+	call display
+	pop eax
+.not1
+	test eax, 2
+	jz .not2
+	push breakpoint
+	call display
+	pop eax
+.not2
+	test eax, 4
+	jz .not3
+	push breakpoint
+	call display
+	pop eax
+.not3
+	test eax, 8
+	jz .not4
+	push breakpoint
+	call display
+	pop eax
+.not4
+	push breakpoint
+	call display
+	pop eax
+	mov eax, [number]
+	push eax
+	call PrintNumber
+	pop eax
+	and eax, 0xFFFF1FF0
+	mov dr6, eax	;clear all flags in the register for the next interrupt
+	mov eax, [esp + 4]
+	push eax
+	call PrintNumber
+	pop eax
+	push newline
+	call display
+	pop eax
 	pop eax
 	jmp $
+	iret
+
 Two db 'NMI Interrupt', 10, 0
 isr2:
 ;interrupt, no error code
 ;hmm what to do? i dont know...
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Two
 	call display		;print string (C++ function)
@@ -625,20 +606,26 @@ Three db 'Breakpoint', 10, 0
 isr3:
 ;trap, no error code
 	pusha
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
-	mov eax, [ebp + 44]
+	push Three
+	call display
+	pop eax
+	push newline
+	call display
+	pop eax
+	mov eax, [esp + 0]
 	push eax
 	call PrintNumber		;print string (C++ function)
 	pop eax
-	push Newline
+	push newline
 	call display
 	pop eax
-	mov eax, [ebp + 40]
+	mov eax, [esp + 4]
 	push eax
 	call PrintNumber
 	pop eax
-	push Newline
+	push newline
 	call display
 	pop eax
 	popa
@@ -646,7 +633,7 @@ isr3:
 Four db 'Overflow', 10, 0
 isr4:
 ;trap, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Four
 	call display		;print string (C++ function)
@@ -655,7 +642,7 @@ isr4:
 Five db 'Bounds range exceeded', 10, 0
 isr5:
 ;fault, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Five
 	call display		;print string (C++ function)
@@ -664,7 +651,7 @@ isr5:
 Six db 'Invalid opcode', 10, 0
 isr6:
 ;fault, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Six
 	call display		;print string (C++ function)
@@ -688,7 +675,7 @@ Seven db 'Device not available', 10, 0
 isr7:
 ;fault, no error code
 ;this is confusing
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Seven
 	call display		;print string (C++ function)
@@ -698,7 +685,7 @@ Eight db 'Double - fault', 10, 0
 isr8:
 ;abort, error code does exist (it is zero)
 ;there is no return from here, the program must be closed, and data logged
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Eight
 	call display		;print string (C++ function)
@@ -709,7 +696,7 @@ Nine db 'Coprocessor segment overrun', 10, 0
 isr9:
 ;abort, no error code
 ;FPU must be restarted (so we won't return for now)
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Nine
 	call display		;print string (C++ function)
@@ -719,7 +706,7 @@ Ten db 'Invalid TSS exception', 10, 0
 isr10:
 ;fault, error code present
 ;must use a task gate, to preserve stability
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Ten
 	call display		;print string (C++ function)
@@ -728,7 +715,7 @@ isr10:
 Eleven db 'Segment not present', 10, 0
 isr11:
 ;fault, error code present
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Eleven
 	call display	;print string (C++ function)
@@ -737,7 +724,7 @@ isr11:
 Twelve db 'Stack fault exception', 10, 0
 isr12:
 ;fault, error code present
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Twelve
 	call display	;print string (C++ function)
@@ -752,7 +739,7 @@ isr12:
 Thirteen db 'General Protection Fault', 10, 0
 isr13:
 ;fault, error code present
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Thirteen
 	call display	;print string (C++ function)
@@ -845,7 +832,7 @@ Ok:
 Fifteen db 'Intel reserved interrupt has been called - this is bad', 10, 0
 isr15:
 ;fault, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Fifteen
 	call display		;print string (C++ function)
@@ -854,7 +841,7 @@ isr15:
 Sixteen db 'x87 FPU Floating-Point Error', 10, 0
 isr16:
 ;fault, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Sixteen
 	call display		;print string (C++ function)
@@ -863,7 +850,7 @@ isr16:
 Seventeen db 'Alignment Check Exception', 10, 0
 isr17:
 ;fault, error code present
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Seventeen
 	call display		;print string (C++ function)
@@ -872,7 +859,7 @@ isr17:
 Eighteen db 'Machine-Check Exception', 10, 0
 isr18:
 ;abort, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Eighteen
 	call display		;print string (C++ function)
@@ -881,7 +868,7 @@ isr18:
 Nineteen db 'SIMD Floating-Point Exception', 10, 0
 isr19:
 ;fault, no error code
-	mov ax, 10h
+	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
 	push Nineteen
 	call display		;print string (C++ function)
