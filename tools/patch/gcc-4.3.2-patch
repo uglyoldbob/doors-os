@@ -1,0 +1,101 @@
+diff -Naur /home/thomas/doors-os/tools/gcc-4.3.2/config.sub /home/thomas/doors-os/tools/gcc-4.3.2.mod/config.sub
+--- /home/thomas/doors-os/tools/gcc-4.3.2/config.sub	2008-01-22 20:37:40.000000000 -0600
++++ /home/thomas/doors-os/tools/gcc-4.3.2.mod/config.sub	2008-09-25 23:13:45.000000000 -0500
+@@ -1239,7 +1239,7 @@
+ 	      | -*vms* | -sco* | -esix* | -isc* | -aix* | -sunos | -sunos[34]*\
+ 	      | -hpux* | -unos* | -osf* | -luna* | -dgux* | -solaris* | -sym* \
+ 	      | -amigaos* | -amigados* | -msdos* | -newsos* | -unicos* | -aof* \
+-	      | -aos* \
++	      | -aos* | -doors* \
+ 	      | -nindy* | -vxsim* | -vxworks* | -ebmon* | -hms* | -mvs* \
+ 	      | -clix* | -riscos* | -uniplus* | -iris* | -rtu* | -xenix* \
+ 	      | -hiux* | -386bsd* | -knetbsd* | -mirbsd* | -netbsd* \
+diff -Naur /home/thomas/doors-os/tools/gcc-4.3.2/gcc/config/doors.h /home/thomas/doors-os/tools/gcc-4.3.2.mod/gcc/config/doors.h
+--- /home/thomas/doors-os/tools/gcc-4.3.2/gcc/config/doors.h	1969-12-31 19:00:00.000000000 -0500
++++ /home/thomas/doors-os/tools/gcc-4.3.2.mod/gcc/config/doors.h	2008-09-25 23:13:45.000000000 -0500
+@@ -0,0 +1,12 @@
++#undef TARGET_OS_CPP_BUILTINS
++#define TARGET_OS_CPP_BUILTINS()      \
++  do {                                \
++    builtin_define_std ("doors");      \
++    builtin_define_std ("unix");      \
++    builtin_assert ("system=doors");   \
++    builtin_assert ("system=unix");   \
++  } while(0);
++
++#undef TARGET_VERSION
++#define TARGET_VERSION fprintf(stderr, " (i386 doors)");
++
+diff -Naur /home/thomas/doors-os/tools/gcc-4.3.2/gcc/config.gcc /home/thomas/doors-os/tools/gcc-4.3.2.mod/gcc/config.gcc
+--- /home/thomas/doors-os/tools/gcc-4.3.2/gcc/config.gcc	2008-06-09 11:32:15.000000000 -0500
++++ /home/thomas/doors-os/tools/gcc-4.3.2.mod/gcc/config.gcc	2008-09-25 23:13:45.000000000 -0500
+@@ -435,6 +435,12 @@
+     "" | yes | posix) thread_file='posix' ;;
+   esac
+   ;;
++*-*-doors*)
++  extra_parts="crtbegin.o crtend.o"
++  gas=yes
++  gnu_ld=yes
++  default_use_cxa_atexit=yes
++  ;;
+ *-*-freebsd[12] | *-*-freebsd[12].* | *-*-freebsd*aout*)
+   # This is the place-holder for the generic a.out configuration
+   # of FreeBSD.  No actual configuration resides here since
+@@ -1085,6 +1091,11 @@
+ 	tmake_file="t-darwin ${cpu_type}/t-darwin64 t-slibgcc-darwin i386/t-fprules-softfp64 soft-fp/t-softfp i386/t-crtpc i386/t-crtfm"
+ 	tm_file="${tm_file} ${cpu_type}/darwin64.h"
+ 	;;
++i[34567]86-*-doors*)
++	tm_file="${tm_file} i386/unix.h i386/att.h dbxelf.h elfos.h i386/i386elf.h doors.h"
++	tmake_file="i386/t-i386elf t-svr4"
++	use_fixproto=yes
++	;;
+ i[34567]86-*-elf*)
+ 	tm_file="${tm_file} i386/unix.h i386/att.h dbxelf.h elfos.h i386/i386elf.h"
+ 	tmake_file="i386/t-i386elf t-svr4"
+diff -Naur /home/thomas/doors-os/tools/gcc-4.3.2/libgcc/config.host /home/thomas/doors-os/tools/gcc-4.3.2.mod/libgcc/config.host
+--- /home/thomas/doors-os/tools/gcc-4.3.2/libgcc/config.host	2008-01-25 14:49:04.000000000 -0600
++++ /home/thomas/doors-os/tools/gcc-4.3.2.mod/libgcc/config.host	2008-09-25 22:53:43.000000000 -0500
+@@ -145,6 +145,12 @@
+   asm_hidden_op=.private_extern
+   tmake_file="t-darwin ${cpu_type}/t-darwin t-slibgcc-darwin"
+   ;;
++*-*-doors*)
++  extra_parts="crtbegin.o crtend.o"
++  gas=yes
++  gnu_ld=yes
++  default_use_cxa_atexit=yes
++  ;;
+ *-*-freebsd[12] | *-*-freebsd[12].* | *-*-freebsd*aout*)
+   # This is the place-holder for the generic a.out configuration
+   # of FreeBSD.  No actual configuration resides here since
+@@ -299,6 +305,11 @@
+ x86_64-*-darwin*)
+ 	tmake_file="t-darwin ${cpu_type}/t-darwin64 t-slibgcc-darwin"
+ 	;;
++i[34567]86-*-doors*)
++	tm_file="${tm_file} i386/unix.h i386/att.h dbxelf.h elfos.h i386/i386elf.h doors.h"
++	tmake_file="i386/t-i386elf t-svr4"
++	use_fixproto=yes
++	;;
+ i[34567]86-*-elf*)
+ 	;;
+ x86_64-*-elf*)
+diff -Naur /home/thomas/doors-os/tools/gcc-4.3.2/libstdc++-v3/crossconfig.m4 /home/thomas/doors-os/tools/gcc-4.3.2.mod/libstdc++-v3/crossconfig.m4
+--- /home/thomas/doors-os/tools/gcc-4.3.2/libstdc++-v3/crossconfig.m4	2008-01-14 18:15:43.000000000 -0600
++++ /home/thomas/doors-os/tools/gcc-4.3.2.mod/libstdc++-v3/crossconfig.m4	2008-09-25 23:13:45.000000000 -0500
+@@ -115,6 +115,13 @@
+     AC_DEFINE(HAVE_WRITEV)
+     ;;
+ 
++  *-doors*)
++    AC_CHECK_HEADERS([sys/types.h locale.h float.h])
++    GLIBCXX_CHECK_BUILTIN_MATH_SUPPORT
++    GLIBCXX_CHECK_COMPLEX_MATH_SUPPORT
++    GLIBCXX_CHECK_STDLIB_SUPPORT
++    ;;
++
+   *-freebsd*)
+     AC_CHECK_HEADERS([nan.h ieeefp.h endian.h sys/isa_defs.h \
+       machine/endian.h machine/param.h sys/machine.h sys/types.h \

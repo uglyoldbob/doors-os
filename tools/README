@@ -1,0 +1,19 @@
+README
+
+This directory contains various scripts for building the tools used for the develoment of Doors OS
+
+In order to generate the cross-compiler the easiest way, these are steps that should be followed.
+
+This is doors/tools
+
+Source code archives are placed in doors/source
+
+Source for the kernel is placed at doors/kernel
+
+Execute apply-patch (after optionally modifying to select the versions you want)
+	I should probably add argument handlers for this.
+	Make sure you execute the script with ./apply-patch.sh
+
+Execute cross-compile.sh
+	Make sure if you modify apply-patch for versions, you do the same for cross-compile
+	./cross-compile.sh

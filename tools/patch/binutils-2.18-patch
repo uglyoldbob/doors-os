@@ -1,0 +1,152 @@
+diff -Naur binutils-2.18/bfd/config.bfd binutils-2.18.mod/bfd/config.bfd
+--- binutils-2.18/bfd/config.bfd	2007-08-28 12:19:33.000000000 -0500
++++ binutils-2.18.mod/bfd/config.bfd	2008-07-15 06:05:47.000000000 -0500
+@@ -472,6 +472,18 @@
+     targ_defvec=bfd_elf32_i370_vec
+     targ_selvecs="bfd_elf32_i370_vec"
+     ;;
++  i[3-7]86-*-doors*)
++    targ_defvec=bfd_elf32_i386_vec
++    targ_selvecs=i386coff_vec
++    ;;
++  arm-*-doors*)
++	targ_defvec=bfd_elf32_littlearm_vec
++    targ_selvecs=bfd_elf32_bigarm_vec
++    ;;
++  xscale-*-doors*)
++	targ_defvec=bfd_elf32_littlearm_vec
++    targ_selvecs=bfd_elf32_bigarm_vec
++	;;
+   i[3-7]86-*-sco3.2v5*coff)
+     targ_defvec=i386coff_vec
+     targ_selvecs=bfd_elf32_i386_vec
+diff -Naur binutils-2.18/config.sub binutils-2.18.mod/config.sub
+--- binutils-2.18/config.sub	2007-08-06 15:00:30.000000000 -0500
++++ binutils-2.18.mod/config.sub	2007-11-23 20:52:09.000000000 -0600
+@@ -1207,7 +1207,7 @@
+ 	      | -*vms* | -sco* | -esix* | -isc* | -aix* | -sunos | -sunos[34]*\
+ 	      | -hpux* | -unos* | -osf* | -luna* | -dgux* | -solaris* | -sym* \
+ 	      | -amigaos* | -amigados* | -msdos* | -newsos* | -unicos* | -aof* \
+-	      | -aos* \
++	      | -aos* | -doors* \
+ 	      | -nindy* | -vxsim* | -vxworks* | -ebmon* | -hms* | -mvs* \
+ 	      | -clix* | -riscos* | -uniplus* | -iris* | -rtu* | -xenix* \
+ 	      | -hiux* | -386bsd* | -knetbsd* | -mirbsd* | -netbsd* \
+diff -Naur binutils-2.18/gas/configure.tgt binutils-2.18.mod/gas/configure.tgt
+--- binutils-2.18/gas/configure.tgt	2007-08-28 12:19:36.000000000 -0500
++++ binutils-2.18.mod/gas/configure.tgt	2008-07-15 06:06:22.000000000 -0500
+@@ -167,6 +167,10 @@
+ 
+   i370-*-elf* | i370-*-linux*)		fmt=elf ;;
+ 
++  i[3-7]86-*-doors*)		fmt=elf ;;
++  arm-*-doors*)				fmt=elf	;;
++  xscale-*-doors*)			fmt=elf ;;
++
+   i386-ibm-aix*)			fmt=coff em=i386aix ;;
+   i386-sequent-bsd*)			fmt=aout em=dynix ;;
+   i386-*-beospe*)			fmt=coff em=pe ;;
+diff -Naur binutils-2.18/ld/configure.tgt binutils-2.18.mod/ld/configure.tgt
+--- binutils-2.18/ld/configure.tgt	2007-08-28 12:19:42.000000000 -0500
++++ binutils-2.18.mod/ld/configure.tgt	2008-07-15 06:08:00.000000000 -0500
+@@ -171,6 +171,9 @@
+ 			;;
+ i370-*-elf* | i370-*-linux-*) targ_emul=elf32i370
+ 			;;
++i[3-7]86-*-doors*)	targ_emul=doors_i386 ;;
++arm-*-doors*)		targ_emul=doors_arm ;;
++xscale-*-doors*)	targ_emul=doors_xscale ;;
+ i[3-7]86-*-nto-qnx*)	targ_emul=i386nto ;;
+ i[3-7]86-*-vsta)	targ_emul=vsta ;;
+ i[3-7]86-*-go32)	targ_emul=i386go32 ;;
+diff -Naur binutils-2.18/ld/emulparams/doors_arm.sh binutils-2.18.mod/ld/emulparams/doors_arm.sh
+--- binutils-2.18/ld/emulparams/doors_arm.sh	1969-12-31 19:00:00.000000000 -0500
++++ binutils-2.18.mod/ld/emulparams/doors_arm.sh	2008-07-15 06:16:35.000000000 -0500
+@@ -0,0 +1,35 @@
++MACHINE=
++SCRIPT_NAME=elf
++OUTPUT_FORMAT="elf32-littlearm"
++BIG_OUTPUT_FORMAT="elf32-bigarm"
++LITTLE_OUTPUT_FORMAT="elf32-littlearm"
++TEXT_START_ADDR=0x8000
++TEMPLATE_NAME=elf32
++EXTRA_EM_FILE=armelf
++OTHER_TEXT_SECTIONS='*(.glue_7t) *(.glue_7) *(.vfp11_veneer)'
++OTHER_BSS_SYMBOLS='__bss_start__ = .;'
++OTHER_BSS_END_SYMBOLS='_bss_end__ = . ; __bss_end__ = . ;'
++OTHER_END_SYMBOLS='__end__ = . ;'
++OTHER_SECTIONS='.note.gnu.arm.ident 0 : { KEEP (*(.note.gnu.arm.ident)) }'
++ATTRS_SECTIONS='.ARM.attributes 0 : { KEEP (*(.ARM.attributes)) KEEP (*(.gnu.attributes)) }'
++OTHER_READONLY_SECTIONS="
++  .ARM.extab ${RELOCATING-0} : { *(.ARM.extab${RELOCATING+* .gnu.linkonce.armextab.*}) }
++  ${RELOCATING+ __exidx_start = .; }
++  .ARM.exidx ${RELOCATING-0} : { *(.ARM.exidx${RELOCATING+* .gnu.linkonce.armexidx.*}) }
++  ${RELOCATING+ __exidx_end = .; }"
++
++DATA_START_SYMBOLS='__data_start = . ;';
++
++GENERATE_SHLIB_SCRIPT=yes
++
++ARCH=arm
++MACHINE=
++MAXPAGESIZE="CONSTANT (MAXPAGESIZE)"
++ENTRY=_start
++EMBEDDED=yes
++
++# This sets the stack to the top of the simulator memory (2^19 bytes).
++STACK_ADDR=0x80000
++
++# ARM does not support .s* sections.
++NO_SMALL_DATA=yes
+diff -Naur binutils-2.18/ld/emulparams/doors_i386.sh binutils-2.18.mod/ld/emulparams/doors_i386.sh
+--- binutils-2.18/ld/emulparams/doors_i386.sh	1969-12-31 19:00:00.000000000 -0500
++++ binutils-2.18.mod/ld/emulparams/doors_i386.sh	2007-11-23 21:05:27.000000000 -0600
+@@ -0,0 +1,14 @@
++SCRIPT_NAME=elf
++OUTPUT_FORMAT=elf32-i386
++TEXT_START_ADDR=0x00000000
++MAXPAGESIZE="CONSTANT (MAXPAGESIZE)"
++COMMONPAGESIZE="CONSTANT (COMMONPAGESIZE)"
++ARCH=i386
++MACHINE=
++NOP=0x90909090
++TEMPLATE_NAME=elf32
++GENERATE_SHLIB_SCRIPT=yes
++GENERATE_PIE_SCRIPT=yes
++NO_SMALL_DATA=yes
++SEPARATE_GOTPLT=12
++
+diff -Naur binutils-2.18/ld/emulparams/doors_xscale.sh binutils-2.18.mod/ld/emulparams/doors_xscale.sh
+--- binutils-2.18/ld/emulparams/doors_xscale.sh	1969-12-31 19:00:00.000000000 -0500
++++ binutils-2.18.mod/ld/emulparams/doors_xscale.sh	2007-11-23 21:05:27.000000000 -0600
+@@ -0,0 +1,14 @@
++SCRIPT_NAME=elf
++OUTPUT_FORMAT=elf32-i386
++TEXT_START_ADDR=0x00000000
++MAXPAGESIZE="CONSTANT (MAXPAGESIZE)"
++COMMONPAGESIZE="CONSTANT (COMMONPAGESIZE)"
++ARCH=i386
++MACHINE=
++NOP=0x90909090
++TEMPLATE_NAME=elf32
++GENERATE_SHLIB_SCRIPT=yes
++GENERATE_PIE_SCRIPT=yes
++NO_SMALL_DATA=yes
++SEPARATE_GOTPLT=12
++
+diff -Naur binutils-2.18/ld/Makefile.in binutils-2.18.mod/ld/Makefile.in
+--- binutils-2.18/ld/Makefile.in	2007-08-06 15:29:54.000000000 -0500
++++ binutils-2.18.mod/ld/Makefile.in	2008-07-15 06:07:32.000000000 -0500
+@@ -1478,6 +1478,12 @@
+ edelta68.c: $(srcdir)/emulparams/delta68.sh \
+   $(srcdir)/emultempl/generic.em $(srcdir)/scripttempl/delta68.sc ${GEN_DEPENDS}
+ 	${GENSCRIPTS} delta68 "$(tdir_delta68)"
++edoors_i386.c: $(srcdir)/emulparams/doors_i386.sh $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
++	${GENSCRIPTS} doors_i386 "$(tdir_doors_i386)"
++edoors_arm.c: $(srcdir)/emulparams/doors_arm.sh $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
++	${GENSCRIPTS} doors_arm "$(tdir_doors_arm)"
++edoors_xscale.c: $(srcdir)/emulparams/doors_xscale.sh $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
++	${GENSCRIPTS} doors_xscale "$(tdir_doors_xscale)"
+ eelf32bfin.c: $(srcdir)/emulparams/bfin.sh \
+   $(ELF_DEPS) \
+   $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
