@@ -1,0 +1,421 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0040)http://users.win.be/W0005997/GI/pic.html -->
+<HTML><HEAD><TITLE>Xavier's programming pages - PIC programming</TITLE>
+<META http-equiv=Content-Type content="text/html; charset=windows-1252">
+<META content="MSHTML 6.00.2800.1458" name=GENERATOR></HEAD>
+<BODY>
+<CENTER>
+<H1>Programmable Interrupt Controller programming</H1></CENTER>
+<H2>Interruptions</H2>The following tables lists the interruptions in the XT and 
+the AT.<BR><BR>
+<TABLE>
+  <TBODY>
+  <TR>
+    <TD>
+      <TABLE border=1>
+        <TBODY>
+        <TR>
+          <TH colSpan=2>Interruptions in the PC/XT</TH></TR>
+        <TR>
+          <TH>Interruption</TH>
+          <TH>Peripheral</TH></TR>
+        <TR>
+          <TD>IRQ0</TD>
+          <TD>Timer</TD></TR>
+        <TR>
+          <TD>IRQ1</TD>
+          <TD>Keyboard</TD></TR>
+        <TR>
+          <TD>IRQ2</TD>
+          <TD>Free</TD></TR>
+        <TR>
+          <TD>IRQ3</TD>
+          <TD>Second serial interface</TD></TR>
+        <TR>
+          <TD>IRQ4</TD>
+          <TD>First serial interface</TD></TR>
+        <TR>
+          <TD>IRQ5</TD>
+          <TD>Hard disk controller</TD></TR>
+        <TR>
+          <TD>IRQ6</TD>
+          <TD>Floppy disk controller</TD></TR>
+        <TR>
+          <TD>IRQ7</TD>
+          <TD>Printer</TD></TR></TBODY></TABLE></TD>
+    <TD>
+      <TABLE border=1>
+        <TBODY>
+        <TR>
+          <TH colSpan=4>Interruptions in the AT</TH></TR>
+        <TR>
+          <TH>Interruption</TH>
+          <TH>Master</TH>
+          <TH>Slave</TH>
+          <TH>Peripheral</TH></TR>
+        <TR>
+          <TD>0</TD>
+          <TD>IRQ0</TD>
+          <TD></TD>
+          <TD>Timer</TD>
+        <TR>
+          <TD>1</TD>
+          <TD>IRQ1</TD>
+          <TD></TD>
+          <TD>Keyboard</TD></TR>
+        <TR>
+          <TD>2</TD>
+          <TD></TD>
+          <TD>IRQ0</TD>
+          <TD>Real time clock</TD></TR>
+        <TR>
+          <TD>3</TD>
+          <TD></TD>
+          <TD>IRQ1</TD>
+          <TD>Free</TD></TR>
+        <TR>
+          <TD>4</TD>
+          <TD></TD>
+          <TD>IRQ2</TD>
+          <TD>Free</TD></TR>
+        <TR>
+          <TD>5</TD>
+          <TD></TD>
+          <TD>IRQ3</TD>
+          <TD>Free</TD></TR>
+        <TR>
+          <TD>6</TD>
+          <TD></TD>
+          <TD>IRQ4</TD>
+          <TD>Free</TD></TR>
+        <TR>
+          <TD>7</TD>
+          <TD></TD>
+          <TD>IRQ5</TD>
+          <TD>Math coprocessor</TD></TR>
+        <TR>
+          <TD>8</TD>
+          <TD></TD>
+          <TD>IRQ6</TD>
+          <TD>Hard disk controller</TD></TR>
+        <TR>
+          <TD>9</TD>
+          <TD></TD>
+          <TD>IRQ7</TD>
+          <TD>Free</TD></TR>
+        <TR>
+          <TD>10</TD>
+          <TD>IRQ2</TD>
+          <TD></TD>
+          <TD>Slave PIC</TD></TR>
+        <TR>
+          <TD>11</TD>
+          <TD>IRQ3</TD>
+          <TD></TD>
+          <TD>Second serial interface</TD></TR>
+        <TR>
+          <TD>12</TD>
+          <TD>IRQ4</TD>
+          <TD></TD>
+          <TD>First serial interface</TD></TR>
+        <TR>
+          <TD>13</TD>
+          <TD>IRQ5</TD>
+          <TD></TD>
+          <TD>Second parallel interface</TD></TR>
+        <TR>
+          <TD>14</TD>
+          <TD>IRQ6</TD>
+          <TD></TD>
+          <TD>Floppy drive controller</TD></TR>
+        <TR>
+          <TD>15</TD>
+          <TD>IRQ7</TD>
+          <TD></TD>
+          <TD>First parallel 
+interface</TD></TR></TBODY></TABLE></TD></TR></TBODY></TABLE><BR>
+<H2>When do I need to reprogram the PIC</H2>There are three cases where you 
+should program the PIC :<BR>
+<OL>
+  <LI>Initializing the PIC 
+  <LI>Masking interruptions 
+  <LI>Sending the EOI (End Of Interrupt) message </LI></OL>
+<H2>Initializing the PIC</H2>The PIC needs to be initialized prior to using it. 
+The BIOS usually does this. But there's an important case where the BIOS 
+programmation of the PIC is inadequate : protected mode. The interruptions IRQ0 
+to IRQ7 are using the interrupt vectors 08h to 0Fh in the interrupt vectors 
+table. But these interrupt vectors are used by the processor in protected mode 
+to report errors. The PIC has to be told to use other entries in the 
+table.<BR><BR>The initialization of the PIC is made with the ICW (Initialization 
+Commands Words) of the PIC. These commands must be sent in a precise order 
+because they are interdependent.<BR>The PIC is addressed through ports 20h and 
+21h for the master and through ports A0h and A1h for the slave.<BR><BR>The 
+initialization always starts with the ouptut of ICW1 to the port 20h or A0h 
+depending on which PIC (master or slave) you wish to 
+initialize.<BR><BR><B>Structure of ICW1 :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD width=20>7</TD>
+    <TD width=20>6</TD>
+    <TD width=20>5</TD>
+    <TD width=20>4</TD>
+    <TD width=20>3</TD>
+    <TD width=20>2</TD>
+    <TD width=20>1</TD>
+    <TD width=20>0</TD></TR>
+  <TR>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>1</TH>
+    <TH>M</TH>
+    <TH>0</TH>
+    <TH>C</TH>
+    <TH>I</TH></TR></TBODY></TABLE><BR>I (bit 0) indicates if ICW4 is expected after 
+ICW3 : if this bit is set, ICW4 will be expected.<BR>C (bit 1) indicates if the 
+PIC is working in a cascaded PIC environment. If this bit is clear, then there 
+are cascaded PICs.<BR>Note : this bit isn't used to identify which PIC is master 
+and which is slave. If there are two PICs, it shoul be clear.<BR>M (bit 3) 
+indicates the way the lines IR0 to IR7 are activated. In a PC, this bit should 
+be clear.<BR><BR>Here is the procedure you should use to start initialization of 
+both PICs : <PRE>mov al,00010001b ;ICW4 is sent, cascaded PICs, edge triggering
+out 20h,al       ;sending ICW1 to master
+out 0A0h,al      ;sending ICW1 to slave
+</PRE>The ICW1 must always be followed by ICW2. ICW2 indicates the address of 
+IRQ0 in the vector table. This is what you have to change when in protected 
+mode.<BR>ICW2 is sent through the second port of the PIC (21h or 
+0A1h).<BR><BR><B>Structure of ICW2 :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD width=20>7</TD>
+    <TD width=20>6</TD>
+    <TD width=20>5</TD>
+    <TD width=20>4</TD>
+    <TD width=20>3</TD>
+    <TD width=20>2</TD>
+    <TD width=20>1</TD>
+    <TD width=20>0</TD></TR>
+  <TR>
+    <TH>A7</TH>
+    <TH>A6</TH>
+    <TH>A5</TH>
+    <TH>A4</TH>
+    <TH>A3</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH></TR></TBODY></TABLE><BR>Only the 5 most significant bits of the 
+vector number are used. The vector number of IRQ0 must always be a multiple of 
+8h.<BR>When IRQ0 is activated, the content of ICW2 gives the entry in the 
+interrupt vector table (or the Interrupt Descriptor Table when in protected 
+mode) to be used, and the corresponding handler is thus called.<BR>If IRQ1 is 
+activated, then it's the interrupt given by ICW2 + 1 that is called. IRQ2 
+activates the interrupt given by ICW2 + 2 and so on for IRQ3-IRQ7.<BR><BR>Here's 
+the code that will initialize the PIC in the same way as the BIOS :<BR><PRE>mov al,08h    ;08h as interrupt number for IRQ0 of the master PIC
+mov 21h,al    ;sending ICW2 to the master PIC
+mov al,70h    ;70h as interrupt number for IRQ0 of the slave PIC
+mov 0A1h,al   ;sending ICW2 to the slave PIC
+</PRE>Next to ICW2 is ICW3 but this command must be sent only if there are two 
+cascaded PIC on the system (i.e. bit 1 of ICW1 was cleared). The purpose of this 
+command is to establish the connexion between the PICs. The format of this 
+command is different for the master and the slave.<BR>The command must be sent 
+through port 21h or port 0A1h.<BR><BR><B>Structure of ICW3 for the master :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD width=30>7</TD>
+    <TD width=30>6</TD>
+    <TD width=30>5</TD>
+    <TD width=30>4</TD>
+    <TD width=30>3</TD>
+    <TD width=30>2</TD>
+    <TD width=30>1</TD>
+    <TD width=30>0</TD></TR>
+  <TR>
+    <TH>IR7</TH>
+    <TH>IR6</TH>
+    <TH>IR5</TH>
+    <TH>IR4</TH>
+    <TH>IR3</TH>
+    <TH>IR2</TH>
+    <TH>IR1</TH>
+    <TH>IR0</TH></TR></TBODY></TABLE><BR>If IR0 is cleared, then this line is 
+connected to a peripheral.<BR>If IR0 is set, then this line is connected to a 
+slave PIC.<BR>The other bits behave in the same way.<BR><BR>Here's the code that 
+will initialize the master in the same way as the BIOS (slave PIC connected to 
+IRQ2) :<BR><PRE>mov al,00000100b    ;slave PIC connected to IR2
+out 21h,al          ;sending ICW3 to master PIC
+</PRE>Since you probably can't modidy the hardware of your computer, you'll have 
+to program it that way.<BR><BR><B>Structure of ICW3 for the slave :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD width=20>7</TD>
+    <TD width=20>6</TD>
+    <TD width=20>5</TD>
+    <TD width=20>4</TD>
+    <TD width=20>3</TD>
+    <TD width=20>2</TD>
+    <TD width=20>1</TD>
+    <TD width=20>0</TD></TR>
+  <TR>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH colSpan=3>IRQ</TH></TR></TBODY></TABLE><BR>The 3 last bits of ICW3 give the 
+IRQ number of the master to which the slave is connected.<BR>In the case of the 
+BIOS, it's 2h. Of course, you'll have to be coherent with the programmation of 
+the master.<BR><BR>Here's the code for initializing the slave like the BIOS 
+:<BR><PRE>mov al,2h     ;connection via IRQ2
+out 0A1h,al   ;sending ICW3 to the slave PIC
+</PRE>Since you probably can't modify the hardware, you'll have to program it 
+that way too.<BR><BR>The last command is ICW4. This command is only to be sent 
+if bit 0 of ICW1 was set.<BR>It has to be sent through the port 21h or 
+0A1h.<BR><BR><B>Structure of ICW4 :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD width=20>7</TD>
+    <TD width=20>6</TD>
+    <TD width=20>5</TD>
+    <TD width=20>4</TD>
+    <TD width=20>3</TD>
+    <TD width=20>2</TD>
+    <TD width=20>1</TD>
+    <TD width=20>0</TD></TR>
+  <TR>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>EOI</TH>
+    <TH>80x86</TH></TR></TBODY></TABLE><BR>EOI (bit 1) indicates if the end of the 
+interruption is handled automatically or if it needs help from software. In a 
+PC, this bit is generally cleared, which means that the software must handle the 
+end of the interruption. This is important when you write handler for 
+interrupts. See <A href="http://users.win.be/W0005997/GI/pic.html#eoi">Sending 
+the EOI</A>.<BR>80x86 (bit 0) indicates if the PIC is working in a 80x86 
+architecture. This bit should be set.<BR><BR>Here's the code that will perform a 
+correct initialization of the PICs :<BR><PRE>mov al,00000001b    ;Intel environment, manual EOI
+out 21h,al          ;sending ICW4 to the master PIC
+out 0A1h,al         ;sending ICW4 to the slave PIC
+</PRE><BR>
+<H3>A complete example</H3>This example is taken from my code for <A 
+href="http://users.win.be/W0005997/O3S/index.html">O3S</A>. It reinitializes the 
+PIC with different base addresses for the IRQ's in the vector table.<BR><PRE>%define PIC_MASTER_PORT0 20h
+        ;The port address of the first port of the master PIC
+%define PIC_MASTER_PORT1 21h
+        ;The port address of the second port of the master PIC
+%define PIC_SLAVE_PORT0 0A0h
+        ;The port address of the first port of the slave PIC
+%define PIC_SLAVE_PORT1 0A1h
+        ;The port address of the second port of the slave PIC
+
+mov al,00010001b
+out PIC_MASTER_PORT0,al
+out PIC_SLAVE_PORT0,al
+        ;Sending ICW1 to master and slave PIC
+mov al,20h                 ;base vector number of master PIC
+out PIC_MASTER_PORT1,al
+mov al,28h                 ;base vector number of slave PIC
+out PIC_SLAVE_PORT1,al
+        ;Sending base vector number of master and slave PIC
+mov al,00000100b           ;IR2 is connected to slave PIC
+out PIC_MASTER_PORT1,al
+mov al,2h                  ;IRQ2 of master PIC is used for the slave PIC
+out PIC_SLAVE_PORT1,al
+        ;Sending connection parameters between the PICs to the PICs
+mov al,00000001b           ;Intel environment, manual EOI
+out PIC_MASTER_PORT1,al
+out PIC_SLAVE_PORT1,al
+        ;Sending ICW4 to master and slave PIC
+        ;This ends the initialization of the PICs.
+</PRE>
+<H2>Masking Interruptions</H2>Commands other than initialization commands are 
+sended by OCW (Operational Command Words). These OCW can be send in any 
+order.<BR>OCW1 is used to access the IMR (Interrupt Mask Register). With this 
+register you can enable or disables interruptions. OCW1 must be sent to port 21h 
+(for the master PIC) or to port 0A1h (for the slave PIC).<BR><BR><B>Structure of 
+OCW1 :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD>7</TD>
+    <TD>6</TD>
+    <TD>5</TD>
+    <TD>4</TD>
+    <TD>3</TD>
+    <TD>2</TD>
+    <TD>1</TD>
+    <TD>0</TD></TR>
+  <TR>
+    <TH>IR7</TH>
+    <TH>IR6</TH>
+    <TH>IR5</TH>
+    <TH>IR4</TH>
+    <TH>IR3</TH>
+    <TH>IR2</TH>
+    <TH>IR1</TH>
+    <TH>IR0</TH></TR></TBODY></TABLE><BR>An interruption is enabled by setting the 
+corresponding bit to 0.<BR>It's disabled by setting the corresponding byte to 
+1.<BR>Note : you can disable the entire slave interruptions by setting the bit 2 
+of the master to 1 because the slave PIC is connected to IR2.<BR><BR>The 
+following code disables all interrupts except the keyboard (IRQ0 of the master) 
+:<BR><PRE>mov al,11111101b
+out 21h,al
+</PRE>The IMR can be read at any time with a read access to port 21h (master) or 
+0A1h (slave).<BR>
+<H2><A name=eoi>Sending the EOI (End of Interrupt) message</A></H2>There's a 
+situation where the PIC needs help from the software : the PIC can't know when 
+the interrupt handler routine has finished its job. But this is necessary for 
+the pic to know if he can accept a new interrupt.<BR>When operating in automatic 
+EOI mode (bit 1 of ICW4 is set), the PIC assumes he can accept a new interrupt 
+as soon as the present one has been acknowledged by the processor.<BR>Since the 
+Intel architecture doesn't operate with automatic EOI, I won't discuss it 
+further here.<BR>In manual EOI mode, the handler routine must send a message to 
+the PIC to indicate it has finished its job. This must be done before the IRET 
+instruction. The command for this is OCW2. OCW2 must be sent to the port 20h 
+(master) or 0A0h (slave).<BR><BR><B>Structure of the EOI message :</B> 
+<TABLE border=1>
+  <TBODY>
+  <TR>
+    <TD width=20>7</TD>
+    <TD width=20>6</TD>
+    <TD width=20>5</TD>
+    <TD width=20>4</TD>
+    <TD width=20>3</TD>
+    <TD width=20>2</TD>
+    <TD width=20>1</TD>
+    <TD width=20>0</TD></TR>
+  <TR>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>1</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH>
+    <TH>0</TH></TR></TBODY></TABLE><BR>The actual structure of OCW2 is more complex 
+but the EOI message is only one used in the PC.<BR><BR>Note that since the IRQ 
+of the slave are sent through IRQ2 of the master, you have to send the EOI to 
+the slave and to the master when the interrupt has been requested by the 
+slave.<BR><BR>The following code shows how to send an EOI when the IRQ comes 
+from the master :<BR><PRE>mov al,20h    ;EOI command
+out 20h,al    ;Sending the command to the master PIC
+</PRE>The following code shows how to send an EOI when the IRQ comes from the 
+slave :<BR><PRE>mov al,20h    ;EOI command
+out 0A0h,al   ;Sending the command to the slave PIC
+out 20h,al    ;Sending the command to the master PIC
+</PRE><BR>
+<CENTER><A href="http://users.win.be/W0005997/gi.html">[ Return to General 
+Information Index ]</A> <A href="http://users.win.be/W0005997/index.html">[ 
+Return to main index ]</A></CENTER>
+<HR>
+
+<ADDRESS>Copyright(c) 1998 - Xavier Leclercq &lt;xavierleclercq@iname.com&gt; 
+</ADDRESS></BODY></HTML>

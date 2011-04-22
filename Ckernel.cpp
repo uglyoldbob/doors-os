@@ -2,31 +2,35 @@
 
 //globals (some of these will go away as I implement the C/C++ standard libraries)
 Video vid;
+unsigned long LoopsPerSecond;
 //function declarations
-void display(char *chr);	
+extern "C" void display(char *);	
 	//this will be called from out ASM code
-void PrintNumber(unsigned long bob);
+extern "C" void PrintNumber(unsigned long bob);
 	//this prints an unsigned long number to the screen in hexadecimal
 #include "NewDel.h"
-void Memory_Available();
+extern "C" void Memory_Available();
 	//prints the amount on memory that is currently unused
 void GetSettings();
 	//this retrieves our settings from disk (requires disk I/O to be practical)
 void SetupMemory();
 	//this function sets up all the memory stuff (this is called right after GetSettings() is called)
-extern bool EnableFloppy(void);
+extern "C" bool EnableFloppy(void);
 	//enables floppy disk functions, returns 1 for success, 0 for failure
-extern void EnablePaging(void);
+extern "C" void EnablePaging(void);
 	//this function sets the appropiate cr registers to enable paging (protected mode must be enabled for this to work)
-extern unsigned long int EnableKeyboard(void);
+//extern unsigned long int "C "EnableKeyboard(void);
 void EnableMultiTasking();
 	//this enables multitasking, but does not create any other tasks
-int DivideZero();
-	//self explanatory
-unsigned long RAM_Left();
+extern "C" unsigned long RAM_Left();
 	//determines how much RAM is unused
+bool CalcBogo();	//calculates and calibrates the bogomips timing portion of the os
+extern "C" unsigned long Milli();	//returns how many milliseconds its been since boot time
+extern "C" unsigned long getEIP();	//returns EIP of where the function is called from
 bool RangeConflict(unsigned long Base1, unsigned long Length1, unsigned long Base2, unsigned long Length2);
 	//determines if the two ranges overlap anywhere
+extern "C" void delay(unsigned long loops);
+#define CLOCKS_PER_SEC 1000	//this is the number of times our timer variable is incremented per second
 
 //headers to include for random stuff
 #include "disk.h"		//for disk I/O
@@ -39,42 +43,63 @@ int main()		//this is where the C++ portion of the kernel begins
 		//get settings for our OS
 	SetupMemory();
 		//this sets up our memory
-	display("Enabling paging...\n");
+	display("Enabling paging...\n");	
+	return 1;
 	EnablePaging();
 		//this is an assembly function (located in kernel.asm)
-	asm("sti");	//this enables interrupts
 	display("We have enabled protected mode with paging.\n");
-//	display("Checking keyboard...\n");
-//	if (!(EnableKeyboard()))
-//		return 1;
-//	unsigned long *a;
-//	a = (unsigned long*)0x123456;
-//	*a = 0;
-//	a = (unsigned long *)Allocate(1);
+	if (CalcBogo())
+		return 1;	//error, stop booting
+	display("BogoMips returns: ");
+	PrintNumber(LoopsPerSecond);
+	display("\n");
+	unsigned long *a;
+	a = (unsigned long*)0x123456;
+	*a = 0;
+	a = (unsigned long *)Allocate(1);
 	//*a = 0;
 	//asm("int $38");
-//	PrintNumber(*a);
-//	display("\n");
-//	ReadSector((unsigned long)a, 0, 0);
-//	display("Did it work?\t");
-//	PrintNumber(*a);
+	PrintNumber(*a);
+	display("\n");
+	ReadSector((unsigned long)a, 0, 0);
+	display("Did it work?\t");
+	PrintNumber(*a);
 	display("\n");
 	display("We will now do nothing.\n");
 	return 0;	//a non zero return signifies an error, 0 signals all is ok
 }
 
-int DivideZero()
-{
-	int Final = 7;
-	return (Final / 0);
-}
-
-void display(char *chr)
+extern "C" void display(char *chr)
 {
 	vid.write(chr);
 }
 
-void Memory_Available()
+extern "C" void delay(unsigned long loops)
+{
+	long i;
+	for (i = loops; i >= 0 ; i--);
+}
+
+bool CalcBogo()
+{
+	unsigned long loops_per_sec = 1;
+	unsigned long ticks;
+	while ((loops_per_sec <<= 1))
+	{
+		ticks = Milli();
+		delay(loops_per_sec);
+		ticks = Milli() - ticks;
+		if (ticks >= CLOCKS_PER_SEC)
+		{
+			loops_per_sec = (loops_per_sec / ticks) * CLOCKS_PER_SEC;
+			LoopsPerSecond = loops_per_sec / 500;
+			return 0;
+		}
+	}
+	return 1;	//failure code
+}
+
+extern "C" void Memory_Available()
 {
 	return;
 }	
@@ -104,6 +129,7 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 	//find out what memory cannot be used	
 	//create the page table at the beginning of extended memory (1MB)
 	//because it could be as large as 4MB, which is too large for conventional memory (<=640K)
+	display("testing a retarded function!@#$%$@#%^%$^&$%&@#$%#@$%^#$%^\n");
 	unsigned char * Video = (unsigned char *) 0xB8000;
 		//create a pointer that points to the screen buffer
 	int off = 160;
@@ -222,6 +248,7 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 			for(;PageNum < Limit; PageNum++)
 			{	//1, 2, 3, 4, 5, 6, 7, 8, 9, ...
 				Location2[(PageNum % 0x400)] = (PageNum<<12) + 3;
+display("1");
 			}
 		}
 		else
@@ -231,6 +258,7 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 				for(;PageNum < Limit; PageNum++)
 				{	
 					Location2[(PageNum % 0x400)] = (PageNum<<12) + 3;
+display("1");
 				}	
 			}
 			else
@@ -238,12 +266,14 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 				for(;(PageNum % 0x400) <= (PhyPages % 0x400); PageNum++)
 				{	//process everything everything untill the last page of physical memory
 					Location2[(PageNum % 1024)] = (PageNum  * 0x1000) + 3;
+display("1");
 				}
 				counter2 = PageNum;
 				while (counter2 < Limit)
 				{	//sets up virtual memory pages 
 					//(if virtual memory is not used, then these pages will be reported as non-existant memory)
 					Location2[(PageNum % 1024)] = 0;
+display("0");
 					if (VirPageNum < VirPages)
 					{
 						VirPageNum++;
@@ -265,6 +295,7 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 			for (; PageNum < Limit; PageNum++)
 			{	//not present in memory ill set a page directory entry up, but not a pte
 				Location2[PageNum % 0x400] = 0;
+display("0");
 			}
 			counter++;
 		}
@@ -272,6 +303,7 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 	for (;(counter<<10) < 0x400;counter++)
 	{	//counter will be PhyTables + VirTables when the loop starts
 		Location[counter] = 0;	//this memory will never exist anywhere
+display("0");
 	}	//these entries exist so that there will be no bugs
 	//the paging table has been created
 	//create the memory usage heap and the virtual memory usage heap
@@ -371,7 +403,7 @@ void SetupMemory() //sets up the master paging table (required to enable paging)
 	return;
 }
 
-unsigned long RAM_Left()
+extern "C" unsigned long RAM_Left()
 {
 	unsigned long FreeRam = 0;
 	for (unsigned long counter = 0; counter < PageNum; counter++)

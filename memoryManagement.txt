@@ -1,0 +1,64 @@
+01	1		1	4 GB		1 B		
+02	2		3	2 GB		1 B		
+03	4		7	1024 MB		1 B		
+04	8		15	512 MB		2 B		
+05	16		31	256 MB		4 B		
+06	32		63	128 MB		8 B		
+07	64		127	64 MB		16 B		
+08	128		255	32 MB		32 B		
+09	256		511	16 MB		64 B		
+10	512		1023	8 MB		128 B		
+11	1024		2047	4 Mb		256 B		
+12	2048			2 MB		512 B		
+13	4096			1024 KB		1024 B		
+14	8192			512 KB		2 KB		
+15	16384			256 KB		4 KB		
+16	32768			128 KB		8 KB		
+17	65536			64 KB		16 KB		
+18	131072			32 KB		32 KB		
+19	262144			16 KB		64 KB		
+20	524288			8 KB		128 KB		
+21	1048576			4 KB		256 KB		
+
+allocatePage()
+{
+	unsigned int Child = 1;
+	while !(heap(Child) == 1) || heap(Child + 1) == 1)
+	{
+		if (heap(Child) == 1)
+		{
+			Child = child * 2 + 1;
+		}
+		else if (heap(Child + 1) == 1)
+		{
+			Child = Child * 2 + 2;
+		}
+		else
+		{
+			return 0;	//no memory is available
+		}
+	}
+	Child -= 1048576;	//so we can find out what page it is
+	return (Child * 4096);
+}
+
+heap(int num)
+{	//ranges from 1 - 262143
+	num--;
+	//ranges from 0 - 232142
+	//get the DWORD address for the heap entry
+	unsigned int *HeapEntry = (unsigned long *)(HeapAddress + (num / 32));
+	//adjust and return the binary heap value
+	return ((*HeapEntry>>(num % 32)) & 1)
+}
+
+item number is (2^(d-1) + (n - 1))
+	f(1,1) = 1 + 0 = 1
+	f(1,2) = 1 + 1 = 2
+first child is (2n + 1)
+second child is (2n + 1)
+1/16384 of all RAM
+
+1		4 GB	1 B
+1024		4 MB	129 B
+1048576		4 KB	131201 B = 129 KB

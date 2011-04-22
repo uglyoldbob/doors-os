@@ -1,0 +1,37 @@
+The caller pushes the function's parameters on the stack, one after another, in reverse order (right to left, so that the first argument specified to the function is pushed last). 
+
+The caller then executes a near CALL instruction to pass control to the callee. 
+
+The callee receives control, and typically (although this is not actually necessary, in functions which do not need to access their parameters) starts by saving the value of ESP in EBP so as to be able to use EBP as a base pointer to find its parameters on the stack. However, the caller was probably doing this too, so part of the calling convention states that EBP must be preserved by any C function. Hence the callee, if it is going to set up EBP as a frame pointer, must push the previous value first. 
+
+Update: 1-21-2001 GCC based compilers also expect EBX EDI and ESI to be preserved by any function. 
+
+The callee may then access its parameters relative to EBP. The doubleword at [EBP] holds the previous value of EBP as it was pushed; the next doubleword, at [EBP+4], holds the return address, pushed implicitly by CALL. The parameters start after that, at [EBP+8]. The leftmost parameter of the function, since it was pushed last, is accessible at this offset from EBP; the others follow, at successively greater offsets. Thus, in a function such as printf which takes a variable number of parameters, the pushing of the parameters in reverse order means that the function knows where to find its first parameter, which tells it the number and type of the remaining ones. 
+
+The callee may also wish to decrease ESP further, so as to allocate space on the stack for local variables, which will then be accessible at negative offsets from EBP. 
+
+The callee, if it wishes to return a value to the caller, should leave the value in AL, AX or EAX depending on the size of the value. Floating-point results are typically returned in ST0. 
+
+Once the callee has finished processing, it restores ESP from EBP if it had allocated local stack space, then pops the previous value of EBP, and returns via RET (equivalently, RETN). 
+
+When the caller regains control from the callee, the function parameters are still on the stack, so it typically adds an immediate constant to ESP to remove them (instead of executing a number of slow POP instructions). Thus, if a function is accidentally called with the wrong number of parameters due to a prototype mismatch, the stack will still be returned to a sensible state since the caller, which knows how many parameters it pushed, does the removing. 
+
+Thus, you would define a function in C style in the following way: 
+
+[global _myfunc]
+
+_myfunc:  
+	push ebp 
+	mov ebp,esp 
+	sub esp,0x40           ; 64 bytes of local stack space 
+	mov ebx,[ebp+8]        ; first parameter to function 
+	; some more code 
+	leave                  ; mov esp,ebp / pop ebp 
+	ret
+
+[extern C_Function]
+
+to call C++ functions
+	push bob		;local variable is the first argument
+	push ax		;ax is the last argument
+	call C_Function

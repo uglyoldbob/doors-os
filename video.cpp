@@ -10,7 +10,9 @@ Video::Video()
 	}
 }
 
-Video::~Video() {}
+Video::~Video()
+{
+}
 
 void Video::clear()	//does not work
 {

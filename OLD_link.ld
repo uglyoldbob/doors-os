@@ -1,11 +1,11 @@
 /* Link.ld */
 OUTPUT_FORMAT("binary")
-ENTRY(_starting)
+ENTRY(start)
 SECTIONS
 {
-.text 0x0000 :
+.text 0x000900 :
 {
-code = .; _code = .; __code = .; ___code = .;
+code = .; _code = .; __code = .;
 *(.text)
 . = ALIGN(4096);
 }
@@ -18,10 +18,6 @@ __DTOR_LIST__ = .; LONG((__DTOR_END__ - __DTOR_LIST__) / 4 - 2) *(.dtors) LONG(0
 data = .; _data = .; __data = .;
 *(.data)
 . = ALIGN(4096);
-}
-
-.rodata :
-{
 }
 
 .bss :

@@ -201,6 +201,8 @@ err_msg db 'BIOS calls failed', 13, 10, 0
 display_range:
 	pusha
 ; if size==0, do nothing
+;dx:ax is base
+;cx:bx is size
 	mov si, cx
 	or si, bx
 	je display_range_1
@@ -211,7 +213,7 @@ display_range:
 	call wrnum
 	mov si, size_msg
 	call DisplayMessage
-	pop ax
+	pop ax	
 	mov dx, cx
 	call wrnum
 	mov si, crlf_msg
@@ -256,6 +258,11 @@ extmem_e820_1:
 	mov dx, [es:di + 2]
 	mov bx, [es:di + 8] ; size
 	mov cx, [es:di + 10]
+;or with [es:di + 2]
+;if equal, then were done
+;
+;
+;
 	call display_range
 	pop bx
 extmem_e820_2:
@@ -313,16 +320,16 @@ extmem_e801_2:
 
 wrnum:
 	pusha
-	mov si,num_buf
+	mov si,num_buf			;temporary variable, not referred to anywhere else
 wrnum1:
 	push ax
 	mov ax,dx
 	xor dx,dx
-	div bx
-	mov cx,ax
-	pop ax
-	div bx
-	xchg dx,cx
+	div bx			;dx:ax / bx   = ax, remainder dx
+	mov cx,ax		;cx rem dx
+	pop ax			;dx:ax / bx  = ax, rem dx
+	div bx			
+	xchg dx,cx		;
 	add cl,'0'
 	cmp cl,'9'
 	jbe wrnum2
