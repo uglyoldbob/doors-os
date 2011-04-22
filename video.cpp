@@ -23,21 +23,34 @@ void video::PrintNumber(unsigned int bob)
 {	//this prints a 32 bit number (8 hex digits)
 	enter_spinlock(SL_DISPLAY);
 	unsigned int Temp = 0;
+	unsigned int last_digit = 0;
 	put('0');
 	put('x');
 	int counter = 7;
 	for (counter = 7; counter >= 0; counter--)
 	{	//this is a countdown, because we write the most signifigant nibble first
 		Temp = ((bob >> (counter * 4)) & 0xF);
-		if (Temp > 9)
+		if (last_digit == 0)
 		{
-			Temp += ('A' - 10);
+			last_digit = Temp;
 		}
-		else
+		if (last_digit != 0)
 		{
-			Temp += '0';
+			if (Temp > 9)
+			{
+				Temp += ('A' - 10);
+			}
+			else
+			{
+				Temp += '0';
+			}
+			put((unsigned char)(Temp));
 		}
-		put((unsigned char)(Temp));
+	}
+	if (last_digit == 0)
+	{
+		put('0');
+		put('0');
 	}
 	leave_spinlock(SL_DISPLAY);
 }

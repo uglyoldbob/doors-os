@@ -75,6 +75,11 @@ int disk::read_sector(unsigned int drive_num, unsigned long sector_number, unsig
 	return -1;
 }
 
+int disk::write_sector(unsigned int drive_num, unsigned long sector_number, unsigned int *buffer)
+{
+	return -1;
+}
+
 int disk::bytes_per_sector(unsigned int drive_num)
 {
 	return -1;

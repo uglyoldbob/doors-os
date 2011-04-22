@@ -18,6 +18,8 @@ struct SL_STATES spinlock_states[NUMBER_TYPES];
 
 void enter_spinlock(unsigned int which)
 {	//enters the requested spinlock level
+	if (which >= NUMBER_TYPES)
+		return;
 	//return;
 	//only if the rules allow it
 	unsigned int counter;
@@ -56,6 +58,8 @@ void leave_spinlock(unsigned int which)
 	unsigned int counter;
 	//put('x');
 	//put(which + '0');
+	if (which >= NUMBER_TYPES)
+		return;
 	if (spinlock_states[which].exp_enabled != 1)
 	{
 		put('?');

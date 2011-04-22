@@ -24,51 +24,51 @@ EXTERNC const char ASCII_TRANSLATE[] = {
 	0, 0, 0, 0, //this entry is unused (keyboard chart starts at 1)
 	27, 0, 0, 0,
 	49, 33, 0, 0,
-	50, 64, 0, 0,
+	50, 64, 0, 0,	//4
 	51, 35, 0, 0,
 	52, 36, 0, 0,
 	53, 37, 0, 0,
-	54, 94, 0, 0,
+	54, 94, 0, 0,	//8
 	55, 38, 0, 0,
 	56, 42, 0, 0,
 	57, 40, 0, 0,
-	48, 41, 0, 0,
+	48, 41, 0, 0,	//12
 	45, 95, 0, 0,
 	61, 43, 0, 0,
 	8, 0, 0, 0,
-	9, 0, 0, 0,
+	9, 0, 0, 0,		//16
 	113, 81, 81, 0,
 	119, 87, 87, 0,
 	101, 69, 69, 0,
-	114, 82, 82, 0,
+	114, 82, 82, 0,	//20
 	116, 84, 84, 0,
 	121, 89, 89, 0,
 	117, 85, 85, 0,
-	105, 73, 73, 0,
+	105, 73, 73, 0,	//24
 	111, 79, 79, 0,
 	112, 80, 80, 0,
 	91, 123, 0, 0,
-	93, 125, 0, 0,
+	93, 125, 0, 0,	//32
 	10, 0, 0, 0,
 	0, 0, 0, 0,	//lctrl -1
 	97, 65, 65, 0,
-	115, 83, 83, 0,
+	115, 83, 83, 0,	//36
 	100, 68, 68, 0,
 	102, 70, 70, 0,
 	103, 71, 71, 0,
-	104, 72, 72, 0,
+	104, 72, 72, 0,	//40
 	106, 74, 74, 0,
 	107, 75, 75, 0,
 	108, 76, 76, 0,
-	59, 58, 0, 0,
+	59, 58, 0, 0,	//44
 	39, 34, 0, 0,
 	96, 126, 0, 0,
 	0, 0, 0, 0, 	//LSHIFT -1
-	92, 124, 0, 0,
+	92, 124, 0, 0,	//48
 	122, 90, 90, 0,
 	120, 88, 88, 0,
 	99, 67, 67, 0,
-	118, 86, 86, 0,
+	118, 86, 86, 0,	//52
 	98, 66, 66, 0,
 	110, 78, 78, 0,
 	109, 77, 77, 0,
@@ -125,8 +125,137 @@ EXTERNC const char ASCII_TRANSLATE[] = {
 	0, 0, 0, 0,	//lwin -1
 	0, 0, 0, 0,	//rwin -1
 	0, 0, 0, 0,	//menu -1
-	0, 0, 0, 0,	//pause/break -1
-
+	0, 0, 0, 0,	//pause/break -1	//105
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0,
+	0, 0, 0, 0
 };
 
 //[0x1B:0x4F:0x53]
@@ -172,7 +301,7 @@ EXTERNC const char *ASCII_MULTIBYTE [] = {
 "\x1B\x4F\x46\x00",	//end
 "\x1B\x5B\x42\x00",	//down
 "\x1B\x5B\x36\x7E\x00",	//pgdown
-"\x1B\x5B\x32\x7E\x00",	//insert
+"\x1B\x5B\x32\x7E\x00",	//insert	element number 31
 };
 
 int wait_to_write()
@@ -302,39 +431,40 @@ void postMakeCode(unsigned int code)
 	//this is where translation for VT100 stuff will be done
 	//games will probably want to use the make and break codes, as well as anything that wants "extra" keyboard keys
 		//like ctrl, shift, alt, etc
+	//TODO: implement bounds check for the variable named code
 	add_me.data1 = (add_me.data1 | code | MAKE);	//set the code and the make flag
-	if (ASCII_TRANSLATE[code * 4] == 0)
+	if (ASCII_TRANSLATE[(code & 0xFF) * 4] == 0)
 	{	//key has no mapping
 		add_me.data2 = 0;
 	}
 	else
 	{	//this key has a mapping
-		if (ASCII_TRANSLATE[code * 4] != 0x1B)
+		if (ASCII_TRANSLATE[(code & 0xFF) * 4] != 0x1B)
 		{	//single byte
-			if (((add_me.data1 & CAPSL) > 0) && (ASCII_TRANSLATE[code * 4 + 2] != 0))
+			if (((add_me.data1 & CAPSL) > 0) && (ASCII_TRANSLATE[(code & 0xFF) * 4 + 2] != 0))
 			{	//caps lock key is engaged and the shift actually changes the keycode for this scancode
 				if ((add_me.data1 & (LSHFT | RSHFT)) == 0)
 				{	//a shift key is not being pressed
 					//and caps lock is down
-					add_me.data2 = ASCII_TRANSLATE[code * 4 + 2];
+					add_me.data2 = ASCII_TRANSLATE[(code & 0xFF) * 4 + 2];
 				}
 				else
 				{	//shift and caps lock = normal key output
-					add_me.data2 = ASCII_TRANSLATE[code * 4];
+					add_me.data2 = ASCII_TRANSLATE[(code & 0xFF) * 4];
 				}
 			}
 			else if ((add_me.data1 & (LSHFT | RSHFT)) > 0)
 			{	//a shift key is being pressed (and caps lock has no effect
-				add_me.data2 = ASCII_TRANSLATE[code * 4 + 1];
+				add_me.data2 = ASCII_TRANSLATE[(code & 0xFF) * 4 + 1];
 			}
 			else
 			{	//neither the shift key or the caps lock is down
-				add_me.data2 = ASCII_TRANSLATE[code * 4];
+				add_me.data2 = ASCII_TRANSLATE[(code & 0xFF) * 4];
 			}
 		}
 		else
 		{
-			if (code == 1)
+			if ((code & 0xFF) == 1)
 			{	//the escape key is a single byte code
 				add_me.data2 = 0x1B;
 			}
@@ -342,13 +472,13 @@ void postMakeCode(unsigned int code)
 			{	//code is actually a multi-byte sequence (at least theoretically)
 				//check to see if numlock is active and if the code cares about numlock
 				add_me.data1 = add_me.data1 | MULTI;
-				if (((add_me.data1 & NUMBL) > 0) && (ASCII_TRANSLATE[code * 4 + 3] != 0))
+				if (((add_me.data1 & NUMBL) > 0) && (ASCII_TRANSLATE[(code & 0xFF) * 4 + 3] != 0))
 				{	//numlock active and the code has a different code when numlock is active
-					add_me.data2 = (unsigned long)ASCII_MULTIBYTE[ASCII_TRANSLATE[code * 4 + 3]];
+					add_me.data2 = (unsigned long)ASCII_MULTIBYTE[ASCII_TRANSLATE[(code & 0xFF) * 4 + 3]];
 				}
 				else
 				{	//either numlock is not active or it doesn't matter if it is active
-					add_me.data2 = (unsigned long)ASCII_MULTIBYTE[ASCII_TRANSLATE[code * 4 + 1]];
+					add_me.data2 = (unsigned long)ASCII_MULTIBYTE[ASCII_TRANSLATE[(code & 0xFF) * 4 + 1]];
 				}
 			}
 		}
@@ -379,13 +509,13 @@ void handleScancode(unsigned int code)
 	{ 
 		case 0:
 		{	//this is the first byte of the scancode
-			switch (code)
+			switch ((code & 0xFF))
 			{
 				case 0xE0: case 0xE1:
 					//scancode has more than one byte in it
 					//save the byte and update the buffer
 					num_elements_used = 1;
-					code_buffer[0] = code;
+					code_buffer[0] = (code & 0xFF);
 					break;
 				case 0xEE: case 0x00: case 0xF0: case 0xFA: case 0xFC: case 0xFD:
 				case 0xFE: case 0xFF:	//status bytes, don't bother posting a message
@@ -393,34 +523,34 @@ void handleScancode(unsigned int code)
 					break;
 				case 0x2A:	//left shift key make
 					add_me.data1 = (add_me.data1 | LSHFT);
-					postMakeCode(code);
+					postMakeCode((code & 0xFF));
 					break;
 				case 0xAA:	//left shift key release
 					add_me.data1 = (add_me.data1 & ~LSHFT);	//clear the LSHFT flag
-					postBreakCode(code - 0x80);
+					postBreakCode((code & 0xFF) - 0x80);
 					break;
 				case 0x36:	//right shift key make
 					add_me.data1 = (add_me.data1 | RSHFT);
-					postMakeCode(code);
+					postMakeCode((code & 0xFF));
 					break;
 				case 0xB6:	//right shift key release
 					add_me.data1 = (add_me.data1 & ~RSHFT);	//clear the RSHFT flag
-					postBreakCode(code - 0x80);
+					postBreakCode((code & 0xFF) - 0x80);
 					break;
 				case 0x38:	//left alt key press
 					add_me.data1 = (add_me.data1 | LALTT);
-					postMakeCode(code);
+					postMakeCode((code & 0xFF));
 					break;
 				case 0x3A:	//caps lock key press
 					if ((add_me.data1 & CAPSL) > 0)
 						add_me.data1 = (add_me.data1 & ~CAPSL);
 					else
 						add_me.data1 = (add_me.data1 | CAPSL);
-					postMakeCode(code);
+					postMakeCode((code & 0xFF));
 					break;
 				case 0xA8:	//left alt key release
 					add_me.data1 = (add_me.data1 & ~LALTT);	//clear the LALTT flag
-					postBreakCode(code - 0x80);
+					postBreakCode((code & 0xFF) - 0x80);
 					break;
 				default:
 					//this is for single byte scancodes
@@ -428,18 +558,18 @@ void handleScancode(unsigned int code)
 					if ((code & 0x7F) > 0x58)
 					{	//these need to be remapped (for now display an unknown key message)
 						display("Unknown key:");
-						PrintNumber(code);
+						PrintNumber((code & 0xFF));
 						display("!");
 					}
 					else
 					{	//these keys have a direct (more or less) map to the final set
-						if (code < 0x80)
+						if ((code & 0xFF) < 0x80)
 						{	//make code, the key was pressed
-							postMakeCode(code);
+							postMakeCode((code & 0xFF));
 						}
 						else
 						{	//break code
-							postBreakCode(code - 0x80);
+							postBreakCode((code & 0xFF) - 0x80);
 						}
 					}
 					break;	
@@ -448,11 +578,11 @@ void handleScancode(unsigned int code)
 		}
 		case 1:
 		{	//second byte of the scancode
-			switch (code)			
+			switch ((code & 0xFF))			
 			{	//more than two bytes for a scancode
 				case 0x2A: case 0xB7:
 					num_elements_used = 2;
-					code_buffer[1] = code;
+					code_buffer[1] = (code & 0xFF);
 					break;
 				//anything that passes this will be all of these will be 0xE0?? codes
 				case 0x1C:	//numpad enter key (map to 0x5A)
@@ -473,7 +603,7 @@ void handleScancode(unsigned int code)
 					if (code_buffer[0] == 0xE1)
 					{	//this is the pause break key
 						num_elements_used = 2;
-						code_buffer[1] = code;
+						code_buffer[1] = (code & 0xFF);
 					}
 					else
 					{
@@ -495,10 +625,10 @@ void handleScancode(unsigned int code)
 					postMakeCode(0x56);
 					break;
 				case 0x47: case 0x48: case 0x49:	//0x14
-					postMakeCode(code + 0x14);
+					postMakeCode((code & 0xFF) + 0x14);
 					break;
 				case 0xC7: case 0xC8: case 0xC9:
-					postBreakCode(code + 0x14 - 0x80);
+					postBreakCode((code & 0xFF) + 0x14 - 0x80);
 					break;
 				case 0x4B:
 					postMakeCode(0x5E);
@@ -513,16 +643,16 @@ void handleScancode(unsigned int code)
 					postBreakCode(0x5F);
 					break;
 				case 0x4F: case 0x50: case 0x51: case 0x52: case 0x53:
-					postMakeCode(code + 0x11);
+					postMakeCode((code & 0xFF) + 0x11);
 					break;
 				case 0xCF: case 0xD0: case 0xD1: case 0xD2: case 0xD3:
-					postBreakCode(code + 0x11 - 0x80);
+					postBreakCode((code & 0xFF) + 0x11 - 0x80);
 					break;
 				case 0x5B: case 0x5C: case 0x5D:
-					postMakeCode(code + 0xA);
+					postMakeCode((code & 0xFF) + 0xA);
 					break;
 				case 0xDB: case 0xDC: case 0xDD:
-					postBreakCode(code - 0x80 + 0xA);
+					postBreakCode((code & 0xFF) - 0x80 + 0xA);
 					break;
 				case 0xAA:	//nothing, it is a break code that is after the useful life of a key press
 					num_elements_used = 0;
@@ -532,7 +662,7 @@ void handleScancode(unsigned int code)
 						display("Unknown two byte scancode: ");
 						PrintNumber(code_buffer[0]);
 						display(",");
-						PrintNumber(code);
+						PrintNumber((code & 0xFF));
 						display("!");
 					num_elements_used = 0;
 					break;
@@ -542,13 +672,13 @@ void handleScancode(unsigned int code)
 		}
 		case 2:
 		{	//this is the third byte of the scancode
-			switch (code)
+			switch ((code & 0xFF))
 			{
 				case 0xE0: case 0x45:
 				{	//scancode has more than three bytes in it
 					//save the byte and update the buffer
 					num_elements_used = 3;
-					code_buffer[2] = code;
+					code_buffer[2] = (code & 0xFF);
 					break;
 				}
 				default:
@@ -558,7 +688,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[1]);
 						display(",");
-						PrintNumber(code);
+						PrintNumber((code & 0xFF));
 						display("!");
 					num_elements_used = 0;
 					break;	
@@ -568,20 +698,20 @@ void handleScancode(unsigned int code)
 		}
 		case 3:
 		{	//this is the fourth byte of the scancode
-			switch (code)
+			switch ((code & 0xFF))
 			{
 				case 0xE1:
 				{	//scancode has more than four bytes in it
 					//save the byte and update the buffer
 					num_elements_used = 4;
-					code_buffer[3] = code;
+					code_buffer[3] = (code & 0xFF);
 					break;
 				}
 				case 0x47: case 0x48: case 0x49:	//0x14
-					postMakeCode(code + 0x14);
+					postMakeCode((code & 0xFF) + 0x14);
 					break;
 				case 0xC7: case 0xC8: case 0xC9:
-					postBreakCode(code + 0x14 - 0x80);
+					postBreakCode((code & 0xFF) + 0x14 - 0x80);
 					break;
 				case 0x4B:
 					postMakeCode(0x5E);
@@ -596,10 +726,10 @@ void handleScancode(unsigned int code)
 					postBreakCode(0x5F);
 					break;
 				case 0x4F: case 0x50: case 0x51: case 0x52: case 0x53:
-					postMakeCode(code + 0x11);
+					postMakeCode((code & 0xFF) + 0x11);
 					break;
 				case 0xCF: case 0xD0: case 0xD1: case 0xD2: case 0xD3:
-					postBreakCode(code + 0x11 - 0x80);
+					postBreakCode((code & 0xFF) + 0x11 - 0x80);
 					break;
 				case 0x37:
 					postMakeCode(0x56);
@@ -616,7 +746,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[2]);
 						display(",");
-						PrintNumber(code);
+						PrintNumber((code & 0xFF));
 						display("!");
 					num_elements_used = 0;
 					break;	
@@ -626,13 +756,13 @@ void handleScancode(unsigned int code)
 		}
 		case 4:
 		{	//this is the fifth byte of the scancode
-			switch (code)
+			switch ((code & 0xFF))
 			{
 				case 0x9D:
 				{	//scancode has more than four bytes in it
 					//save the byte and update the buffer
 					num_elements_used = 5;
-					code_buffer[4] = code;
+					code_buffer[4] = (code & 0xFF);
 					break;
 				}
 				default:
@@ -646,7 +776,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[3]);
 						display(",");
-						PrintNumber(code);
+						PrintNumber((code & 0xFF));
 						display("!");
 					num_elements_used = 0;
 					break;	
@@ -656,7 +786,7 @@ void handleScancode(unsigned int code)
 		}
 		case 5:
 		{	//this is the sixth byte of the scancode
-			switch (code)
+			switch ((code & 0xFF))
 			{
 				case 0xC5:
 					postMakeCode(0x68);
@@ -674,7 +804,7 @@ void handleScancode(unsigned int code)
 						display(",");
 						PrintNumber(code_buffer[4]);
 						display(",");
-						PrintNumber(code);
+						PrintNumber((code & 0xFF));
 						display("!");
 					num_elements_used = 0;
 					break;	

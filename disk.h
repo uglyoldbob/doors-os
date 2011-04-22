@@ -37,6 +37,9 @@ class disk
 		disk();
 		virtual ~disk();	//virtual destructor
 		virtual int read_sector(unsigned int drive_num, unsigned long sector_number, unsigned int *buffer);
+			//returns success or failure
+		virtual int write_sector(unsigned int drive_num, unsigned long sector_number, unsigned int *buffer);
+			//returns success or failure
 		virtual char *identify_driver();	//returns a string identifying the driver
 		virtual int number_drives();	//returns the number of drives addressed by the driver
 		virtual int get_drive_number(int drive_order);	//returns the external disk number (0-0xFFFFFFFE) given the

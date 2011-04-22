@@ -93,6 +93,7 @@
 	//Thomas Epperson
 //#include <stdio.h>
 //#include <string.h>
+#include "string.h"
 #define NULL 0
 
 /************************************************************************

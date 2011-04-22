@@ -50,9 +50,15 @@ class floppy : public disk
 		floppy();
 		~floppy();
 		int read_sector(unsigned int drive_num, unsigned long sector_number, unsigned int *buffer);
+			//returns success or failure
+		int write_sector(unsigned int drive_num, unsigned long sector_number, unsigned int *buffer);
+			//returns success or failure
 		int number_drives();
+			//returns the total number of floppy drives
 		int get_drive_number(int drive_order);
+			//initializes the structure to do handling
 		int bytes_per_sector(unsigned int drive_num);
+			//returns the number of bytes per sector
 		char *identify_driver();	//returns a string identifying the driver
 	private:
 		//data

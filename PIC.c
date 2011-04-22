@@ -15,6 +15,7 @@ void setupPIC()
 	asm("sti");						//enable interrupts
 }
 
+//TODO: validate the operation of these two functions
 void clearIRQ(unsigned int which)
 {	//clears only IRQ's higher than which (0 - 7)
 	outportb(0xFF<<(which), 0x21);

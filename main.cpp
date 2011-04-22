@@ -15,6 +15,9 @@
 #include "tss.h"
 #include "entrance.h"
 #include "serial.h"
+#include "vmm.h"
+#include "elf.h"
+#include "string.h"
 
 #include <sys/syscalls.h>
 
@@ -26,125 +29,18 @@ void readSerial();
 extern "C" void _main();	//this initializes global objects
 extern memory global_memory;
 
-const char *key_show[] = {
-"NULL",
-"Esc ",
-"1! ",
-"2@ ",
-"3# ",
-"4$ ",
-"5% ",
-"6^ ",
-"7& ",
-"8* ",
-"9( ",
-"0) ",
-"-_ ",
-"=+ ",
-"BK ",
-"TB ",
-"qQ ",
-"wW ",
-"eE ",
-"rR ",
-"tT ",
-"yY ",
-"uU ",
-"iI ",
-"oO ",
-"pP ",
-"[{ ",
-"]} ",
-"EN ",
-"LC ",
-"aA ",
-"sS ",
-"dD ",
-"fF ",
-"gG ",
-"hH ",
-"jJ ",
-"kK ",
-"lL ",
-";: ",
-"'\" ",
-"`~ ",
-"LS ",
-"\\| ",
-"zZ ",
-"xX ",
-"cC ",
-"vV ",
-"bB ",
-"nN ",
-"mM ",
-",< ",
-".> ",
-"/? ",
-"RS ",
-"* ",
-"LA ",
-"' ' ",
-"CAP ",
-"F1 ",
-"F2 ",
-"F3 ",
-"F4 ",
-"F5 ",
-"F6 ",
-"F7 ",
-"F8 ",
-"F9 ",
-"F10 ",
-"NUM ",
-"SCR ",
-"HO7 ",
-"UP8 ",
-"PU9 ",
-"- ",
-"LE4 ",
-"5 ",
-"RI6 ",
-"+ ",
-"END1 ",
-"DWN2 ",
-"PD3 ",
-"INS0 ",
-"DEL. ",
-"RCTRL ",	
-"/ ",	
-"PrtScr ",	
-"F11 ",
-"F12 ",
-"RA ",
-"ENT ",
-"HME ",
-"UP ",
-"PGUP ",
-"LFT ",
-"RGT ",
-"END ",
-"DWN ",
-"PDWN ",
-"INSE ",
-"DEL ",
-"LWIN ",
-"RWIN ",
-"MENU ",
-"PAUSE "
-};
-
 //called from assembly
 int main(struct multiboot_info *boot_info, unsigned long size)
 {	//DONE: enable paging
 	//DONE: memory management
-	//TODO: detect cpu
+	//TODO: detect cpu, cpuid will not work on a 386, so until later cpu support is wanted, this will not be added
 	//DONE: event notification
 	//build floppy disk driver
 	//done: complete keyboard driver (buffer for the driver, when a byte is added, post a message about it)
 	//TODO: upgrade keyboard driver, allow custom mappings, conform to a standard of some sort regarding the values for keystrokes
 		//UTF-8 is a likely candidate for this, ASCII can be used, but does not allow for representation of every keystroke (not easily)
 		//also UTF-8 is compatible with ASCII
+	//keyboard driver uses a custom format alongside with ASCII
 	//DONE: spinlocks
 	//enable virtual memory
 	//enable multi-tasking (software / hardware mix for the moment, fully hardware multitasking is too restrictive 
@@ -188,12 +84,21 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 		display((char*)boot_info->cmdline);
 		display("\n");
 	}
-	
+
+	display("Initializing message delivery subsystem\n");
+	init_messaging();
+//	display("Checking for drives connected to IDE controllers.\n");
+//	examine_ide();
+	display("Configuring keyboard\n");
+	if (init_keyboard() == -1)
+		display("Could not initialize keyboard\n");
+
+//	for(;;);	
 	display("Setting up data for multi-tasking\n");
 
 	//initialize multi-tasking and setup the first task
-	sys_tasks = (struct task*)malloc (sizeof (struct task));
-	first_page = (unsigned char*)malloc (0x1000);
+	sys_tasks = (struct task*)kmalloc (sizeof (struct task));
+	first_page = (unsigned char*)kmalloc (0x1000);
 	memcopy(first_page, 0, 0x1000);
 	setup_multi_gdt();
 	init_first_task(sys_tasks);
@@ -208,8 +113,8 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 
 	//test multi-tasking by activating another task
 	//asm("cli");
-	temporary = (unsigned long*)malloc(0x1000);	//one page for the stack
-	newtask = (struct TSS*)malloc(sizeof(struct TSS));
+	temporary = (unsigned long*)kmalloc(0x1000);	//one page for the stack
+	newtask = (struct TSS*)kmalloc(sizeof(struct TSS));
 	newtask->esp = (unsigned long)temporary + 0xFFC;
 	newtask->cs = 0x08;
 	newtask->ds = 0x10;
@@ -224,8 +129,8 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	add_task_before(newtask, sys_tasks);
 
 
-	//setup a new stack for the new task	
-	temporary = (unsigned long*)malloc(0x1000);	//one page for the stack
+	//setup a new stack for the new task
+	temporary = (unsigned long*)kmalloc(0x1000);	//one page for the stack
 	newtask->esp = (unsigned long)temporary + 0xFFC;
 	newtask->eip = (unsigned long)setupFloppy;
 	add_task_before(newtask, sys_tasks);	//add another task (hoepfully it will work)
@@ -238,18 +143,11 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 //	display("sys_tasks = ");
 //	PrintNumber(sys_tasks);
 //	display("\n");
-//	sys_tasks = next_state(1, sys_tasks, malloc(0x1000));
+//	sys_tasks = next_state(1, sys_tasks, kmalloc(0x1000));
 //	display("sys_tasks = ");
 //	PrintNumber(sys_tasks);
 //	display("\n");
 
-	display("Initializing message delivery subsystem\n");
-	init_messaging();
-//	display("Checking for drives connected to IDE controllers.\n");
-//	examine_ide();
-	display("Configuring keyboard\n");
-	if (init_keyboard() == -1)
-		display("Could not initialize keyboard\n");
 
 //	struct driveData * (*test) ();	//declaration for the pointer
 									//same when used as an argument for a function
@@ -336,10 +234,63 @@ unsigned long setupFloppy()
 		local_fs = new filesystem*[number_fs];
 		fat_fs = new fat[number_fs];
 		local_fs[0] = &fat_fs[0];
-		local_fs[1] = &fat_fs[1];
+//		local_fs[1] = &fat_fs[1];
 		local_fs[0]->mount(local_drive, 0);
-		local_fs[1]->mount(local_drive, 1);
+//		local_fs[1]->mount(local_drive, 1);
 	}
 //	second_fs[0].mount(local_drive, 1);
+
+	unsigned char *buffer = new unsigned char[0x1000];
+	load_from_disk(local_drive, 0, 0, (unsigned long *)buffer, 0x200);
+	for (unsigned int counter = 0; counter < (0x20 / 4); 	counter++)
+	{	//display contents of buffer to make sure they are accurate (present)
+		PrintNumber(((unsigned long *)buffer)[counter]);
+		Delay(750);
+	}
+/*	display("before: ");
+	PrintNumber(((unsigned long*)buffer)[0]);
+	display("\nwriting to disk\n");
+	((unsigned long*)buffer)[0] = ((unsigned long*)buffer)[0] & 0xFF00FFFF;
+	display("After: ");
+	PrintNumber(((unsigned long*)buffer)[0]);
+	display("\nwriting to disk\n");
+	load_to_disk(local_drive, 0, 1, (unsigned long *)buffer, 0x200);
+	((unsigned long*)buffer)[0] = 0;
+	display("reading from disk\n");
+	load_from_disk(local_drive, 0, 1, (unsigned long *)buffer, 0x200);
+	for (unsigned int counter = 0; counter < (0x20 / 4); 	counter++)
+	{	//display contents of buffer to make sure they are accurate (present)
+		PrintNumber(((unsigned long *)buffer)[counter]);
+//		Delay(750);
+	}*/
+
+/*	char *bob;
+	bob = new char[12];
+	unsigned long test;
+	display("Strlen test (6) :");
+	PrintNumber(strlen("12345\n"));
+	display("\n");	
+	strcpy(bob, "12345\n");
+	display(bob);*/
+
+	//check contents of buffer
+
+//	display("Testing stringCompare: ");
+//	PrintNumber(stringCompare("12345", "12345"));
+//	display("\n");		
+
+//	dir_item *list_dir;	//this is used to list directories	
+//	display("Attempting to enter a subdirectory: ");	
+//	test = (local_fs[0]->enter_directory("BOOT"));
+//	PrintNumber(test);
+//	display("\n");
+
+//	local_fs[0]->list_contents();
+	
+	load_module("SERIAL", local_fs[0]);
+
+	//test vm stuff
+	fill_pte_np((unsigned long*)0x110101, 8);
+
 	while(1){};
 }

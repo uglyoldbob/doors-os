@@ -146,6 +146,9 @@ EXTERNC struct idt_desc *setupIdt()
 
 EXTERNC void set_int_handler(void *address, unsigned int which_int)
 {
-	idt.list[which_int].low_address = ((unsigned)address & 0xFFFF);
-	idt.list[which_int].upper_address = ((unsigned)address >> 16);
+	if (which_int < NUM_INTS)
+	{	//buffer overflow potential
+		idt.list[which_int].low_address = ((unsigned)address & 0xFFFF);
+		idt.list[which_int].upper_address = ((unsigned)address >> 16);
+	}
 }

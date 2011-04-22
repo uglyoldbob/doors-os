@@ -1,9 +1,64 @@
 Thoughts on things to do.
 
-File access
+TODO: work on the device driver / module models for the os
+//need to work on a model for modules first
+//copy on write
+//pic for modules?
 
-The syntax for file access will be similar to Linux
+File access
+	After thinking for a while on how various devices should be accessed, the unix concept of "everything is a file" started to make a whole lot of sense. These various devices I had in mind included the serial port and ports on network cards (still unsupported).
+
+Linux way for device drivers
+	user space and kernel space functions (not new)
+	load, open, read, write, close, unload
+	block drivers and character drivers (refers to the amount of data accesses at the same time)
+	kernel code, standard interface, uses kernel services, un/load on demand, 	
+
+open:
+	//fopen(device name, mode)
+	//need to parse the device name to figure out where to send the open request to
+	
+//calls are passed to proper driver (the device special file; /dev/video) via the major device number and a system table
+	//the system table used depends oon what kind of device is being referred to (char, block, network, alien, whatever)
+
+	//get a list of all file operations and enumerate them
+	//
+
+
+
+//pointer to the name of the driver, and a pointer to the block of file operations
+//the device special files are represented by vfs inodes
+
+//item x depends on y
+file access -> filesystem driver
+filesystem driver -> disk/storage driver
+disk/storage driver -> hardware
+
+//network devices use the bsd socket interface
+
+//interrupt hooking for device drivers (I think I already have it implemented, but need to step it up and add a few features to it)
+//dma handling needs polishing and more features (i think it has been a while since i have looked at it)
+	//need a way of obtaining DMA memory
+		//if all dma memory is full, relocate some dma to non-dma locations through the virtual memory
+//need a way to allocate from the non-paged memory
+//most device drivers use non-paged memory
+//TODO: create a list of major identifiers
+//all devices controlled by the same device driver have the same major identifier
+	//primary ide - 3
+	//tty device - 4
+	//scsi - 8
+	//secondary ide - 22
+
+
+dma: pointer to owner, and an allocation flag
+
+
+Register device names as they are detected. Mapping from name (special device file) to hardware is done by using a major device number and some system tables. Drivers check for hardware that they work with and go from there.
+
+The syntax for file access will be similar to Linux/*nix/whatever
 Starts with a '/'
+It would not be too hard to implement "windows style" drive naming convention in parallel with the "normal" method of file addressing.
+
 Then the "drive" name
 After the drive name will come the partition number
 FORM: /device/partition number/folder/folder/file
@@ -20,6 +75,21 @@ EX: access for /hd1/2/loser.txt is needed.
 findPartition(floppy1/1)
 readFile(/floppy1/1/file.txt)
 	
+class disk
+	subclass floppy
+	subclass hard drive (ide)
+	subclass cd (ide)
+	subclass flash drive
+	subclass whatever
+class filesystem
+	subclass fat
+	subclass ntfs
+	subclass extfs
+	subclass whatever
+class file
+	class **disk
+	class **filesystem
+	
 
 Certain information will need to be stored for each drive accessible by this method.
 	Drive name (floppya, floppyb, ...)
@@ -32,7 +102,6 @@ Hardware devices access
 	read,write sector
 	the appropriate locks so that only one process or thread attempts to access a device at one time
 	
-	
-	
-	
+SYSTEMWIDE PORT PROTECTION:
+The current theoretical system needs a way to ensure that more than one driver does not try to access the same hardware devices at the same time. This will probably require that some form of port protection be coded. Right now you could load two different drivers that access the same hardware device.
 	

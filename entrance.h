@@ -15,6 +15,8 @@ EXTERNC unsigned int setup_multi_gdt();
 
 EXTERNC unsigned int timer;
 EXTERNC unsigned long getCR3();
+EXTERNC unsigned long invlpg_asm(unsigned long address);
+	//invalidates the TLB buffer for the specified address
 
 EXTERNC void WaitKey();
 	//waits for the pause/break key to be pressed

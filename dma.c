@@ -14,6 +14,8 @@ void startDMA(unsigned int address, unsigned int length, unsigned char channel,
 		unsigned char mode)
 {	//programs the DMA
 	//0x12345 becomes 0x1000:0x2345
+	if (channel >= 8)
+		return;	//prevent from reading outside bounds
 	unsigned int page, segment, offset;
   	page = address>>16;	//what page is it on (if using 64KB pages)
 	offset = address & 0xFFFF; //the offset (0 - FFFF)

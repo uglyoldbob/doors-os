@@ -18,7 +18,7 @@ unsigned int num_messages;
  
 void init_messaging()
 {
-	head_messages = (unsigned int*)malloc(0x1000);	
+	head_messages = (unsigned int*)kmalloc(0x1000);	
 	//dynamically allocate 1 page to hold messages
 	//it will probably never be filled
 	length = 0x1000;
@@ -26,7 +26,7 @@ void init_messaging()
 	num_messages = 0;
 }
 
-void add_system_event(struct message *add_me)
+int add_system_event(struct message *add_me)
 {
 	enter_spinlock(SL_MESSAGE);
 	if (num_messages == 0)
@@ -36,7 +36,7 @@ void add_system_event(struct message *add_me)
 	if ((num_messages * sizeof(unsigned int)) >= length)
 	{
 		display("Message buffer full\n");
-		return;
+		return -1;
 	}
 	messages[num_messages].who = add_me->who;
 	messages[num_messages].fields = add_me->fields;
@@ -45,6 +45,7 @@ void add_system_event(struct message *add_me)
 		messages[num_messages].data2 = add_me->data2;
 	num_messages++;	
 	leave_spinlock(SL_MESSAGE);
+	return 0;
 }
 
 void check_system_event(unsigned int *ret_val)

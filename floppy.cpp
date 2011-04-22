@@ -55,8 +55,8 @@ extern "C" unsigned int timer;	//entrance.asm
 
 //c++
 floppy::floppy()
-{	//since malloc is used in this function, it is advised to create an instance of this class after the 
-		//malloc routine has been initialized
+{	//since kmalloc is used in this function, it is advised to create an instance of this class after the 
+		//kmalloc routine has been initialized
 	//don't forget that structures have been modified so that more than one floppy drive can be accessed
 		//by the same class
 	//this driver as of right now checks for drives (0-3) on primary and secondary floppy controllers (8 total)
@@ -160,12 +160,12 @@ floppy::floppy()
 	for (counter = 0; counter < floppies[0].floppy_disk.bytes_per_sector; counter++)
 		length *= 2;
 	length *= 128;
-	sector_buffer = (unsigned long *)malloc(0x1000);
+	sector_buffer = (unsigned long *)kmalloc(0x1000);
 }
 
 floppy::~floppy()
 {
-	free(sector_buffer);
+	kfree(sector_buffer);
 	delete[] floppies;
 }
 
@@ -383,6 +383,7 @@ int floppy::read_sector(unsigned int drive_num, unsigned long sector_number, uns
 		display("\n");
 		return -1;
 	}
+	//sector_number--;
 	sector = (sector_number % floppies[drive_order].floppy_disk.sectors_per_track) + 1;
 	cylinder = (sector_number / floppies[drive_order].floppy_disk.sectors_per_track) / 
 		floppies[drive_order].number_sides;	//sectornum / (sectors per track * number sides)
@@ -399,7 +400,9 @@ int floppy::read_sector(unsigned int drive_num, unsigned long sector_number, uns
 	if (ccr(drive_order) == -1)
 		return -1;
 	//configure the DMA (channel 2)
-	startDMA((unsigned int)sector_buffer, length - 1, 2, 0x45);
+	startDMA((unsigned int)sector_buffer, length - 1, 2, 0x46);	
+		//TODO: verify the code for this (0x45 is what it was)
+		//i think this might be using channel 3 by mistake
 	//give the seek track command
 	seek_to_cylinder(cylinder, head, drive_order);
 	//the length of time in milliseconds it takes for the head to settle after moving
@@ -420,7 +423,78 @@ int floppy::read_sector(unsigned int drive_num, unsigned long sector_number, uns
 	memcopy((void *)buffer, (void *)sector_buffer, length);
 	//turn off floppy disk motor
 	outportb(0x8, floppies[drive_order].base + DIGITAL_OUTPUT_REG);
+	return 0;	//indicate success
 }
+
+//TODO: debug the write sector command
+//make sure that the byte changed will not make the disk unbootable
+	//load the bootsector
+	//change a byte
+	//write the sector
+	//read the sector
+	//verify the changed sector
+int floppy::write_sector(unsigned int drive_num, unsigned long sector_number, unsigned int *buffer)
+{	//starts at sector 0 for sector_number
+	//this should be modified to use the same buffer every time
+	//and copy the data to the requested buffer space
+	//drive = 00, 01, 02, 03
+	unsigned int st0, st1, st2, cylinder_r, head_r, sector_r, size_r;//, cylinder_check;
+	//these store the results from the write command
+	unsigned int length = 1;
+	unsigned int counter = 0;
+	unsigned int command;
+	unsigned int cylinder, head, sector;
+	if (set_drive(drive_num) == -1)
+	{	//retrieve the array number that contains this drive number
+		//check to make sure that the drive number requested is actually in the list of drives controlled
+		display("No such floppy disk numbered: ");
+		PrintNumber(drive_num);
+		display("\n");
+		return -1;
+	}
+	sector_number--;	//so that the first sector of the disk will be numbered 1
+	sector = (sector_number % floppies[drive_order].floppy_disk.sectors_per_track) + 1;
+	cylinder = (sector_number / floppies[drive_order].floppy_disk.sectors_per_track) / 
+		floppies[drive_order].number_sides;	//sectornum / (sectors per track * number sides)
+	head = (sector_number / floppies[drive_order].floppy_disk.sectors_per_track) % 
+		floppies[drive_order].number_sides;			//2 heads on a floppy drive
+	for (counter = 0; counter < floppies[drive_order].floppy_disk.bytes_per_sector; counter++)
+		length *= 2;
+	length *= 128;
+	memcopy((void *)sector_buffer, (void *)buffer, length);
+	//sector_size = length;
+		//size of the sector in bytes
+	//set floppy disk status to known state
+	if (reset_floppy(drive_order) == -1)
+		return -1;
+	if (ccr(drive_order) == -1)
+		return -1;
+	//configure the DMA (channel 2)
+	startDMA((unsigned int)sector_buffer, length - 1, 2, 0x4A);
+		//this should be the proper dma mode to put data into the device jus the same as it comes out
+		//TODO: debug and make sure this works
+	//give the seek track command
+	seek_to_cylinder(cylinder, head, drive_order);
+	//the length of time in milliseconds it takes for the head to settle after moving
+	Delay(floppies[drive_order].floppy_disk.head_settle_time);
+	send_byte(drive_order, WRITE_SECTOR);
+	send_byte(drive_order, head<<2 | floppies[drive_order].floppy_number);
+	send_byte(drive_order, cylinder);
+	send_byte(drive_order, head);
+	send_byte(drive_order, sector);	//TODO: find size of a sector properly instead of assuming 512 bytes
+	send_byte(drive_order, floppies[drive_order].floppy_disk.bytes_per_sector);  /*sector size = 128*2^size*/
+	send_byte(drive_order, floppies[drive_order].floppy_disk.sectors_per_track); /*last sector*/
+	send_byte(drive_order, floppies[drive_order].floppy_disk.gap_length);        /*27 default gap3 value*/
+	send_byte(drive_order, floppies[drive_order].floppy_disk.data_length);       /*default value for data length*/
+	if (WaitFloppyInt() == -1)
+			return -1;	//wait for the completion of the command
+	Delay(floppies[drive_order].floppy_disk.steprate_headunload & 0x0F);
+	getResults(&st0, &st1, &st2, &cylinder_r, &head_r, &sector_r, &size_r, drive_order);
+	//turn off floppy disk motor
+	outportb(0x8, floppies[drive_order].base + DIGITAL_OUTPUT_REG);
+	return 0;	//indicate success
+}
+
 
 int floppy::bytes_per_sector(unsigned int drive_num)
 {
@@ -436,7 +510,7 @@ int floppy::bytes_per_sector(unsigned int drive_num)
 
 int floppy::read_id(unsigned int drive_order)
 {
-	display("Read id\n");
+	//display("Read id\n");
 	unsigned int st0, st1, st2, cylinder, head, sector, size;
 	send_byte(drive_order, READ_SECTOR_ID);
 	send_byte(drive_order, floppies[drive_order].floppy_number);
@@ -445,9 +519,9 @@ int floppy::read_id(unsigned int drive_order)
 	getResults(&st0, &st1, &st2, &cylinder, &head, &sector, &size, drive_order);
 	//set sector size base off of the results from the getResults function
 	floppies[drive_order].floppy_disk.bytes_per_sector = size;
-	display("Bytes per sector code: ");
-	PrintNumber(size);
- 	display("\n");
+	//display("Bytes per sector code: ");
+	//PrintNumber(size);
+ 	//display("\n");
 	if ((st0 & 0xC0) == 0x40)
 	{
 		if ((st1 & 0x01) == 0x01)

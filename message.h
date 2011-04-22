@@ -17,8 +17,9 @@ struct message
 #define KEYBOARD	1
 #define SERIAL		2
 
-EXTERNC void add_system_event(struct message *add_me);
+EXTERNC int add_system_event(struct message *add_me);
 //adds a message to the kernel message buffer
+	//returns an error if it failed for whatever reason
 
 EXTERNC void check_system_event(unsigned int *ret_val);
 //returns how many events are currently in the buffer

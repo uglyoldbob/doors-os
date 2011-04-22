@@ -17,30 +17,6 @@ start:
 	mov esp, stack     ; This points the stack to our new stack area
 	jmp skip
 
-; This part MUST be 4byte aligned, so we solve that issue using 'ALIGN 4'
-ALIGN 4
-mboot:
-	; Multiboot macros to make a few lines later more readable
-	MULTIBOOT_PAGE_ALIGN	equ 1<<0
-	MULTIBOOT_MEMORY_INFO	equ 1<<1
-	MULTIBOOT_AOUT_KLUDGE	equ 1<<16
-	MULTIBOOT_HEADER_MAGIC	equ 0x1BADB002
-	MULTIBOOT_HEADER_FLAGS	equ MULTIBOOT_PAGE_ALIGN | MULTIBOOT_MEMORY_INFO | MULTIBOOT_AOUT_KLUDGE
-	MULTIBOOT_CHECKSUM	equ -(MULTIBOOT_HEADER_MAGIC + MULTIBOOT_HEADER_FLAGS)
-	EXTERN code, bss, end
-
-	; This is the GRUB Multiboot header. A boot signature
-	dd MULTIBOOT_HEADER_MAGIC
-	dd MULTIBOOT_HEADER_FLAGS
-	dd MULTIBOOT_CHECKSUM
-    
-	; AOUT kludge - must be physical addresses. Make a note of these:
-	; The linker script fills in the data for these ones!
-	dd mboot
-	dd code
-	dd bss
-	dd end
-	dd start
 
 Error db 'ERROR: The system was not booted with a multiboot compliant loader', 0
 
@@ -84,6 +60,7 @@ flush2:
 	;mov eax, [bootInfo]
 	;use this instead if ebx is changed
 	;call _main
+	call detectCpu
 	push eax	;pointer is the first argument
 	call main
 	pop eax
@@ -299,12 +276,12 @@ multi_end:
 setup_multi_gdt:
 	push multi_end - multi_start
 	push multi_start
-	push 0
+	push 4
 	call memcopy
 	pop eax
 	pop eax
 	pop eax
-	lgdt [multi_gdt_desc - multi_start]
+	lgdt [multi_gdt_desc - multi_start + 4]
 	jmp 0x08:flush3
 flush3:
 
@@ -339,6 +316,28 @@ SL_MESSAGE dd 3
 getCR3:
 	mov eax, cr3
 	ret
+
+[global invlpg_asm]
+invlpg_asm:
+	mov eax, [esp + 4]
+	cmp BYTE [processor_type], 1
+	jl .skip	;skip the opcode if the processor is a 386
+	;invlpg [eax]
+.skip
+	ret
+
+processor_type db 0		;0 = 386, 1 = 486 or higher
+
+detectCpu:	;this should detect things that are detectable about the cpu
+	mov BYTE [processor_type], 1
+	wbinvd	;this will determine if the processor is 486 or higher
+			;if it is not 486 or higher, then it is a 386
+	cmp BYTE [processor_type], 0
+	je .done
+	;do some more cpu testing
+.done
+	ret
+	;later	
 
 [global EnablePaging]
 EnablePaging:
@@ -1073,7 +1072,7 @@ jz .notSingleStep
 	jmp $
 	iret
 
-Two db 'NMI Interrupt', 10, 0
+Two db 'Non-Maskable Interrupt', 10, 0
 isr2:
 ;interrupt, no error code
 ;hmm what to do? i dont know...
@@ -1130,27 +1129,40 @@ isr5:
 	pop eax
 	jmp $
 Six db 'Invalid opcode', 10, 0
+backup dd 0
 isr6:
 ;fault, no error code
+	push eax
 	mov ax, 0x10
 	mov ds, ax			;data segment (we can use variables with their name now)
+	pop eax
+	mov [backup], eax
 	push Six
 	call display		;print string (C++ function)
 	pop eax
 ;our stack contains: EIP, CS
+	call PrintNumber
+	pop ebx
+	call PrintNumber
 	pop ax
 	mov es, ax
-	pop ebx
-	cmp WORD [ES:EBX], 0x090F	;this should be the opcode for wbinvd
+	cmp WORD [ES:EBX], 0x090F	;this is the opcode for wbinvd
 	je .Wbinvd
+	push ax
+	push ebx
 	jmp .Other
 .Wbinvd
 	add ebx, 2		;skip that instruction (it wont hurt anything)
-	push ebx
+	;this means a 386 or lower processor has been detected
+	mov BYTE [processor_type], 0
 	push ax		;add stuff to the stack for a proper iret
+call PrintNumber
+	push ebx
+call PrintNumber
+	mov eax, [backup]
 	iret
 .Other
-	;check for cpuid
+	;check for cpuid and other things
 	jmp $
 Seven db 'Device not available', 10, 0
 isr7:
@@ -1211,12 +1223,12 @@ isr12:
 	call display	;print string (C++ function)
 	pop eax
 	jmp $
-;Thir1 db '*Error Code:', 0
-;Thir2 db ',EIP:', 0
-;Thir3 db ',CS:', 0
-;Thir4 db ',EFLAGS:', 0
-;Thir5 db ',ESP:', 0
-;Thir6 db ',SS:', 0
+Thir1 db '*Error Code:', 0
+Thir2 db ',EIP:', 0
+Thir3 db ',CS:', 0
+Thir4 db ',EFLAGS:', 0
+Thir5 db ',ESP:', 0
+Thir6 db ',SS:', 0
 Thirteen db 'General Protection Fault', 10, 0
 isr13:
 ;fault, error code present
@@ -1225,36 +1237,36 @@ isr13:
 	push Thirteen
 	call display	;print string (C++ function)
 	pop eax
-;	push Thir1
-;	call display
-;	pop eax
-;	call PrintNumber
-;	pop eax
-;	push Thir2
-;	call display
-;	pop eax
-;	call PrintNumber
-;	pop eax
-;	push Thir3
-;	call display
-;	pop eax
-;	call PrintNumber
-;	pop eax
-;	push Thir4
-;	call display
-;	pop eax
-;	call PrintNumber
-;	pop eax
-;	push Thir5
-;	call display
-;	pop eax
-;	call PrintNumber
-;	pop eax
-;	push Thir6
-;	call display
-;	pop eax
-;	call PrintNumber
-;	pop eax
+	push Thir1
+	call display
+	pop eax
+	call PrintNumber
+	pop eax
+	push Thir2
+	call display
+	pop eax
+	call PrintNumber
+	pop eax
+	push Thir3
+	call display
+	pop eax
+	call PrintNumber
+	pop eax
+	push Thir4
+	call display
+	pop eax
+	call PrintNumber
+	pop eax
+	push Thir5
+	call display
+	pop eax
+	call PrintNumber
+	pop eax
+	push Thir6
+	call display
+	pop eax
+	call PrintNumber
+	pop eax
 	jmp $
 
 Fourteen db 'Page Fault Exception', 10, 0

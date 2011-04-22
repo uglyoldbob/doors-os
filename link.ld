@@ -7,11 +7,17 @@ SECTIONS
 {
 .text 0x0100000 :
 {
+/*. = 0x100000;*/
+LONG(0x1BADB002)
+LONG(0x00000003)
+LONG(0xE4524FFB)
 code = .; _code = .; __code = .;
 *(.text)
 *(.rodata)
 . = ALIGN(4096);
 }
+
+.=.;
 
 .data :
 {

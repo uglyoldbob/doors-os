@@ -9,8 +9,8 @@ int add_task_next(const struct TSS *new_task, struct task *list)
 {	//add task new to list (it becomes the next task)
 	//don't change the current spot in the list
 	struct task *intermediate;
-	intermediate = (struct task*)malloc (sizeof(struct task));
-	intermediate->me = (struct TSS*)malloc ( sizeof(struct TSS) );	
+	intermediate = (struct task*)kmalloc (sizeof(struct task));
+	intermediate->me = (struct TSS*)kmalloc ( sizeof(struct TSS) );	
 	intermediate->previous = list;
 	intermediate->next = list->next;
 	list->next = intermediate;
@@ -27,8 +27,8 @@ int add_task_before(const struct TSS *new_task, struct task *list)
 	struct task *intermediate;
 	/*PrintNumber(getEIP());
 	display(" debug here\n");*/
-	intermediate = (struct task*)malloc (sizeof(struct task));	
-	intermediate->me = (struct TSS*)malloc ( sizeof(struct TSS) );
+	intermediate = (struct task*)kmalloc (sizeof(struct task));	
+	intermediate->me = (struct TSS*)kmalloc ( sizeof(struct TSS) );
 
 	display("Task information located at: ");
 	PrintNumber((unsigned int)intermediate);
@@ -36,7 +36,7 @@ int add_task_before(const struct TSS *new_task, struct task *list)
 	PrintNumber((unsigned int)intermediate->me);
 	display("\n");
 
-//	display("add_task: malloc success\n");
+//	display("add_task: kmalloc success\n");
 	intermediate->next = list;
 	intermediate->previous = list->previous;
 //	display("add_task: setting up new object success\n");
@@ -92,8 +92,8 @@ struct task * remove_current_task(struct task *list)
 	list->next->previous = list->previous;
 	intermediate = list;
 	list = list->next;
-	free (intermediate->me);
-	free (intermediate);
+	kfree (intermediate->me);
+	kfree (intermediate);
 	return list;
 }
 
@@ -103,8 +103,8 @@ int remove_next_task(struct task *list)
 	intermediate = list->next;
 	list->next = list->next->next;
 	list->next->previous = list;
-	free (intermediate->me);
-	free (intermediate);
+	kfree (intermediate->me);
+	kfree (intermediate);
 	return 0;
 }
 
@@ -114,8 +114,8 @@ int remove_previous_task(struct task *list)
 	intermediate = list->previous;
 	list->previous = list->previous->previous;
 	list->previous->next = list;
-	free (intermediate->me);
-	free (intermediate);
+	kfree (intermediate->me);
+	kfree (intermediate);
 	return 0;
 }
 
@@ -123,7 +123,7 @@ int init_first_task(struct task *list)
 {	//initializes the first task (main)
 	list->next = list;
 	list->previous = list;
-	list->me = (struct TSS*)malloc (sizeof(struct TSS));
+	list->me = (struct TSS*)kmalloc (sizeof(struct TSS));
 
 	display("Task information located at: ");
 	PrintNumber((unsigned int)list);
@@ -208,7 +208,7 @@ void secondary_task()
 		counter++;
 		if (counter == 0x10000)
 		{
-			display("Task 2.");
+			//display("Task 2.");
 			Delay(20000);
 			counter = 0;
 		}

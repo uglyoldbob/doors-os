@@ -11,12 +11,15 @@
 
 typedef unsigned long size_t;
 
-EXTERNC void *malloc(unsigned int size);
-EXTERNC void free(void *address);
+//EXTERNC void *malloc(unsigned int size);
+//EXTERNC void free(void *address);
+
+EXTERNC void *kmalloc(unsigned int size);
+EXTERNC void kfree(void *address);
+
 EXTERNC void *memcpy(void *s1, const void *s2, unsigned int n);
 EXTERNC void *memcopy(void *s1, const void *s2, unsigned int n);
 EXTERNC void *memset(void *ptr, int value, size_t num );
-EXTERNC char *strcpy(char *destination, const char *source );
 
 struct page_range
 {
@@ -51,8 +54,8 @@ class memory
 		void setup_paging(struct multiboot_info *boot_info, unsigned int size);
 		friend void *memcpy(void* s1, const void* s2, unsigned int n);
 		friend void *memcopy(void* s1, const void* s2, unsigned int n);
-		friend void *malloc(unsigned int size);
-		friend void free(void *address);
+		friend void *kmalloc(unsigned int size);
+		friend void kfree(void *address);
 			//initializes paging and memory management
 	private:
 		unsigned int *page_table;		//stores the address of the PDT, the heart of the paging system
