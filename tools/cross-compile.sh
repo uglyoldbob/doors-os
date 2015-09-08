@@ -6,7 +6,7 @@ BINUTILSv="binutils-2.18"
 SCRIPT_DIR="$PWD"
 
 export PREFIX=/usr/local
-export TARGET=i386-elf-doors
+export TARGET=i386-pc-doors
 
 sudo rm -rf builf-binutils
 sudo rm -rf build-gcc
