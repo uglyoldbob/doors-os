@@ -1,7 +1,7 @@
 #This compiles a cross compiler at the moment
 
 NEWLIBv="newlib-1.16.0"
-GCCv="gcc-4.3.2"
+GCCv="gcc"
 BINUTILSv="binutils-2.18"
 SCRIPT_DIR="$PWD"
 
@@ -15,16 +15,16 @@ mkdir build-binutils build-gcc build-newlib
 
 echo cd "$SCRIPT_DIR"/"$NEWLIBv"/newlib/libc/sys
 cd "$SCRIPT_DIR"/"$NEWLIBv"/newlib/libc/sys
-autoconf
+autoconf2.64
 
 echo cd "$SCRIPT_DIR"/"$NEWLIBv"/newlib/libc/sys/doors
 cd "$SCRIPT_DIR"/"$NEWLIBv"/newlib/libc/sys/doors
-autoreconf
+autoreconf2.64
 
 
 echo cd "$SCRIPT_DIR"/"$GCCv"/libstdc++-v3
 cd "$SCRIPT_DIR"/"$GCCv"/libstdc++-v3
-autoconf
+autoconf2.64
 
 
 cd "$SCRIPT_DIR"
@@ -49,7 +49,7 @@ echo GCC!
 cd "$SCRIPT_DIR"/build-gcc
 export PATH=$PATH:$PREFIX/bin
 #"$SCRIPT_DIR"/"$GCCv"/configure --target=$TARGET --prefix=$PREFIX --without-headers --disable-nls --enable-languages=c
-"$SCRIPT_DIR"/"$GCCv"/configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c,c++
+"$SCRIPT_DIR"/"$GCCv"/configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c,c++ --with-newlib
 make clean all-gcc 
 sudo make install-gcc
 
