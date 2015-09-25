@@ -60,7 +60,7 @@
 #include "debug.h"
 
 
-#include <sys/syscalls.h>
+//#include <sys/syscalls.h>
 
 #define CLOCKS_PER_SEC 1000	//this is the number of times our timer variable is incremented per second (real close)
 
@@ -190,7 +190,7 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	if (init_keyboard() == -1)
 		display("Could not initialize keyboard\n");
 	assert(1);
-	printf(", %i\n", printf ("Characters: %c %c", 'a', 65));
+/*	printf(", %i\n", printf ("Characters: %c %c", 'a', 65));
 	printf(", %i\n", printf ("Decimals: %d %ld", 1977, 650000));
 	printf(", %i\n", printf ("Preceding with blanks: %10d", 1977));
 	printf(", %i\n", printf ("Preceding with zeros: %010d", 1977));
@@ -220,7 +220,7 @@ int main(struct multiboot_info *boot_info, unsigned long size)
 	printf(", %i\n", printf ("%%%- d%%", 12345));
 	printf(", %i\n", printf ("%%%12d%%", 12345));
 
-	printf("Sizeof (intmax_t): %i\n", sizeof(intmax_t));
+	printf("Sizeof (intmax_t): %i\n", sizeof(intmax_t));*/
 	for (;;);
 	setupFloppy();	
 

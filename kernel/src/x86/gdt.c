@@ -33,14 +33,14 @@ struct TSS *get_current_tss()
 	if (previous_tss == 1)
 	{
 		display("Current TSS: ");
-		PrintNumber(&setup->tss_info[1]);
+		PrintNumber((unsigned int)&setup->tss_info[1]);
 		display("\n");
 		return &setup->tss_info[1];
 	}
 	else
 	{
 		display("Current TSS: ");
-		PrintNumber(&setup->tss_info[0]);
+		PrintNumber((unsigned int)&setup->tss_info[0]);
 		display("\n");
 		return &setup->tss_info[0];
 	}
@@ -89,7 +89,7 @@ unsigned int setup_multi_gdt()
 	setup->entries[4].field6 = 0;
 
 	setup->size = (sizeof(struct gdt_entry) * 5) - 1;
-	setup->address = setup;
+	setup->address = (unsigned long)setup;
 
 	setup_gdt(&setup->size);
 	return 0;

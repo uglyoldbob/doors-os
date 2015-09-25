@@ -17,7 +17,7 @@ public:
 private:
 	unsigned long owner;	//a terminal needs an owner, most likely at most 1 owner, not positive on this yet
 	
-}
+};
 
 //terminal options (currently)
  //output

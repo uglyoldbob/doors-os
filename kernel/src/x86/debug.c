@@ -28,6 +28,6 @@
 
 EXTERNC int getdisasmb(struct ud* disasm)
 {
-	printf("Here is the byte grabber for the disassembler\n");
+//	printf("Here is the byte grabber for the disassembler\n");
 	return 0x90;
 }

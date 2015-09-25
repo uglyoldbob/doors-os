@@ -32,37 +32,18 @@ AM_CONDITIONAL([BOOTIMAGE_CD], [test x$bootimage = xcd])
 
 
 case $host in
-	i*86*-*-*) KERNEL_SYSTEM='\
-		x86/dma.$(OBJEXT)\
-		x86/entrance.$(OBJEXT)\
-		x86/gdt.$(OBJEXT)\
-		x86/floppy.$(OBJEXT)\
-		x86/interrupt_table.$(OBJEXT)\
-		x86/keyboard.$(OBJEXT)\
-		x86/main.$(OBJEXT)\
-		x86/memory.$(OBJEXT)\
-		x86/PIC.$(OBJEXT)\
-		x86/serial.$(OBJEXT)\
-		x86/spinlock.$(OBJEXT)\
-		x86/tss.$(OBJEXT)\
-		x86/video.$(OBJEXT)\
-		x86/vmm.$(OBJEXT)\
-		x86/debug.$(OBJEXT)\
-		x86/disasm/decode.$(OBJEXT)\
-		x86/disasm/input.$(OBJEXT)\
-		x86/disasm/itab.$(OBJEXT)\
-		x86/disasm/syn.$(OBJEXT)\
-		x86/disasm/syn-att.$(OBJEXT)\
-		x86/disasm/syn-intel.$(OBJEXT)\
-		x86/disasm/udis86.$(OBJEXT)'
-				cp x86/link.ld link.ld
-				set_X86=true
-				AC_MSG_NOTICE($KERNEL_SYSTEM)
-				AC_MSG_NOTICE($KERNEL_LDFLAGS) ;;
-	*)       	AC_MSG_ERROR([bad value ${host} for host]) ;;
+  i*86*-*-* )
+	BUILD_FOR="X86"
+	AC_DEFINE(X86, [1], [Enable code specific to x86 architecture])
+	AC_MSG_NOTICE("Building for x86 architecture")
+	;;
+  * )
+	BUILD_FOR="BROKEN"
+	AC_MSG_ERROR("Possibly invalid build target $host_os")
+	;;
 esac
-AM_CONDITIONAL([X86], [${set_X86}])
-AC_SUBST([KERNEL_SYSTEM])
+AC_SUBST(BUILD_FOR)
+AM_CONDITIONAL([X86], [test \"$BUILD_FOR\" = \"X86\"])
 
 
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
@@ -81,7 +62,5 @@ AC_C_CONST
 AC_TYPE_SIZE_T
 AC_C_VOLATILE
 
-AC_CONFIG_FILES([Makefile
-                 src/Makefile
-				 loader/Makefile])
+AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
