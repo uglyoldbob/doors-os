@@ -1,0 +1,6 @@
+default 0
+timeout 10
+
+title Doors OS
+root (fd0)
+kernel /boot/kernel
