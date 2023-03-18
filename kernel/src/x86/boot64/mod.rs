@@ -3,6 +3,7 @@
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
+use doors_kernel_api::FixedString;
 
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
@@ -27,9 +28,11 @@ pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
 
 /// This function is responsible for building a gdt that can be built at compile time.
 const fn make_gdt_table() -> GlobalDescriptorTable {
-    let gdt = GlobalDescriptorTable::new();
-    gdt.const_add_entry(Descriptor::kernel_code_segment())
-        .const_add_entry(Descriptor::kernel_data_segment())
+    let (gdt, _segs) = GlobalDescriptorTable::from_descriptors([
+        Descriptor::kernel_code_segment(),
+        Descriptor::kernel_data_segment()
+    ]);
+    gdt
 }
 
 /// A struct for creating a global descriptor table pointer, suitable for loading with lidtr
