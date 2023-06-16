@@ -1,4 +1,4 @@
-all: qemu32
+all: qemucd
 
 qemu32: build/floppy.img
 	qemu-system-i386 -fda build/floppy.img -m 4 -d cpu_reset
@@ -14,20 +14,23 @@ qemucd: build/cd.img
 bochs: build/cd.img
 	bochs -f bochsrc.txt -q
 
+virtualbox: build/cd.img
+	VirtualBoxVM --startvm test --dbg --debug
+
 gdb: build/cd.img
 	gdb -x script.gdb
 
-kernel:
+kernel64:
 	mkdir -p ./build
 	cd kernel; cargo build --release
-	cp -u target/i386-unknown-none/release/kernel ./build/kernel
+	cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64
 
 .PHONY: kernel
 
-build/cd.img: kernel
+build/cd.img: kernel64
 	mkdir -p build/iso/boot/grub
 	cp grub2.lst ./build/iso/boot/grub/grub.cfg
-	cp ./build/kernel ./build/iso/boot/kernel
+	cp ./build/kernel64 ./build/iso/boot/kernel
 	grub-mkrescue -o ./build/cd.img build/iso
 	rm -rf ./build/iso
 

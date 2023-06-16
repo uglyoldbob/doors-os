@@ -4,18 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-acpi = "4.1.1"
 arraystring = {version = "0.3.0", default-features=false }
 bitarray = "0.10.0"
 doors_kernel_api = { path = "../doors_kernel_api", version = "0.1.0" }
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
-raw-cpuid = "10.7.0"
 spin = "0.9.5"
 volatile = "0.4.6"
 
 [target.'cfg(target_arch = "x86")'.dependencies]
+acpi = "4.1.1"
+raw-cpuid = "10.7.0"
 x86 = { version = "0.52.0" }
+multiboot2 = "0.15.1"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_64 = {path = "../../x86_64", version = "0.14.10", default-features=false, features = ["instructions"] }
+acpi = "4.1.1"
+raw-cpuid = "10.7.0"
+x86_64 = {git = "https://github.com/uglyoldbob/x86_64.git", version = "0.14.10", default-features=false, features = ["instructions"] }
+multiboot2 = "0.15.1"

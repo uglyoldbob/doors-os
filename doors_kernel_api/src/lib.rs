@@ -6,5 +6,5 @@
 /// The video module is for all things directly related to video output.
 pub mod video;
 
-/// A fixed string type that allows for strings of up to 32 characters.
-pub type FixedString = arraystring::ArrayString<arraystring::typenum::U32>;
+/// A fixed string type that allows for strings of up to 80 characters.
+pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;

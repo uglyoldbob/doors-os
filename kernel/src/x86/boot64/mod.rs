@@ -1,9 +1,15 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use core::ptr::NonNull;
+
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use doors_kernel_api::FixedString;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
-use doors_kernel_api::FixedString;
+
+mod memory;
 
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
@@ -30,7 +36,7 @@ pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
 const fn make_gdt_table() -> GlobalDescriptorTable {
     let (gdt, _segs) = GlobalDescriptorTable::from_descriptors([
         Descriptor::kernel_code_segment(),
-        Descriptor::kernel_data_segment()
+        Descriptor::kernel_data_segment(),
     ]);
     gdt
 }
@@ -60,11 +66,15 @@ pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
     },
 };
 
+extern "C" {
+    static MULTIBOOT2_DATA: *const usize;
+}
+
 use doors_kernel_api::video::TextDisplay;
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = build_idt();
-    static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(unsafe { X86Apic::get() });
+    static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
 }
 
 /// The divide by zero handler
@@ -122,11 +132,303 @@ fn build_idt() -> InterruptDescriptorTable {
 
 core::arch::global_asm!(include_str!("boot.s"));
 
+/// The virtual memory allocator. Deleted space from this may not be reclaimable.
+static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
+    crate::Locked::new(memory::BumpAllocator::new(0x1000));
+
+/// The physical memory manager for the system
+static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
+    crate::Locked::new(memory::SimpleMemoryManager::new(&VIRTUAL_MEMORY_ALLOCATOR));
+
+/// The paging manager, which controls the memory management unit. Responsible for mapping virtual memory addresses to physical addresses.
+static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
+    crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
+
+/// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
+#[global_allocator]
+static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
+    memory::HeapManager::new(&PAGING_MANAGER, &VIRTUAL_MEMORY_ALLOCATOR),
+);
+
+#[repr(align(16))]
+#[derive(Copy, Clone)]
+/// A structure for testing
+struct Big {
+    /// Some data to take up space
+    data: u128,
+}
+
+#[derive(Clone)]
+/// A structure for mapping and unmapping acpi memory
+struct Acpi<'a> {
+    /// The page manager for mapping and unmapping virtual memory
+    pageman: &'a crate::Locked<memory::PagingTableManager<'a>>,
+    /// The virtual memory manager for getting virtual memory
+    vmm: &'a crate::Locked<memory::BumpAllocator>,
+}
+
+impl<'a> acpi::AcpiHandler for Acpi<'a> {
+    unsafe fn map_physical_region<T>(
+        &self,
+        physical_address: usize,
+        size: usize,
+    ) -> acpi::PhysicalMapping<Self, T> {
+        if physical_address < (1 << 22) {
+            acpi::PhysicalMapping::new(
+                physical_address,
+                NonNull::new(physical_address as *mut T).unwrap(),
+                size,
+                size,
+                self.clone(),
+            )
+        } else {
+            let start = physical_address - physical_address % core::mem::size_of::<memory::Page>();
+            let presize = (physical_address + size) - start;
+            let err = presize % core::mem::size_of::<memory::Page>();
+            let realsize = if err != 0 {
+                presize + (core::mem::size_of::<memory::Page>() - err)
+            } else {
+                presize
+            };
+
+            let mut b: Vec<u8, &crate::Locked<memory::BumpAllocator>> =
+                Vec::with_capacity_in(realsize, self.vmm);
+            let mut p = self.pageman.lock();
+
+            let e = p.map_addresses_read_only(b.as_ptr() as u64, start as u64, realsize as u64);
+            if e.is_err() {
+                panic!("Unable to map acpi memory\r\n");
+                loop {}
+            }
+            let vstart = b.as_mut_ptr() as usize + err - size;
+
+            let r = acpi::PhysicalMapping::new(
+                start as usize,
+                NonNull::new(vstart as *mut T).unwrap(),
+                size,
+                realsize,
+                self.clone(),
+            );
+            b.leak();
+            r
+        }
+    }
+
+    fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
+        if region.physical_start() >= (1 << 22) {
+            let mut p = region.handler().pageman.lock();
+            let s = region.virtual_start().as_ptr() as u64;
+            let s = s - s % core::mem::size_of::<memory::Page>() as u64;
+            p.unmap_mapped_pages(s, region.mapped_length() as u64);
+        }
+    }
+}
+
 /// The entry point for the 64 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
     super::VGA.lock().print_str(GREETING);
-    let cpuid = raw_cpuid::CpuId::new();
+    let _cpuid = raw_cpuid::CpuId::new();
+
+    let boot_info = unsafe { multiboot2::load(MULTIBOOT2_DATA as usize).unwrap() };
+
+    let start_kernel = unsafe { &crate::START_OF_KERNEL } as *const u8 as usize;
+    let end_kernel = unsafe { &crate::END_OF_KERNEL } as *const u8 as usize;
+
+    VIRTUAL_MEMORY_ALLOCATOR
+        .lock()
+        .relocate(start_kernel, end_kernel);
+    VIRTUAL_MEMORY_ALLOCATOR.lock().start_allocating(unsafe {
+        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as u64
+    });
+
+    if let Some(mm) = boot_info.memory_map_tag() {
+        for area in mm.available_memory_areas() {
+            let mut a: FixedString = FixedString::new();
+            match core::fmt::write(
+                &mut a,
+                format_args!(
+                    "R {:x},S{:x} {:x} ,{:?}\r\n",
+                    area.start_address(),
+                    area.size(),
+                    area.end_address(),
+                    area.typ()
+                ),
+            ) {
+                Ok(_) => super::VGA.lock().print_str(a.as_str()),
+                Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+            }
+        }
+
+        let mut pal = PAGE_ALLOCATOR.lock();
+        pal.init(mm);
+        for ma in mm.available_memory_areas() {
+            pal.add_memory_area(ma);
+        }
+        pal.set_kernel_memory_used();
+    } else {
+        panic!("Physical memory manager unavailable\r\n");
+    };
+
+    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating();
+
+    let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
+        &VIRTUAL_MEMORY_ALLOCATOR,
+    );
+    let b =
+        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
+            b,
+        );
+    let b = if (b.as_ptr() as u64) < (1 << 22) {
+        let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
+            &VIRTUAL_MEMORY_ALLOCATOR,
+        );
+        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
+            b,
+        )
+    } else {
+        b
+    };
+    PAGING_MANAGER.lock().init(b.as_ptr() as u64);
+
+    if true {
+        let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
+            alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
+
+        let mut tp: FixedString = FixedString::new();
+        match core::fmt::write(
+            &mut tp,
+            format_args!("test is {:x}\r\n", test.as_ref() as *const u8 as usize),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+    }
+
+    if true {
+        let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
+            alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
+
+        let mut tp: FixedString = FixedString::new();
+        match core::fmt::write(
+            &mut tp,
+            format_args!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+    }
+
+    let test: Box<[Big]> = Box::new([Big { data: 5 }; 32]);
+    let mut tp: FixedString = FixedString::new();
+    match core::fmt::write(&mut tp, format_args!("test var is {:p}\r\n", test.as_ptr())) {
+        Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+        Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+    }
+    drop(test);
+
+    let acpi_handler = Acpi {
+        pageman: &PAGING_MANAGER,
+        vmm: &VIRTUAL_MEMORY_ALLOCATOR,
+    };
+
+    let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
+        let mut tp: FixedString = FixedString::new();
+        match core::fmt::write(
+            &mut tp,
+            format_args!(
+                "rsdpv2 at {:x}\r\n",
+                rsdp2.xsdt_address() as *const u8 as usize
+            ),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+        Some(
+            unsafe {
+                acpi::AcpiTables::from_rsdt(
+                    acpi_handler,
+                    1,
+                    rsdp2.xsdt_address() as *const u8 as usize,
+                )
+            }
+            .unwrap(),
+        )
+    } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
+        let mut tp: FixedString = FixedString::new();
+        match core::fmt::write(
+            &mut tp,
+            format_args!(
+                "rsdpv1 at {:x}\r\n",
+                rsdp1.rsdt_address() as *const u8 as usize
+            ),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+        let t = unsafe {
+            acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
+        };
+        if let Err(e) = &t {
+            let mut tp: FixedString = FixedString::new();
+            match core::fmt::write(&mut tp, format_args!("acpi error {:?}\r\n", e)) {
+                Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+                Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+            }
+        }
+        Some(t.unwrap())
+    } else {
+        None
+    };
+
+    if acpi.is_none() {
+        super::VGA.lock().print_str("No ACPI table found\r\n");
+    }
+    let acpi = acpi.unwrap();
+
+    let mut tp: FixedString = FixedString::new();
+    match core::fmt::write(&mut tp, format_args!("acpi rev {:x}\r\n", acpi.revision)) {
+        Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+        Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+    }
+
+    for v in acpi.ssdts {
+        tp.clear();
+        match core::fmt::write(
+            &mut tp,
+            format_args!("ssdt {:x} {:x}\r\n", v.address, v.length),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+    }
+    if let Some(v) = acpi.dsdt {
+        tp.clear();
+        match core::fmt::write(
+            &mut tp,
+            format_args!("dsdt {:x} {:x}\r\n", v.address, v.length),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+    }
+
+    for (s, t) in acpi.sdts {
+        tp.clear();
+        match core::fmt::write(
+            &mut tp,
+            format_args!(
+                "sdt {} {:x} {:x} {}\r\n",
+                s.as_str(),
+                t.physical_address,
+                t.length,
+                t.validated
+            ),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
+    }
 
     unsafe {
         IDT.load_unsafe();

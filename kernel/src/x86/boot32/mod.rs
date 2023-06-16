@@ -19,8 +19,16 @@ use x86::segmentation::BuildDescriptor;
 
 fn make_gdt_table() -> gdt::GlobalDescriptorTable {
     let gdt = gdt::GlobalDescriptorTable::new();
-    let code = x86::segmentation::DescriptorBuilder::code_descriptor(0, 0xFFFFFFFF, x86::segmentation::CodeSegmentType::ExecuteRead);
-    let data = x86::segmentation::DescriptorBuilder::data_descriptor(0, 0xFFFFFFFF, x86::segmentation::DataSegmentType::ReadWrite);
+    let code = x86::segmentation::DescriptorBuilder::code_descriptor(
+        0,
+        0xFFFFFFFF,
+        x86::segmentation::CodeSegmentType::ExecuteRead,
+    );
+    let data = x86::segmentation::DescriptorBuilder::data_descriptor(
+        0,
+        0xFFFFFFFF,
+        x86::segmentation::DataSegmentType::ReadWrite,
+    );
     gdt.const_add_entry(code.finish())
         .const_add_entry(data.finish())
 }
@@ -48,7 +56,8 @@ lazy_static! {
         d: GdtPointer {
             size: (GDT_TABLE.len() * 8 - 1) as u16,
             address: &GDT_TABLE,
-        }};
+        }
+    };
 }
 
 /// The divide by zero handler
@@ -67,8 +76,6 @@ pub extern "C" fn segment_not_present(arg: u32) {
     super::VGA.lock().print_str(a.as_str());
     loop {}
 }
-
-type FixedString = arraystring::ArrayString<arraystring::typenum::U32>;
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {

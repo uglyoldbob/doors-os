@@ -56,6 +56,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "derive_more"
+version = "0.99.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "doors_kernel_api"
 version = "0.1.0"
 dependencies = [
@@ -82,6 +93,7 @@ dependencies = [
  "doors_kernel_api",
  "doors_macros",
  "lazy_static",
+ "multiboot2",
  "raw-cpuid",
  "spin 0.9.5",
  "volatile",
@@ -115,6 +127,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "multiboot2"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0eb029116f6457bdd31bfff8fa02e17e30ac15b12b861ff03e8a878527beb524"
+dependencies = [
+ "bitflags",
+ "derive_more",
+ "log",
 ]
 
 [[package]]
@@ -223,6 +246,7 @@ dependencies = [
 [[package]]
 name = "x86_64"
 version = "0.14.10"
+source = "git+https://github.com/uglyoldbob/x86_64.git#04746dd881686af626b0891c020f02401f1366ab"
 dependencies = [
  "bit_field",
  "bitflags",

@@ -6,18 +6,10 @@ MEMORY
 SECTIONS
 {
   . = 0x00100000;
+  START_OF_KERNEL = .;
   .text :
   {
-    #multiboot 1
-    LONG(0x1BADB002)
-    LONG(0x00000003)
-    LONG(0xE4524FFB)
-
-    #multiboot2
-    #LONG(0xe85250d6)
-    #LONG(0)
-    #LONG(0x10)
-    #LONG(0xffffffff - 0x10 - 0xe85250d6 + 1)
+    KEEP(*(.multiboot));
 
     *(.text);
     *(.text.*);
@@ -41,6 +33,9 @@ SECTIONS
   .bss : { 
     *(.bss);
     *(.bss.*);
+  } > ram
+  .end_kernel : {
+    END_OF_KERNEL = .;
   } > ram
   /DISCARD/ :
   {

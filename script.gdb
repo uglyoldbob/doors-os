@@ -1,4 +1,4 @@
-add-symbol-file target/x86_64-unknown-none/release/kernel
+add-symbol-file build/kernel64
 break start64
 break segment_not_present_asm
 disp /i $pc

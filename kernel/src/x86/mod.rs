@@ -1,11 +1,17 @@
+//! The generic x86 module covering both 32 and 64-bit functionality.
 
-use doors_kernel_api::{video::TextDisplay, FixedString};
+use doors_kernel_api::video::TextDisplay;
 use lazy_static::lazy_static;
 
 #[cfg(target_arch = "x86_64")]
-mod boot64;
+pub mod boot64;
 #[cfg(target_arch = "x86_64")]
-use boot64 as boot;
+pub use boot64 as boot;
+
+#[cfg(target_arch = "x86")]
+pub mod boot32;
+#[cfg(target_arch = "x86")]
+pub use boot32 as boot;
 
 /// Type used for the pc vga text mode output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,47 +103,8 @@ lazy_static! {
         spin::Mutex::new(bitarray::BitArray::new([0; 65536]));
 }
 
-#[cfg(target_arch = "x86")]
-mod boot32;
-#[cfg(target_arch = "x86")]
-use boot32 as boot;
-
-/// Scans for the location of the RSDP structure, returning a Some if it is found.
-pub fn scan_for_rsdp() -> Option<usize> {
-    let ebda: &u16 = unsafe { &*(0x40e as *const &u16) };
-    let table = unsafe {&*((*ebda * 0x10) as *const [u8; 0x20000])};
-
-    /// This is the string to search for that identifies the start of the RSDP data
-    const MATCH: [u8; 8] = [b'R', b'S', b'D', b' ', b'P', b'T', b'R', b' '];
-    for i in 0..0x20000 / 16 {
-        if table[16 * i..] == MATCH {
-            return Some(0x80000 + 16 * i);
-        }
-    }
-    let table: &[u8; 0x20000] = unsafe { &*(0xE0000 as *const [u8; 0x20000]) };
-    for i in 0..0x20000 / 16 {
-        if table[16 * i..] == MATCH {
-            return Some(0xe0000 + 16 * i);
-        }
-    }
-    None
-}
-
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
-    if let Some(_a) = scan_for_rsdp() {
-        let mut b = VGA.lock();
-        b.print_str("Found the RSDP\r\n");
-    } else {
-        VGA.lock().print_str("Did not find the RSDP\r\n");
-    }
-    if let Some(_a) = scan_for_rsdp() {
-        let mut b = VGA.lock();
-        b.print_str("Found the RSDPp\r\n");
-    } else {
-        VGA.lock().print_str("Did not find the RSDPp\r\n");
-    }
-
     VGA.lock().print_str("main boot\r\n");
     super::main(&*VGA);
 }
