@@ -1,7 +1,9 @@
+use doors_kernel_api::FixedString;
 use doors_macros::interrupt;
 use lazy_static::lazy_static;
 
 mod gdt;
+mod memory;
 
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
@@ -77,6 +79,7 @@ pub extern "C" fn segment_not_present(arg: u32) {
     loop {}
 }
 
+/// The panic handler for the 32-bit kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use core::fmt;
@@ -95,6 +98,24 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     super::VGA.lock().print_str("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
+
+/// The virtual memory allocator. Deleted space from this may not be reclaimable.
+static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
+    crate::Locked::new(memory::BumpAllocator::new(0x1000));
+
+/// The physical memory manager for the system
+static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
+    crate::Locked::new(memory::SimpleMemoryManager::new(&VIRTUAL_MEMORY_ALLOCATOR));
+
+/// The paging manager, which controls the memory management unit. Responsible for mapping virtual memory addresses to physical addresses.
+static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
+    crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
+
+/// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
+#[global_allocator]
+static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
+    memory::HeapManager::new(&PAGING_MANAGER, &VIRTUAL_MEMORY_ALLOCATOR),
+);
 
 #[no_mangle]
 pub fn start() {

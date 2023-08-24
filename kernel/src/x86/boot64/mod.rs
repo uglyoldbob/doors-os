@@ -173,6 +173,14 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
+        let mut tp: FixedString = FixedString::new();
+        match core::fmt::write(
+            &mut tp,
+            format_args!("acpi map {:x} {:x}\r\n", physical_address, size),
+        ) {
+            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
+            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
+        }
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -337,8 +345,9 @@ pub extern "C" fn start64() -> ! {
         match core::fmt::write(
             &mut tp,
             format_args!(
-                "rsdpv2 at {:x}\r\n",
-                rsdp2.xsdt_address() as *const u8 as usize
+                "rsdpv2 at {:x} revision {}\r\n",
+                rsdp2.xsdt_address() as *const u8 as usize,
+                rsdp2.revision()
             ),
         ) {
             Ok(_) => super::VGA.lock().print_str(tp.as_str()),
@@ -348,7 +357,7 @@ pub extern "C" fn start64() -> ! {
             unsafe {
                 acpi::AcpiTables::from_rsdt(
                     acpi_handler,
-                    1,
+                    rsdp2.revision(),
                     rsdp2.xsdt_address() as *const u8 as usize,
                 )
             }

@@ -25,6 +25,11 @@ kernel64:
 	cd kernel; cargo build --release
 	cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64
 
+kernel32:
+	mkdir -p ./build
+	cargo build --release --target i386-unknown-none.json -Z build-std=core,alloc --bin kernel
+	cp -u target/i386-unknown-none/release/kernel ./build/kernel32
+
 .PHONY: kernel
 
 build/cd.img: kernel64
