@@ -1,23 +1,23 @@
 all: qemucd
 
-qemu32: build/floppy.img
-	qemu-system-i386 -fda build/floppy.img -m 4 -d cpu_reset
-qemu64: build/floppy.img
-	qemu-system-x86_64 -fda build/floppy.img -m 4 -d cpu_reset
+qemu32: build/floppy32.img
+	qemu-system-i386 -fda build/floppy32.img -m 4 -d cpu_reset
+qemu64: build/floppy64.img
+	qemu-system-x86_64 -fda build/floppy64.img -m 4 -d cpu_reset
 
-qemucd32: build/cd.img
-	qemu-system-i386 -cdrom build/cd.img -m 4 -d cpu_reset
+qemucd32: build/cd32.img
+	qemu-system-i386 -cdrom build/cd32.img -m 4 -d cpu_reset
 
-qemucd: build/cd.img
-	qemu-system-x86_64 -cdrom build/cd.img -m 4 -d cpu_reset
+qemucd: build/cd64.img
+	qemu-system-x86_64 -cdrom build/cd64.img -m 4 -d cpu_reset
 
-bochs: build/cd.img
+bochs: build/cd64.img
 	bochs -f bochsrc.txt -q
 
-virtualbox: build/cd.img
+virtualbox: build/cd64.img
 	VirtualBoxVM --startvm test --dbg --debug
 
-gdb: build/cd.img
+gdb: build/cd64.img
 	gdb -x script.gdb
 
 kernel64:
@@ -32,11 +32,18 @@ kernel32:
 
 .PHONY: kernel
 
-build/cd.img: kernel64
+build/cd64.img: kernel64
 	mkdir -p build/iso/boot/grub
 	cp grub2.lst ./build/iso/boot/grub/grub.cfg
 	cp ./build/kernel64 ./build/iso/boot/kernel
-	grub-mkrescue -o ./build/cd.img build/iso
+	grub-mkrescue -o ./build/cd64.img build/iso
+	rm -rf ./build/iso
+
+build/cd32.img: kernel32
+	mkdir -p build/iso/boot/grub
+	cp grub2.lst ./build/iso/boot/grub/grub.cfg
+	cp ./build/kernel32 ./build/iso/boot/kernel
+	grub-mkrescue -o ./build/cd32.img build/iso
 	rm -rf ./build/iso
 
 build/grub.img:
@@ -44,8 +51,8 @@ build/grub.img:
 	gzip -d < bootgrub.gz | dd of=build/grub.img
 	rm bootgrub.gz
 
-build/floppy.img: build/grub.img kernel
-	cp build/grub.img build/floppy.img
-	mcopy -i build/floppy.img ./build/kernel ::/boot/kernel
-	mdel -i build/floppy.img /boot/grub/menu.lst
-	mcopy -i build/floppy.img ./grub.lst ::/boot/grub/menu.lst
+build/floppy64.img: build/grub.img kernel64
+	cp build/grub.img build/floppy64.img
+	mcopy -i build/floppy64.img ./build/kernel64 ::/boot/kernel
+	mdel -i build/floppy64.img /boot/grub/menu.lst
+	mcopy -i build/floppy64.img ./grub.lst ::/boot/grub/menu.lst
