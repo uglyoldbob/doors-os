@@ -1,9 +1,8 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
-use core::ptr::NonNull;
-
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::ptr::NonNull;
 use doors_kernel_api::FixedString;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
@@ -238,7 +237,7 @@ pub extern "C" fn start64() -> ! {
     super::VGA.lock().print_str(GREETING);
     let _cpuid = raw_cpuid::CpuId::new();
 
-    let boot_info = unsafe { multiboot2::load(MULTIBOOT2_DATA as usize).unwrap() };
+    let boot_info = unsafe { multiboot2::BootInformation::load(MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader).unwrap() };
 
     let start_kernel = unsafe { &crate::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &crate::END_OF_KERNEL } as *const u8 as usize;
@@ -251,7 +250,7 @@ pub extern "C" fn start64() -> ! {
     });
 
     if let Some(mm) = boot_info.memory_map_tag() {
-        for area in mm.available_memory_areas() {
+        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
             let mut a: FixedString = FixedString::new();
             match core::fmt::write(
                 &mut a,
@@ -270,7 +269,7 @@ pub extern "C" fn start64() -> ! {
 
         let mut pal = PAGE_ALLOCATOR.lock();
         pal.init(mm);
-        for ma in mm.available_memory_areas() {
+        for ma in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
             pal.add_memory_area(ma);
         }
         pal.set_kernel_memory_used();

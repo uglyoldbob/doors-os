@@ -282,7 +282,7 @@ impl<'a> SimpleMemoryManager<'a> {
 
     /// Initialize an instance of a physical memory manager
     pub fn init(&mut self, d: &MemoryMapTag) {
-        let avail = d.memory_areas().filter(|i| i.typ() == MemoryAreaType::Available);
+        let avail = d.memory_areas().iter().filter(|i| i.typ() == MemoryAreaType::Available);
         let n = avail.count();
         let bitmaps: Vec<Bitmap<Page>, &'a Locked<BumpAllocator>> =
             Vec::with_capacity_in(n, self.mm);

@@ -14,12 +14,12 @@ volatile = "0.4.6"
 
 [target.'cfg(target_arch = "x86")'.dependencies]
 acpi = "4.1.1"
-raw-cpuid = "10.7.0"
+raw-cpuid = "11.0.1"
 x86 = { version = "0.52.0" }
 multiboot2 = "0.18.1"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 acpi = "4.1.1"
-raw-cpuid = "10.7.0"
+raw-cpuid = "11.0.1"
 x86_64 = {git = "https://github.com/uglyoldbob/x86_64.git", version = "0.14.10", default-features=false, features = ["instructions"] }
-multiboot2 = "0.15.1"
+multiboot2 = "0.18.1"

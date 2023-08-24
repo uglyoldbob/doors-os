@@ -8,7 +8,7 @@ qemu64: build/floppy64.img
 qemucd32: build/cd32.img
 	qemu-system-i386 -cdrom build/cd32.img -m 4 -d cpu_reset
 
-qemucd: build/cd64.img
+qemucd64: build/cd64.img
 	qemu-system-x86_64 -cdrom build/cd64.img -m 4 -d cpu_reset
 
 bochs: build/cd64.img
@@ -17,17 +17,20 @@ bochs: build/cd64.img
 virtualbox: build/cd64.img
 	VirtualBoxVM --startvm test --dbg --debug
 
-gdb: build/cd64.img
-	gdb -x script.gdb
+gdb64: build/cd64.img
+	gdb -x script64.gdb
+
+gdb32: build/cd32.img
+	gdb -x script32.gdb
 
 kernel64:
 	mkdir -p ./build
-	cd kernel; cargo build --release
+	cargo build --release --target x86_64-unknown-none --bin kernel
 	cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64
 
 kernel32:
 	mkdir -p ./build
-	cargo build --release --target i386-unknown-none.json -Z build-std=core,alloc --bin kernel
+	cargo build --release --target i386-unknown-none.json --bin kernel
 	cp -u target/i386-unknown-none/release/kernel ./build/kernel32
 
 .PHONY: kernel

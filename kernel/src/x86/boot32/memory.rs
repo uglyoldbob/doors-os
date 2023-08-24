@@ -8,9 +8,9 @@ use multiboot2::MemoryMapTag;
 
 use crate::Locked;
 
-extern "C" {
-    pub static PAGE_DIRECTORY_BOOT1: PageTable;
-}
+pub static PAGE_DIRECTORY_BOOT1: PageTable = PageTable {
+    entries: [0; 1024],
+};
 
 #[derive(Copy, Clone)]
 /// An allocation made by the bump allocator. This is used to undo allocations
