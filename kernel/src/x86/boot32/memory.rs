@@ -351,6 +351,11 @@ impl PageDirectoryPointerTable {
         self as *const Self as usize
     }
 
+    pub fn get_entry(&self, paddr: u32) -> &mut PageTable {
+        let index = paddr >> 29;
+        unsafe { ((self.entries[index as usize] & 0xFFFFF000) as *mut PageTable).as_mut() }.unwrap()
+    }
+
     pub fn set_entry(&mut self, paddr: u32, pt: &PageTable) {
         let index = paddr >> 29;
         self.entries[index as usize] = pt as *const PageTable as u64 | 1;
@@ -423,7 +428,7 @@ impl PageTableRef {
 /// modify or examine page tables. If page tables need to be created, then that will be done as required.
 pub struct PagingTableManager<'a> {
     /// This is the page that corresponds to the 2mb section for viewing page table data.
-    page4mb: Option<&'a mut PageTable>,
+    page2mb: Option<&'a mut PageTable>,
     /// For the second level page table.
     pt2: Option<PageTableRef>,
     /// For the first level page table.
@@ -436,7 +441,7 @@ impl<'a> PagingTableManager<'a> {
     /// Create a new instance of the struct that cannot do anything useful. init must be called at runtime for this object to be useful.
     pub const fn new(mm: &'a crate::Locked<SimpleMemoryManager<'a>>) -> Self {
         Self {
-            page4mb: None,
+            page2mb: None,
             pt2: None,
             pt1: None,
             mm,
@@ -454,43 +459,59 @@ impl<'a> PagingTableManager<'a> {
 
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
 
-        let pt2t = unsafe { &mut *(cr3 as *mut PageTable) };
-        let pt2_index = (mp >> 21) & 0x1FF;
+        doors_macros2::kernel_print!("Cr3 is {:x}\r\n", cr3);
+
+        let pdpt = unsafe { &mut *(cr3 as *mut PageDirectoryPointerTable) };
+        let pt2t = pdpt.get_entry(mp as u32);
+        let pt2_index = (mp >> 21) & 0x1ff;
+        doors_macros2::kernel_print!("pdpt is {:p}\r\n", pdpt);
+        doors_macros2::kernel_print!("pt2t is {:p}\r\n", pt2t);
+        doors_macros2::kernel_print!("pt2ti is {:x}\r\n", pt2_index);
         let pt1 = pt2t.entries[pt2_index as usize];
+        doors_macros2::kernel_print!("pt1 is {:x}\r\n", pt1);
 
         if (pt1 & 1) != 0 {
             super::super::VGA
                 .lock()
                 .print_str("Memory for paging already occupied");
-            loop {}
         }
 
-        let new_4mb_entry: Box<PageTable, &'a Locked<SimpleMemoryManager>> =
+        let new_2mb_entry: Box<PageTable, &'a Locked<SimpleMemoryManager>> =
             Box::new_in(PageTable::new(), self.mm);
-        let new_4mb_entry = Box::<PageTable, &Locked<SimpleMemoryManager>>::leak(new_4mb_entry);
-        let addr = new_4mb_entry as *const PageTable as usize;
+        let new_2mb_entry = Box::<PageTable, &Locked<SimpleMemoryManager>>::leak(new_2mb_entry);
+        let addr = new_2mb_entry as *const PageTable as usize;
+        doors_macros2::kernel_print!("Setup page map from {:x} to {:x} {}\r\n", addr, mp, pt2_index);
         pt2t.entries[pt2_index as usize] = addr as u64 | 0x3;
         unsafe { x86::tlb::flush(mp) };
-
-        self.page4mb = Some(new_4mb_entry);
+        doors_macros2::kernel_print!("cache setup: {:x}\r\n", mp);
+        self.page2mb = Some(new_2mb_entry);
         self.pt2 = Some(PageTableRef::blank(mp + 1 * 0x1000));
         self.pt1 = Some(PageTableRef::blank(mp + 2 * 0x1000));
     }
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
     fn setup_cache(&mut self, cr3: usize, address: usize) {
+        super::super::VGA
+                .lock()
+                .print_str("Setting up cache for paging\r\n");
         let pt2_index = ((address >> 21) & 0x1FF) as usize;
+
 
         let mut pt2addr: usize = 0;
         let mut pt1addr: usize = 0;
 
-        if let Some(page4mb) = &mut self.page4mb {
+        if let Some(page2mb) = &mut self.page2mb {
+            pt2addr = page2mb.entries[address >> 30] as usize;
             if let Some(pt2) = &mut self.pt2 {
                 if pt2addr != (pt2.physical_address & 0xFFFFF000) {
-                    page4mb.entries[3] = pt2addr as u64 | 0x3;
+                    page2mb.entries[3] = pt2addr as u64 | 0x3;
+                    doors_macros2::kernel_print!("pt2 address is {:x}\r\n", pt2addr);
                     pt2.set_address(pt2addr);
                     unsafe { x86::tlb::flush(pt2.table_address() as usize) };
                 }
+
+                doors_macros2::kernel_print!("Map {:p}\r\n", &pt2.table.entries);
+                loop {}
 
                 if (pt2.table.entries[pt2_index] & 1) == 0 {
                     let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
@@ -506,7 +527,7 @@ impl<'a> PagingTableManager<'a> {
 
             if let Some(pt1) = &mut self.pt1 {
                 if pt1addr != (pt1.physical_address & 0xFFFFF000) {
-                    page4mb.entries[4] = pt1addr as u64 | 0x3;
+                    page2mb.entries[4] = pt1addr as u64 | 0x3;
                     pt1.set_address(pt1addr);
                     unsafe { x86::tlb::flush(pt1.table_address() as usize) };
                 }
@@ -593,9 +614,9 @@ impl<'a> PagingTableManager<'a> {
     /// Map a memory address to a page which will be grabbed from the physical memory manager.
     pub fn map_new_page(&mut self, address: usize) -> Result<(), ()> {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
-
         self.setup_cache(cr3, address);
-
+        doors_macros2::kernel_print!("Mapping new page to {:x}\r\n", address);
+        loop {}
         let pt1_index = ((address >> 12) & 0x1FF) as usize;
 
         if let Some(pt1) = &mut self.pt1 {

@@ -107,7 +107,10 @@ impl<'a> HeapManager<'a> {
 
     /// Print details of the heap
     fn print(&self) {
+        doors_macros2::kernel_print!("mm: {:p}\r\n", self.mm);
+        doors_macros2::kernel_print!("vmm: {:p}\r\n", self.vmm);
         if let Some(mut r) = self.head {
+            doors_macros2::kernel_print!("head: {:p}\r\n", r);
             loop {
                 let addr = unsafe { r.as_mut() }.start();
 
@@ -142,6 +145,8 @@ impl<'a> HeapManager<'a> {
 
         let sa = new_section.as_ptr() as *const Page as usize;
         let mut mm = self.mm.lock();
+        doors_macros2::kernel_print!("About to map pages {:x} {}\r\n", sa, a);
+        self.print();
         for i in (sa..sa + a * core::mem::size_of::<Page>()).step_by(core::mem::size_of::<Page>()) {
             mm.map_new_page(i as usize)?;
         }
@@ -171,6 +176,7 @@ impl<'a> HeapManager<'a> {
                 return core::ptr::null_mut();
             }
         }
+        doors_macros2::kernel_print!("Done expanding heap\r\n");
 
         let mut elem = self.head;
         let mut prev_elem: Option<NonNull<HeapNode>> = None;
