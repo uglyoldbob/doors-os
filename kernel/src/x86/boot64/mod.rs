@@ -7,6 +7,7 @@ use doors_kernel_api::FixedString;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
+use super::VGA;
 
 mod memory;
 
@@ -250,27 +251,15 @@ pub extern "C" fn start64() -> ! {
     });
 
     if let Some(mm) = boot_info.memory_map_tag() {
-        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
-            let mut a: FixedString = FixedString::new();
-            match core::fmt::write(
-                &mut a,
-                format_args!(
-                    "R {:x},S{:x} {:x} ,{:?}\r\n",
-                    area.start_address(),
-                    area.size(),
-                    area.end_address(),
-                    area.typ()
-                ),
-            ) {
-                Ok(_) => super::VGA.lock().print_str(a.as_str()),
-                Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-            }
-        }
-
         let mut pal = PAGE_ALLOCATOR.lock();
         pal.init(mm);
-        for ma in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
-            pal.add_memory_area(ma);
+        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
+            doors_macros2::kernel_print!("R {:x},S{:x} {:x} ,{:?}\r\n",
+                area.start_address(),
+                area.size(),
+                area.end_address(),
+                area.typ());
+            pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
     } else {
@@ -301,37 +290,17 @@ pub extern "C" fn start64() -> ! {
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
-
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("test is {:x}\r\n", test.as_ref() as *const u8 as usize),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("test is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
-
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
 
     let test: Box<[Big]> = Box::new([Big { data: 5 }; 32]);
-    let mut tp: FixedString = FixedString::new();
-    match core::fmt::write(&mut tp, format_args!("test var is {:p}\r\n", test.as_ptr())) {
-        Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-        Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-    }
+    doors_macros2::kernel_print!("test var is {:p}\r\n", test.as_ptr());
     drop(test);
 
     let acpi_handler = Acpi {
@@ -340,18 +309,9 @@ pub extern "C" fn start64() -> ! {
     };
 
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!(
-                "rsdpv2 at {:x} revision {}\r\n",
+        doors_macros2::kernel_print!("rsdpv2 at {:x} revision {}\r\n",
                 rsdp2.xsdt_address() as *const u8 as usize,
-                rsdp2.revision()
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+                rsdp2.revision());
         Some(
             unsafe {
                 acpi::AcpiTables::from_rsdt(
@@ -363,26 +323,13 @@ pub extern "C" fn start64() -> ! {
             .unwrap(),
         )
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!(
-                "rsdpv1 at {:x}\r\n",
-                rsdp1.rsdt_address() as *const u8 as usize
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("rsdpv1 at {:x}\r\n",
+                rsdp1.rsdt_address() as *const u8 as usize);
         let t = unsafe {
             acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
         };
         if let Err(e) = &t {
-            let mut tp: FixedString = FixedString::new();
-            match core::fmt::write(&mut tp, format_args!("acpi error {:?}\r\n", e)) {
-                Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-                Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-            }
+            doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
         }
         Some(t.unwrap())
     } else {
@@ -393,49 +340,21 @@ pub extern "C" fn start64() -> ! {
         super::VGA.lock().print_str("No ACPI table found\r\n");
     }
     let acpi = acpi.unwrap();
-
-    let mut tp: FixedString = FixedString::new();
-    match core::fmt::write(&mut tp, format_args!("acpi rev {:x}\r\n", acpi.revision)) {
-        Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-        Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-    }
+    doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision);
 
     for v in acpi.ssdts {
-        tp.clear();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("ssdt {:x} {:x}\r\n", v.address, v.length),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
     }
     if let Some(v) = acpi.dsdt {
-        tp.clear();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("dsdt {:x} {:x}\r\n", v.address, v.length),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
     }
 
     for (s, t) in acpi.sdts {
-        tp.clear();
-        match core::fmt::write(
-            &mut tp,
-            format_args!(
-                "sdt {} {:x} {:x} {}\r\n",
+        doors_macros2::kernel_print!("sdt {} {:x} {:x} {}\r\n",
                 s.as_str(),
                 t.physical_address,
                 t.length,
-                t.validated
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+                t.validated);
     }
 
     unsafe {

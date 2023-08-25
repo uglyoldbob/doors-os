@@ -90,6 +90,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "doors_macros2"
+version = "0.1.0"
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
@@ -98,6 +102,7 @@ dependencies = [
  "bitarray",
  "doors_kernel_api",
  "doors_macros",
+ "doors_macros2",
  "lazy_static",
  "multiboot2",
  "raw-cpuid 11.0.1",

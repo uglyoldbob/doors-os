@@ -8,6 +8,8 @@ use lazy_static::lazy_static;
 mod gdt;
 mod memory;
 
+use super::VGA;
+
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
 
@@ -79,10 +81,7 @@ extern "C" {
 ///The handler for segment not present
 #[interrupt]
 pub extern "C" fn segment_not_present(arg: u32) {
-    let mut a: FixedString = FixedString::new();
-    core::fmt::write(&mut a, format_args!("Segment not present {:x}\r\n", arg))
-        .expect("Error occurred while trying to write in String\r\n");
-    super::VGA.lock().print_str(a.as_str());
+    doors_macros2::kernel_print!("Segment not present {:x}\r\n", arg);
     loop {}
 }
 
@@ -97,7 +96,6 @@ struct Big {
 /// The panic handler for the 32-bit kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use core::fmt;
     super::VGA.lock().print_str("PANIC AT THE DISCO!\r\n");
     if let Some(m) = info.payload().downcast_ref::<&str>() {
         super::VGA.lock().print_str(m);
@@ -105,10 +103,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
     if let Some(t) = info.location() {
         super::VGA.lock().print_str(t.file());
-        let mut a: FixedString = FixedString::new();
-        fmt::write(&mut a, format_args!("LINE {}\r\n", t.line()))
-            .expect("Error occurred while trying to write in String");
-        super::VGA.lock().print_str(a.as_str());
+        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
     }
     super::VGA.lock().print_str("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
@@ -129,14 +124,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("acpi map {:x} {:x}\r\n", physical_address, size),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("acpi map {:x} {:x}\r\n", physical_address, size);
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -231,17 +219,7 @@ pub extern "C" fn start32() -> ! {
 
     let mbi = unsafe { multiboot2::BootInformation::load(MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader) };
     if let Err(e) = mbi {
-        let mut a: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut a,
-            format_args!(
-                "Failed mb load {:?}\r\n",
-                e
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(a.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("Failed mb load {:?}\r\n", e);
     }
     let boot_info = mbi.unwrap();
 
@@ -256,27 +234,15 @@ pub extern "C" fn start32() -> ! {
     });
 
     if let Some(mm) = boot_info.memory_map_tag() {
-        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
-            let mut a: FixedString = FixedString::new();
-            match core::fmt::write(
-                &mut a,
-                format_args!(
-                    "R {:x},S{:x} {:x} ,{:?}\r\n",
-                    area.start_address(),
-                    area.size(),
-                    area.end_address(),
-                    area.typ()
-                ),
-            ) {
-                Ok(_) => super::VGA.lock().print_str(a.as_str()),
-                Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-            }
-        }
-
         let mut pal = PAGE_ALLOCATOR.lock();
         pal.init(mm);
-        for ma in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
-            pal.add_memory_area(ma);
+        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
+            doors_macros2::kernel_print!("R {:x},S{:x} {:x} ,{:?}\r\n",
+                area.start_address(),
+                area.size(),
+                area.end_address(),
+                area.typ());
+            pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
     } else {
@@ -302,6 +268,7 @@ pub extern "C" fn start32() -> ! {
     } else {
         b
     };
+    doors_macros2::kernel_print!("Got variable for init paging manager {:p}\r\n", b.as_ptr());
     PAGING_MANAGER.lock().init(b.as_ptr() as usize);
 
     if true {

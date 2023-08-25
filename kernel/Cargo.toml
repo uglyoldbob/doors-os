@@ -8,6 +8,7 @@ arraystring = {version = "0.3.0", default-features=false }
 bitarray = "0.10.0"
 doors_kernel_api = { path = "../doors_kernel_api", version = "0.1.0" }
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
+doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
 spin = "0.9.5"
 volatile = "0.4.6"
@@ -23,3 +24,6 @@ acpi = "4.1.1"
 raw-cpuid = "11.0.1"
 x86_64 = {git = "https://github.com/uglyoldbob/x86_64.git", version = "0.14.10", default-features=false, features = ["instructions"] }
 multiboot2 = "0.18.1"
+
+[profile.release]
+debug = true

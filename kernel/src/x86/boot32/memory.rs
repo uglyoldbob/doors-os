@@ -8,6 +8,9 @@ use multiboot2::MemoryMapTag;
 
 use crate::Locked;
 
+use crate::x86::VGA;
+use doors_kernel_api::FixedString;
+
 pub static mut PAGE_DIRECTORY_POINTER_TABLE: PageDirectoryPointerTable = PageDirectoryPointerTable::new();
 
 pub static mut PAGE_DIRECTORY_BOOT1: PageTable = PageTable {
@@ -73,6 +76,7 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
         let mut alloc = self.lock();
+        doors_macros2::kernel_print!("allocator: {:p}, {:x} {:x}\r\n", self, alloc.start, alloc.end);
         let align_mask = layout.align() - 1;
         let align_error = (alloc.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
@@ -112,7 +116,7 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
                 oldpage += core::mem::size_of::<Page2Mb>();
             }
         }
-
+        doors_macros2::kernel_print!("ptr is {:p}\r\n", unsafe { ptr.as_ref() });
         Ok(ptr)
     }
 
