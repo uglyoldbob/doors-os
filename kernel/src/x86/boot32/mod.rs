@@ -6,7 +6,7 @@ use doors_macros::interrupt;
 use lazy_static::lazy_static;
 
 mod gdt;
-mod memory;
+pub mod memory;
 
 use super::VGA;
 
@@ -147,7 +147,8 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 Vec::with_capacity_in(realsize, self.vmm);
             let mut p = self.pageman.lock();
 
-            let e = p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
+            let e =
+                p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
                 loop {}
@@ -179,22 +180,16 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
 core::arch::global_asm!(include_str!("boot.s"));
 
 /// The virtual memory allocator. Deleted space from this may not be reclaimable.
-static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
+pub static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
     crate::Locked::new(memory::BumpAllocator::new(0x1000));
 
 /// The physical memory manager for the system
-static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
+pub static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
     crate::Locked::new(memory::SimpleMemoryManager::new(&VIRTUAL_MEMORY_ALLOCATOR));
 
 /// The paging manager, which controls the memory management unit. Responsible for mapping virtual memory addresses to physical addresses.
-static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
+pub static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
     crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
-
-/// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
-#[global_allocator]
-static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
-    memory::HeapManager::new(&PAGING_MANAGER, &VIRTUAL_MEMORY_ALLOCATOR),
-);
 
 #[alloc_error_handler]
 pub fn whatever(l: core::alloc::Layout) -> ! {
@@ -224,7 +219,11 @@ pub extern "C" fn start32() -> ! {
 
     //let _cpuid = raw_cpuid::CpuId::new();
 
-    let mbi = unsafe { multiboot2::BootInformation::load(MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader) };
+    let mbi = unsafe {
+        multiboot2::BootInformation::load(
+            MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
+        )
+    };
     if let Err(e) = mbi {
         doors_macros2::kernel_print!("Failed mb load {:?}\r\n", e);
     }
@@ -243,12 +242,18 @@ pub extern "C" fn start32() -> ! {
     if let Some(mm) = boot_info.memory_map_tag() {
         let mut pal = PAGE_ALLOCATOR.lock();
         pal.init(mm);
-        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
-            doors_macros2::kernel_print!("R {:x},S{:x} {:x} ,{:?}\r\n",
+        for area in mm
+            .memory_areas()
+            .iter()
+            .filter(|i| i.typ() == multiboot2::MemoryAreaType::Available)
+        {
+            doors_macros2::kernel_print!(
+                "R {:x},S{:x} {:x} ,{:?}\r\n",
                 area.start_address(),
                 area.size(),
                 area.end_address(),
-                area.typ());
+                area.typ()
+            );
             pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();

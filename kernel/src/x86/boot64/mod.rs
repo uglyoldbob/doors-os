@@ -1,5 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use super::VGA;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -7,9 +8,8 @@ use doors_kernel_api::FixedString;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
-use super::VGA;
 
-mod memory;
+pub mod memory;
 
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
@@ -133,22 +133,16 @@ fn build_idt() -> InterruptDescriptorTable {
 core::arch::global_asm!(include_str!("boot.s"));
 
 /// The virtual memory allocator. Deleted space from this may not be reclaimable.
-static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
+pub static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
     crate::Locked::new(memory::BumpAllocator::new(0x1000));
 
 /// The physical memory manager for the system
-static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
+pub static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
     crate::Locked::new(memory::SimpleMemoryManager::new(&VIRTUAL_MEMORY_ALLOCATOR));
 
 /// The paging manager, which controls the memory management unit. Responsible for mapping virtual memory addresses to physical addresses.
-static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
+pub static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
     crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
-
-/// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
-#[global_allocator]
-static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
-    memory::HeapManager::new(&PAGING_MANAGER, &VIRTUAL_MEMORY_ALLOCATOR),
-);
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
@@ -203,7 +197,8 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 Vec::with_capacity_in(realsize, self.vmm);
             let mut p = self.pageman.lock();
 
-            let e = p.map_addresses_read_only(b.as_ptr() as u64, start as u64, realsize as u64);
+            let e =
+                p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
                 loop {}
@@ -225,9 +220,9 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
     fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
         if region.physical_start() >= (1 << 22) {
             let mut p = region.handler().pageman.lock();
-            let s = region.virtual_start().as_ptr() as u64;
-            let s = s - s % core::mem::size_of::<memory::Page>() as u64;
-            p.unmap_mapped_pages(s, region.mapped_length() as u64);
+            let s = region.virtual_start().as_ptr() as usize;
+            let s = s - s % core::mem::size_of::<memory::Page>() as usize;
+            p.unmap_mapped_pages(s, region.mapped_length() as usize);
         }
     }
 }
@@ -238,7 +233,12 @@ pub extern "C" fn start64() -> ! {
     super::VGA.lock().print_str(GREETING);
     let _cpuid = raw_cpuid::CpuId::new();
 
-    let boot_info = unsafe { multiboot2::BootInformation::load(MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader).unwrap() };
+    let boot_info = unsafe {
+        multiboot2::BootInformation::load(
+            MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
+        )
+        .unwrap()
+    };
 
     let start_kernel = unsafe { &crate::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &crate::END_OF_KERNEL } as *const u8 as usize;
@@ -247,18 +247,24 @@ pub extern "C" fn start64() -> ! {
         .lock()
         .relocate(start_kernel, end_kernel);
     VIRTUAL_MEMORY_ALLOCATOR.lock().start_allocating(unsafe {
-        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as u64
+        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
     });
 
     if let Some(mm) = boot_info.memory_map_tag() {
         let mut pal = PAGE_ALLOCATOR.lock();
         pal.init(mm);
-        for area in mm.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available) {
-            doors_macros2::kernel_print!("R {:x},S{:x} {:x} ,{:?}\r\n",
+        for area in mm
+            .memory_areas()
+            .iter()
+            .filter(|i| i.typ() == multiboot2::MemoryAreaType::Available)
+        {
+            doors_macros2::kernel_print!(
+                "R {:x},S{:x} {:x} ,{:?}\r\n",
                 area.start_address(),
                 area.size(),
                 area.end_address(),
-                area.typ());
+                area.typ()
+            );
             pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
@@ -285,7 +291,7 @@ pub extern "C" fn start64() -> ! {
     } else {
         b
     };
-    PAGING_MANAGER.lock().init(b.as_ptr() as u64);
+    PAGING_MANAGER.lock().init(b.as_ptr() as usize);
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
@@ -309,9 +315,11 @@ pub extern "C" fn start64() -> ! {
     };
 
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        doors_macros2::kernel_print!("rsdpv2 at {:x} revision {}\r\n",
-                rsdp2.xsdt_address() as *const u8 as usize,
-                rsdp2.revision());
+        doors_macros2::kernel_print!(
+            "rsdpv2 at {:x} revision {}\r\n",
+            rsdp2.xsdt_address() as *const u8 as usize,
+            rsdp2.revision()
+        );
         Some(
             unsafe {
                 acpi::AcpiTables::from_rsdt(
@@ -323,8 +331,10 @@ pub extern "C" fn start64() -> ! {
             .unwrap(),
         )
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        doors_macros2::kernel_print!("rsdpv1 at {:x}\r\n",
-                rsdp1.rsdt_address() as *const u8 as usize);
+        doors_macros2::kernel_print!(
+            "rsdpv1 at {:x}\r\n",
+            rsdp1.rsdt_address() as *const u8 as usize
+        );
         let t = unsafe {
             acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
         };
@@ -350,11 +360,13 @@ pub extern "C" fn start64() -> ! {
     }
 
     for (s, t) in acpi.sdts {
-        doors_macros2::kernel_print!("sdt {} {:x} {:x} {}\r\n",
-                s.as_str(),
-                t.physical_address,
-                t.length,
-                t.validated);
+        doors_macros2::kernel_print!(
+            "sdt {} {:x} {:x} {}\r\n",
+            s.as_str(),
+            t.physical_address,
+            t.length,
+            t.validated
+        );
     }
 
     unsafe {

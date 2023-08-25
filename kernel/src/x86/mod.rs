@@ -13,6 +13,8 @@ pub mod boot32;
 #[cfg(target_arch = "x86")]
 pub use boot32 as boot;
 
+pub mod memory;
+
 /// Type used for the pc vga text mode output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
@@ -102,6 +104,12 @@ lazy_static! {
     static ref IOPORTS: spin::Mutex<bitarray::BitArray<65536>> =
         spin::Mutex::new(bitarray::BitArray::new([0; 65536]));
 }
+
+/// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
+#[global_allocator]
+static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
+    memory::HeapManager::new(&boot::PAGING_MANAGER, &boot::VIRTUAL_MEMORY_ALLOCATOR),
+);
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
