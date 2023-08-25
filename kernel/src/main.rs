@@ -7,6 +7,7 @@
 #![feature(allocator_api)]
 #![feature(strict_provenance)]
 #![feature(const_mut_refs)]
+#![feature(alloc_error_handler)]
 
 extern crate alloc;
 

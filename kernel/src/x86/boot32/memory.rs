@@ -76,7 +76,6 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
         let mut alloc = self.lock();
-        doors_macros2::kernel_print!("allocator: {:p}, {:x} {:x}\r\n", self, alloc.start, alloc.end);
         let align_mask = layout.align() - 1;
         let align_error = (alloc.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
@@ -116,7 +115,6 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
                 oldpage += core::mem::size_of::<Page2Mb>();
             }
         }
-        doors_macros2::kernel_print!("ptr is {:p}\r\n", unsafe { ptr.as_ref() });
         Ok(ptr)
     }
 
@@ -288,8 +286,8 @@ impl<'a> SimpleMemoryManager<'a> {
 
     /// Initialize an instance of a physical memory manager
     pub fn init(&mut self, d: &MemoryMapTag) {
-        let avail: Vec<&multiboot2::MemoryArea> = d.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available).collect();
-        let n = avail.len();
+        let avail = d.memory_areas().iter().filter(|i| i.typ() == multiboot2::MemoryAreaType::Available);
+        let n = avail.count();
         let bitmaps: Vec<Bitmap<Page>, &'a Locked<BumpAllocator>> =
             Vec::with_capacity_in(n, self.mm);
         self.bitmaps = Some(bitmaps);

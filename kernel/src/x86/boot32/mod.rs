@@ -196,6 +196,13 @@ static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
     memory::HeapManager::new(&PAGING_MANAGER, &VIRTUAL_MEMORY_ALLOCATOR),
 );
 
+#[alloc_error_handler]
+pub fn whatever(l: core::alloc::Layout) -> ! {
+    doors_macros2::kernel_print!("Failed to allocate\r\n");
+    doors_macros2::kernel_print!("{:?}", l);
+    loop {}
+}
+
 /// The entry point for the 32 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start32() -> ! {
@@ -248,9 +255,7 @@ pub extern "C" fn start32() -> ! {
     } else {
         panic!("Physical memory manager unavailable\r\n");
     };
-
     VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating();
-
     let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
         &VIRTUAL_MEMORY_ALLOCATOR,
     );
@@ -268,7 +273,6 @@ pub extern "C" fn start32() -> ! {
     } else {
         b
     };
-    doors_macros2::kernel_print!("Got variable for init paging manager {:p}\r\n", b.as_ptr());
     PAGING_MANAGER.lock().init(b.as_ptr() as usize);
 
     if true {
