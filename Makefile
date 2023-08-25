@@ -11,8 +11,11 @@ qemucd32: build/cd32.img
 qemucd64: build/cd64.img
 	qemu-system-x86_64 -cdrom build/cd64.img -m 4 -d cpu_reset
 
-bochs: build/cd64.img
-	bochs -f bochsrc.txt -q
+bochs64: build/cd64.img
+	bochs -f bochsrc64.txt -q
+
+bochs32: build/cd32.img
+	bochs -f bochsrc32.txt -q
 
 virtualbox: build/cd64.img
 	VirtualBoxVM --startvm test --dbg --debug

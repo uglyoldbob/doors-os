@@ -1,4 +1,4 @@
-//! This module exists to cover memory management for x64 processors.
+//! This module exists to cover memory management for x86 (32 bit) processors. It assumes the usage of physical address extensions.
 
 use core::marker::PhantomData;
 
@@ -8,8 +8,10 @@ use multiboot2::MemoryMapTag;
 
 use crate::Locked;
 
-pub static PAGE_DIRECTORY_BOOT1: PageTable = PageTable {
-    entries: [0; 1024],
+pub static mut PAGE_DIRECTORY_POINTER_TABLE: PageDirectoryPointerTable = PageDirectoryPointerTable::new();
+
+pub static mut PAGE_DIRECTORY_BOOT1: PageTable = PageTable {
+    entries: [0; 512],
 };
 
 #[derive(Copy, Clone)]
@@ -30,7 +32,7 @@ pub struct BumpAllocator {
     end: usize,
     /// The last few allocations handed out by the bump allocator
     last: [Option<BumpAllocation>; 5],
-    /// This option allocates pages of 4mb chunks when set
+    /// This option allocates pages of 2mb chunks when set
     allocate_pages: Option<&'static mut PageTable>,
 }
 
@@ -54,12 +56,12 @@ impl BumpAllocator {
         self.end = newend;
     }
 
-    /// Indicates that the bump allocator should start allocating 4mb pages as required
-    pub fn start_allocating(&mut self, pt: u64) {
+    /// Indicates that the bump allocator should start allocating 2mb pages as required
+    pub fn start_allocating(&mut self, pt: usize) {
         self.allocate_pages = Some(unsafe { &mut *(pt as *mut PageTable) });
     }
 
-    /// Indicates that the bump allocator should no longer allocate 4mb pages
+    /// Indicates that the bump allocator should no longer allocate 2mb pages
     pub fn stop_allocating(&mut self) {
         self.allocate_pages = None;
     }
@@ -100,14 +102,14 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
         alloc.end += bumpsize;
         let new_end = alloc.end;
         if let Some(pa) = &mut alloc.allocate_pages {
-            let mut oldpage = old_end & !0x1fffff;
-            let newpage = new_end & !0x1fffff;
+            let mut oldpage = old_end & !(core::mem::size_of::<Page2Mb>() - 1);
+            let newpage = new_end & !(core::mem::size_of::<Page2Mb>() - 1);
             while oldpage != newpage {
-                let allpage = oldpage + 0x200000;
-                let pageindex = allpage / 0x200000;
-                pa.entries[pageindex] = allpage | 0x83;
+                let allpage = oldpage + core::mem::size_of::<Page2Mb>();
+                let pageindex = allpage / core::mem::size_of::<Page2Mb>();
+                pa.entries[pageindex] = allpage as u64 | 0x83;
                 unsafe { x86::tlb::flush_all() };
-                oldpage += 0x200000;
+                oldpage += core::mem::size_of::<Page2Mb>();
             }
         }
 
@@ -229,10 +231,10 @@ impl Page {
 }
 
 #[repr(align(2097152))]
-/// A 4 megabyte large page
-pub struct Page4Mb {
+/// A 2 megabyte large page
+pub struct Page2Mb {
     /// The page contents
-    data: [Page; 1024],
+    data: [Page; 512],
 }
 
 /// A simple physical memory manager for the kernel
@@ -326,18 +328,52 @@ unsafe impl<'a> core::alloc::Allocator for Locked<SimpleMemoryManager<'a>> {
     }
 }
 
+/// This is the structure that cr3 points to
+#[repr(align(4096))]
+#[repr(C)]
+pub struct PageDirectoryPointerTable {
+    /// Each of these 4 entries refers to a 1gb chunk of memory
+    /// This entry points to a page directory pointer and is 32-bits long, the upper 32 bits are reserved.
+    /// The bottom 5 bits are ignored
+    entries: [u64; 4],
+}
+
+impl PageDirectoryPointerTable {
+    pub const fn new() -> Self {
+        Self {
+            entries: [0;4],
+        }
+    }
+
+    pub fn get_ptr(&self) -> usize {
+        self as *const Self as usize
+    }
+
+    pub fn set_entry(&mut self, paddr: u32, pt: &PageTable) {
+        let index = paddr >> 29;
+        self.entries[index as usize] = pt as *const PageTable as u64 | 1;
+    }
+
+    pub fn assign_to_cr3(&self) {
+        unsafe {
+            x86::controlregs::cr3_write(self.get_ptr() as u64);
+            x86::tlb::flush_all();
+        }
+    }
+}
+
 /// A page table is a part of the paging system. It contains entries that the memory management unit uses to resolve virtual memory addresses to physical memory addresses.
 #[repr(align(4096))]
 #[repr(C)]
 pub struct PageTable {
-    /// The array of entries for a page table, each level of page table uses the entries slightly differently.
-    entries: [usize; 1024],
+    /// The array of entries for a page table.
+    pub entries: [u64; 512],
 }
 
 impl PageTable {
     /// Create a blank page table, all entries set to 0
     const fn new() -> Self {
-        Self { entries: [0; 1024] }
+        Self { entries: [0; 512] }
     }
 }
 
@@ -380,11 +416,11 @@ impl PageTableRef {
     }
 }
 
-/// A manager struct for managing the paging tables for the system. It assumes that a 4mb page is dedicated to viewing page table data.
+/// A manager struct for managing the paging tables for the system. It assumes that a 2mb page is dedicated to viewing page table data.
 /// The 4 levels of page tables required for addressing a memory address are loaded as required, changing the mapping in order to
 /// modify or examine page tables. If page tables need to be created, then that will be done as required.
 pub struct PagingTableManager<'a> {
-    /// This is the page that corresponds to the 4mb section for viewing page table data.
+    /// This is the page that corresponds to the 2mb section for viewing page table data.
     page4mb: Option<&'a mut PageTable>,
     /// For the second level page table.
     pt2: Option<PageTableRef>,
@@ -405,9 +441,9 @@ impl<'a> PagingTableManager<'a> {
         }
     }
 
-    /// Initialize the object, using the address mp as the starting address for the 4 megabyte page used for managing the page tables of the system.
+    /// Initialize the object, using the address mp as the starting address for the 2 megabyte page used for managing the page tables of the system.
     pub fn init(&mut self, mp: usize) {
-        if (mp & 0x3FFFFF) != 0 {
+        if (mp & 0x1FFFFF) != 0 {
             super::super::VGA
                 .lock()
                 .print_str("Invalid memory location for paging window");
@@ -431,7 +467,7 @@ impl<'a> PagingTableManager<'a> {
             Box::new_in(PageTable::new(), self.mm);
         let new_4mb_entry = Box::<PageTable, &Locked<SimpleMemoryManager>>::leak(new_4mb_entry);
         let addr = new_4mb_entry as *const PageTable as usize;
-        pt2t.entries[pt2_index as usize] = addr | 0x3;
+        pt2t.entries[pt2_index as usize] = addr as u64 | 0x3;
         unsafe { x86::tlb::flush(mp) };
 
         self.page4mb = Some(new_4mb_entry);
@@ -443,13 +479,13 @@ impl<'a> PagingTableManager<'a> {
     fn setup_cache(&mut self, cr3: usize, address: usize) {
         let pt2_index = ((address >> 21) & 0x1FF) as usize;
 
-        let mut pt2addr = 0;
-        let mut pt1addr = 0;
+        let mut pt2addr : usize = 0;
+        let mut pt1addr : usize = 0;
 
         if let Some(page4mb) = &mut self.page4mb {
             if let Some(pt2) = &mut self.pt2 {
                 if pt2addr != (pt2.physical_address & 0xFFFFF000) {
-                    page4mb.entries[3] = pt2addr | 0x3;
+                    page4mb.entries[3] = pt2addr as u64 | 0x3;
                     pt2.set_address(pt2addr);
                     unsafe { x86::tlb::flush(pt2.table_address() as usize) };
                 }
@@ -460,15 +496,15 @@ impl<'a> PagingTableManager<'a> {
                     let entry: &mut PageTable =
                         Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
                     let addr = entry as *const PageTable as usize;
-                    pt2.table.entries[pt2_index] = addr | 0x3;
+                    pt2.table.entries[pt2_index] = addr as u64 | 0x3;
                 }
 
-                pt1addr = pt2.table.entries[pt2_index] & 0xFFFFF000;
+                pt1addr = pt2.table.entries[pt2_index] as usize & 0xFFFFF000;
             }
 
             if let Some(pt1) = &mut self.pt1 {
                 if pt1addr != (pt1.physical_address & 0xFFFFF000) {
-                    page4mb.entries[4] = pt1addr | 0x3;
+                    page4mb.entries[4] = pt1addr as u64 | 0x3;
                     pt1.set_address(pt1addr);
                     unsafe { x86::tlb::flush(pt1.table_address() as usize) };
                 }
@@ -493,7 +529,7 @@ impl<'a> PagingTableManager<'a> {
 
             if let Some(pt1) = &mut self.pt1 {
                 if (pt1.table.entries[pt1_index] & 1) == 0 {
-                    pt1.table.entries[pt1_index] = paddr | 0x1;
+                    pt1.table.entries[pt1_index] = paddr as u64 | 0x1;
                     unsafe { x86::tlb::flush(vaddr) };
                 } else {
                     return Err(());
@@ -567,7 +603,7 @@ impl<'a> PagingTableManager<'a> {
                 let entry: &mut PageTable =
                     Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
                 let addr = entry as *const PageTable as usize;
-                pt1.table.entries[pt1_index] = addr | 0x3;
+                pt1.table.entries[pt1_index] = addr as u64 | 0x3;
                 unsafe { x86::tlb::flush(address) };
                 Ok(())
             } else {

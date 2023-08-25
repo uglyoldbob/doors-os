@@ -214,6 +214,19 @@ pub extern "C" fn start32() -> ! {
     super::VGA.lock().print_str(GREETING);
     super::VGA.lock().print_str("32 bit code\r\n");
 
+    //Enable paging
+    unsafe {
+        memory::PAGE_DIRECTORY_BOOT1.entries[0] = 0x83;
+        memory::PAGE_DIRECTORY_POINTER_TABLE.set_entry(0, &memory::PAGE_DIRECTORY_BOOT1);
+        memory::PAGE_DIRECTORY_POINTER_TABLE.assign_to_cr3();
+        let mut cr4 = x86::controlregs::cr4();
+        cr4 |= x86::controlregs::Cr4::CR4_ENABLE_PAE | x86::controlregs::Cr4::CR4_ENABLE_PSE;
+        x86::controlregs::cr4_write(cr4);
+        let mut cr0 = x86::controlregs::cr0();
+        cr0 |= x86::controlregs::Cr0::CR0_ENABLE_PAGING;
+        x86::controlregs::cr0_write(cr0);
+    }
+
     //let _cpuid = raw_cpuid::CpuId::new();
 
     let mbi = unsafe { multiboot2::BootInformation::load(MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader) };
@@ -239,7 +252,7 @@ pub extern "C" fn start32() -> ! {
         .lock()
         .relocate(start_kernel, end_kernel);
     VIRTUAL_MEMORY_ALLOCATOR.lock().start_allocating(unsafe {
-        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as u64
+        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
     });
 
     if let Some(mm) = boot_info.memory_map_tag() {
@@ -272,18 +285,18 @@ pub extern "C" fn start32() -> ! {
 
     VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating();
 
-    let b = Box::<memory::Page4Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
+    let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
         &VIRTUAL_MEMORY_ALLOCATOR,
     );
     let b =
-        Box::<core::mem::MaybeUninit<memory::Page4Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
+        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
             b,
         );
     let b = if (b.as_ptr() as u64) < (1 << 22) {
-        let b = Box::<memory::Page4Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
+        let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
             &VIRTUAL_MEMORY_ALLOCATOR,
         );
-        Box::<core::mem::MaybeUninit<memory::Page4Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
+        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
             b,
         )
     } else {
