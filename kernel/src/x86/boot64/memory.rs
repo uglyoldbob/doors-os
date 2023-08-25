@@ -455,6 +455,7 @@ impl<'a> PagingTableManager<'a> {
         self.pt3 = Some(PageTableRef::blank(mp + 2 * 0x1000));
         self.pt2 = Some(PageTableRef::blank(mp + 3 * 0x1000));
         self.pt1 = Some(PageTableRef::blank(mp + 4 * 0x1000));
+        loop {}
     }
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.

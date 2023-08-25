@@ -459,29 +459,32 @@ impl<'a> PagingTableManager<'a> {
 
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
 
-        doors_macros2::kernel_print!("Cr3 is {:x}\r\n", cr3);
-
         let pdpt = unsafe { &mut *(cr3 as *mut PageDirectoryPointerTable) };
         let pt2t = pdpt.get_entry(mp as u32);
         let pt2_index = (mp >> 21) & 0x1ff;
-        doors_macros2::kernel_print!("pdpt is {:p}\r\n", pdpt);
-        doors_macros2::kernel_print!("pt2t is {:p}\r\n", pt2t);
-        doors_macros2::kernel_print!("pt2ti is {:x}\r\n", pt2_index);
-        let pt1 = pt2t.entries[pt2_index as usize];
-        doors_macros2::kernel_print!("pt1 is {:x}\r\n", pt1);
+        let mut pt1 = pt2t.entries[pt2_index as usize];
+        let pt1_index = (mp>>12) & 0x1FF;
 
         if (pt1 & 1) != 0 {
             super::super::VGA
                 .lock()
                 .print_str("Memory for paging already occupied");
         }
+        else {
+            let newpage: Box<PageTable, &'a Locked<SimpleMemoryManager>> =
+                Box::new_in(PageTable::new(), self.mm);
+            let newpage = Box::<PageTable, &'a Locked<SimpleMemoryManager<'_>>>::leak(newpage);
+            let addr = newpage as *const PageTable as usize;
+            pt2t.entries[pt2_index as usize] = addr as u64 | 0x3;
+            pt1 = pt2t.entries[pt2_index as usize] & 0xFFFFF000;
+        }
 
+        let pt1t = unsafe { &mut *(pt1 as *mut PageTable) };
         let new_2mb_entry: Box<PageTable, &'a Locked<SimpleMemoryManager>> =
             Box::new_in(PageTable::new(), self.mm);
         let new_2mb_entry = Box::<PageTable, &Locked<SimpleMemoryManager>>::leak(new_2mb_entry);
         let addr = new_2mb_entry as *const PageTable as usize;
-        doors_macros2::kernel_print!("Setup page map from {:x} to {:x} {}\r\n", addr, mp, pt2_index);
-        pt2t.entries[pt2_index as usize] = addr as u64 | 0x3;
+        pt1t.entries[pt1_index as usize] = addr as u64 | 0x3;
         unsafe { x86::tlb::flush(mp) };
         doors_macros2::kernel_print!("cache setup: {:x}\r\n", mp);
         self.page2mb = Some(new_2mb_entry);
@@ -616,7 +619,6 @@ impl<'a> PagingTableManager<'a> {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
         self.setup_cache(cr3, address);
         doors_macros2::kernel_print!("Mapping new page to {:x}\r\n", address);
-        loop {}
         let pt1_index = ((address >> 12) & 0x1FF) as usize;
 
         if let Some(pt1) = &mut self.pt1 {
