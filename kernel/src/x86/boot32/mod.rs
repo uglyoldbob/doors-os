@@ -261,25 +261,8 @@ pub extern "C" fn start32() -> ! {
     } else {
         panic!("Physical memory manager unavailable\r\n");
     };
-    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating();
-    let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
-        &VIRTUAL_MEMORY_ALLOCATOR,
-    );
-    let b =
-        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
-            b,
-        );
-    let b = if (b.as_ptr() as u64) < (1 << 22) {
-        let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
-            &VIRTUAL_MEMORY_ALLOCATOR,
-        );
-        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
-            b,
-        )
-    } else {
-        b
-    };
-    PAGING_MANAGER.lock().init(b.as_ptr() as usize);
+    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x1fffff);
+    PAGING_MANAGER.lock().init();
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =

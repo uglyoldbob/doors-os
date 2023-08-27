@@ -1,6 +1,7 @@
 //! This module exists to cover memory management for x86 (32 bit) processors. It assumes the usage of physical address extensions.
 
 use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 
 use alloc::{boxed::Box, vec::Vec};
 use doors_kernel_api::video::TextDisplay;
@@ -63,9 +64,15 @@ impl BumpAllocator {
         self.allocate_pages = Some(unsafe { &mut *(pt as *mut PageTable) });
     }
 
-    /// Indicates that the bump allocator should no longer allocate 2mb pages
-    pub fn stop_allocating(&mut self) {
+    /// Indicates that the bump allocator should no longer allocate large pages.
+    /// It will consider the current end to the end of the current large page to automatically be used.
+    pub fn stop_allocating(&mut self, mask: usize) {
         self.allocate_pages = None;
+        let amount = self.end & mask;
+        let base = self.end & !mask;
+        if amount != 0 {
+            self.end = base + mask;
+        }
     }
 }
 
@@ -226,8 +233,12 @@ pub struct Page {
 }
 impl Page {
     /// Create a blank page, filled with zeros
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self { data: [0; 4096] }
+    }
+
+    pub fn as_ptr(&self) -> *const Self {
+        self as *const Self
     }
 }
 
@@ -293,6 +304,12 @@ impl<'a> SimpleMemoryManager<'a> {
         let bitmaps: Vec<Bitmap<Page>, &'a Locked<BumpAllocator>> =
             Vec::with_capacity_in(n, self.mm);
         self.bitmaps = Some(bitmaps);
+    }
+
+    pub fn get_complete_virtual_page(&mut self) -> usize {
+        let a: Box::<MaybeUninit<PageTable>, &'a Locked<BumpAllocator>> =
+            Box::new_uninit_in(self.mm);
+        Box::<MaybeUninit<PageTable>, &'a Locked<BumpAllocator>>::leak(a) as *mut MaybeUninit<PageTable> as usize
     }
 }
 
@@ -369,6 +386,12 @@ impl PageDirectoryPointerTable {
     }
 }
 
+/// A reference to an existing page directory pointer table
+pub struct PageDirectoryPointerTableRef {
+    physical_address: usize,
+    table: &'static mut PageDirectoryPointerTable,
+}
+
 /// A page table is a part of the paging system. It contains entries that the memory management unit uses to resolve virtual memory addresses to physical memory addresses.
 #[repr(align(4096))]
 #[repr(C)]
@@ -423,12 +446,17 @@ impl PageTableRef {
     }
 }
 
-/// A manager struct for managing the paging tables for the system. It assumes that a 2mb page is dedicated to viewing page table data.
-/// The 4 levels of page tables required for addressing a memory address are loaded as required, changing the mapping in order to
+/// A manager struct for managing the paging tables for the system. For PAE paging, there are several layers of tables.
+/// The page tables required for addressing a memory address are loaded as required, changing the mapping in order to
 /// modify or examine page tables. If page tables need to be created, then that will be done as required.
+///
+/// The top level page table is a set of 4 64-bit entries (not a full page), each covering a 1 GB address space. Each entry points to a page directory.
+/// The second level is a page directory. Each 64-bit entry points to a page table or to a 2MB page. The entire page directory maps 1GB of memory.
+/// The third level is a page table, each entry either points to a 4kb page. The full page table maps 2MB.
+/// A page table is required in order to bring other page table into view for the paging table manager.
 pub struct PagingTableManager<'a> {
-    /// This is the page that corresponds to the 2mb section for viewing page table data.
-    page2mb: Option<&'a mut PageTable>,
+    /// For the cr3 value
+    pdpt: Option<PageDirectoryPointerTableRef>,
     /// For the second level page table.
     pt2: Option<PageTableRef>,
     /// For the first level page table.
@@ -441,101 +469,46 @@ impl<'a> PagingTableManager<'a> {
     /// Create a new instance of the struct that cannot do anything useful. init must be called at runtime for this object to be useful.
     pub const fn new(mm: &'a crate::Locked<SimpleMemoryManager<'a>>) -> Self {
         Self {
-            page2mb: None,
+            pdpt: None,
             pt2: None,
             pt1: None,
             mm,
         }
     }
 
-    /// Initialize the object, using the address mp as the starting address for the 2 megabyte page used for managing the page tables of the system.
-    pub fn init(&mut self, mp: usize) {
-        if (mp & 0x1FFFFF) != 0 {
-            super::super::VGA
-                .lock()
-                .print_str("Invalid memory location for paging window");
-            loop {}
-        }
-
+    /// Initialize the object, allocating physical pages as required.
+    pub fn init(&mut self) {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
 
-        let pdpt = unsafe { &mut *(cr3 as *mut PageDirectoryPointerTable) };
-        let pt2t = pdpt.get_entry(mp as u32);
-        let pt2_index = (mp >> 21) & 0x1ff;
-        let mut pt1 = pt2t.entries[pt2_index as usize];
-        let pt1_index = (mp>>12) & 0x1FF;
+        let mut mm = self.mm.lock();
+        let a = mm.get_complete_virtual_page();
+        drop(mm);
 
-        if (pt1 & 1) != 0 {
-            super::super::VGA
-                .lock()
-                .print_str("Memory for paging already occupied");
-        }
-        else {
-            let newpage: Box<PageTable, &'a Locked<SimpleMemoryManager>> =
-                Box::new_in(PageTable::new(), self.mm);
-            let newpage = Box::<PageTable, &'a Locked<SimpleMemoryManager<'_>>>::leak(newpage);
-            let addr = newpage as *const PageTable as usize;
-            pt2t.entries[pt2_index as usize] = addr as u64 | 0x3;
-            pt1 = pt2t.entries[pt2_index as usize] & 0xFFFFF000;
-        }
+        doors_macros2::kernel_print!("Obtained {:x} for pdpt {:x}\r\n", a, cr3);
+        loop {}
 
-        let pt1t = unsafe { &mut *(pt1 as *mut PageTable) };
-        let new_2mb_entry: Box<PageTable, &'a Locked<SimpleMemoryManager>> =
-            Box::new_in(PageTable::new(), self.mm);
-        let new_2mb_entry = Box::<PageTable, &Locked<SimpleMemoryManager>>::leak(new_2mb_entry);
-        let addr = new_2mb_entry as *const PageTable as usize;
-        pt1t.entries[pt1_index as usize] = addr as u64 | 0x3;
-        unsafe { x86::tlb::flush(mp) };
-        doors_macros2::kernel_print!("cache setup: {:x}\r\n", mp);
-        self.page2mb = Some(new_2mb_entry);
-        self.pt2 = Some(PageTableRef::blank(mp + 1 * 0x1000));
-        self.pt1 = Some(PageTableRef::blank(mp + 2 * 0x1000));
+        /*
+        Steps for init:
+        obtain virtual page for the pdpt
+        obtain virtual page for the page directory
+        obtain virtual page for the page table
+        map masked cr3 to virtual page 0
+        map 0 to virtual page 1
+        map 0 to virtual page 2
+         */
     }
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
     fn setup_cache(&mut self, cr3: usize, address: usize) {
         super::super::VGA
-                .lock()
-                .print_str("Setting up cache for paging\r\n");
+            .lock()
+            .print_str("Setting up cache for paging\r\n");
         let pt2_index = ((address >> 21) & 0x1FF) as usize;
-
 
         let mut pt2addr: usize = 0;
         let mut pt1addr: usize = 0;
 
-        if let Some(page2mb) = &mut self.page2mb {
-            pt2addr = page2mb.entries[address >> 30] as usize;
-            if let Some(pt2) = &mut self.pt2 {
-                if pt2addr != (pt2.physical_address & 0xFFFFF000) {
-                    page2mb.entries[3] = pt2addr as u64 | 0x3;
-                    doors_macros2::kernel_print!("pt2 address is {:x}\r\n", pt2addr);
-                    pt2.set_address(pt2addr);
-                    unsafe { x86::tlb::flush(pt2.table_address() as usize) };
-                }
-
-                doors_macros2::kernel_print!("Map {:p}\r\n", &pt2.table.entries);
-                loop {}
-
-                if (pt2.table.entries[pt2_index] & 1) == 0 {
-                    let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
-                        Box::new_in(PageTable::new(), self.mm);
-                    let entry: &mut PageTable =
-                        Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
-                    let addr = entry as *const PageTable as usize;
-                    pt2.table.entries[pt2_index] = addr as u64 | 0x3;
-                }
-
-                pt1addr = pt2.table.entries[pt2_index] as usize & 0xFFFFF000;
-            }
-
-            if let Some(pt1) = &mut self.pt1 {
-                if pt1addr != (pt1.physical_address & 0xFFFFF000) {
-                    page2mb.entries[4] = pt1addr as u64 | 0x3;
-                    pt1.set_address(pt1addr);
-                    unsafe { x86::tlb::flush(pt1.table_address() as usize) };
-                }
-            }
-        }
+        
     }
 
     /// Map the specified range of physical addresses to the specified virtual addresses. size corresponds to bytes
