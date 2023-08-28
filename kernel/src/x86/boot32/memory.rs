@@ -522,8 +522,9 @@ impl<'a> PagingTableManager<'a> {
                     PageTable::new(),
                     self.mm,
                 );
+            let page_directory_entry = Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(page_directory_entry);
             page_directory.entries[(vaddr >> 21) & 0x1FF] =
-                (page_directory_entry.as_ref() as *const PageTable as u64) | 1;
+                (page_directory_entry as *const PageTable as u64) | 1;
             page_table = page_directory.entries[(vaddr >> 21) & 0x1FF];
         }
         let page_directory_entry = unsafe {

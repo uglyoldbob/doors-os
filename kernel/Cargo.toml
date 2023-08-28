@@ -10,7 +10,7 @@ doors_kernel_api = { path = "../doors_kernel_api", version = "0.1.0" }
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
-spin = "0.9.5"
+spin = "0.9.8"
 volatile = "0.4.6"
 
 [target.'cfg(target_arch = "x86")'.dependencies]
