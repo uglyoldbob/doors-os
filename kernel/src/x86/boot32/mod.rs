@@ -1,3 +1,5 @@
+//! This module contains x86 32-bit specific code relating to how the machine boots up.
+
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -20,10 +22,12 @@ impl X86Apic {
     }
 }
 
+/// A generic message indicating the system is booting.
 const GREETING: &str = "I am groot\r\n";
 
 use x86::segmentation::BuildDescriptor;
 
+/// Create a global descriptor table for the system to boot with.
 fn make_gdt_table() -> gdt::GlobalDescriptorTable {
     let gdt = gdt::GlobalDescriptorTable::new();
     let code = x86::segmentation::DescriptorBuilder::code_descriptor(
@@ -43,13 +47,16 @@ fn make_gdt_table() -> gdt::GlobalDescriptorTable {
 /// A struct for creating a global descriptor table pointer, suitable for loading with lidtr
 #[repr(C, packed)]
 pub struct GdtPointer<'a> {
+    /// The size of the gdt
     size: u16,
+    /// The address of the gdt
     address: &'a gdt::GlobalDescriptorTable,
 }
 
 #[repr(align(8))]
 /// Holder structure for a Global descriptor table pointer, aligning the start of the structure as required.
 pub struct GdtPointerHolder<'a> {
+    /// The pointer for the gdt
     d: GdtPointer<'a>,
 }
 
@@ -191,6 +198,7 @@ pub static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
 pub static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
     crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
 
+/// A function to handle allocation errors in the kernel
 #[alloc_error_handler]
 pub fn whatever(l: core::alloc::Layout) -> ! {
     doors_macros2::kernel_print!("Failed to allocate\r\n");
@@ -261,7 +269,7 @@ pub extern "C" fn start32() -> ! {
     } else {
         panic!("Physical memory manager unavailable\r\n");
     };
-    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x1fffff);
+    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x3fffff);
     PAGING_MANAGER.lock().init();
 
     if true {
