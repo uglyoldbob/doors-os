@@ -374,14 +374,32 @@ impl PageDirectoryPointerTable {
         self as *const Self as usize
     }
 
-    /// Get the entry that corresponds to the given virtual address
-    pub fn get_entry(&mut self, vaddr: u32) -> &mut PageTable {
+    /// Get the pagetable that corresponds to the given virtual address
+    pub fn get_pagetable(&mut self, vaddr: u32) -> Option<&mut PageTable> {
         let index = vaddr >> 30;
-        unsafe { ((self.entries[index as usize] & 0xFFFFF000) as *mut PageTable).as_mut() }.unwrap()
+        let d = self.entries[index as usize];
+        if (d & 1) != 0 {
+            unsafe { ((d & 0xFFFFF000) as *mut PageTable).as_mut() }
+        }
+        else {
+            None
+        }
+    }
+
+    /// Get the entry that corresponds to the given virtual address
+    pub fn get_entry(&mut self, vaddr: u32) -> Option<u64> {
+        let index = vaddr >> 30;
+        let d = self.entries[index as usize];
+        if (d & 1) != 0 {
+            Some(d & !0xFFF)
+        }
+        else {
+            None
+        }
     }
 
     /// Set the entry for the given virtual address with the specified pageTable
-    pub fn set_entry(&mut self, vaddr: u32, pt: &PageTable) {
+    pub fn set_pagetable(&mut self, vaddr: u32, pt: &PageTable) {
         let index = vaddr >> 30;
         self.entries[index as usize] = pt as *const PageTable as u64 | 1;
     }
@@ -406,12 +424,29 @@ pub struct PageDirectoryPointerTableRef {
 impl PageDirectoryPointerTableRef {
     /// Create a new object with the specified cr3 and virtual address
     fn new(cr3: usize, virt: usize) -> Self {
-        let virtaddr = virt | (cr3 & 0x1E0);
+        let virtaddr = virt | (cr3 & 0xFE0);
         let virtaddr = virtaddr as *mut PageDirectoryPointerTable;
         doors_macros2::kernel_print!("Virtual address is {:p}\r\n", virtaddr);
         Self {
             physical_address: cr3,
             table: unsafe { virtaddr.as_mut().unwrap() },
+        }
+    }
+
+    /// Update this reference as necessary to point to the specified cr3, return true if the function did anything
+    fn update(&mut self, cr3: usize) -> bool {
+        let mywindow = self.physical_address & 0xFFFFF000;
+        let window = cr3 & 0xFFFFF000;
+        if mywindow != window {
+            self.physical_address = window;
+            let virt = (self.table as *mut PageDirectoryPointerTable as usize) & 0xFFFFE00;
+            let virt = virt | (cr3 & 0xFE0);
+            let virtaddr = virt as *mut PageDirectoryPointerTable;
+            self.table = unsafe { virtaddr.as_mut().unwrap() };
+            true
+        }
+        else {
+            false
         }
     }
 }
@@ -429,6 +464,17 @@ impl PageTable {
     const fn new() -> Self {
         Self { entries: [0; 512] }
     }
+
+    /// Returns an address if the entry is marked present
+    fn get_entry(&mut self, index: usize) -> Option<u64> {
+        let d = self.entries[index];
+        if (d & 1) != 0 {
+            Some(d & !0xFFF)
+        }
+        else {
+            None
+        }
+    }
 }
 
 /// A reference to a page table, used for the windowing scheme. A page table is mapped into virtual memory and points to a physical page.
@@ -437,24 +483,24 @@ impl PageTable {
 struct PageTableRef {
     ///A reference to the page table
     table: &'static mut PageTable,
-    ///The physical address of the table
-    physical_address: u64,
+    /// The entry in a page table that allows the mapping to change
+    virtual_mapping: &'static mut u64,
 }
 
 impl PageTableRef {
     /// Create a blank page table ref, using the specified address for viewing a page table.
-    const fn blank(a: &mut PageTable) -> Self {
+    const fn blank(a: &mut PageTable, v: &'static mut u64) -> Self {
         Self {
             table: unsafe { &mut *(a as *mut PageTable) },
-            physical_address: 0,
+            virtual_mapping: v,
         }
     }
 
-    /// Create a page table ref, fuly specified with physical and virtual address.
-    fn new(virt: usize, phys: u64) -> Self {
+    /// Create a page table ref, fully specified with virtual address and page table entry reference.
+    fn new(virt: usize, v: &'static mut u64) -> Self {
         Self {
             table: unsafe { (virt as *mut PageTable).as_mut().unwrap() },
-            physical_address: phys,
+            virtual_mapping: v,
         }
     }
 
@@ -463,17 +509,15 @@ impl PageTableRef {
         self.table as *const PageTable as usize
     }
 
-    /// Set the physical address of the page table
-    fn set_address(&mut self, d: u64) {
-        self.physical_address = d | 1;
-    }
-
-    /// Return the physical address, if it is valid
-    fn address(&self) -> Option<u64> {
-        if (self.physical_address & 1) != 0 {
-            Some(self.physical_address)
-        } else {
-            None
+    /// Update the current page table reference to the given physical address if required, return true if any action was required.
+    fn update(&mut self, phys: u64) -> bool {
+        if phys != *self.virtual_mapping {
+            *self.virtual_mapping = phys | 1;
+            unsafe { x86::tlb::flush(self.table as *const PageTable as usize) };
+            true
+        }
+        else {
+            false
         }
     }
 }
@@ -509,11 +553,15 @@ impl<'a> PagingTableManager<'a> {
     }
 
     /// Map the virtual address as a window to the given physical address. Used in the init function.
-    fn map_window(&mut self, vaddr: usize, phys: u64) {
+    fn map_window(&mut self, vaddr: usize, phys: u64) -> &'static mut u64 {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
         let pdpt_temp = (cr3 & 0xFFFFFFE0) as *mut PageDirectoryPointerTable;
         let pdpt_temp = unsafe { pdpt_temp.as_mut().unwrap() };
-        let page_directory = pdpt_temp.get_entry(vaddr as u32);
+        let mut page_directory = pdpt_temp.get_pagetable(vaddr as u32);
+        if page_directory.is_none() {
+            unimplemented!();
+        }
+        let mut page_directory = page_directory.unwrap();
         let mut page_table = page_directory.entries[(vaddr >> 21) & 0x1FF];
 
         if (page_table & 1) == 0 {
@@ -535,6 +583,7 @@ impl<'a> PagingTableManager<'a> {
         let page_table_index = (vaddr >> 12) & 0x1FF;
         page_directory_entry.entries[page_table_index] = (phys & 0xFFFFFFE0) | 1;
         unsafe { x86::tlb::flush(vaddr) };
+        &mut page_directory_entry.entries[page_table_index]
     }
 
     /// Initialize the object, allocating physical pages as required.
@@ -547,21 +596,44 @@ impl<'a> PagingTableManager<'a> {
         let page_table_window = mm.get_complete_virtual_page();
         drop(mm);
 
-        self.map_window(pdpt_window, cr3 as u64);
-        self.map_window(page_directory_window, 0);
-        self.map_window(page_table_window, 0);
+        let a = self.map_window(pdpt_window, cr3 as u64);
+        let b = self.map_window(page_directory_window, 0);
+        let c = self.map_window(page_table_window, 0);
 
         let pdpt = PageDirectoryPointerTableRef::new(cr3, pdpt_window);
         self.pdpt = MaybeUninit::new(pdpt);
-        self.pt2 = MaybeUninit::new(PageTableRef::new(page_directory_window, 0));
-        self.pt1 = MaybeUninit::new(PageTableRef::new(page_table_window, 0));
+        self.pt2 = MaybeUninit::new(PageTableRef::new(page_directory_window, b));
+        self.pt1 = MaybeUninit::new(PageTableRef::new(page_table_window, c));
     }
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
     fn setup_cache(&mut self, cr3: usize, address: usize) {
         doors_macros2::kernel_print!("Setting up cache for paging {:x}\r\n", address);
+        unsafe { &mut *self.pdpt.as_mut_ptr()}.update(cr3);
+        let mut gigabyte = unsafe {&mut *self.pdpt.as_mut_ptr() }.table.get_entry(address as u32);
+        if gigabyte.is_none() {
+            unimplemented!();
+            gigabyte = unsafe {&mut *self.pdpt.as_mut_ptr() }.table.get_entry(address as u32);
+        }
+        let gigabyte = gigabyte.unwrap();
+        doors_macros2::kernel_print!("gb is {:x}\r\n", gigabyte);
+        unsafe { &mut *self.pt2.as_mut_ptr()}.update(gigabyte);
 
-        loop {}
+        let mut page_directory = unsafe {&mut *self.pdpt.as_mut_ptr() }.table.get_pagetable(address as u32).unwrap();
+        doors_macros2::kernel_print!("page directory is {:p}\r\n", page_directory);
+
+        let pde = page_directory.get_entry((address >> 21) & 0x1FF);
+        let pde = match pde {
+            Some(pde) => {
+                doors_macros2::kernel_print!("page directory entry is {:x}\r\n", pde);
+                pde
+            }
+            None => {
+                doors_macros2::kernel_print!("page directory entry is none\r\n");
+                0
+            }
+        };
+        unsafe { &mut *self.pt1.as_mut_ptr()}.update(pde);
     }
 
     /// Map the specified range of physical addresses to the specified virtual addresses. size corresponds to bytes

@@ -216,7 +216,7 @@ pub extern "C" fn start32() -> ! {
     unsafe {
         memory::PAGE_DIRECTORY_BOOT1.entries[0] = 0x83;
         memory::PAGE_DIRECTORY_BOOT1.entries[1] = 0x200083;
-        memory::PAGE_DIRECTORY_POINTER_TABLE.set_entry(0, &memory::PAGE_DIRECTORY_BOOT1);
+        memory::PAGE_DIRECTORY_POINTER_TABLE.set_pagetable(0, &memory::PAGE_DIRECTORY_BOOT1);
         memory::PAGE_DIRECTORY_POINTER_TABLE.assign_to_cr3();
         let mut cr4 = x86::controlregs::cr4();
         cr4 |= x86::controlregs::Cr4::CR4_ENABLE_PAE | x86::controlregs::Cr4::CR4_ENABLE_PSE;
