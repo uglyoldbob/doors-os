@@ -20,8 +20,9 @@ lazy_static! {
     /// The VGA instance used for x86 kernel printing
     static ref VGA: spin::Mutex<X86VgaTextMode<'static>> =
         spin::Mutex::new(unsafe { X86VgaTextMode::get(0xb8000) });
-    static ref IOPORTS: spin::Mutex<bitarray::BitArray<65536>> =
-        spin::Mutex::new(bitarray::BitArray::new([0; 65536]));
+    /// The entire list of io ports for an x86 machine
+    pub static ref IOPORTS: spin::Mutex<IoPortManager> =
+        spin::Mutex::new(unsafe { IoPortManager::new() });
 }
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
@@ -29,6 +30,121 @@ lazy_static! {
 static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
     memory::HeapManager::new(&boot::PAGING_MANAGER, &boot::VIRTUAL_MEMORY_ALLOCATOR),
 );
+
+/// A reference to a single io port
+pub struct IoPortRef {
+    /// The address of the io port
+    r: u16,
+}
+
+/// The trait that allows reading and writing to and from io ports
+pub trait IoReadWrite {
+    /// Read data from the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
+    fn port_read(port: IoPortRef) -> Self;
+    /// Write data to the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
+    fn port_write(port: IoPortRef, val: Self);
+}
+
+impl IoReadWrite for u8 {
+    fn port_read(port: IoPortRef) -> Self {
+        unsafe {
+            x86::io::inb(port.r)
+        }
+    }
+
+    fn port_write(port: IoPortRef, val: Self) {
+        unsafe {
+            x86::io::outb(port.r, val);
+        }
+    }
+}
+
+impl IoReadWrite for u16 {
+    fn port_read(port: IoPortRef) -> Self {
+        unsafe {
+            x86::io::inw(port.r)
+        }
+    }
+
+    fn port_write(port: IoPortRef, val: Self) {
+        unsafe {
+            x86::io::outw(port.r, val);
+        }
+    }
+}
+
+impl IoReadWrite for u32 {
+    fn port_read(port: IoPortRef) -> Self {
+        unsafe {
+            x86::io::inl(port.r)
+        }
+    }
+
+    fn port_write(port: IoPortRef, val: Self) {
+        unsafe {
+            x86::io::outl(port.r, val);
+        }
+    }
+}
+
+/// An array of io ports.
+pub struct IoPortArray {
+    /// The first port address of the array.
+    base: u16,
+    /// The quantity of ports in the array.
+    quantity: u16,
+}
+
+impl IoPortArray {
+    /// Get a port reference, ensuring that it is not out of bounds for the array. Will panic if out of bounds.
+    pub fn port(&self, index: u16) -> IoPortRef {
+        assert!(index < self.quantity);
+        IoPortRef {
+            r: self.base + index,
+        }
+    }
+}
+
+/// Keeps track of all io ports on the system.
+pub struct IoPortManager {
+    ports: [usize; 65536 / core::mem::size_of::<usize>()],
+}
+
+impl IoPortManager {
+    /// Create a new io port manager. All ports are assumed to be unused initially.
+    pub unsafe fn new() -> Self {
+        Self {
+            ports: [0; 65536 / core::mem::size_of::<usize>()],
+        }
+    }
+
+    /// Try to get some io ports from the system.
+    pub fn get_ports(&mut self, base: u16, quantity: u16) -> Option<IoPortArray> {
+        let mut possible = true;
+        for p in base..base+quantity {
+            let index = p / core::mem::size_of::<usize>() as u16;
+            let shift = p % core::mem::size_of::<usize>() as u16;
+            let d = self.ports[index as usize] & 1<<shift;
+            if d != 0 {
+                possible = false;
+            }
+        }
+        if possible {
+            for p in base..base+quantity {
+                let index = p / core::mem::size_of::<usize>() as u16;
+                let shift = p % core::mem::size_of::<usize>() as u16;
+                self.ports[index as usize] |= 1<<shift;
+            }
+            Some(IoPortArray {
+                base,
+                quantity,
+            })
+        }
+        else {
+            None
+        }
+    }
+}
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {

@@ -1,27 +1,6 @@
 //! The kernel module for x86 vga text mode.
 
-/// Type used for the pc vga text mode output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(C)]
-pub struct VgaChar {
-    /// The ascii character to print to the screen
-    ascii: u8,
-    /// The foreground and background color for the character
-    color: u8,
-}
-
-impl core::ops::Deref for VgaChar {
-    type Target = Self;
-    fn deref(&self) -> &Self::Target {
-        self
-    }
-}
-
-impl core::ops::DerefMut for VgaChar {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self
-    }
-}
+use super::VgaChar;
 
 /// The memory in use for the x86 vga hardware
 pub struct X86VgaTextHardware {
@@ -42,12 +21,10 @@ pub struct X86VgaTextMode<'a> {
 impl<'a> X86VgaTextMode<'a> {
     /// Gets an instance of the X86Vga. This should be protected by a singleton type pattern to prevent multiple instances from being handed out to the kernel.
     pub unsafe fn get(adr: usize) -> Self {
-        unsafe {
-            Self {
-                hw: &mut *(adr as *mut X86VgaTextHardware),
-                column: 0,
-                row: 0,
-            }
+        Self {
+            hw: &mut *(adr as *mut X86VgaTextHardware),
+            column: 0,
+            row: 0,
         }
     }
 }

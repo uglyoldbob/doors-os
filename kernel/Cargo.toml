@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 arraystring = {version = "0.3.0", default-features=false }
-bitarray = "0.10.0"
 doors_kernel_api = { path = "../doors_kernel_api", version = "0.1.0" }
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
