@@ -42,11 +42,14 @@ impl<'a> doors_kernel_api::video::TextDisplay for X86VgaTextMode<'a> {
                 } else {
                     for i in 0..24 {
                         for j in 0..80 {
-                            self.hw.buf[i][j].write(self.hw.buf[i+1][j].read());
+                            self.hw.buf[i][j].write(self.hw.buf[i + 1][j].read());
                         }
                     }
                     for i in 0..80 {
-                        self.hw.buf[24][i].write(VgaChar { ascii: b' ', color: 0x0f});
+                        self.hw.buf[24][i].write(VgaChar {
+                            ascii: b' ',
+                            color: 0x0f,
+                        });
                     }
                 }
             }

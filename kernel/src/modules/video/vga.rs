@@ -1,7 +1,7 @@
 //! Kernel module for x86 vga text using video mode
 
-use crate::boot::x86::IOPORTS;
 use crate::boot::x86::IoPortArray;
+use crate::boot::x86::IOPORTS;
 
 /// The memory portion of the x86 hardware
 pub struct X86VgaHardware {

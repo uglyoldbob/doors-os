@@ -142,26 +142,22 @@ impl IoPortManager {
     /// Try to get some io ports from the system.
     pub fn get_ports(&mut self, base: u16, quantity: u16) -> Option<IoPortArray> {
         let mut possible = true;
-        for p in base..base+quantity {
+        for p in base..base + quantity {
             let index = p / core::mem::size_of::<usize>() as u16;
             let shift = p % core::mem::size_of::<usize>() as u16;
-            let d = self.ports[index as usize] & 1<<shift;
+            let d = self.ports[index as usize] & 1 << shift;
             if d != 0 {
                 possible = false;
             }
         }
         if possible {
-            for p in base..base+quantity {
+            for p in base..base + quantity {
                 let index = p / core::mem::size_of::<usize>() as u16;
                 let shift = p % core::mem::size_of::<usize>() as u16;
-                self.ports[index as usize] |= 1<<shift;
+                self.ports[index as usize] |= 1 << shift;
             }
-            Some(IoPortArray {
-                base,
-                quantity,
-            })
-        }
-        else {
+            Some(IoPortArray { base, quantity })
+        } else {
             None
         }
     }

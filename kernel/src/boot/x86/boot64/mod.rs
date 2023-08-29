@@ -177,6 +177,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
             Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
         }
         if physical_address < (1 << 22) {
+            doors_macros2::kernel_print!("acpi got address {:x}\r\n", physical_address);
             acpi::PhysicalMapping::new(
                 physical_address,
                 NonNull::new(physical_address as *mut T).unwrap(),
@@ -205,6 +206,8 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 loop {}
             }
             let vstart = b.as_mut_ptr() as usize + err - size;
+
+            doors_macros2::kernel_print!("acpi got address {:x}\r\n", vstart);
 
             let r = acpi::PhysicalMapping::new(
                 start as usize,
@@ -297,6 +300,8 @@ pub extern "C" fn start64() -> ! {
         vmm: &VIRTUAL_MEMORY_ALLOCATOR,
     };
 
+    doors_macros2::kernel_print!("About to open acpi stuff\r\n");
+
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
         doors_macros2::kernel_print!(
             "rsdpv2 at {:x} revision {}\r\n",
@@ -338,6 +343,7 @@ pub extern "C" fn start64() -> ! {
     for v in &acpi.ssdts {
         doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
     }
+
     if let Some(v) = &acpi.dsdt {
         doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
     }
@@ -351,6 +357,8 @@ pub extern "C" fn start64() -> ! {
             t.validated
         );
     }
+
+    doors_macros2::kernel_print!("acpi: is {:p}\r\n", &acpi);
 
     let pi = PlatformInfo::new(&acpi);
     if let Ok(pi) = pi {

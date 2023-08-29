@@ -106,7 +106,7 @@ impl<'a> HeapManager<'a> {
     }
 
     /// Print details of the heap
-    fn print(&self) {
+    pub fn print(&self) {
         doors_macros2::kernel_print!("mm: {:p}\r\n", self.mm);
         doors_macros2::kernel_print!("vmm: {:p}\r\n", self.vmm);
         if let Some(mut r) = self.head {
@@ -176,13 +176,13 @@ impl<'a> HeapManager<'a> {
                 return core::ptr::null_mut();
             }
         }
-        doors_macros2::kernel_print!("Done expanding heap\r\n");
 
         let mut elem = self.head;
         let mut prev_elem: Option<NonNull<HeapNode>> = None;
         let mut best_fit_link: &mut Option<NonNull<HeapNode>> = &mut None;
         let mut best_fit: Option<NonNull<HeapNode>> = None;
         let mut best_fit_ha: Option<HeapNodeAlign> = None;
+
         while let Some(mut h) = elem {
             let ha = unsafe { h.as_mut() }.calc_alignment(layout.size(), layout.align());
             if ha.size_needed <= unsafe { h.as_ref() }.size {
@@ -210,7 +210,7 @@ impl<'a> HeapManager<'a> {
             elem = unsafe { h.as_ref() }.next;
         }
 
-        if let Some(best) = best_fit {
+        let retval = if let Some(best) = best_fit {
             let ha = best_fit_ha.unwrap();
             let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
                 if (unsafe { best.as_ref() }.size - ha.size_needed)
@@ -224,6 +224,7 @@ impl<'a> HeapManager<'a> {
                     let mut node =
                         unsafe { NonNull::<HeapNode>::new_unchecked(after_node as *mut HeapNode) };
                     unsafe { node.as_mut() }.size = unsafe { best.as_ref() }.size - ha.size_needed;
+                    unsafe { node.as_mut() }.next = unsafe { best_fit_link.unwrap().as_ref().next };
                     *best_fit_link = Some(node);
                     (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                 }
@@ -245,7 +246,8 @@ impl<'a> HeapManager<'a> {
         } else {
             doors_macros2::kernel_print!("Heap node not found?\r\n");
             core::ptr::null_mut()
-        }
+        };
+        retval
     }
 
     /// Perform an actual deallocation
