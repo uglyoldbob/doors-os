@@ -616,20 +616,17 @@ impl<'a> PagingTableManager<'a> {
             gigabyte = unsafe {&mut *self.pdpt.as_mut_ptr() }.table.get_entry(address as u32);
         }
         let gigabyte = gigabyte.unwrap();
-        doors_macros2::kernel_print!("gb is {:x}\r\n", gigabyte);
         unsafe { &mut *self.pt2.as_mut_ptr()}.update(gigabyte);
 
         let mut page_directory = unsafe {&mut *self.pdpt.as_mut_ptr() }.table.get_pagetable(address as u32).unwrap();
-        doors_macros2::kernel_print!("page directory is {:p}\r\n", page_directory);
 
         let pde = page_directory.get_entry((address >> 21) & 0x1FF);
         let pde = match pde {
             Some(pde) => {
-                doors_macros2::kernel_print!("page directory entry is {:x}\r\n", pde);
                 pde
             }
             None => {
-                doors_macros2::kernel_print!("page directory entry is none\r\n");
+                unimplemented!();
                 0
             }
         };
