@@ -374,7 +374,7 @@ pub extern "C" fn start32() -> ! {
         Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
     }
 
-    for v in acpi.ssdts {
+    for v in &acpi.ssdts {
         tp.clear();
         match core::fmt::write(
             &mut tp,
@@ -384,7 +384,7 @@ pub extern "C" fn start32() -> ! {
             Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
         }
     }
-    if let Some(v) = acpi.dsdt {
+    if let Some(v) = &acpi.dsdt {
         tp.clear();
         match core::fmt::write(
             &mut tp,
@@ -395,7 +395,7 @@ pub extern "C" fn start32() -> ! {
         }
     }
 
-    for (s, t) in acpi.sdts {
+    for (s, t) in &acpi.sdts {
         tp.clear();
         match core::fmt::write(
             &mut tp,
@@ -410,6 +410,11 @@ pub extern "C" fn start32() -> ! {
             Ok(_) => super::VGA.lock().print_str(tp.as_str()),
             Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
         }
+    }
+
+    let pi = acpi::PlatformInfo::new(&acpi);
+    if let Ok(pi) = pi {
+        doors_macros2::kernel_print!("pi: is {:p}\r\n", &pi);
     }
 
     unsafe {

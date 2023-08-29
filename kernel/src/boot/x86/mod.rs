@@ -9,6 +9,9 @@ pub mod boot64;
 #[cfg(target_arch = "x86_64")]
 pub use boot64 as boot;
 
+#[cfg(target_arch = "x86_64")]
+use x86_64::instructions::port::{PortRead, PortWrite};
+
 #[cfg(target_arch = "x86")]
 pub mod boot32;
 #[cfg(target_arch = "x86")]
@@ -48,13 +51,19 @@ pub trait IoReadWrite {
 impl IoReadWrite for u8 {
     fn port_read(port: IoPortRef) -> Self {
         unsafe {
-            x86::io::inb(port.r)
+            #[cfg(target_arch = "x86")]
+            return x86::io::inb(port.r);
+            #[cfg(target_arch = "x86_64")]
+            return Self::read_from_port(port.r);
         }
     }
 
     fn port_write(port: IoPortRef, val: Self) {
         unsafe {
+            #[cfg(target_arch = "x86")]
             x86::io::outb(port.r, val);
+            #[cfg(target_arch = "x86_64")]
+            Self::read_from_port(port.r);
         }
     }
 }
@@ -62,13 +71,19 @@ impl IoReadWrite for u8 {
 impl IoReadWrite for u16 {
     fn port_read(port: IoPortRef) -> Self {
         unsafe {
-            x86::io::inw(port.r)
+            #[cfg(target_arch = "x86")]
+            return x86::io::inw(port.r);
+            #[cfg(target_arch = "x86_64")]
+            return Self::read_from_port(port.r);
         }
     }
 
     fn port_write(port: IoPortRef, val: Self) {
         unsafe {
+            #[cfg(target_arch = "x86")]
             x86::io::outw(port.r, val);
+            #[cfg(target_arch = "x86_64")]
+            Self::write_to_port(port.r, val);
         }
     }
 }
@@ -76,13 +91,19 @@ impl IoReadWrite for u16 {
 impl IoReadWrite for u32 {
     fn port_read(port: IoPortRef) -> Self {
         unsafe {
-            x86::io::inl(port.r)
+            #[cfg(target_arch = "x86")]
+            return x86::io::inl(port.r);
+            #[cfg(target_arch = "x86_64")]
+            return Self::read_from_port(port.r);
         }
     }
 
     fn port_write(port: IoPortRef, val: Self) {
         unsafe {
+            #[cfg(target_arch = "x86")]
             x86::io::outl(port.r, val);
+            #[cfg(target_arch = "x86_64")]
+            Self::write_to_port(port.r, val);
         }
     }
 }

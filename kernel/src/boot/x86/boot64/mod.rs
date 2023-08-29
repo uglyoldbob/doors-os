@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use super::VGA;
+use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -272,26 +273,8 @@ pub extern "C" fn start64() -> ! {
         panic!("Physical memory manager unavailable\r\n");
     };
 
-    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating();
-
-    let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
-        &VIRTUAL_MEMORY_ALLOCATOR,
-    );
-    let b =
-        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
-            b,
-        );
-    let b = if (b.as_ptr() as u64) < (1 << 22) {
-        let b = Box::<memory::Page2Mb, &crate::Locked<memory::BumpAllocator>>::new_uninit_in(
-            &VIRTUAL_MEMORY_ALLOCATOR,
-        );
-        Box::<core::mem::MaybeUninit<memory::Page2Mb>, &crate::Locked<memory::BumpAllocator>>::leak(
-            b,
-        )
-    } else {
-        b
-    };
-    PAGING_MANAGER.lock().init(b.as_ptr() as usize);
+    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x3fffff);
+    PAGING_MANAGER.lock().init();
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
@@ -352,14 +335,14 @@ pub extern "C" fn start64() -> ! {
     let acpi = acpi.unwrap();
     doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision);
 
-    for v in acpi.ssdts {
+    for v in &acpi.ssdts {
         doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
     }
-    if let Some(v) = acpi.dsdt {
+    if let Some(v) = &acpi.dsdt {
         doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
     }
 
-    for (s, t) in acpi.sdts {
+    for (s, t) in &acpi.sdts {
         doors_macros2::kernel_print!(
             "sdt {} {:x} {:x} {}\r\n",
             s.as_str(),
@@ -367,6 +350,11 @@ pub extern "C" fn start64() -> ! {
             t.length,
             t.validated
         );
+    }
+
+    let pi = PlatformInfo::new(&acpi);
+    if let Ok(pi) = pi {
+        doors_macros2::kernel_print!("pi: is {:p}\r\n", &pi);
     }
 
     unsafe {
