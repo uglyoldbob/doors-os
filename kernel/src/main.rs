@@ -11,14 +11,11 @@
 
 extern crate alloc;
 
+pub mod boot;
 pub mod config;
+pub mod modules;
 
 use doors_kernel_api::video::TextDisplay;
-
-#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-mod multiboot;
-#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-mod x86;
 
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
 pub struct Locked<A> {
@@ -50,7 +47,7 @@ impl<A> Locked<A> {
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 #[link_section = ".multiboot"]
 #[used]
-static MULTIBOOT_HEADER: multiboot::Multiboot = multiboot::Multiboot::new();
+static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot::new();
 
 extern "C" {
     /// Defines the start of the kernel for initial kernel load. This is defined by the linker script.

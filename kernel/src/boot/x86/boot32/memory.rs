@@ -9,7 +9,7 @@ use multiboot2::MemoryMapTag;
 
 use crate::Locked;
 
-use crate::x86::VGA;
+use crate::boot::x86::VGA;
 use doors_kernel_api::FixedString;
 
 /// The page directory pointer table, used for the paging system in PAE paging.

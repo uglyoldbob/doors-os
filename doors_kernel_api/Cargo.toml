@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 arraystring = {version = "0.3.0", default-features=false }
-spin = "0.9.5"
+spin = "0.9.8"
