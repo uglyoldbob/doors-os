@@ -20,15 +20,13 @@ pub struct X86VgaMode<'a> {
     /// A mutable reference to the hardware memory
     hw: &'a mut X86VgaHardware,
     /// The io ports for the vga hardware
-    ports: IoPortArray,
+    ports: IoPortArray<'a>,
 }
 
 impl<'a> X86VgaMode<'a> {
     /// Gets an instance of the X86Vga. This should be protected by a singleton type pattern to prevent multiple instances from being handed out to the kernel.
     pub unsafe fn get(adr: usize, base: u16) -> Option<Self> {
-        let mut io = IOPORTS.lock();
-        let ports = io.get_ports(base, 16).unwrap();
-        drop(io);
+        let ports = IOPORTS.get_ports(base, 16).unwrap();
         Some(Self {
             hw: &mut *(adr as *mut X86VgaHardware),
             column: 0,

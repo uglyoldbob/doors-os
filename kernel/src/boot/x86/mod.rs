@@ -1,5 +1,6 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
+use crate::Locked;
 use crate::modules::video::text::X86VgaTextMode;
 use crate::VGA;
 use alloc::boxed::Box;
@@ -24,13 +25,13 @@ pub mod memory;
 
 lazy_static! {
     /// The entire list of io ports for an x86 machine
-    pub static ref IOPORTS: spin::Mutex<IoPortManager> =
-        spin::Mutex::new(unsafe { IoPortManager::new() });
+    pub static ref IOPORTS: Locked<IoPortManager> =
+        Locked::new(unsafe { IoPortManager::new() });
 }
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
-static HEAP_MANAGER: crate::Locked<memory::HeapManager> = crate::Locked::new(
+static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(
     memory::HeapManager::new(&boot::PAGING_MANAGER, &boot::VIRTUAL_MEMORY_ALLOCATOR),
 );
 
@@ -63,7 +64,7 @@ impl IoReadWrite for u8 {
             #[cfg(target_arch = "x86")]
             x86::io::outb(port.r, val);
             #[cfg(target_arch = "x86_64")]
-            Self::read_from_port(port.r);
+            Self::write_to_port(port.r, val);
         }
     }
 }
@@ -109,14 +110,22 @@ impl IoReadWrite for u32 {
 }
 
 /// An array of io ports.
-pub struct IoPortArray {
+pub struct IoPortArray<'a> {
     /// The first port address of the array.
     base: u16,
     /// The quantity of ports in the array.
     quantity: u16,
+    /// A reference to the ioportmanager
+    manager: &'a Locked<IoPortManager>,
 }
 
-impl IoPortArray {
+impl<'a> Drop for IoPortArray<'a> {
+    fn drop(&mut self) {
+        self.manager.return_ports(self)
+    }
+}
+
+impl<'a> IoPortArray<'a> {
     /// Get a port reference, ensuring that it is not out of bounds for the array. Will panic if out of bounds.
     pub fn port(&self, index: u16) -> IoPortRef {
         assert!(index < self.quantity);
@@ -131,21 +140,15 @@ pub struct IoPortManager {
     ports: [usize; 65536 / core::mem::size_of::<usize>()],
 }
 
-impl IoPortManager {
-    /// Create a new io port manager. All ports are assumed to be unused initially.
-    pub unsafe fn new() -> Self {
-        Self {
-            ports: [0; 65536 / core::mem::size_of::<usize>()],
-        }
-    }
-
+impl Locked<IoPortManager> {
     /// Try to get some io ports from the system.
-    pub fn get_ports(&mut self, base: u16, quantity: u16) -> Option<IoPortArray> {
+    pub fn get_ports(&self, base: u16, quantity: u16) -> Option<IoPortArray> {
+        let mut manager = self.lock();
         let mut possible = true;
         for p in base..base + quantity {
             let index = p / core::mem::size_of::<usize>() as u16;
             let shift = p % core::mem::size_of::<usize>() as u16;
-            let d = self.ports[index as usize] & 1 << shift;
+            let d = manager.ports[index as usize] & 1 << shift;
             if d != 0 {
                 possible = false;
             }
@@ -154,11 +157,30 @@ impl IoPortManager {
             for p in base..base + quantity {
                 let index = p / core::mem::size_of::<usize>() as u16;
                 let shift = p % core::mem::size_of::<usize>() as u16;
-                self.ports[index as usize] |= 1 << shift;
+                manager.ports[index as usize] |= 1 << shift;
             }
-            Some(IoPortArray { base, quantity })
+            Some(IoPortArray { base, quantity, manager: self })
         } else {
             None
+        }
+    }
+
+    /// Returns a list of port previously obtained fromm the manager
+    fn return_ports(&self, ports: &mut IoPortArray) {
+        let mut manager = self.lock();
+        for p in ports.base..ports.base+ports.quantity {
+            let index = p / core::mem::size_of::<usize>() as u16;
+                let shift = p % core::mem::size_of::<usize>() as u16;
+                manager.ports[index as usize] &= !(1 << shift);
+        }
+    }
+}
+
+impl IoPortManager {
+    /// Create a new io port manager. All ports are assumed to be unused initially.
+    pub unsafe fn new() -> Self {
+        Self {
+            ports: [0; 65536 / core::mem::size_of::<usize>()],
         }
     }
 }
@@ -166,7 +188,7 @@ impl IoPortManager {
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
     let vga = unsafe { X86VgaTextMode::get(0xb8000) };
-    let mut b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(vga);
+    let b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(vga);
     let mut v = VGA.lock();
     v.replace(b);
     drop(v);

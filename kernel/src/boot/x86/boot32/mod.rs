@@ -77,7 +77,7 @@ lazy_static! {
 /// The divide by zero handler
 #[interrupt]
 pub extern "C" fn divide_by_zero() {
-    super::VGA.lock().print_str("Divide by zero\r\n");
+    doors_macros2::kernel_print!("Divide by zero\r\n");
     loop {}
 }
 
@@ -103,16 +103,16 @@ struct Big {
 /// The panic handler for the 32-bit kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    super::VGA.lock().print_str("PANIC AT THE DISCO!\r\n");
+    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
     if let Some(m) = info.payload().downcast_ref::<&str>() {
-        super::VGA.lock().print_str(m);
+        doors_macros2::kernel_print!("{}", m);
     }
 
     if let Some(t) = info.location() {
-        super::VGA.lock().print_str(t.file());
+        doors_macros2::kernel_print!("{}", t.file());
         doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
     }
-    super::VGA.lock().print_str("PANIC SOMEWHERE ELSE!\r\n");
+    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
 
@@ -209,8 +209,8 @@ pub fn whatever(l: core::alloc::Layout) -> ! {
 /// The entry point for the 32 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start32() -> ! {
-    super::VGA.lock().print_str(GREETING);
-    super::VGA.lock().print_str("32 bit code\r\n");
+    doors_macros2::kernel_print!("{}", GREETING);
+    doors_macros2::kernel_print!("32 bit code\r\n");
 
     //Enable paging
     unsafe {
@@ -276,36 +276,18 @@ pub extern "C" fn start32() -> ! {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
 
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("test is {:x}\r\n", test.as_ref() as *const u8 as usize),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("test is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
 
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
 
     let test: Box<[Big]> = Box::new([Big { data: 5 }; 32]);
-    let mut tp: FixedString = FixedString::new();
-    match core::fmt::write(&mut tp, format_args!("test var is {:p}\r\n", test.as_ptr())) {
-        Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-        Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-    }
+    doors_macros2::kernel_print!("test var is {:p}\r\n", test.as_ptr());
     drop(test);
 
     let acpi_handler = Acpi {
@@ -314,18 +296,10 @@ pub extern "C" fn start32() -> ! {
     };
 
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!(
-                "rsdpv2 at {:x} revision {}\r\n",
+        doors_macros2::kernel_print!("rsdpv2 at {:x} revision {}\r\n",
                 rsdp2.xsdt_address() as *const u8 as usize,
                 rsdp2.revision()
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+            );
         Some(
             unsafe {
                 acpi::AcpiTables::from_rsdt(
@@ -337,26 +311,14 @@ pub extern "C" fn start32() -> ! {
             .unwrap(),
         )
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!(
-                "rsdpv1 at {:x}\r\n",
+        doors_macros2::kernel_print!("rsdpv1 at {:x}\r\n",
                 rsdp1.rsdt_address() as *const u8 as usize
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+            );
         let t = unsafe {
             acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
         };
         if let Err(e) = &t {
-            let mut tp: FixedString = FixedString::new();
-            match core::fmt::write(&mut tp, format_args!("acpi error {:?}\r\n", e)) {
-                Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-                Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-            }
+            doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
         }
         Some(t.unwrap())
     } else {
@@ -364,52 +326,26 @@ pub extern "C" fn start32() -> ! {
     };
 
     if acpi.is_none() {
-        super::VGA.lock().print_str("No ACPI table found\r\n");
+        doors_macros2::kernel_print!("No ACPI table found\r\n");
     }
     let acpi = acpi.unwrap();
 
-    let mut tp: FixedString = FixedString::new();
-    match core::fmt::write(&mut tp, format_args!("acpi rev {:x}\r\n", acpi.revision)) {
-        Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-        Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-    }
+    doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision);
 
     for v in &acpi.ssdts {
-        tp.clear();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("ssdt {:x} {:x}\r\n", v.address, v.length),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
     }
     if let Some(v) = &acpi.dsdt {
-        tp.clear();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("dsdt {:x} {:x}\r\n", v.address, v.length),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
     }
 
     for (s, t) in &acpi.sdts {
-        tp.clear();
-        match core::fmt::write(
-            &mut tp,
-            format_args!(
-                "sdt {} {:x} {:x} {}\r\n",
+        doors_macros2::kernel_print!("sdt {} {:x} {:x} {}\r\n",
                 s.as_str(),
                 t.physical_address,
                 t.length,
                 t.validated
-            ),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+            );
     }
 
     let pi = acpi::PlatformInfo::new(&acpi);
