@@ -64,7 +64,9 @@ extern "C" {
 
 fn main() -> ! {
     let a = unsafe { modules::video::vga::X86VgaMode::get(0xa0000, 0x3c0) };
-    if let Some(a) = a {
+    if let Some(mut a) = a {
+        let memq = a.detect_memory();
+        doors_macros2::kernel_print!("Video card RAM: {} bytes\r\n", memq);
         let mut b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(a);
         let mut v = VGA.lock();
         v.replace(b);
