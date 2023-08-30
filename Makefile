@@ -17,8 +17,11 @@ bochs64: build/cd64.img
 bochs32: build/cd32.img
 	bochs -f bochsrc32.txt -q
 
-virtualbox: build/cd64.img
+virtualbox32: build/cd32.img
 	VirtualBoxVM --startvm test --dbg --debug
+
+virtualbox64: build/cd64.img
+	VirtualBoxVM --startvm test64 --dbg --debug
 
 gdb64: build/cd64.img
 	gdb -x script64.gdb

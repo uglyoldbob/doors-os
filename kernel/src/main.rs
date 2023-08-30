@@ -61,5 +61,11 @@ fn main(vga: &spin::Mutex<impl TextDisplay>) -> ! {
     v.print_str("Entered main main function\r\n");
     drop(v);
 
+    let a = unsafe { modules::video::vga::X86VgaMode::get(0xa0000, 0x3c0) };
+
+    let mut v = vga.lock();
+    v.print_str("Detected vga hardware\r\n");
+    drop(v);
+
     loop {}
 }

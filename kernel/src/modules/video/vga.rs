@@ -1,5 +1,7 @@
 //! Kernel module for x86 vga text using video mode
 
+use doors_kernel_api::video::TextDisplay;
+
 use crate::boot::x86::IoPortArray;
 use crate::boot::x86::IOPORTS;
 
@@ -33,5 +35,10 @@ impl<'a> X86VgaMode<'a> {
             row: 0,
             ports,
         })
+    }
+}
+
+impl <'a> TextDisplay for X86VgaMode<'a> {
+    fn print_char(&mut self, d: char) {
     }
 }
