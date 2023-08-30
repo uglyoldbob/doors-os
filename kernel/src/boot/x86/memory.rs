@@ -5,7 +5,7 @@ use core::ptr::NonNull;
 use doors_kernel_api::video::TextDisplay;
 use doors_kernel_api::FixedString;
 
-use super::VGA;
+use crate::VGA;
 use crate::Locked;
 
 use super::boot::memory::{BumpAllocator, Page, PagingTableManager};

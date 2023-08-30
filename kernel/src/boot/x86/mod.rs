@@ -1,6 +1,7 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
 use crate::modules::video::text::X86VgaTextMode;
+use crate::VGA;
 use alloc::boxed::Box;
 use doors_kernel_api::FixedString;
 use doors_kernel_api::video::TextDisplay;
@@ -22,9 +23,6 @@ pub use boot32 as boot;
 pub mod memory;
 
 lazy_static! {
-    /// The VGA instance used for x86 kernel printing
-    static ref VGA: spin::Mutex<Option<Box<dyn TextDisplay>>> =
-        spin::Mutex::new(None);
     /// The entire list of io ports for an x86 machine
     pub static ref IOPORTS: spin::Mutex<IoPortManager> =
         spin::Mutex::new(unsafe { IoPortManager::new() });

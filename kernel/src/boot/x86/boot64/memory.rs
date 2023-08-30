@@ -4,11 +4,8 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 use alloc::{boxed::Box, vec::Vec};
-use doors_kernel_api::video::TextDisplay;
-use doors_kernel_api::FixedString;
 use multiboot2::{MemoryAreaType, MemoryMapTag};
 
-use crate::boot::x86::VGA;
 use crate::Locked;
 
 extern "C" {

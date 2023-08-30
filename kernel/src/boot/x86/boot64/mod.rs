@@ -1,6 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
-use super::VGA;
+use crate::VGA;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use alloc::vec::Vec;

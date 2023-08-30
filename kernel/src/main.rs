@@ -15,6 +15,8 @@ pub mod boot;
 pub mod config;
 pub mod modules;
 
+use alloc::boxed::Box;
+use doors_kernel_api::FixedString;
 use doors_kernel_api::video::TextDisplay;
 
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
@@ -49,6 +51,10 @@ impl<A> Locked<A> {
 #[used]
 static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot::new();
 
+/// The VGA instance used for x86 kernel printing
+static VGA: spin::Mutex<Option<Box<dyn TextDisplay>>> =
+    spin::Mutex::new(None);
+
 extern "C" {
     /// Defines the start of the kernel for initial kernel load. This is defined by the linker script.
     pub static START_OF_KERNEL: u8;
@@ -58,6 +64,12 @@ extern "C" {
 
 fn main() -> ! {
     let a = unsafe { modules::video::vga::X86VgaMode::get(0xa0000, 0x3c0) };
-
+    if let Some(a) = a {
+        let mut b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(a);
+        let mut v = VGA.lock();
+        v.replace(b);
+        drop(v);
+    }
+    doors_macros2::kernel_print!("I am groot\r\n");
     loop {}
 }
