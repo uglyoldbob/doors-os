@@ -77,7 +77,7 @@ impl IoReadWrite<u16> for IoPortRef<u16> {
     fn port_read(&mut self) -> u16 {
         unsafe {
             #[cfg(target_arch = "x86")]
-            return x86::io::inw(port.r);
+            return x86::io::inw(self.r);
             #[cfg(target_arch = "x86_64")]
             return u16::read_from_port(self.r);
         }
