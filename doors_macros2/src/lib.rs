@@ -9,12 +9,16 @@ macro_rules! kernel_print {
     ( $($arg:tt)* ) => {
         {
             let mut a: FixedString = FixedString::new();
-            match core::fmt::write(
-                &mut a,
-                format_args!($($arg)*),
-            ) {
-                Ok(_) => VGA.lock().print_str(a.as_str()),
-                Err(_) => VGA.lock().print_str("Error parsing string\r\n"),
+            let mut v = VGA.lock();
+            let mut vga = v.as_mut();
+            if let Some(vga) = vga {
+                match core::fmt::write(
+                    &mut a,
+                    format_args!($($arg)*),
+                ) {
+                    Ok(_) => vga.print_str(a.as_str()),
+                    Err(_) => vga.print_str("Error parsing string\r\n"),
+                }
             }
         }
     };

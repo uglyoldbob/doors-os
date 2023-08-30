@@ -1,6 +1,7 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
 use crate::modules::video::text::X86VgaTextMode;
+use alloc::boxed::Box;
 use doors_kernel_api::FixedString;
 use doors_kernel_api::video::TextDisplay;
 use lazy_static::lazy_static;
@@ -22,8 +23,8 @@ pub mod memory;
 
 lazy_static! {
     /// The VGA instance used for x86 kernel printing
-    static ref VGA: spin::Mutex<X86VgaTextMode<'static>> =
-        spin::Mutex::new(unsafe { X86VgaTextMode::get(0xb8000) });
+    static ref VGA: spin::Mutex<Option<Box<dyn TextDisplay>>> =
+        spin::Mutex::new(None);
     /// The entire list of io ports for an x86 machine
     pub static ref IOPORTS: spin::Mutex<IoPortManager> =
         spin::Mutex::new(unsafe { IoPortManager::new() });
@@ -166,18 +167,11 @@ impl IoPortManager {
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
-    doors_macros2::kernel_print!("This is another test\r\n");
-    let mut vga = unsafe { X86VgaTextMode::get(0xb8000) };
-    doors_macros2::kernel_print!("This is another test2\r\n");
+    let vga = unsafe { X86VgaTextMode::get(0xb8000) };
     let mut b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(vga);
-    b.print_str("This is a test\r\n");
-    b.print_str("This is a test2\r\n");
-    b.print_str("This is a test3\r\n");
-    doors_macros2::kernel_print!("This is another test3\r\n");
-    let mut vga = unsafe { X86VgaTextMode::get(0xb8000) };
-    vga.print_str("This is two test\r\n");
-    vga.print_str("This is two test2\r\n");
-    vga.print_str("This is two test3\r\n");
-    //v.replace(&mut b);
+    let mut v = VGA.lock();
+    v.replace(b);
+    drop(v);
+    doors_macros2::kernel_print!("This is a test\r\n");
     super::super::main();
 }
