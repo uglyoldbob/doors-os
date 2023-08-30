@@ -118,7 +118,7 @@ impl<'a> HeapManager<'a> {
                 doors_macros2::kernel_print!(
                     "heap node is {:?} {:x}\r\n",
                     unsafe { r.as_ptr() },
-                    addr
+                    addr + unsafe { r.as_mut() }.size - 1
                 );
 
                 if let Some(nr) = unsafe { r.as_mut() }.next {
@@ -217,8 +217,8 @@ impl<'a> HeapManager<'a> {
                     < core::mem::size_of::<HeapNode>()
                 {
                     doors_macros2::kernel_print!("The entire block will be used\r\n");
-                    self.print();
-                    unimplemented!();
+                    *best_fit_link = unsafe { best.as_ref() }.next;
+                    (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                 } else {
                     let after_node = unsafe { best.as_ref() }.start() + ha.size_needed;
                     let mut node =

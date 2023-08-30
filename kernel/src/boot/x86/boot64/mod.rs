@@ -81,17 +81,14 @@ lazy_static! {
 /// The divide by zero handler
 #[interrupt_64]
 pub extern "C" fn divide_by_zero() {
-    super::VGA.lock().print_str("Divide by zero\r\n");
+    doors_macros2::kernel_print!("Divide by zero\r\n");
     loop {}
 }
 
 ///The handler for segment not present
 #[interrupt_arg_64]
 pub extern "C" fn segment_not_present(arg: u32) {
-    let mut a: FixedString = FixedString::new();
-    core::fmt::write(&mut a, format_args!("Segment not present {:x}\r\n", arg))
-        .expect("Error occurred while trying to write in String\r\n");
-    super::VGA.lock().print_str(a.as_str());
+    doors_macros2::kernel_print!("Segment not present {:x}\r\n", arg);
     loop {}
 }
 
@@ -99,19 +96,16 @@ pub extern "C" fn segment_not_present(arg: u32) {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     use core::fmt;
-    super::VGA.lock().print_str("PANIC AT THE DISCO!\r\n");
+    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
     if let Some(m) = info.payload().downcast_ref::<&str>() {
-        super::VGA.lock().print_str(m);
+        doors_macros2::kernel_print!("{}", m);
     }
 
     if let Some(t) = info.location() {
-        super::VGA.lock().print_str(t.file());
-        let mut a: FixedString = FixedString::new();
-        fmt::write(&mut a, format_args!("LINE {}\r\n", t.line()))
-            .expect("Error occurred while trying to write in String");
-        super::VGA.lock().print_str(a.as_str());
+        doors_macros2::kernel_print!("{}", t.file());
+        doors_macros2::kernel_print!("LINE {}\r\n", t.line());
     }
-    super::VGA.lock().print_str("PANIC SOMEWHERE ELSE!\r\n");
+    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
 
@@ -168,14 +162,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
-        let mut tp: FixedString = FixedString::new();
-        match core::fmt::write(
-            &mut tp,
-            format_args!("acpi map {:x} {:x}\r\n", physical_address, size),
-        ) {
-            Ok(_) => super::VGA.lock().print_str(tp.as_str()),
-            Err(_) => super::VGA.lock().print_str("Error parsing string\r\n"),
-        }
+        doors_macros2::kernel_print!("acpi map {:x} {:x}\r\n", physical_address, size);
         if physical_address < (1 << 22) {
             doors_macros2::kernel_print!("acpi got address {:x}\r\n", physical_address);
             acpi::PhysicalMapping::new(
@@ -234,7 +221,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
 /// The entry point for the 64 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
-    super::VGA.lock().print_str(GREETING);
+    doors_macros2::kernel_print!("{}", GREETING);
     let _cpuid = raw_cpuid::CpuId::new();
 
     let boot_info = unsafe {
@@ -335,7 +322,7 @@ pub extern "C" fn start64() -> ! {
     };
 
     if acpi.is_none() {
-        super::VGA.lock().print_str("No ACPI table found\r\n");
+        doors_macros2::kernel_print!("No ACPI table found\r\n");
     }
     let acpi = acpi.unwrap();
     doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision);

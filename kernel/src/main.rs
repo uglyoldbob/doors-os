@@ -56,16 +56,8 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
-fn main(vga: &spin::Mutex<impl TextDisplay>) -> ! {
-    let mut v = vga.lock();
-    v.print_str("Entered main main function\r\n");
-    drop(v);
-
+fn main() -> ! {
     let a = unsafe { modules::video::vga::X86VgaMode::get(0xa0000, 0x3c0) };
-
-    let mut v = vga.lock();
-    v.print_str("Detected vga hardware\r\n");
-    drop(v);
 
     loop {}
 }
