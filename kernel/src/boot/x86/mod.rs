@@ -1,5 +1,7 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
+use core::marker::PhantomData;
+
 use crate::Locked;
 use crate::modules::video::text::X86VgaTextMode;
 use crate::VGA;
@@ -36,75 +38,77 @@ static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(
 );
 
 /// A reference to a single io port
-pub struct IoPortRef {
+pub struct IoPortRef<T> {
     /// The address of the io port
     r: u16,
+    /// Phantom data that the port contains
+    _marker: PhantomData<T>,
 }
 
 /// The trait that allows reading and writing to and from io ports
-pub trait IoReadWrite {
+pub trait IoReadWrite<T> {
     /// Read data from the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
-    fn port_read(port: IoPortRef) -> Self;
+    fn port_read(&mut self) -> T;
     /// Write data to the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
-    fn port_write(port: IoPortRef, val: Self);
+    fn port_write(&mut self, val: T);
 }
 
-impl IoReadWrite for u8 {
-    fn port_read(port: IoPortRef) -> Self {
+impl IoReadWrite<u8> for IoPortRef<u8> {
+    fn port_read(&mut self) -> u8 {
         unsafe {
             #[cfg(target_arch = "x86")]
-            return x86::io::inb(port.r);
+            return x86::io::inb(self.r);
             #[cfg(target_arch = "x86_64")]
-            return Self::read_from_port(port.r);
+            return u8::read_from_port(self.r);
         }
     }
 
-    fn port_write(port: IoPortRef, val: Self) {
+    fn port_write(&mut self, val: u8) {
         unsafe {
             #[cfg(target_arch = "x86")]
-            x86::io::outb(port.r, val);
+            x86::io::outb(self.r, val);
             #[cfg(target_arch = "x86_64")]
-            Self::write_to_port(port.r, val);
+            u8::write_to_port(self.r, val);
         }
     }
 }
 
-impl IoReadWrite for u16 {
-    fn port_read(port: IoPortRef) -> Self {
+impl IoReadWrite<u16> for IoPortRef<u16> {
+    fn port_read(&mut self) -> u16 {
         unsafe {
             #[cfg(target_arch = "x86")]
             return x86::io::inw(port.r);
             #[cfg(target_arch = "x86_64")]
-            return Self::read_from_port(port.r);
+            return u16::read_from_port(self.r);
         }
     }
 
-    fn port_write(port: IoPortRef, val: Self) {
+    fn port_write(&mut self, val: u16) {
         unsafe {
             #[cfg(target_arch = "x86")]
-            x86::io::outw(port.r, val);
+            x86::io::outw(self.r, val);
             #[cfg(target_arch = "x86_64")]
-            Self::write_to_port(port.r, val);
+            u16::write_to_port(self.r, val);
         }
     }
 }
 
-impl IoReadWrite for u32 {
-    fn port_read(port: IoPortRef) -> Self {
+impl IoReadWrite<u32> for IoPortRef<u32> {
+    fn port_read(&mut self) -> u32 {
         unsafe {
             #[cfg(target_arch = "x86")]
-            return x86::io::inl(port.r);
+            return x86::io::inl(self.r);
             #[cfg(target_arch = "x86_64")]
-            return Self::read_from_port(port.r);
+            return u32::read_from_port(self.r);
         }
     }
 
-    fn port_write(port: IoPortRef, val: Self) {
+    fn port_write(&mut self, val: u32) {
         unsafe {
             #[cfg(target_arch = "x86")]
-            x86::io::outl(port.r, val);
+            x86::io::outl(self.r, val);
             #[cfg(target_arch = "x86_64")]
-            Self::write_to_port(port.r, val);
+            u32::write_to_port(self.r, val);
         }
     }
 }
@@ -127,10 +131,11 @@ impl<'a> Drop for IoPortArray<'a> {
 
 impl<'a> IoPortArray<'a> {
     /// Get a port reference, ensuring that it is not out of bounds for the array. Will panic if out of bounds.
-    pub fn port(&self, index: u16) -> IoPortRef {
+    pub fn port<T>(&self, index: u16) -> IoPortRef<T> {
         assert!(index < self.quantity);
         IoPortRef {
             r: self.base + index,
+            _marker: PhantomData,
         }
     }
 }
