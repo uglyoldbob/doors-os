@@ -2,11 +2,8 @@
 
 use core::marker::PhantomData;
 
-use crate::Locked;
 use crate::modules::video::text::X86VgaTextMode;
-use crate::VGA;
-use alloc::boxed::Box;
-use doors_kernel_api::FixedString;
+use crate::Locked;
 use doors_kernel_api::video::TextDisplay;
 use lazy_static::lazy_static;
 
@@ -33,9 +30,10 @@ lazy_static! {
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
-static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(
-    memory::HeapManager::new(&boot::PAGING_MANAGER, &boot::VIRTUAL_MEMORY_ALLOCATOR),
-);
+static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(memory::HeapManager::new(
+    &boot::PAGING_MANAGER,
+    &boot::VIRTUAL_MEMORY_ALLOCATOR,
+));
 
 /// A reference to a single io port
 pub struct IoPortRef<T> {
@@ -164,7 +162,11 @@ impl Locked<IoPortManager> {
                 let shift = p % core::mem::size_of::<usize>() as u16;
                 manager.ports[index as usize] |= 1 << shift;
             }
-            Some(IoPortArray { base, quantity, manager: self })
+            Some(IoPortArray {
+                base,
+                quantity,
+                manager: self,
+            })
         } else {
             None
         }
@@ -173,10 +175,10 @@ impl Locked<IoPortManager> {
     /// Returns a list of port previously obtained fromm the manager
     fn return_ports(&self, ports: &mut IoPortArray) {
         let mut manager = self.lock();
-        for p in ports.base..ports.base+ports.quantity {
+        for p in ports.base..ports.base + ports.quantity {
             let index = p / core::mem::size_of::<usize>() as u16;
-                let shift = p % core::mem::size_of::<usize>() as u16;
-                manager.ports[index as usize] &= !(1 << shift);
+            let shift = p % core::mem::size_of::<usize>() as u16;
+            manager.ports[index as usize] &= !(1 << shift);
         }
     }
 }
@@ -194,7 +196,7 @@ impl IoPortManager {
 fn main_boot() -> ! {
     let vga = unsafe { X86VgaTextMode::get(0xb8000) };
     let b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(vga);
-    let mut v = VGA.lock();
+    let mut v = crate::VGA.lock();
     v.replace(b);
     drop(v);
     doors_macros2::kernel_print!("This is a test\r\n");

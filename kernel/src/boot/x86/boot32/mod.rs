@@ -296,10 +296,11 @@ pub extern "C" fn start32() -> ! {
     };
 
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        doors_macros2::kernel_print!("rsdpv2 at {:x} revision {}\r\n",
-                rsdp2.xsdt_address() as *const u8 as usize,
-                rsdp2.revision()
-            );
+        doors_macros2::kernel_print!(
+            "rsdpv2 at {:x} revision {}\r\n",
+            rsdp2.xsdt_address() as *const u8 as usize,
+            rsdp2.revision()
+        );
         Some(
             unsafe {
                 acpi::AcpiTables::from_rsdt(
@@ -311,9 +312,10 @@ pub extern "C" fn start32() -> ! {
             .unwrap(),
         )
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        doors_macros2::kernel_print!("rsdpv1 at {:x}\r\n",
-                rsdp1.rsdt_address() as *const u8 as usize
-            );
+        doors_macros2::kernel_print!(
+            "rsdpv1 at {:x}\r\n",
+            rsdp1.rsdt_address() as *const u8 as usize
+        );
         let t = unsafe {
             acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
         };
@@ -340,12 +342,13 @@ pub extern "C" fn start32() -> ! {
     }
 
     for (s, t) in &acpi.sdts {
-        doors_macros2::kernel_print!("sdt {} {:x} {:x} {}\r\n",
-                s.as_str(),
-                t.physical_address,
-                t.length,
-                t.validated
-            );
+        doors_macros2::kernel_print!(
+            "sdt {} {:x} {:x} {}\r\n",
+            s.as_str(),
+            t.physical_address,
+            t.length,
+            t.validated
+        );
     }
 
     let pi = acpi::PlatformInfo::new(&acpi);

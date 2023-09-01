@@ -226,12 +226,12 @@ impl<'a, T> Bitmap<'a, T> {
 #[repr(align(4096))]
 pub struct Page {
     /// The data for a single physical memory page
-    data: [u8; 4096],
+    _data: [u8; 4096],
 }
 impl Page {
     /// Create a blank page, filled with zeros
     fn new() -> Self {
-        Self { data: [0; 4096] }
+        Self { _data: [0; 4096] }
     }
 }
 
@@ -239,7 +239,7 @@ impl Page {
 /// A 2 megabyte large page
 pub struct Page2Mb {
     /// The page contents
-    data: [Page; 512],
+    _data: [Page; 512],
 }
 
 /// A simple physical memory manager for the kernel
@@ -387,11 +387,6 @@ impl PageTableRef {
         }
     }
 
-    /// Get the address of the page table viewing window
-    fn table_address(&self) -> usize {
-        self.table as *const PageTable as usize
-    }
-
     /// Update the current page table reference to the given physical address if required, return true if any action was required.
     fn update(&mut self, phys: u64) -> bool {
         if phys != *self.virtual_mapping {
@@ -515,7 +510,6 @@ impl<'a> PagingTableManager<'a> {
             Some(e) => e,
             None => {
                 unimplemented!();
-                0
             }
         };
         unsafe { &mut *self.pt3.as_mut_ptr() }.update(pt3);
@@ -527,7 +521,6 @@ impl<'a> PagingTableManager<'a> {
             Some(e) => e,
             None => {
                 unimplemented!();
-                0
             }
         };
         unsafe { &mut *self.pt2.as_mut_ptr() }.update(pt2);
@@ -539,7 +532,6 @@ impl<'a> PagingTableManager<'a> {
             Some(e) => e,
             None => {
                 unimplemented!();
-                0
             }
         };
         unsafe { &mut *self.pt1.as_mut_ptr() }.update(pt1);

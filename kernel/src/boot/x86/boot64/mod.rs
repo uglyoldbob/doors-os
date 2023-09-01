@@ -1,11 +1,9 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
-use crate::VGA;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
-use doors_kernel_api::FixedString;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
@@ -55,13 +53,13 @@ pub struct GdtPointer<'a> {
 /// Holder structure for a Global descriptor table pointer, aligning the start of the structure as required.
 pub struct GdtPointerHolder<'a> {
     /// The gdt pointer
-    d: GdtPointer<'a>,
+    _d: GdtPointer<'a>,
 }
 
 /// The pointer used in assembly for entry into long mode, lidtr is used with this data structure.
 #[no_mangle]
 pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
-    d: GdtPointer {
+    _d: GdtPointer {
         size: (GDT_TABLE.len() * 8 - 1) as u16,
         address: &GDT_TABLE,
     },
@@ -70,8 +68,6 @@ pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
 extern "C" {
     static MULTIBOOT2_DATA: *const usize;
 }
-
-use doors_kernel_api::video::TextDisplay;
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = build_idt();
@@ -95,7 +91,6 @@ pub extern "C" fn segment_not_present(arg: u32) {
 /// The panic handler for the 64-bit kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use core::fmt;
     doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
     if let Some(m) = info.payload().downcast_ref::<&str>() {
         doors_macros2::kernel_print!("{}", m);
@@ -190,7 +185,6 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
-                loop {}
             }
             let vstart = b.as_mut_ptr() as usize + err - size;
 

@@ -8,14 +8,15 @@
 macro_rules! kernel_print {
     ( $($arg:tt)* ) => {
         {
-            let mut a: FixedString = FixedString::new();
-            let mut v = VGA.lock();
+            let mut a: doors_kernel_api::FixedString = doors_kernel_api::FixedString::new();
+            let r = core::fmt::write(
+                &mut a,
+                format_args!($($arg)*),
+            );
+            let mut v = crate::VGA.lock();
             let mut vga = v.as_mut();
             if let Some(vga) = vga {
-                match core::fmt::write(
-                    &mut a,
-                    format_args!($($arg)*),
-                ) {
+                match r {
                     Ok(_) => vga.print_str(a.as_str()),
                     Err(_) => vga.print_str("Error parsing string\r\n"),
                 }

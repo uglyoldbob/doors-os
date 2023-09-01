@@ -2,10 +2,7 @@
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
-use doors_kernel_api::video::TextDisplay;
-use doors_kernel_api::FixedString;
 
-use crate::VGA;
 use crate::Locked;
 
 use super::boot::memory::{BumpAllocator, Page, PagingTableManager};
@@ -112,13 +109,10 @@ impl<'a> HeapManager<'a> {
         if let Some(mut r) = self.head {
             doors_macros2::kernel_print!("head: {:p}\r\n", r);
             loop {
-                let addr = unsafe { r.as_mut() }.start();
-
-                let mut tp: doors_kernel_api::FixedString = doors_kernel_api::FixedString::new();
                 doors_macros2::kernel_print!(
                     "heap node is {:?} {:x}\r\n",
-                    unsafe { r.as_ptr() },
-                    addr + unsafe { r.as_mut() }.size - 1
+                    r.as_ptr(),
+                    unsafe { &*r.as_ptr() }.next_address() - 1
                 );
 
                 if let Some(nr) = unsafe { r.as_mut() }.next {
