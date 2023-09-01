@@ -61,13 +61,6 @@ extern "C" {
 }
 
 fn main() -> ! {
-    let a = unsafe { modules::video::vga::X86VgaMode::get() };
-    if let Some(a) = a {
-        let b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(a);
-        let mut v = VGA.lock();
-        v.replace(b);
-        drop(v);
-    }
     doors_macros2::kernel_print!("I am groot\r\n");
     loop {}
 }
