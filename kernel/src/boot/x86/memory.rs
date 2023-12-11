@@ -139,8 +139,6 @@ impl<'a> HeapManager<'a> {
 
         let sa = new_section.as_ptr() as *const Page as usize;
         let mut mm = self.mm.lock();
-        doors_macros2::kernel_print!("About to map pages {:x} {}\r\n", sa, a);
-        self.print();
         for i in (sa..sa + a * core::mem::size_of::<Page>()).step_by(core::mem::size_of::<Page>()) {
             mm.map_new_page(i as usize)?;
         }
@@ -163,8 +161,6 @@ impl<'a> HeapManager<'a> {
 
     /// Perform an actual allocation
     fn run_alloc(&mut self, layout: core::alloc::Layout) -> *mut u8 {
-        doors_macros2::kernel_print!("Run heap alloc {:?} {:p}\r\n", layout, self);
-        self.print();
         if self.head.is_none() {
             if let Err(_) = self.expand_with_physical_memory(layout.size() + layout.align()) {
                 return core::ptr::null_mut();
@@ -210,7 +206,7 @@ impl<'a> HeapManager<'a> {
                 if (unsafe { best.as_ref() }.size - ha.size_needed)
                     < core::mem::size_of::<HeapNode>()
                 {
-                    doors_macros2::kernel_print!("The entire block will be used\r\n");
+                    //The entire block will be used
                     *best_fit_link = unsafe { best.as_ref() }.next;
                     (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                 } else {
@@ -238,7 +234,6 @@ impl<'a> HeapManager<'a> {
             };
             r
         } else {
-            doors_macros2::kernel_print!("Heap node not found?\r\n");
             core::ptr::null_mut()
         };
         retval

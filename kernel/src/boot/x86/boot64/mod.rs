@@ -154,9 +154,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
-        doors_macros2::kernel_print!("acpi map {:x} {:x}\r\n", physical_address, size);
         if physical_address < (1 << 22) {
-            doors_macros2::kernel_print!("acpi got address {:x}\r\n", physical_address);
             acpi::PhysicalMapping::new(
                 physical_address,
                 NonNull::new(physical_address as *mut T).unwrap(),
@@ -184,8 +182,6 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 panic!("Unable to map acpi memory\r\n");
             }
             let vstart = b.as_mut_ptr() as usize + err - size;
-
-            doors_macros2::kernel_print!("acpi got address {:x}\r\n", vstart);
 
             let r = acpi::PhysicalMapping::new(
                 start as usize,
@@ -326,6 +322,9 @@ pub extern "C" fn start64() -> ! {
     }
 
     for (s, t) in &acpi.sdts {
+        if let acpi::sdt::Signature::MADT = *s {
+            doors_macros2::kernel_print!("MADT: ");
+        }
         doors_macros2::kernel_print!(
             "sdt {} {:x} {:x} {}\r\n",
             s.as_str(),
