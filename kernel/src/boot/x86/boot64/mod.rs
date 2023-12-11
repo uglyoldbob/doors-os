@@ -298,7 +298,11 @@ pub extern "C" fn start64() -> ! {
             rsdp1.rsdt_address() as *const u8 as usize
         );
         let t = unsafe {
-            acpi::AcpiTables::from_rsdt(acpi_handler.clone(), 0, rsdp1.rsdt_address() as *const u8 as usize)
+            acpi::AcpiTables::from_rsdt(
+                acpi_handler.clone(),
+                0,
+                rsdp1.rsdt_address() as *const u8 as usize,
+            )
         };
         if let Err(e) = &t {
             doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
@@ -325,7 +329,10 @@ pub extern "C" fn start64() -> ! {
     for (s, t) in &acpi.sdts {
         if let acpi::sdt::Signature::MADT = *s {
             doors_macros2::kernel_print!("MADT: ");
-            let madt = unsafe { acpi_handler.map_physical_region::<acpi::madt::Madt>(t.physical_address, t.length as usize) };
+            let madt = unsafe {
+                acpi_handler
+                    .map_physical_region::<acpi::madt::Madt>(t.physical_address, t.length as usize)
+            };
             for e in madt.entries() {
                 match e {
                     acpi::madt::MadtEntry::LocalApic(lapic) => {

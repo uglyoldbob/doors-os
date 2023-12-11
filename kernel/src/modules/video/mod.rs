@@ -1,6 +1,7 @@
 //! Video related kernel modules
 
 pub mod text;
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod vga;
 
 /// Type used for the pc vga text mode output.
