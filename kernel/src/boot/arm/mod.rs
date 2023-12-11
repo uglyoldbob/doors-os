@@ -24,8 +24,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[global_allocator]
 static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(memory::HeapManager::new());
 
-/// The entry point of the kernel
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
-    crate::main()
-}
+#[cfg(kernel_machine = "stm32f769i-disco")]
+mod stm32f769i_disco;

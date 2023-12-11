@@ -1,6 +1,7 @@
 MEMORY
 {
   ram (!rx) : org = 0x20020000, l = 0x5c000
+  ram2 (!rx) : org = 0x2007c000, l = 0x4000
   flash (x) : org = 0x00200000, l = 0x200000
 }
 

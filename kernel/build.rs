@@ -27,6 +27,8 @@ fn main() {
 
     let mut linker_script = None;
 
+    println!("cargo:rustc-cfg=kernel_machine=\"{}\"", config.machine_name);
+
     match config.machine_name.as_str() {
         "stm32f769i-disco" => {
             linker_script = Some("kernel/src/boot/arm/stm32f769i-disco.ld");
