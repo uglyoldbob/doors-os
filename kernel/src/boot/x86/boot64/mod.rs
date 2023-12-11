@@ -1,5 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -284,7 +285,7 @@ pub extern "C" fn start64() -> ! {
         Some(
             unsafe {
                 acpi::AcpiTables::from_rsdt(
-                    acpi_handler,
+                    acpi_handler.clone(),
                     rsdp2.revision(),
                     rsdp2.xsdt_address() as *const u8 as usize,
                 )
@@ -297,7 +298,7 @@ pub extern "C" fn start64() -> ! {
             rsdp1.rsdt_address() as *const u8 as usize
         );
         let t = unsafe {
-            acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
+            acpi::AcpiTables::from_rsdt(acpi_handler.clone(), 0, rsdp1.rsdt_address() as *const u8 as usize)
         };
         if let Err(e) = &t {
             doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
@@ -324,6 +325,36 @@ pub extern "C" fn start64() -> ! {
     for (s, t) in &acpi.sdts {
         if let acpi::sdt::Signature::MADT = *s {
             doors_macros2::kernel_print!("MADT: ");
+            let madt = unsafe { acpi_handler.map_physical_region::<acpi::madt::Madt>(t.physical_address, t.length as usize) };
+            for e in madt.entries() {
+                match e {
+                    acpi::madt::MadtEntry::LocalApic(lapic) => {
+                        doors_macros2::kernel_print!("madt lapic entry\r\n");
+                    }
+                    acpi::madt::MadtEntry::IoApic(ioapic) => {
+                        doors_macros2::kernel_print!("madt ioapic entry\r\n");
+                    }
+                    acpi::madt::MadtEntry::InterruptSourceOverride(i) => {
+                        doors_macros2::kernel_print!("madt int source override\r\n");
+                    }
+                    acpi::madt::MadtEntry::NmiSource(_) => todo!(),
+                    acpi::madt::MadtEntry::LocalApicNmi(_) => {
+                        doors_macros2::kernel_print!("madt lapic nmi entry\r\n");
+                    }
+                    acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
+                    acpi::madt::MadtEntry::IoSapic(_) => todo!(),
+                    acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
+                    acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
+                    acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
+                    acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
+                    acpi::madt::MadtEntry::Gicc(_) => todo!(),
+                    acpi::madt::MadtEntry::Gicd(_) => todo!(),
+                    acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
+                    acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
+                    acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
+                    acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
+                }
+            }
         }
         doors_macros2::kernel_print!(
             "sdt {} {:x} {:x} {}\r\n",
