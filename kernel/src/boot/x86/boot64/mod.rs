@@ -20,9 +20,6 @@ impl X86Apic {
     }
 }
 
-/// A greeting to prove that the kernel has started
-const GREETING: &str = "I am groot\r\n";
-
 use x86_64::structures::{
     gdt::{Descriptor, GlobalDescriptorTable},
     idt::InterruptDescriptorTable,
@@ -215,7 +212,6 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
 /// The entry point for the 64 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
-    doors_macros2::kernel_print!("{}", GREETING);
     let _cpuid = raw_cpuid::CpuId::new();
 
     let boot_info = unsafe {
@@ -243,13 +239,6 @@ pub extern "C" fn start64() -> ! {
             .iter()
             .filter(|i| i.typ() == multiboot2::MemoryAreaType::Available)
         {
-            doors_macros2::kernel_print!(
-                "R {:x},S{:x} {:x} ,{:?}\r\n",
-                area.start_address(),
-                area.size(),
-                area.end_address(),
-                area.typ()
-            );
             pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
@@ -259,6 +248,13 @@ pub extern "C" fn start64() -> ! {
 
     VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x3fffff);
     PAGING_MANAGER.lock().init();
+
+    let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
+    let b: alloc::boxed::Box<dyn doors_kernel_api::video::TextDisplay> =
+        alloc::boxed::Box::new(vga);
+    let mut v = crate::VGA.lock();
+    v.replace(b);
+    drop(v);
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =

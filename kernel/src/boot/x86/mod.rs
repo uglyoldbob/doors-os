@@ -194,11 +194,6 @@ impl IoPortManager {
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
-    let vga = unsafe { X86VgaTextMode::get(0xb8000) };
-    let b: alloc::boxed::Box<dyn TextDisplay> = alloc::boxed::Box::new(vga);
-    let mut v = crate::VGA.lock();
-    v.replace(b);
-    drop(v);
     doors_macros2::kernel_print!("This is a test\r\n");
     super::super::main();
 }
