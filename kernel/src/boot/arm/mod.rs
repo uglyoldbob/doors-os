@@ -2,8 +2,6 @@
 
 use crate::Locked;
 
-mod memory;
-
 /// The panic handler
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -22,7 +20,11 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
-static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(memory::HeapManager::new());
+static HEAP_MANAGER: Locked<hardware::memory::HeapManager> =
+    Locked::new(hardware::memory::HeapManager::new());
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
-mod stm32f769i_disco;
+pub mod stm32f769i_disco;
+
+#[cfg(kernel_machine = "stm32f769i-disco")]
+pub use stm32f769i_disco as hardware;
