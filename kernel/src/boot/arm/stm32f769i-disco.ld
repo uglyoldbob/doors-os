@@ -1,12 +1,11 @@
 MEMORY
 {
-  ram (!rx) : org = 0x100000, l = 3M
+  ram (!rx) : org = 0x20020000, l = 0x5c000
+  flash (x) : org = 0x00200000, l = 0x200000
 }
 
 SECTIONS
 {
-  . = 0x00100000;
-  START_OF_KERNEL = .;
   .text :
   {
     KEEP(*(.multiboot));
@@ -15,7 +14,7 @@ SECTIONS
     *(.text.*);
     *(.got);
     *(.got.plt);
-  } > ram
+  } > flash
   .dynamic :
   {
     
@@ -33,9 +32,6 @@ SECTIONS
   .bss : { 
     *(.bss);
     *(.bss.*);
-  } > ram
-  .end_kernel : {
-    END_OF_KERNEL = .;
   } > ram
   /DISCARD/ :
   {
