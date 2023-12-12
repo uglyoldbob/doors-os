@@ -52,13 +52,6 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 /// The VGA instance used for x86 kernel printing
 static VGA: spin::Mutex<Option<Box<dyn TextDisplay>>> = spin::Mutex::new(None);
 
-extern "C" {
-    /// Defines the start of the kernel for initial kernel load. This is defined by the linker script.
-    pub static START_OF_KERNEL: u8;
-    /// Defines the end of the kernel for the initial kernel load. This is defined by the linker script.
-    pub static END_OF_KERNEL: u8;
-}
-
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
     loop {}

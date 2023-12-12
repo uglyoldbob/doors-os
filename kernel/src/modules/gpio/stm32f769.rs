@@ -13,6 +13,17 @@ struct GpioRegisters {
     afrh: u32,
 }
 
+/// A gpio pin for the stm32f769 hardware
+pub struct GpioPin {
+    i: u8,
+}
+
+impl super::GpioPinTrait for GpioPin {
+    fn set_output(&mut self) {}
+
+    fn write_output(&mut self, v: bool) {}
+}
+
 /// A single stm32f769 gpio module
 pub struct Gpio<'a> {
     /// the memory mapped registers for the hardware
@@ -29,9 +40,9 @@ impl<'a> Gpio<'a> {
 }
 
 impl<'a> super::GpioTrait for Gpio<'a> {
-    #[doc = " A test function to do something"]
-    fn do_something(&mut self) {
-        todo!()
+    fn get_pin(&self, i: usize) -> Option<super::GpioPin> {
+        assert!(i < 16);
+        None
     }
 
     fn set_output(&mut self, i: usize) {
@@ -40,19 +51,6 @@ impl<'a> super::GpioTrait for Gpio<'a> {
         let nm = unsafe { core::ptr::read_volatile(&self.registers.mode) } & !mode_filter;
         let mode = (1u32) << (2 * i);
         unsafe { core::ptr::write_volatile(&mut self.registers.mode, nm | mode) };
-        let n = 0u32;
-        if i < 16 {
-            let mask = 15u32 << (i * 4);
-            let newf = n << (i * 4);
-            let newval = (self.registers.afrl & !mask) | newf;
-            unsafe { core::ptr::write_volatile(&mut self.registers.afrl, newval) };
-        } else {
-            let ri = i & 15;
-            let mask = 15u32 << (ri * 4);
-            let newf = n << (ri * 4);
-            let newval = (self.registers.afrh & !mask) | newf;
-            unsafe { core::ptr::write_volatile(&mut self.registers.afrh, newval) };
-        }
     }
 
     fn write_output(&mut self, i: usize, v: bool) {

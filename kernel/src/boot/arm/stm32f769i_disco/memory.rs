@@ -5,26 +5,6 @@ use core::ptr::NonNull;
 
 use crate::Locked;
 
-#[derive(Copy, Clone)]
-/// An allocation made by the bump allocator. This is used to undo allocations
-struct BumpAllocation {
-    /// The size of the allocation in bytes
-    bumpsize: usize,
-    /// The address of the allocation
-    addr: usize,
-}
-
-/// A bump allocator for the virtual memory address space of the kernel.
-/// It assumes it starts at a given address and own all memory after that point.
-pub struct BumpAllocator {
-    /// The start address for the memory allocation area used by the bump allocator
-    start: usize,
-    /// The last byte of memory currently allocated by the allocator
-    end: usize,
-    /// The last few allocations handed out by the bump allocator
-    last: [Option<BumpAllocation>; 5],
-}
-
 /// A container structure for a heap node
 /// Stores some calculations about how the node can allocate a chunk of memory
 struct HeapNodeAlign {

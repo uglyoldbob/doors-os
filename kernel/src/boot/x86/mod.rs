@@ -192,6 +192,13 @@ impl IoPortManager {
     }
 }
 
+extern "C" {
+    /// Defines the start of the kernel for initial kernel load. This is defined by the linker script.
+    pub static START_OF_KERNEL: u8;
+    /// Defines the end of the kernel for the initial kernel load. This is defined by the linker script.
+    pub static END_OF_KERNEL: u8;
+}
+
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
     doors_macros2::kernel_print!("This is a test\r\n");
