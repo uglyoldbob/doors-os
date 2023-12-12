@@ -22,8 +22,8 @@ pub extern "C" fn _start() -> ! {
     let mut gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2400) };
     let mut gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2800) };
 
+    gj.set_output(13);
     loop {
-        gj.set_output(13);
         gj.write_output(13, true);
         gj.write_output(13, false);
     }

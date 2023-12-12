@@ -37,20 +37,21 @@ impl<'a> super::GpioTrait for Gpio<'a> {
     fn set_output(&mut self, i: usize) {
         assert!(i < 16);
         let mode_filter = (3u32) << (2 * i);
-        let nm = self.registers.mode & !mode_filter;
+        let nm = unsafe { core::ptr::read_volatile(&self.registers.mode) } & !mode_filter;
         let mode = (1u32) << (2 * i);
-        self.registers.mode = nm | mode;
+        unsafe { core::ptr::write_volatile(&mut self.registers.mode, nm | mode) };
         let n = 4u32;
         if i < 16 {
             let mask = 15u32 << (i * 4);
             let newf = n << (i * 4);
             let newval = (self.registers.afrl & !mask) | newf;
-            self.registers.afrl = newval;
+            unsafe { core::ptr::write_volatile(&mut self.registers.afrl, newval) };
         } else {
             let ri = i & 15;
             let mask = 15u32 << (ri * 4);
             let newf = n << (ri * 4);
-            self.registers.afrh = (self.registers.afrh & !mask) | newf;
+            let newval = (self.registers.afrh & !mask) | newf;
+            unsafe { core::ptr::write_volatile(&mut self.registers.afrh, newval) };
         }
     }
 
@@ -58,12 +59,12 @@ impl<'a> super::GpioTrait for Gpio<'a> {
         assert!(i < 16);
         let m = 1 << i;
         let newval = if v {
-            (self.registers.odr & !m) | m
+            (unsafe { core::ptr::read_volatile(&self.registers.odr) } & !m) | m
         } else {
-            (self.registers.odr & !m)
+            (unsafe { core::ptr::read_volatile(&self.registers.odr) } & !m)
         };
-        while self.registers.odr != newval {
-            self.registers.odr = newval;
+        unsafe {
+            core::ptr::write_volatile(&mut self.registers.odr, newval);
         }
     }
 }

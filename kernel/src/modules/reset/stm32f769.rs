@@ -19,7 +19,8 @@ impl<'a> Module<'a> {
 
     /// Enable the specified peripheral
     pub fn enable_peripheral(&mut self, i: u8) -> u32 {
-        self.registers.regs[12] |= 1 << i;
-        self.registers.regs[12]
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } | 1 << i;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[12], n) }
+        unsafe { core::ptr::read_volatile(&self.registers.regs[12]) }
     }
 }
