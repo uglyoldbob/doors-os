@@ -12,6 +12,7 @@ rustflags = ["-C", "relocation-model=pic",
 [target.thumbv7em-none-eabihf]
 rustflags = ["-C", "relocation-model=pic", 
     "-C", "link-arg=-no-pie"]
+runner = 'probe-rs run --chip stm32f769iitx'
 
 [unstable]
 build-std = ["core", "alloc"]
