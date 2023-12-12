@@ -8,6 +8,7 @@ arraystring = {version = "0.3.0", default-features=false }
 doors_kernel_api = { path = "../doors_kernel_api", version = "0.1.0" }
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
+enum_dispatch = "0.3.12"
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
 spin = "0.9.8"
 volatile = "0.4.6"

@@ -8,6 +8,14 @@ MEMORY
 
 SECTIONS
 {
+  .vector_table :
+  {
+    LONG(_start);
+    LONG(_start);
+    LONG(_start);
+    LONG(_start);
+  } > flash
+
   .text :
   {
     KEEP(*(.multiboot));
