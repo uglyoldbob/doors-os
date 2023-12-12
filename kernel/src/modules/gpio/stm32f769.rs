@@ -40,7 +40,7 @@ impl<'a> super::GpioTrait for Gpio<'a> {
         let nm = unsafe { core::ptr::read_volatile(&self.registers.mode) } & !mode_filter;
         let mode = (1u32) << (2 * i);
         unsafe { core::ptr::write_volatile(&mut self.registers.mode, nm | mode) };
-        let n = 4u32;
+        let n = 0u32;
         if i < 16 {
             let mask = 15u32 << (i * 4);
             let newf = n << (i * 4);

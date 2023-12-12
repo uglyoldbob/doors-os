@@ -9,6 +9,7 @@ pub mod memory;
 pub extern "C" fn _start() -> ! {
     let mut rcc = unsafe { crate::modules::reset::stm32f769::Module::new(0x4002_3800) };
     rcc.enable_peripheral(9);
+    rcc.enable_peripheral(0);
 
     let mut ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0000) };
     let mut gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0400) };
@@ -23,9 +24,15 @@ pub extern "C" fn _start() -> ! {
     let mut gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2800) };
 
     gj.set_output(13);
+    gj.set_output(5);
+    ga.set_output(12);
     loop {
         gj.write_output(13, true);
+        gj.write_output(5, true);
+        ga.write_output(12, true);
         gj.write_output(13, false);
+        gj.write_output(5, false);
+        ga.write_output(12, false);
     }
 
     crate::main()
