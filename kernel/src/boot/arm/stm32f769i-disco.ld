@@ -2,7 +2,8 @@ MEMORY
 {
   ram (!rx) : ORIGIN = 0x20020000, LENGTH = 0x5c000
   ram2 (!rx) : ORIGIN = 0x2007c000, LENGTH = 0x4000
-  flash (rx) : ORIGIN = 0x00200000, LENGTH = 0x200000
+  flash_itcm (rx) : ORIGIN = 0x200000, LENGTH = 0x200000
+  flash (rx) : ORIGIN = 0x008000000, LENGTH = 0x200000
 }
 
 SECTIONS
@@ -16,21 +17,17 @@ SECTIONS
     *(.got);
     *(.got.plt);
   } > flash
-  .dynamic :
-  {
-    
-  } > ram
   .strings : {
     *(.dynstr);
-  } > ram
-  .data : { 
+  } > flash
+  .data (NOLOAD) : { 
     *(.data);
     *(.data.*);
   } > ram
-  .rodata : { *(.rodata) } > ram
-  .rela : { *(.rela.dyn); } > ram
-  .strtab : { *(.strtab); } > ram
-  .bss : { 
+  .rodata : { *(.rodata) } > flash
+  .rela : { *(.rela.dyn); } > flash
+  .strtab : { *(.strtab); } > flash
+  .bss (NOLOAD) : { 
     *(.bss);
     *(.bss.*);
   } > ram
