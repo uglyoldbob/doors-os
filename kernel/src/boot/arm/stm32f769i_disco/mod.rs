@@ -33,8 +33,8 @@ pub extern "C" fn _start() -> ! {
     ram.clone_from_slice(ram_data);
 
     let mut h = super::HEAP_MANAGER.lock();
-    if end_bss != 0x20080000 {
-        h.init(0, end_bss, 0x20080000 - end_bss);
+    if end_bss != 0x2007_c000 {
+        h.init(0, end_bss, 0x2007_c000 - end_bss);
     }
     drop(h);
 
@@ -54,7 +54,7 @@ pub extern "C" fn _start() -> ! {
     let mut gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2400) };
     let mut gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2800) };
 
-    if false {
+    if true {
         let mut gpio = crate::kernel::GPIO.lock();
         gpio.register_gpios(gb.into());
         drop(gpio);
