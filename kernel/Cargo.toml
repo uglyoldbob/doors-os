@@ -32,3 +32,4 @@ multiboot2 = "0.18.1"
 
 [profile.release]
 debug = true
+

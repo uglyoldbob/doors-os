@@ -18,7 +18,7 @@ struct HeapNodeAlign {
 
 #[derive(Debug)]
 /// A node of free memory for the heap
-struct HeapNode {
+pub struct HeapNode {
     /// The optional next node of free memory for the heap
     next: Option<NonNull<HeapNode>>,
     /// The size of this node, including the size of this header

@@ -18,6 +18,11 @@ impl GpioHandler {
     pub fn register_gpios(&mut self, g: crate::modules::gpio::Gpio) {
         self.gpios.push(g);
     }
+
+    /// Borrow a gpio module
+    pub fn module(&mut self, i: usize) -> &mut crate::modules::gpio::Gpio {
+        &mut self.gpios[i]
+    }
 }
 
 lazy_static! {
