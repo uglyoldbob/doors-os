@@ -1,12 +1,12 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
 use crate::Locked;
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
 /// This is the main struct for interacting with the gpio system
 pub struct GpioHandler {
-    gpios: Vec<crate::modules::gpio::Gpio>,
+    gpios: Vec<Arc<Locked<crate::modules::gpio::Gpio>>>,
 }
 
 impl GpioHandler {
@@ -16,12 +16,12 @@ impl GpioHandler {
 
     /// Add a gpio module to the system
     pub fn register_gpios(&mut self, g: crate::modules::gpio::Gpio) {
-        self.gpios.push(g);
+        self.gpios.push(Arc::new(Locked::new(g)));
     }
 
-    /// Borrow a gpio module
-    pub fn module(&mut self, i: usize) -> &mut crate::modules::gpio::Gpio {
-        &mut self.gpios[i]
+    /// Get a gpio module
+    pub fn module(&mut self, i: usize) -> Arc<Locked<crate::modules::gpio::Gpio>> {
+        self.gpios[i].clone()
     }
 }
 

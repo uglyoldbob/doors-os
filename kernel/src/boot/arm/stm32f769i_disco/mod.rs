@@ -1,7 +1,5 @@
 //! Boot code for the stm32F769i-disco development board
 
-use alloc::vec::Vec;
-
 use crate::modules::gpio::GpioTrait;
 
 pub mod memory;
@@ -49,17 +47,17 @@ pub extern "C" fn _start() -> ! {
     rcc.enable_peripheral(9);
     rcc.enable_peripheral(0);
 
-    let mut ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0000) };
-    let mut gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0400) };
-    let mut gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0800) };
-    let mut gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0c00) };
-    let mut ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1000) };
-    let mut gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1400) };
-    let mut gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1800) };
-    let mut gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1c00) };
-    let mut gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2000) };
-    let mut gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2400) };
-    let mut gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2800) };
+    let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0000) };
+    let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0400) };
+    let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0800) };
+    let gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_0c00) };
+    let ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1000) };
+    let gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1400) };
+    let gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1800) };
+    let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_1c00) };
+    let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2000) };
+    let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2400) };
+    let gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(0x4002_2800) };
 
     if true {
         let mut gpio = crate::kernel::GPIO.lock();
@@ -79,31 +77,23 @@ pub extern "C" fn _start() -> ! {
 
     {
         let mut gpio = crate::kernel::GPIO.lock();
-        let g = gpio.module(0);
+        let mg = gpio.module(0);
+        let mh = gpio.module(9);
+        drop(gpio);
+        let mut g = mg.lock();
+        let mut h = mh.lock();
         g.set_output(12);
-        drop(g);
-
-        let h = gpio.module(9);
         h.set_output(5);
         h.set_output(13);
-        drop(h);
         loop {
-            let g = gpio.module(0);
             g.write_output(12, true);
-            drop(g);
-            let h = gpio.module(9);
             h.write_output(5, true);
             h.write_output(13, true);
-            drop(h);
-            let g = gpio.module(0);
+
             g.write_output(12, false);
-            drop(g);
-            let h = gpio.module(9);
             h.write_output(5, false);
             h.write_output(13, false);
-            drop(h);
         }
-        drop(gpio);
     }
     crate::main()
 }
