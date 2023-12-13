@@ -10,7 +10,7 @@ SECTIONS
 {
   .vector_table :
   {
-    LONG(_start);
+    LONG(0x2007ffff);
     LONG(_start);
     LONG(_start);
     LONG(_start);
@@ -25,19 +25,22 @@ SECTIONS
     *(.got);
     *(.got.plt);
   } > flash
-  .strings : {
-    *(.dynstr);
-  } > flash
-  .data (NOLOAD) : { 
-    *(.data);
-    *(.data.*);
-  } > ram
   .rodata : { *(.rodata) } > flash
   .rela : { *(.rela.dyn); } > flash
   .strtab : { *(.strtab); } > flash
-  .bss (NOLOAD) : { 
+  RAMLOAD = .;
+  .strings : {
+    *(.dynstr);
+  } > flash
+  .data : AT(RAMLOAD) { 
+    *(.data);
+    *(.data.*);
+  } > ram
+  .bss : { 
+    START_OF_BSS = .;
     *(.bss);
     *(.bss.*);
+    END_OF_BSS = .;
   } > ram
   /DISCARD/ :
   {
@@ -47,5 +50,6 @@ SECTIONS
     *(.comment);
     *(.hash);
     *(.debug*);
+    *(.ARM.exidx);
   }
 }

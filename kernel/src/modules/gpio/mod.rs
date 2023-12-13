@@ -39,7 +39,6 @@ impl GpioTrait for DummyGpio {
 
 impl GpioPinTrait for DummyGpio {
     fn set_output(&mut self) {}
-
     fn write_output(&mut self, v: bool) {}
 }
 

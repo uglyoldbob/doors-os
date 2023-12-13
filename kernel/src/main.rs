@@ -12,6 +12,7 @@
 extern crate alloc;
 
 pub mod boot;
+pub mod kernel;
 pub mod modules;
 
 use alloc::boxed::Box;

@@ -78,7 +78,7 @@ impl HeapNode {
 /// The heap manager for the system. It assumes it starts at a given address and expands to the end of known memory.
 pub struct HeapManager {
     /// The beginning of the list of free memory nodes.
-    head: Option<NonNull<HeapNode>>,
+    head: [Option<NonNull<HeapNode>>; 3],
 }
 
 unsafe impl Send for HeapManager {}
@@ -86,115 +86,134 @@ unsafe impl Send for HeapManager {}
 impl HeapManager {
     /// Create a heap manager.
     pub const fn new() -> Self {
-        Self { head: None }
+        Self {
+            head: [None, None, None],
+        }
+    }
+
+    /// Initialize the specified heap with an address and size
+    pub fn init(&mut self, i: usize, addr: usize, size: usize) {
+        if self.head[i].is_none() {
+            let mut nn = unsafe { NonNull::new_unchecked(&mut *(addr as *mut HeapNode)) };
+            unsafe { nn.as_mut() }.next = None;
+            unsafe { nn.as_mut() }.size = size;
+            self.head[i] = Some(nn);
+        }
     }
 
     /// Print details of the heap
     pub fn print(&self) {
-        if let Some(mut r) = self.head {
-            doors_macros2::kernel_print!("head: {:p}\r\n", r);
-            loop {
-                doors_macros2::kernel_print!(
-                    "heap node is {:?} {:x}\r\n",
-                    r.as_ptr(),
-                    unsafe { &*r.as_ptr() }.next_address() - 1
-                );
+        for head in &self.head {
+            if let Some(mut r) = head {
+                doors_macros2::kernel_print!("head: {:p}\r\n", r);
+                loop {
+                    doors_macros2::kernel_print!(
+                        "heap node is {:?} {:x}\r\n",
+                        r.as_ptr(),
+                        unsafe { &*r.as_ptr() }.next_address() - 1
+                    );
 
-                if let Some(nr) = unsafe { r.as_mut() }.next {
-                    r = nr;
-                } else {
-                    break;
+                    if let Some(nr) = unsafe { r.as_mut() }.next {
+                        r = nr;
+                    } else {
+                        break;
+                    }
                 }
+            } else {
+                doors_macros2::kernel_print!("Heap is empty\r\n");
             }
-        } else {
-            doors_macros2::kernel_print!("Heap is empty\r\n");
         }
     }
 
     /// Perform an actual allocation
     fn run_alloc(&mut self, layout: core::alloc::Layout) -> *mut u8 {
-        if self.head.is_none() {
-            return core::ptr::null_mut();
-        }
+        //parse each heap area separately
+        for head in &mut self.head {
+            if head.is_none() {
+                continue;
+            }
 
-        let mut elem = self.head;
-        let mut prev_elem: Option<NonNull<HeapNode>> = None;
-        let mut best_fit_link: &mut Option<NonNull<HeapNode>> = &mut None;
-        let mut best_fit: Option<NonNull<HeapNode>> = None;
-        let mut best_fit_ha: Option<HeapNodeAlign> = None;
+            let mut elem = *head;
+            let mut prev_elem: Option<NonNull<HeapNode>> = None;
+            let mut best_fit_link: &mut Option<NonNull<HeapNode>> = &mut None;
+            let mut best_fit: Option<NonNull<HeapNode>> = None;
+            let mut best_fit_ha: Option<HeapNodeAlign> = None;
 
-        while let Some(mut h) = elem {
-            let ha = unsafe { h.as_mut() }.calc_alignment(layout.size(), layout.align());
-            if ha.size_needed <= unsafe { h.as_ref() }.size {
-                if let Some(b) = best_fit {
-                    if unsafe { h.as_ref() }.size < unsafe { b.as_ref() }.size {
+            while let Some(mut h) = elem {
+                //Calculate required alignment for the current node
+                let ha = unsafe { h.as_mut() }.calc_alignment(layout.size(), layout.align());
+                if ha.size_needed <= unsafe { h.as_ref() }.size {
+                    if let Some(b) = best_fit {
+                        if unsafe { h.as_ref() }.size < unsafe { b.as_ref() }.size {
+                            best_fit_link = if let Some(mut pe) = prev_elem {
+                                &mut unsafe { pe.as_mut() }.next
+                            } else {
+                                head
+                            };
+                            best_fit = elem;
+                            best_fit_ha = Some(ha);
+                        }
+                    } else {
                         best_fit_link = if let Some(mut pe) = prev_elem {
                             &mut unsafe { pe.as_mut() }.next
                         } else {
-                            &mut self.head
+                            head
                         };
                         best_fit = elem;
                         best_fit_ha = Some(ha);
                     }
-                } else {
-                    best_fit_link = if let Some(mut pe) = prev_elem {
-                        &mut unsafe { pe.as_mut() }.next
-                    } else {
-                        &mut self.head
-                    };
-                    best_fit = elem;
-                    best_fit_ha = Some(ha);
                 }
+                prev_elem = elem;
+                elem = unsafe { h.as_ref() }.next;
             }
-            prev_elem = elem;
-            elem = unsafe { h.as_ref() }.next;
+
+            let retval = if let Some(best) = best_fit {
+                let ha = best_fit_ha.unwrap();
+                let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
+                    if (unsafe { best.as_ref() }.size - ha.size_needed)
+                        < core::mem::size_of::<HeapNode>()
+                    {
+                        //The entire block will be used
+                        *best_fit_link = unsafe { best.as_ref() }.next;
+                        (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
+                    } else {
+                        let after_node = unsafe { best.as_ref() }.start() + ha.size_needed;
+                        let mut node = unsafe {
+                            NonNull::<HeapNode>::new_unchecked(after_node as *mut HeapNode)
+                        };
+                        unsafe { node.as_mut() }.size =
+                            unsafe { best.as_ref() }.size - ha.size_needed;
+                        unsafe { node.as_mut() }.next =
+                            unsafe { best_fit_link.unwrap().as_ref().next };
+                        *best_fit_link = Some(node);
+                        (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
+                    }
+                } else {
+                    doors_macros2::kernel_print!("A free node will exist before the placement\r\n");
+                    if (unsafe { best.as_ref() }.size - ha.size_needed)
+                        < core::mem::size_of::<HeapNode>()
+                    {
+                        doors_macros2::kernel_print!("The end of the block will be used\r\n");
+                    } else {
+                        doors_macros2::kernel_print!(
+                            "There will be blank space at the end of the block\r\n"
+                        );
+                    }
+                    self.print();
+                    unimplemented!();
+                };
+                r
+            } else {
+                continue;
+            };
+            return retval;
         }
 
-        let retval = if let Some(best) = best_fit {
-            let ha = best_fit_ha.unwrap();
-            let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
-                if (unsafe { best.as_ref() }.size - ha.size_needed)
-                    < core::mem::size_of::<HeapNode>()
-                {
-                    //The entire block will be used
-                    *best_fit_link = unsafe { best.as_ref() }.next;
-                    (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
-                } else {
-                    let after_node = unsafe { best.as_ref() }.start() + ha.size_needed;
-                    let mut node =
-                        unsafe { NonNull::<HeapNode>::new_unchecked(after_node as *mut HeapNode) };
-                    unsafe { node.as_mut() }.size = unsafe { best.as_ref() }.size - ha.size_needed;
-                    unsafe { node.as_mut() }.next = unsafe { best_fit_link.unwrap().as_ref().next };
-                    *best_fit_link = Some(node);
-                    (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
-                }
-            } else {
-                doors_macros2::kernel_print!("A free node will exist before the placement\r\n");
-                if (unsafe { best.as_ref() }.size - ha.size_needed)
-                    < core::mem::size_of::<HeapNode>()
-                {
-                    doors_macros2::kernel_print!("The end of the block will be used\r\n");
-                } else {
-                    doors_macros2::kernel_print!(
-                        "There will be blank space at the end of the block\r\n"
-                    );
-                }
-                self.print();
-                unimplemented!();
-            };
-            r
-        } else {
-            core::ptr::null_mut()
-        };
-        retval
+        core::ptr::null_mut()
     }
 
     /// Perform an actual deallocation
     fn run_dealloc(&mut self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let mut new_node = unsafe { HeapNode::with_ptr(ptr, layout) };
-        let e = self.head.take();
-        unsafe { new_node.as_mut() }.next = e;
-        self.head = Some(new_node);
 
         //TODO merge blocks if possible?
     }
