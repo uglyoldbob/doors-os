@@ -4,7 +4,7 @@
 pub mod stm32f769;
 
 #[enum_dispatch::enum_dispatch]
-/// The trait for all gpio implementations
+/// The trait for all gpio providers
 pub trait GpioTrait {
     /// Set a gpio as an output
     fn set_output(&mut self, i: usize);
@@ -12,6 +12,8 @@ pub trait GpioTrait {
     fn write_output(&mut self, i: usize, v: bool);
     /// Get a specific gpio pin
     fn get_pin(&self, i: usize) -> Option<GpioPin>;
+    /// Control the reset line (if applicable) for this gpio provider. True means the device should be in reset.
+    fn reset(&mut self, r: bool);
 }
 
 #[enum_dispatch::enum_dispatch(GpioTrait)]
@@ -28,6 +30,8 @@ pub enum Gpio {
 pub struct DummyGpio {}
 
 impl GpioTrait for DummyGpio {
+    fn reset(&mut self, r: bool) {}
+
     fn set_output(&mut self, i: usize) {}
 
     fn write_output(&mut self, i: usize, v: bool) {}

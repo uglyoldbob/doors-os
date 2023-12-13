@@ -18,6 +18,8 @@ pub mod modules;
 use alloc::boxed::Box;
 use doors_kernel_api::video::TextDisplay;
 
+use crate::modules::gpio::GpioTrait;
+
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
 pub struct Locked<A> {
     /// The contained thing
@@ -55,5 +57,26 @@ static VGA: spin::Mutex<Option<Box<dyn TextDisplay>>> = spin::Mutex::new(None);
 
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
-    loop {}
+    {
+        let mut gpio = crate::kernel::GPIO.lock();
+        let mg = gpio.module(0);
+        let mh = gpio.module(9);
+        drop(gpio);
+        let mut g = mg.lock();
+        let mut h = mh.lock();
+        g.reset(false);
+        h.reset(false);
+        g.set_output(12);
+        h.set_output(5);
+        h.set_output(13);
+        loop {
+            g.write_output(12, true);
+            h.write_output(5, true);
+            h.write_output(13, true);
+
+            g.write_output(12, false);
+            h.write_output(5, false);
+            h.write_output(13, false);
+        }
+    }
 }

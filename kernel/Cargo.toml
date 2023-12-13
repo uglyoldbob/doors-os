@@ -29,7 +29,3 @@ acpi = "4.1.1"
 raw-cpuid = "11.0.1"
 x86_64 = {git = "https://github.com/uglyoldbob/x86_64.git", version = "0.14.10", default-features=false, features = ["instructions"] }
 multiboot2 = "0.18.1"
-
-[profile.release]
-debug = true
-

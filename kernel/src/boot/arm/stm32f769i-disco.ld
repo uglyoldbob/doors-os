@@ -42,6 +42,9 @@ SECTIONS
     *(.bss.*);
     END_OF_BSS = .;
   } > ram
+  .debug (NOLOAD) : {
+    KEEP(*(*.debug));
+  }
   /DISCARD/ :
   {
     *(.dynamic);
@@ -49,7 +52,6 @@ SECTIONS
     *(.gnu.hash);
     *(.comment);
     *(.hash);
-    *(.debug*);
     *(.ARM.exidx);
   }
 }
