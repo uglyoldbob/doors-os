@@ -218,8 +218,8 @@ pub extern "C" fn start64() -> ! {
         .unwrap()
     };
 
-    let start_kernel = unsafe { &crate::START_OF_KERNEL } as *const u8 as usize;
-    let end_kernel = unsafe { &crate::END_OF_KERNEL } as *const u8 as usize;
+    let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
+    let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
     VIRTUAL_MEMORY_ALLOCATOR
         .lock()

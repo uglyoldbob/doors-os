@@ -33,6 +33,9 @@ fn main() {
         "stm32f769i-disco" => {
             linker_script = Some("kernel/src/boot/arm/stm32f769i-disco.ld");
         }
+        "pc64" => {
+            linker_script = Some("kernel/src/boot/x86/linker.ld");
+        }
         _ => {
             panic!("Unknown machine name {}", config.machine_name);
         }

@@ -10,6 +10,7 @@ impl KernelConfig {
     pub fn get_arch(&self) -> String {
         match self.machine_name.as_str() {
             "stm32f769i-disco" => "arm",
+            "pc64" => "x86_64",
             _ => "unknown",
         }
         .to_string()
