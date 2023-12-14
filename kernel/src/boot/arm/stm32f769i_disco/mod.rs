@@ -77,5 +77,7 @@ pub extern "C" fn _start() -> ! {
         drop(gpio);
     }
 
+    let dsi = unsafe { crate::modules::video::mipi_dsi::stm32f769::Module::new(&rcc, 0x4001_6c00) };
+    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi);
     crate::main()
 }

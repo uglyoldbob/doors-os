@@ -4,6 +4,8 @@ pub mod text;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod vga;
 
+pub mod mipi_dsi;
+
 /// Type used for the pc vga text mode output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]

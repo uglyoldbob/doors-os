@@ -11,6 +11,20 @@ pub struct Module<'a> {
     registers: &'a mut Registers,
 }
 
+fn calc_registers(i: usize) -> (usize, u32) {
+    let index = i / 32;
+    let i = i % 32;
+    let reg_num = match index {
+        0 => 12,
+        1 => 13,
+        2 => 14,
+        3 => 16,
+        4 => 17,
+        _ => panic!("Invalid group for reset enable"),
+    };
+    (reg_num, 1 << i)
+}
+
 impl<'a> super::ResetProviderTrait for Locked<Module<'a>> {
     fn disable(&self, i: usize) {
         let mut s = self.lock();
@@ -24,30 +38,19 @@ impl<'a> super::ResetProviderTrait for Locked<Module<'a>> {
 impl<'a> crate::modules::clock::ClockProviderTrait for Locked<Module<'a>> {
     fn disable(&self, i: usize) {
         let mut s = self.lock();
-        let index = i / 32;
-        let i = i % 32;
-        match index {
-            0 => {
-                let n = unsafe { core::ptr::read_volatile(&s.registers.regs[12]) } & !(1 << i);
-                unsafe { core::ptr::write_volatile(&mut s.registers.regs[12], n) };
-                unsafe { core::ptr::read_volatile(&s.registers.regs[12]) };
-            }
-            _ => {}
-        }
+        let (reg_num, i) = calc_registers(i);
+
+        let n = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) } & !i;
+        unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
+        unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) };
     }
 
     fn enable(&self, i: usize) {
         let mut s = self.lock();
-        let index = i / 32;
-        let i = i % 32;
-        match index {
-            0 => {
-                let n = unsafe { core::ptr::read_volatile(&s.registers.regs[12]) } | (1 << i);
-                unsafe { core::ptr::write_volatile(&mut s.registers.regs[12], n) };
-                unsafe { core::ptr::read_volatile(&s.registers.regs[12]) };
-            }
-            _ => {}
-        }
+        let (reg_num, i) = calc_registers(i);
+        let n = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) } | i;
+        unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
+        unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) };
     }
 }
 
