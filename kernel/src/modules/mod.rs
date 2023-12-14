@@ -1,5 +1,6 @@
 //! Kernel modules belong in this module.
 
+pub mod clock;
 pub mod gpio;
 pub mod memory;
 pub mod reset;

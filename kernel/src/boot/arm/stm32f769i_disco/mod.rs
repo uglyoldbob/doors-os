@@ -46,7 +46,8 @@ pub extern "C" fn _start() -> ! {
     drop(h);
 
     let rcc = unsafe { crate::modules::reset::stm32f769::Module::new(0x4002_3800) };
-    let rcc = Arc::new(Locked::new(rcc));
+    let rcc = crate::modules::clock::ClockProvider::Stm32f769(Locked::new(rcc.into()));
+    let rcc = Arc::new(rcc);
 
     let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
     let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };

@@ -1,33 +1,31 @@
-//! For hardware that controls the reset lines of other peripherals
-
-#[cfg(kernel_machine = "stm32f769i-disco")]
-pub mod stm32f769;
+//! Defines clock providers and how clocks are managed in the kernel.
 
 use crate::Locked;
 
 /// The trait that all clock providers must implement
 #[enum_dispatch::enum_dispatch]
-pub trait ResetProviderTrait {
-    /// Disable the specified reset
+pub trait ClockProviderTrait {
+    /// Enable the specified clock
     fn enable(&self, i: usize);
-    /// Enable the specified reset
+    /// Disable the specified clock
     fn disable(&self, i: usize);
 }
 
-#[enum_dispatch::enum_dispatch(ResetProviderTrait)]
+#[enum_dispatch::enum_dispatch(ClockProviderTrait)]
 /// An enumeration of all the types of gpio controllers
-pub enum ResetProvider {
+pub enum ClockProvider {
     /// The reset provider for the stm32f769i-disco board.
     #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769(Locked<stm32f769::Module<'static>>),
+    Stm32f769(Locked<crate::modules::reset::stm32f769::Module<'static>>),
     /// A fake clock provider
-    Dummy(DummyReset),
+    Dummy(DummyClock),
 }
 
 /// A fake clock provider
-pub struct DummyReset {}
+pub struct DummyClock {}
 
-impl ResetProviderTrait for DummyReset {
+impl ClockProviderTrait for DummyClock {
     fn disable(&self, i: usize) {}
+
     fn enable(&self, i: usize) {}
 }

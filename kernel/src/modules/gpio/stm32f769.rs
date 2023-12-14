@@ -2,7 +2,7 @@
 
 use alloc::sync::Arc;
 
-use crate::Locked;
+use crate::{modules::clock::ClockProviderTrait, Locked};
 
 struct GpioRegisters {
     mode: u32,
@@ -30,10 +30,10 @@ impl super::GpioPinTrait for GpioPin {
 
 /// A single stm32f769 gpio module
 pub struct Gpio<'a> {
-    /// The hardware for enabling and disabling the gpio module
-    rcc: Arc<Locked<crate::modules::reset::stm32f769::Module<'static>>>,
+    /// The hardware for enabling and disabling the gpio module clock
+    cc: Arc<crate::modules::clock::ClockProvider>,
     /// The index for using the rcc
-    index: u8,
+    index: usize,
     /// the memory mapped registers for the hardware
     registers: &'a mut GpioRegisters,
 }
@@ -41,12 +41,12 @@ pub struct Gpio<'a> {
 impl<'a> Gpio<'a> {
     /// Construct a new gpio module with the specified address.
     pub unsafe fn new(
-        rcc: &Arc<Locked<crate::modules::reset::stm32f769::Module<'static>>>,
-        index: u8,
+        cc: &Arc<crate::modules::clock::ClockProvider>,
+        index: usize,
         addr: u32,
     ) -> Self {
         Self {
-            rcc: rcc.clone(),
+            cc: cc.clone(),
             index,
             registers: &mut *(addr as *mut GpioRegisters),
         }
@@ -56,9 +56,9 @@ impl<'a> Gpio<'a> {
 impl<'a> super::GpioTrait for Gpio<'a> {
     fn reset(&mut self, r: bool) {
         if !r {
-            self.rcc.lock().enable_peripheral(self.index);
+            self.cc.enable(self.index);
         } else {
-            self.rcc.lock().disable_peripheral(self.index);
+            self.cc.disable(self.index);
         }
     }
 
