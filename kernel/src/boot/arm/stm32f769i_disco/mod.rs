@@ -65,6 +65,11 @@ pub extern "C" fn _start() -> ! {
     );
     crate::modules::clock::ClockMuxTrait::select(&mux1, 1);
 
+    let mux1 = crate::modules::clock::ClockMux::Stm32f769Mux1(mux1);
+    let mux1 = crate::modules::clock::ClockRef::Mux(mux1);
+    let divider = crate::modules::clock::stm32f769::Divider1::new(&rcc_mod, mux1);
+    divider.set_divider(2);
+
     let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
     let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };
     let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 2, 0x4002_0800) };

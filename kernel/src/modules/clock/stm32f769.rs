@@ -147,3 +147,51 @@ impl super::ClockMuxTrait for Mux1 {
         rcc.set_mux1(i > 0);
     }
 }
+
+/// The input clock divider for the the main, i2s, and sai pll
+#[derive(Clone)]
+pub struct Divider1 {
+    /// The hardware for configuring
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    /// The input clock for the divider
+    iclk: alloc::boxed::Box<super::ClockRef>,
+}
+
+impl Divider1 {
+    /// Construct a new divider
+    pub fn new(
+        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+        iclk: super::ClockRef,
+    ) -> Self {
+        Self {
+            rcc: rcc.clone(),
+            iclk: alloc::boxed::Box::new(iclk),
+        }
+    }
+
+    /// Set the divider
+    pub fn set_divider(&self, d: u32) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_divider1(d);
+    }
+}
+
+impl super::ClockRefTrait for Divider1 {
+    fn frequency(&self) -> Option<u32> {
+        let rcc = self.rcc.lock();
+        let divider = rcc.get_divider1();
+        if let Some(f) = self.iclk.frequency() {
+            Some(f / divider)
+        } else {
+            None
+        }
+    }
+
+    fn is_ready(&self) -> bool {
+        true
+    }
+
+    fn enable(&self) {}
+
+    fn disable(&self) {}
+}

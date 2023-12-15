@@ -3,8 +3,6 @@
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
-use alloc::boxed::Box;
-
 use crate::LockedArc;
 
 /// The trait that all clock providers must implement
@@ -86,6 +84,9 @@ pub enum ClockRef {
     Plain(ClockRefPlain),
     /// A clock from a mux
     Mux(ClockMux),
+    /// The input clock divider for the the main, i2s, and sai pll
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769MainDivider(stm32f769::Divider1),
 }
 
 /// A clock reference to a single clock.
@@ -149,4 +150,11 @@ pub enum ClockMux {
 
 impl ClockMuxTrait for DummyClock {
     fn select(&self, _i: usize) {}
+}
+
+/// The trait for clock dividers
+#[enum_dispatch::enum_dispatch]
+pub trait ClockDividerTrait {
+    /// Set the divisor for the object
+    fn set_divisor(&self, d: usize) -> Result<(), ()>;
 }

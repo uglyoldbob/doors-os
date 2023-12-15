@@ -126,4 +126,16 @@ impl<'a> Module<'a> {
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & (1 << 22);
         v != 0
     }
+
+    /// Get the divisor for the main divider
+    pub fn get_divider1(&self) -> u32 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & 0x1F;
+        v
+    }
+
+    /// Set the divisor for the main divider
+    pub fn set_divider1(&mut self, d: u32) {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !0x1F;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], v | (d & 0x1F)) };
+    }
 }
