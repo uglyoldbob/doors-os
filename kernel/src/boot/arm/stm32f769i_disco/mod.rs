@@ -2,7 +2,7 @@
 
 use alloc::sync::Arc;
 
-use crate::Locked;
+use crate::LockedArc;
 
 pub mod memory;
 
@@ -45,9 +45,8 @@ pub extern "C" fn _start() -> ! {
     }
     drop(h);
 
-    let rcc = unsafe { crate::modules::reset::stm32f769::Module::new(0x4002_3800) };
-    let rcc = crate::modules::clock::ClockProvider::Stm32f769(Locked::new(rcc.into()));
-    let rcc = Arc::new(rcc);
+    let rcc_mod = unsafe { crate::modules::reset::stm32f769::Module::new(0x4002_3800) };
+    let rcc = crate::modules::clock::ClockProvider::Stm32f769(LockedArc::new(rcc_mod.into()));
 
     let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
     let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };

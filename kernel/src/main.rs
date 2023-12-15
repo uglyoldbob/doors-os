@@ -15,10 +15,44 @@ pub mod boot;
 pub mod kernel;
 pub mod modules;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, sync::Arc};
 use doors_kernel_api::video::TextDisplay;
 
 use crate::modules::gpio::GpioTrait;
+
+/// A wrapper that allows for traits to be implemented on an Arc<Mutex<A>>
+pub struct LockedArc<A> {
+    /// The arc with the contained object
+    inner: Arc<Locked<A>>,
+}
+
+impl<A> Clone for LockedArc<A> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<A> LockedArc<A> {
+    /// Create a new locked arc object.
+    pub fn new(inner: A) -> Self {
+        Self {
+            inner: Arc::new(Locked::new(inner)),
+        }
+    }
+
+    /// Lock the contained mutex, returning a protected instance of the contained object
+    pub fn lock(&self) -> spin::MutexGuard<A> {
+        self.inner.lock()
+    }
+
+    /// Replace the contents of the protected instance with another instance of the thing
+    pub fn replace(&self, r: A) {
+        let mut s = self.inner.lock();
+        *s = r;
+    }
+}
 
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
 pub struct Locked<A> {

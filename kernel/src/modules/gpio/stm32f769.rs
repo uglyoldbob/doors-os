@@ -31,7 +31,7 @@ impl super::GpioPinTrait for GpioPin {
 /// A single stm32f769 gpio module
 pub struct Gpio<'a> {
     /// The hardware for enabling and disabling the gpio module clock
-    cc: Arc<crate::modules::clock::ClockProvider>,
+    cc: crate::modules::clock::ClockProvider,
     /// The index for using the rcc
     index: usize,
     /// the memory mapped registers for the hardware
@@ -40,11 +40,7 @@ pub struct Gpio<'a> {
 
 impl<'a> Gpio<'a> {
     /// Construct a new gpio module with the specified address.
-    pub unsafe fn new(
-        cc: &Arc<crate::modules::clock::ClockProvider>,
-        index: usize,
-        addr: u32,
-    ) -> Self {
+    pub unsafe fn new(cc: &crate::modules::clock::ClockProvider, index: usize, addr: u32) -> Self {
         Self {
             cc: cc.clone(),
             index,

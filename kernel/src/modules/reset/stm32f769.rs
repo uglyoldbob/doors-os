@@ -1,6 +1,6 @@
 //! The reset controller for the stm32f769
 
-use crate::Locked;
+use crate::LockedArc;
 
 struct Registers {
     regs: [u32; 37],
@@ -25,7 +25,7 @@ fn calc_registers(i: usize) -> (usize, u32) {
     (reg_num, 1 << i)
 }
 
-impl<'a> super::ResetProviderTrait for Locked<Module<'a>> {
+impl<'a> super::ResetProviderTrait for LockedArc<Module<'a>> {
     fn disable(&self, i: usize) {
         let mut s = self.lock();
     }
@@ -35,7 +35,7 @@ impl<'a> super::ResetProviderTrait for Locked<Module<'a>> {
     }
 }
 
-impl<'a> crate::modules::clock::ClockProviderTrait for Locked<Module<'a>> {
+impl<'a> crate::modules::clock::ClockProviderTrait for LockedArc<Module<'a>> {
     fn disable(&self, i: usize) {
         let mut s = self.lock();
         let (reg_num, i) = calc_registers(i);

@@ -3,7 +3,7 @@
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
-use crate::Locked;
+use crate::LockedArc;
 
 /// The trait that all clock providers must implement
 #[enum_dispatch::enum_dispatch]
@@ -19,7 +19,7 @@ pub trait ResetProviderTrait {
 pub enum ResetProvider {
     /// The reset provider for the stm32f769i-disco board.
     #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769(Locked<stm32f769::Module<'static>>),
+    Stm32f769(LockedArc<stm32f769::Module<'static>>),
     /// A fake clock provider
     Dummy(DummyReset),
 }

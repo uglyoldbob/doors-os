@@ -9,12 +9,12 @@ struct LtdcRegisters {
 }
 
 struct Ltdc {
-    cc: Arc<crate::modules::clock::ClockProvider>,
+    cc: crate::modules::clock::ClockProvider,
     regs: &'static mut LtdcRegisters,
 }
 
 impl Ltdc {
-    pub unsafe fn new(cc: &Arc<crate::modules::clock::ClockProvider>, addr: usize) -> Self {
+    pub unsafe fn new(cc: &crate::modules::clock::ClockProvider, addr: usize) -> Self {
         Self {
             cc: cc.clone(),
             regs: &mut *(addr as *mut LtdcRegisters),
@@ -37,7 +37,7 @@ struct DsiRegisters {
 /// The dsi hardware implementation
 pub struct Module {
     /// The hardware for enabling and disabling the clock
-    cc: Arc<crate::modules::clock::ClockProvider>,
+    cc: crate::modules::clock::ClockProvider,
     /// The registers for the hardware
     regs: &'static mut DsiRegisters,
     /// The related ltdc hardware
@@ -58,7 +58,7 @@ impl super::MipiDsiTrait for Module {
 
 impl Module {
     /// Create a new hardware instance
-    pub unsafe fn new(cc: &Arc<crate::modules::clock::ClockProvider>, addr: usize) -> Self {
+    pub unsafe fn new(cc: &crate::modules::clock::ClockProvider, addr: usize) -> Self {
         Self {
             cc: cc.clone(),
             regs: &mut *(addr as *mut DsiRegisters),
