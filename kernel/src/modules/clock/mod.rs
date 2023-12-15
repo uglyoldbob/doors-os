@@ -12,6 +12,8 @@ pub trait ClockProviderTrait {
     fn enable(&self, i: usize);
     /// Disable the specified clock
     fn disable(&self, i: usize);
+    /// Is the specified clock ready?
+    fn is_ready(&self, i: usize) -> bool;
 }
 
 #[derive(Clone)]
@@ -21,6 +23,9 @@ pub enum ClockProvider {
     /// The reset provider for the stm32f769i-disco board.
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769(LockedArc<crate::modules::reset::stm32f769::Module<'static>>),
+    /// The external oscillator for the stm32f769 processor
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769Hse(LockedArc<stm32f769::ExternalOscillator>),
     /// A fake clock provider
     Dummy(DummyClock),
 }
@@ -33,4 +38,8 @@ impl ClockProviderTrait for DummyClock {
     fn disable(&self, i: usize) {}
 
     fn enable(&self, i: usize) {}
+
+    fn is_ready(&self, i: usize) -> bool {
+        true
+    }
 }

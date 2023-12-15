@@ -52,6 +52,10 @@ impl<'a> crate::modules::clock::ClockProviderTrait for LockedArc<Module<'a>> {
         unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
         unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) };
     }
+
+    fn is_ready(&self, i: usize) -> bool {
+        true
+    }
 }
 
 impl<'a> Module<'a> {
@@ -74,5 +78,20 @@ impl<'a> Module<'a> {
         let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } | (1 << i);
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[12], n) };
         unsafe { core::ptr::read_volatile(&self.registers.regs[12]) }
+    }
+
+    /// Set the HSE clock
+    pub fn set_hse(&mut self, s: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 16);
+        if s {
+            newval |= (1 << 16);
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
+    }
+
+    /// Is the hse ready?
+    pub fn hse_ready(&self) -> bool {
+        let val = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) };
+        (val & (1 << 17)) != 0
     }
 }
