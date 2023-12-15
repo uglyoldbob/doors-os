@@ -1,4 +1,4 @@
-//! Kernel modules belong in this module.
+//! Kernel modules belong in this module. A lot of the enums will have a dummy provider so that the code will compile.
 
 pub mod clock;
 pub mod gpio;

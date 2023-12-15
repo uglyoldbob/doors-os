@@ -11,7 +11,7 @@ pub struct Module<'a> {
     registers: &'a mut Registers,
 }
 
-fn calc_registers(i: usize) -> (usize, u32) {
+fn calc_clock_register(i: usize) -> (usize, u32) {
     let index = i / 32;
     let i = i % 32;
     let reg_num = match index {
@@ -26,19 +26,15 @@ fn calc_registers(i: usize) -> (usize, u32) {
 }
 
 impl<'a> super::ResetProviderTrait for LockedArc<Module<'a>> {
-    fn disable(&self, i: usize) {
-        let mut s = self.lock();
-    }
+    fn disable(&self, _i: usize) {}
 
-    fn enable(&self, i: usize) {
-        let mut s = self.lock();
-    }
+    fn enable(&self, _i: usize) {}
 }
 
 impl<'a> crate::modules::clock::ClockProviderTrait for LockedArc<Module<'a>> {
     fn disable(&self, i: usize) {
         let mut s = self.lock();
-        let (reg_num, i) = calc_registers(i);
+        let (reg_num, i) = calc_clock_register(i);
 
         let n = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) } & !i;
         unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
@@ -47,14 +43,19 @@ impl<'a> crate::modules::clock::ClockProviderTrait for LockedArc<Module<'a>> {
 
     fn enable(&self, i: usize) {
         let mut s = self.lock();
-        let (reg_num, i) = calc_registers(i);
+        let (reg_num, i) = calc_clock_register(i);
         let n = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) } | i;
         unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
         unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) };
     }
 
-    fn is_ready(&self, i: usize) -> bool {
+    fn is_ready(&self, _i: usize) -> bool {
         true
+    }
+
+    fn frequency(&self, _i: usize) -> Option<u32> {
+        //TODO: possibly keep track of the actual frequency of all possible clocks tracked by this trait
+        None
     }
 }
 
@@ -84,7 +85,7 @@ impl<'a> Module<'a> {
     pub fn set_hse(&mut self, s: bool) {
         let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 16);
         if s {
-            newval |= (1 << 16);
+            newval |= 1 << 16;
         }
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
     }
@@ -93,5 +94,36 @@ impl<'a> Module<'a> {
     pub fn hse_ready(&self) -> bool {
         let val = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) };
         (val & (1 << 17)) != 0
+    }
+
+    /// Set the HSI clock
+    pub fn set_hsi(&mut self, s: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 0);
+        if s {
+            newval |= 1 << 0;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
+    }
+
+    /// Is the hsi ready?
+    pub fn hsi_ready(&self) -> bool {
+        let val = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) };
+        (val & (1 << 1)) != 0
+    }
+
+    /// Set the status of mux1, which sets the input clock for the main pll and the i2s pll.
+    /// True means select the HSE oscillator, false means select the HSI oscillator
+    pub fn set_mux1(&mut self, v: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !(1 << 22);
+        if v {
+            newval |= 1 << 22;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], newval) };
+    }
+
+    /// Get the status of the mux1 switch
+    pub fn get_mux1(&self) -> bool {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & (1 << 22);
+        v != 0
     }
 }

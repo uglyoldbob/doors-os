@@ -51,10 +51,19 @@ pub extern "C" fn _start() -> ! {
 
     let exto =
         unsafe { crate::modules::clock::stm32f769::ExternalOscillator::new(25_000_000, &rcc_mod) };
-    let exto = LockedArc::new(exto);
+    let into =
+        unsafe { crate::modules::clock::stm32f769::InternalOscillator::new(16_000_000, &rcc_mod) };
     crate::modules::clock::ClockProviderTrait::enable(&exto, 0);
 
     while !crate::modules::clock::ClockProviderTrait::is_ready(&exto, 0) {}
+
+    let exto = crate::modules::clock::ClockProvider::Stm32f769Hse(exto).get_ref(0);
+    let into = crate::modules::clock::ClockProvider::Stm32f769Hsi(into).get_ref(0);
+    let mux1 = crate::modules::clock::stm32f769::Mux1::new(
+        &rcc_mod,
+        [alloc::boxed::Box::new(into), alloc::boxed::Box::new(exto)],
+    );
+    crate::modules::clock::ClockMuxTrait::select(&mux1, 1);
 
     let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
     let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };

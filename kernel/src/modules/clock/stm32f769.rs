@@ -1,10 +1,10 @@
 //! Clock providers for the stm32f769i-disco board
 
-use alloc::sync::Arc;
-
+use super::ClockRefTrait;
 use crate::LockedArc;
 
 /// The external oscillator for the stm32f769
+#[derive(Clone)]
 pub struct ExternalOscillator {
     /// The hardware for configuring the oscillator
     rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
@@ -18,38 +18,132 @@ impl ExternalOscillator {
         frequency: u32,
         rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
     ) -> Self {
-        let mut s = Self {
+        Self {
             rcc: rcc.clone(),
             frequency,
-        };
-        let mut rcc = s.rcc.lock();
-        rcc.set_hse(true);
-        drop(rcc);
-        s
+        }
     }
 }
 
-impl super::ClockProviderTrait for LockedArc<ExternalOscillator> {
+impl super::ClockProviderTrait for ExternalOscillator {
     fn enable(&self, _i: usize) {
-        let s = self.lock();
-        let mut rcc = s.rcc.lock();
+        let mut rcc = self.rcc.lock();
         rcc.set_hse(true);
-        drop(rcc);
     }
 
     fn disable(&self, _i: usize) {
-        let s = self.lock();
-        let mut rcc = s.rcc.lock();
+        let mut rcc = self.rcc.lock();
         rcc.set_hse(false);
-        drop(rcc);
     }
 
-    fn is_ready(&self, i: usize) -> bool {
-        let mut ready;
-        let s = self.lock();
-        let mut rcc = s.rcc.lock();
-        ready = rcc.hse_ready();
-        drop(rcc);
-        ready
+    fn is_ready(&self, _i: usize) -> bool {
+        let mut rcc = self.rcc.lock();
+        rcc.hse_ready()
+    }
+
+    fn frequency(&self, _i: usize) -> Option<u32> {
+        Some(self.frequency)
+    }
+}
+
+/// The internal oscillator for the stm32f769
+#[derive(Clone)]
+pub struct InternalOscillator {
+    /// The hardware for configuring the oscillator
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    /// The frequency specified for the oscillator, specified in hertz
+    frequency: u32,
+}
+
+impl InternalOscillator {
+    /// Create a new internal oscillator with the specified frequency
+    pub unsafe fn new(
+        frequency: u32,
+        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    ) -> Self {
+        Self {
+            rcc: rcc.clone(),
+            frequency,
+        }
+    }
+}
+
+impl super::ClockProviderTrait for InternalOscillator {
+    fn enable(&self, _i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_hsi(true);
+    }
+
+    fn disable(&self, _i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_hsi(false);
+    }
+
+    fn is_ready(&self, _i: usize) -> bool {
+        let mut rcc = self.rcc.lock();
+        rcc.hsi_ready()
+    }
+
+    fn frequency(&self, _i: usize) -> Option<u32> {
+        Some(self.frequency)
+    }
+}
+
+#[derive(Clone)]
+/// This mux selects the input for the main pll and the i2s pll of the stm32f769
+pub struct Mux1 {
+    /// The hardware for configuring
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    /// The two clock providers
+    clocks: [alloc::boxed::Box<super::ClockRef>; 2],
+}
+
+impl Mux1 {
+    /// Create a new mux
+    pub fn new(
+        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+        clocks: [alloc::boxed::Box<super::ClockRef>; 2],
+    ) -> Self {
+        Self {
+            rcc: rcc.clone(),
+            clocks,
+        }
+    }
+}
+
+impl super::ClockRefTrait for Mux1 {
+    fn enable(&self) {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux1();
+        let i = if v { 1 } else { 0 };
+        self.clocks[i].enable();
+    }
+
+    fn disable(&self) {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux1();
+        let i = if v { 1 } else { 0 };
+        self.clocks[i].disable();
+    }
+
+    fn is_ready(&self) -> bool {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux1();
+        let i = if v { 1 } else { 0 };
+        self.clocks[i].is_ready()
+    }
+
+    fn frequency(&self) -> Option<u32> {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux1();
+        let i = if v { 1 } else { 0 };
+        self.clocks[i].frequency()
+    }
+}
+
+impl super::ClockMuxTrait for Mux1 {
+    fn select(&self, i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_mux1(i > 0);
     }
 }

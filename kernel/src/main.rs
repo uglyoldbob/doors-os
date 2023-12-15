@@ -15,10 +15,37 @@ pub mod boot;
 pub mod kernel;
 pub mod modules;
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::sync::Arc;
 use doors_kernel_api::video::TextDisplay;
 
 use crate::modules::gpio::GpioTrait;
+
+/// A wrapper around box that allows for traits to be implemented on a Box
+pub struct Box<T> {
+    /// The contained object
+    inner: alloc::boxed::Box<T>,
+}
+
+impl<T: Clone> Clone for Box<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T> core::ops::Deref for Box<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.inner
+    }
+}
+
+impl<T> core::ops::DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
 
 /// A wrapper that allows for traits to be implemented on an Arc<Mutex<A>>
 pub struct LockedArc<A> {
@@ -87,7 +114,7 @@ impl<A> Locked<A> {
 static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot::new();
 
 /// The VGA instance used for x86 kernel printing
-static VGA: spin::Mutex<Option<Box<dyn TextDisplay>>> = spin::Mutex::new(None);
+static VGA: spin::Mutex<Option<alloc::boxed::Box<dyn TextDisplay>>> = spin::Mutex::new(None);
 
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
