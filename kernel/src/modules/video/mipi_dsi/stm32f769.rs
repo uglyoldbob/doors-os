@@ -54,8 +54,8 @@ struct ModuleInternals {
 pub struct Module {
     /// The hardware for enabling and disabling the clock
     cc: crate::modules::clock::ClockProvider,
-    /// The input clock for the pll
-    iclk: crate::modules::clock::ClockRef,
+    /// The input clocks. 0 is the optional clock for the byte clock, 1 is the input to the pll
+    iclk: [crate::modules::clock::ClockRef; 2],
     // The internals for the hardware
     internals: LockedArc<ModuleInternals>,
     /// The related ltdc hardware
@@ -78,19 +78,21 @@ impl super::MipiDsiTrait for Module {
 }
 
 impl Module {
-    /// Create a new hardware instance
+    /// Create a new hardware instance.
+    /// iclk is a slice of the two clocks for the dsi. Index 0 is for the clock that leads to the dsi byte clock, index 1 is for the pll input.
     pub unsafe fn new(
         cc: &crate::modules::clock::ClockProvider,
-        iclk: &crate::modules::clock::ClockRef,
+        iclk: [&crate::modules::clock::ClockRef; 2],
         addr: usize,
     ) -> Self {
+        let mut nclk: [crate::modules::clock::ClockRef; 2] = [iclk[0].clone(), iclk[1].clone()];
         Self {
             cc: cc.clone(),
             internals: LockedArc::new(ModuleInternals {
                 regs: &mut *(addr as *mut DsiRegisters),
             }),
             ltdc: LockedArc::new(Ltdc::new(cc, 0x4001_6800)),
-            iclk: iclk.clone(),
+            iclk: nclk,
         }
     }
 
@@ -141,7 +143,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
     }
 
     fn frequency(&self, i: usize) -> Option<u64> {
-        if let Some(fin) = self.iclk.frequency() {
+        if let Some(fin) = self.iclk[1].frequency() {
             let id = self.get_input_divider();
             let vco_mul = self.get_multiplier();
             let divider = crate::modules::clock::PllProviderTrait::get_post_divider(self, i) as u64;
@@ -155,19 +157,19 @@ impl crate::modules::clock::ClockProviderTrait for Module {
 
 impl crate::modules::clock::PllProviderTrait for Module {
     fn get_input_frequency(&self) -> Option<u64> {
-        self.iclk.frequency()
+        self.iclk[1].frequency()
     }
 
     fn set_input_divider(&self, d: u32) -> Result<(), crate::modules::clock::PllDividerErr> {
         if (d & !7) != 0 {
             return Err(PllDividerErr::ImpossibleDivisor);
         }
-        if let Some(fin) = self.iclk.frequency() {
+        if let Some(fin) = self.iclk[1].frequency() {
             if !(4_000_000..=100_000_000).contains(&fin) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
             }
             let internal_freq = fin / d as u64;
-            if !(4_000_000..25_000_000).contains(&internal_freq) {
+            if !(4_000_000..=25_000_000).contains(&internal_freq) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
             }
         } else {
@@ -192,7 +194,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
 
         let id = self.get_input_divider();
         let vco_mul = self.get_multiplier();
-        if let Some(fin) = self.iclk.frequency() {
+        if let Some(fin) = self.iclk[1].frequency() {
             let fout = (fin * vco_mul as u64) / (id as u64 * divider);
             if !(31_250_000..=82_500_000).contains(&fout) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
@@ -225,7 +227,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
             return Err(PllVcoSetError::FrequencyOutOfRange);
         }
 
-        if let Some(fin) = self.iclk.frequency() {
+        if let Some(fin) = self.iclk[1].frequency() {
             let fin = fin / self.get_input_divider() as u64;
             let multiplier = f / fin;
             self.set_multiplier(multiplier as u32);

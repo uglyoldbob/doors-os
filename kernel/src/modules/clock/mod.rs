@@ -52,6 +52,13 @@ impl ClockProvider {
 #[derive(Clone)]
 pub struct DummyClock {}
 
+impl DummyClock {
+    /// Construct a dummy clock
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 impl ClockProviderTrait for DummyClock {
     fn disable(&self, _i: usize) {}
 

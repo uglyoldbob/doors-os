@@ -141,11 +141,21 @@ pub extern "C" fn _start() -> ! {
     let dsi_clock1 = mux1.clone();
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
     let dsi_byte_clock = pll_clock.get_ref(2);
-    let dsi_pll = 42;
 
     let dsi = unsafe {
-        crate::modules::video::mipi_dsi::stm32f769::Module::new(&rcc, &dsi_byte_clock, 0x4001_6c00)
+        crate::modules::video::mipi_dsi::stm32f769::Module::new(
+            &rcc,
+            [&dsi_byte_clock, &dsi_clock1],
+            0x4001_6c00,
+        )
     };
+    let dsi_pll = crate::modules::clock::PllProvider::Stm32f769DsiPll(dsi.clone());
+    loop {
+        if crate::modules::clock::PllProviderTrait::set_input_divider(&dsi_pll, 1).is_ok() {
+            break;
+        }
+    }
+
     crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi);
     crate::main()
 }
