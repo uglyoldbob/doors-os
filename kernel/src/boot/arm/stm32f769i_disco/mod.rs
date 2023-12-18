@@ -77,11 +77,29 @@ pub extern "C" fn _start() -> ! {
 
     let divider = crate::modules::clock::ClockRef::Stm32f769MainDivider(divider);
 
-    let pll_main_clock = crate::modules::clock::stm32f769::PllMain::new(&rcc_mod, divider);
-    let pll_main = crate::modules::clock::PllProvider::Stm32f769MainPll(pll_main_clock.clone());
+    let pll_main = crate::modules::clock::stm32f769::PllMain::new(&rcc_mod, divider.clone());
+    let pll_main_provider =
+        crate::modules::clock::ClockProvider::Stm32F769MainPll(pll_main.clone());
+    let pll_main = crate::modules::clock::PllProvider::Stm32f769MainPll(pll_main.clone());
+    let pll_two = crate::modules::clock::stm32f769::PllTwo::new(&rcc_mod, divider.clone());
+    let pll_two_provider =
+        crate::modules::clock::ClockProvider::Stm32F769SecondPll(pll_two.clone());
+    let pll_two = crate::modules::clock::PllProvider::Stm32f769SecondPll(pll_two);
+    let pll_three = crate::modules::clock::stm32f769::PllThree::new(&rcc_mod, divider.clone());
+    let pll_three_provider =
+        crate::modules::clock::ClockProvider::Stm32F769ThirdPll(pll_three.clone());
+    let pll_three = crate::modules::clock::PllProvider::Stm32f769ThirdPll(pll_three);
+
     loop {
         if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_main, 400_000_000)
             .is_ok()
+        {
+            break;
+        }
+    }
+
+    loop {
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_two, 400_000_000).is_ok()
         {
             break;
         }
@@ -91,13 +109,10 @@ pub extern "C" fn _start() -> ! {
 
     fmc.set_wait_states(6);
 
-    crate::modules::clock::ClockProviderTrait::enable(&pll_main_clock, 0);
+    crate::modules::clock::ClockProviderTrait::enable(&pll_main_provider, 0);
+    while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main_provider, 0) {}
 
-    while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main_clock, 0) {}
-
-    let pll_clock = crate::modules::clock::ClockProvider::Stm32F769MainPll(pll_main_clock.clone());
-
-    let pll_ref = pll_clock.get_ref(0);
+    let pll_ref = pll_main_provider.get_ref(0);
 
     let sysclk_mux = crate::modules::clock::stm32f769::MuxSysClk::new(
         &rcc_mod,
@@ -140,7 +155,11 @@ pub extern "C" fn _start() -> ! {
 
     let dsi_clock1 = mux1.clone();
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
-    let dsi_byte_clock = pll_clock.get_ref(2);
+    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_three, 2, 2);
+
+    let ltdc_divider = 42;
+
+    let dsi_byte_clock = pll_main_provider.get_ref(2);
 
     let dsi = unsafe {
         crate::modules::video::mipi_dsi::stm32f769::Module::new(

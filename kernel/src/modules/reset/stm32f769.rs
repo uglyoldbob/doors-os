@@ -151,9 +151,45 @@ impl<'a> Module<'a> {
         (v >> 6) & 0x1FF
     }
 
+    /// Set the multiplier for the second pll
+    pub fn set_multiplier2(&mut self, d: u32) {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[33]) } & !0x7FC0;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[33], v | ((d << 6) & 0x7FC0)) };
+    }
+
+    /// Get the multiplier for the second pll
+    pub fn get_multiplier2(&self) -> u32 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[33]) } & !0x7FC0;
+        (v >> 6) & 0x1FF
+    }
+
+    /// Set the multiplier for the third pll
+    pub fn set_multiplier3(&mut self, d: u32) {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & !0x7FC0;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[33], v | ((d << 6) & 0x7FC0)) };
+    }
+
+    /// Get the multiplier for the third pll
+    pub fn get_multiplier3(&self) -> u32 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & !0x7FC0;
+        (v >> 6) & 0x1FF
+    }
+
     /// Is the main pll ready and locked?
     pub fn main_pll_locked(&self) -> bool {
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & (1 << 25);
+        v != 0
+    }
+
+    /// Is the second pll ready and locked?
+    pub fn second_pll_locked(&self) -> bool {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & (1 << 27);
+        v != 0
+    }
+
+    /// Is the third pll ready and locked?
+    pub fn third_pll_locked(&self) -> bool {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & (1 << 29);
         v != 0
     }
 
@@ -162,6 +198,24 @@ impl<'a> Module<'a> {
         let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 24);
         if v {
             newval |= 1 << 24;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
+    }
+
+    /// Set the second pll enable bit
+    pub fn set_second_pll(&mut self, v: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 26);
+        if v {
+            newval |= 1 << 26;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
+    }
+
+    /// Set the third pll enable bit
+    pub fn set_third_pll(&mut self, v: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 28);
+        if v {
+            newval |= 1 << 26;
         }
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
     }
@@ -215,6 +269,84 @@ impl<'a> Module<'a> {
             }
         };
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & (mask << shift);
+        (v >> shift2) as u8
+    }
+
+    /// Set the specified second pll divisor
+    pub fn set_second_pll_divisor(&mut self, i: usize, d: u8) {
+        let (val, mask, shift) = match i {
+            0 => {
+                let divisor = match d {
+                    2 => 0,
+                    4 => 1,
+                    6 => 2,
+                    8 => 3,
+                    _ => panic!("Cannot set main pll divisor"),
+                };
+                (divisor, 3, 16)
+            }
+            1 => (d, 0xF, 24),
+            2 => (d, 7, 28),
+            _ => {
+                panic!("Invalid pll output specified");
+            }
+        };
+        let mut newval =
+            unsafe { core::ptr::read_volatile(&self.registers.regs[33]) } & !(mask << shift);
+        newval |= (mask & val as u32) << shift;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[33], newval) };
+    }
+
+    /// Get the specified second pll dividor
+    pub fn get_second_pll_divisor(&self, i: usize) -> u8 {
+        let (mask, shift, shift2) = match i {
+            0 => (3, 16, 15),
+            1 => (0xF, 24, 24),
+            2 => (7, 28, 28),
+            _ => {
+                panic!("Invalid pll output specified");
+            }
+        };
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[33]) } & (mask << shift);
+        (v >> shift2) as u8
+    }
+
+    /// Set the specified second pll divisor
+    pub fn set_third_pll_divisor(&mut self, i: usize, d: u8) {
+        let (val, mask, shift) = match i {
+            0 => {
+                let divisor = match d {
+                    2 => 0,
+                    4 => 1,
+                    6 => 2,
+                    8 => 3,
+                    _ => panic!("Cannot set main pll divisor"),
+                };
+                (divisor, 3, 16)
+            }
+            1 => (d, 0xF, 24),
+            2 => (d, 7, 28),
+            _ => {
+                panic!("Invalid pll output specified");
+            }
+        };
+        let mut newval =
+            unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & !(mask << shift);
+        newval |= (mask & val as u32) << shift;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[34], newval) };
+    }
+
+    /// Get the specified second pll dividor
+    pub fn get_third_pll_divisor(&self, i: usize) -> u8 {
+        let (mask, shift, shift2) = match i {
+            0 => (3, 16, 15),
+            1 => (0xF, 24, 24),
+            2 => (7, 28, 28),
+            _ => {
+                panic!("Invalid pll output specified");
+            }
+        };
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & (mask << shift);
         (v >> shift2) as u8
     }
 }

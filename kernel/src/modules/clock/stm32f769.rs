@@ -350,3 +350,207 @@ impl super::ClockMuxTrait for MuxSysClk {
         rcc.set_mux_sysclk(i as u8);
     }
 }
+
+/// The second pll of the stm32f769, provides clocks for i2s
+#[derive(Clone)]
+pub struct PllTwo {
+    /// The hardware for configuring
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    /// The input clock
+    iclk: alloc::boxed::Box<super::ClockRef>,
+}
+
+impl PllTwo {
+    /// Create a new pll
+    pub fn new(
+        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+        iclk: super::ClockRef,
+    ) -> Self {
+        Self {
+            rcc: rcc.clone(),
+            iclk: alloc::boxed::Box::new(iclk),
+        }
+    }
+
+    /// Set the multiplier for the pll
+    fn set_multiplier(&self, m: u32) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_multiplier2(m);
+    }
+
+    /// Get the multiplier for the pll
+    fn get_multiplier(&self) -> u32 {
+        let rcc = self.rcc.lock();
+        rcc.get_multiplier2()
+    }
+}
+
+impl super::ClockProviderTrait for PllTwo {
+    fn enable(&self, _i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_second_pll(true);
+    }
+
+    fn disable(&self, _i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_second_pll(false);
+    }
+
+    fn is_ready(&self, _i: usize) -> bool {
+        let rcc = self.rcc.lock();
+        rcc.second_pll_locked()
+    }
+
+    fn frequency(&self, i: usize) -> Option<u64> {
+        let vco = self
+            .iclk
+            .frequency()
+            .map(|f| f as u64 * self.get_multiplier() as u64);
+        let div = super::PllProviderTrait::get_post_divider(self, i) as u64;
+        vco.map(|f| f / div as u64)
+    }
+}
+
+impl super::PllProviderTrait for PllTwo {
+    fn get_input_frequency(&self) -> Option<u64> {
+        self.iclk.frequency()
+    }
+
+    fn set_input_divider(&self, d: u32) -> Result<(), super::PllDividerErr> {
+        if d != 1 {
+            return Err(super::PllDividerErr::ImpossibleDivisor);
+        }
+        Ok(())
+    }
+
+    fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, super::PllDividerErr> {
+        let mut rcc = self.rcc.lock();
+        rcc.set_second_pll_divisor(i, d as u8);
+        Ok(rcc.get_second_pll_divisor(i) as u32)
+    }
+
+    fn get_post_divider(&self, i: usize) -> u32 {
+        let rcc = self.rcc.lock();
+        rcc.get_second_pll_divisor(i) as u32
+    }
+
+    fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
+        if (100_000_000..=432_000_000).contains(&f) {
+            if let Some(fin) = self.iclk.frequency() {
+                let multiplier = f / fin;
+                if (50..433).contains(&multiplier) {
+                    self.set_multiplier(multiplier as u32);
+                    Ok(())
+                } else {
+                    Err(super::PllVcoSetError::CannotHitFrequency)
+                }
+            } else {
+                Err(super::PllVcoSetError::UnknownInputFrequency)
+            }
+        } else {
+            Err(super::PllVcoSetError::FrequencyOutOfRange)
+        }
+    }
+}
+
+/// The third pll of the stm32f769, provides clocks for sai2 and the lcd hardware
+#[derive(Clone)]
+pub struct PllThree {
+    /// The hardware for configuring
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    /// The input clock
+    iclk: alloc::boxed::Box<super::ClockRef>,
+}
+
+impl PllThree {
+    /// Create a new pll
+    pub fn new(
+        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+        iclk: super::ClockRef,
+    ) -> Self {
+        Self {
+            rcc: rcc.clone(),
+            iclk: alloc::boxed::Box::new(iclk),
+        }
+    }
+
+    /// Set the multiplier for the pll
+    fn set_multiplier(&self, m: u32) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_multiplier3(m);
+    }
+
+    /// Get the multiplier for the pll
+    fn get_multiplier(&self) -> u32 {
+        let rcc = self.rcc.lock();
+        rcc.get_multiplier3()
+    }
+}
+
+impl super::ClockProviderTrait for PllThree {
+    fn enable(&self, _i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_third_pll(true);
+    }
+
+    fn disable(&self, _i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_third_pll(false);
+    }
+
+    fn is_ready(&self, _i: usize) -> bool {
+        let rcc = self.rcc.lock();
+        rcc.third_pll_locked()
+    }
+
+    fn frequency(&self, i: usize) -> Option<u64> {
+        let vco = self
+            .iclk
+            .frequency()
+            .map(|f| f as u64 * self.get_multiplier() as u64);
+        let div = super::PllProviderTrait::get_post_divider(self, i) as u64;
+        vco.map(|f| f / div as u64)
+    }
+}
+
+impl super::PllProviderTrait for PllThree {
+    fn get_input_frequency(&self) -> Option<u64> {
+        self.iclk.frequency()
+    }
+
+    fn set_input_divider(&self, d: u32) -> Result<(), super::PllDividerErr> {
+        if d != 1 {
+            return Err(super::PllDividerErr::ImpossibleDivisor);
+        }
+        Ok(())
+    }
+
+    fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, super::PllDividerErr> {
+        let mut rcc = self.rcc.lock();
+        rcc.set_third_pll_divisor(i, d as u8);
+        Ok(rcc.get_third_pll_divisor(i) as u32)
+    }
+
+    fn get_post_divider(&self, i: usize) -> u32 {
+        let rcc = self.rcc.lock();
+        rcc.get_third_pll_divisor(i) as u32
+    }
+
+    fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
+        if (100_000_000..=432_000_000).contains(&f) {
+            if let Some(fin) = self.iclk.frequency() {
+                let multiplier = f / fin;
+                if (50..433).contains(&multiplier) {
+                    self.set_multiplier(multiplier as u32);
+                    Ok(())
+                } else {
+                    Err(super::PllVcoSetError::CannotHitFrequency)
+                }
+            } else {
+                Err(super::PllVcoSetError::UnknownInputFrequency)
+            }
+        } else {
+            Err(super::PllVcoSetError::FrequencyOutOfRange)
+        }
+    }
+}

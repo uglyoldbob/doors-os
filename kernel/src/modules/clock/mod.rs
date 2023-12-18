@@ -34,6 +34,12 @@ pub enum ClockProvider {
     /// The main pll for the stm32f769 processor
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32F769MainPll(stm32f769::PllMain),
+    /// The second pll for the stm32f769 processor
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32F769SecondPll(stm32f769::PllTwo),
+    /// The thrid pll for the stm32f769 processor
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32F769ThirdPll(stm32f769::PllThree),
     /// A fake clock provider
     Dummy(DummyClock),
 }
@@ -200,6 +206,12 @@ pub enum PllProvider {
     /// The main pll for the stm32f769
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769MainPll(stm32f769::PllMain),
+    /// The second pll for the stm32f769
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769SecondPll(stm32f769::PllTwo),
+    /// The third pll for the stm32f769
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769ThirdPll(stm32f769::PllThree),
     /// The dsi pll for the stm32f769
     Stm32f769DsiPll(crate::modules::video::mipi_dsi::stm32f769::Module),
     /// A dummy pll provider
