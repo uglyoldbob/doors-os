@@ -53,7 +53,7 @@ impl<'a> crate::modules::clock::ClockProviderTrait for LockedArc<Module<'a>> {
         true
     }
 
-    fn frequency(&self, _i: usize) -> Option<u32> {
+    fn frequency(&self, _i: usize) -> Option<u64> {
         //TODO: possibly keep track of the actual frequency of all possible clocks tracked by this trait
         None
     }
@@ -129,13 +129,40 @@ impl<'a> Module<'a> {
 
     /// Get the divisor for the main divider
     pub fn get_divider1(&self) -> u32 {
-        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & 0x1F;
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & 0x3F;
         v
     }
 
     /// Set the divisor for the main divider
     pub fn set_divider1(&mut self, d: u32) {
-        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !0x1F;
-        unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], v | (d & 0x1F)) };
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !0x3F;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], v | (d & 0x3F)) };
+    }
+
+    /// Set the multiplier for the main pll
+    pub fn set_multiplier1(&mut self, d: u32) {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !0x7FC0;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], v | ((d << 6) & 0x7FC0)) };
+    }
+
+    /// Get the multiplier for the main pll
+    pub fn get_multiplier1(&self) -> u32 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !0x7FC0;
+        (v >> 6) & 0x1FF
+    }
+
+    /// Is the main pll ready and locked?
+    pub fn main_pll_locked(&self) -> bool {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & (1 << 25);
+        v != 0
+    }
+
+    /// Set the main pll enable bit
+    pub fn set_main_pll(&mut self, v: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 24);
+        if v {
+            newval |= 1 << 24;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
     }
 }

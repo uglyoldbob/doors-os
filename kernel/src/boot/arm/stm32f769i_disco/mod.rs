@@ -68,7 +68,20 @@ pub extern "C" fn _start() -> ! {
     let mux1 = crate::modules::clock::ClockMux::Stm32f769Mux1(mux1);
     let mux1 = crate::modules::clock::ClockRef::Mux(mux1);
     let divider = crate::modules::clock::stm32f769::Divider1::new(&rcc_mod, mux1);
-    divider.set_divider(2);
+    divider.set_divider(4);
+
+    let divider = crate::modules::clock::ClockRef::Stm32f769MainDivider(divider);
+
+    let pll_main = crate::modules::clock::stm32f769::PllMain::new(&rcc_mod, divider);
+    loop {
+        if pll_main.set_vco_frequency(400_000_000).is_ok() {
+            break;
+        }
+    }
+
+    crate::modules::clock::ClockProviderTrait::enable(&pll_main, 0);
+
+    while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main, 0) {}
 
     let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
     let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };

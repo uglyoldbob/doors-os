@@ -15,7 +15,7 @@ pub trait ClockProviderTrait {
     /// Is the specified clock ready?
     fn is_ready(&self, i: usize) -> bool;
     /// What is the frequency of the clock (if it is known)
-    fn frequency(&self, i: usize) -> Option<u32>;
+    fn frequency(&self, i: usize) -> Option<u64>;
 }
 
 /// An enumeration of all the types of gpio controllers
@@ -58,7 +58,7 @@ impl ClockProviderTrait for DummyClock {
         true
     }
 
-    fn frequency(&self, _i: usize) -> Option<u32> {
+    fn frequency(&self, _i: usize) -> Option<u64> {
         None
     }
 }
@@ -67,7 +67,7 @@ impl ClockProviderTrait for DummyClock {
 #[enum_dispatch::enum_dispatch]
 pub trait ClockRefTrait {
     /// Get the frequency of the clock, if known
-    fn frequency(&self) -> Option<u32>;
+    fn frequency(&self) -> Option<u64>;
     /// Is the clock ready
     fn is_ready(&self) -> bool;
     /// Enable the clock, if possible
@@ -99,7 +99,7 @@ pub struct ClockRefPlain {
 }
 
 impl ClockRefTrait for ClockRefPlain {
-    fn frequency(&self) -> Option<u32> {
+    fn frequency(&self) -> Option<u64> {
         self.clock_provider.frequency(self.index)
     }
 
@@ -117,7 +117,7 @@ impl ClockRefTrait for ClockRefPlain {
 }
 
 impl ClockRefTrait for DummyClock {
-    fn frequency(&self) -> Option<u32> {
+    fn frequency(&self) -> Option<u64> {
         None
     }
 
@@ -157,4 +157,14 @@ impl ClockMuxTrait for DummyClock {
 pub trait ClockDividerTrait {
     /// Set the divisor for the object
     fn set_divisor(&self, d: usize) -> Result<(), ()>;
+}
+
+/// Potential errors for setting pll vco frequency
+pub enum PllVcoSetError {
+    /// The frequency requested for the vco is out of range for the vco
+    FrequencyOutOfRange,
+    /// The input frequency is unknown
+    UnknownInputFrequency,
+    /// The pll cannot hit the desired frequency due to adjustment limits
+    CannotHitFrequency,
 }
