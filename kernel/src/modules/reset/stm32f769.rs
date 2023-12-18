@@ -165,4 +165,42 @@ impl<'a> Module<'a> {
         }
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
     }
+
+    /// The the mux for the sysclk
+    pub fn get_mux_sysclk(&self) -> u8 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) } & 3;
+        v as u8
+    }
+
+    /// Set the mux for the sysclk generation
+    pub fn set_mux_sysclk(&mut self, v: u8) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[3]) } & !3;
+        newval |= v as u32 & 3;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[2], newval) };
+    }
+
+    /// Set the specified main pll divisor
+    pub fn set_main_pll_divisor(&mut self, i: usize, d: u8) {
+        let (val, mask, shift) = match i {
+            0 => {
+                let divisor = match d {
+                    2 => 0,
+                    4 => 1,
+                    6 => 2,
+                    8 => 3,
+                    _ => panic!("Cannot set main pll divisor"),
+                };
+                (divisor, 3, 16)
+            }
+            1 => (d, 0xF, 24),
+            2 => (d, 7, 28),
+            _ => {
+                panic!("Invalid pll output specified");
+            }
+        };
+        let mut newval =
+            unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !(mask << shift);
+        newval |= (mask & val as u32) << shift;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], newval) };
+    }
 }

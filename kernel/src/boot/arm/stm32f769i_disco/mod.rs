@@ -49,6 +49,8 @@ pub extern "C" fn _start() -> ! {
     let rcc_mod = LockedArc::new(rcc_mod);
     let rcc = crate::modules::clock::ClockProvider::Stm32f769(rcc_mod.clone());
 
+    let mut fmc = unsafe { crate::modules::memory::stm32f769::Fmc::new(0x4002_3c00) };
+
     let exto =
         unsafe { crate::modules::clock::stm32f769::ExternalOscillator::new(25_000_000, &rcc_mod) };
     let into =
@@ -61,7 +63,10 @@ pub extern "C" fn _start() -> ! {
     let into = crate::modules::clock::ClockProvider::Stm32f769Hsi(into).get_ref(0);
     let mux1 = crate::modules::clock::stm32f769::Mux1::new(
         &rcc_mod,
-        [alloc::boxed::Box::new(into), alloc::boxed::Box::new(exto)],
+        [
+            alloc::boxed::Box::new(into.clone()),
+            alloc::boxed::Box::new(exto.clone()),
+        ],
     );
     crate::modules::clock::ClockMuxTrait::select(&mux1, 1);
 
@@ -79,9 +84,26 @@ pub extern "C" fn _start() -> ! {
         }
     }
 
+    pll_main.set_post_divider(0, 2);
+
+    fmc.set_wait_states(6);
+
     crate::modules::clock::ClockProviderTrait::enable(&pll_main, 0);
 
     while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main, 0) {}
+
+    let pll_clock = crate::modules::clock::ClockProvider::Stm32F769MainPll(pll_main).get_ref(0);
+
+    let sysclk_mux = crate::modules::clock::stm32f769::MuxSysClk::new(
+        &rcc_mod,
+        [
+            alloc::boxed::Box::new(into),
+            alloc::boxed::Box::new(exto),
+            alloc::boxed::Box::new(pll_clock),
+        ],
+    );
+
+    crate::modules::clock::ClockMuxTrait::select(&sysclk_mux, 2);
 
     let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
     let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };

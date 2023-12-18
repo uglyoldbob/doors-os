@@ -195,6 +195,7 @@ impl super::ClockRefTrait for Divider1 {
 }
 
 /// The main pll for the stm32f769
+#[derive(Clone)]
 pub struct PllMain {
     /// The hardware for configuring
     rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
@@ -249,6 +250,12 @@ impl PllMain {
         rcc.get_multiplier1() as u64
     }
 
+    /// Set the divider to divide the vco output by for clock output
+    pub fn set_post_divider(&self, i: usize, d: u8) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_main_pll_divisor(i, d)
+    }
+
     /// Set the frequency of the vco in the pll
     pub fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
         if (100_000_000..=432_000_000).contains(&f) {
@@ -266,5 +273,60 @@ impl PllMain {
         } else {
             Err(super::PllVcoSetError::FrequencyOutOfRange)
         }
+    }
+}
+
+/// The mux for the SYSCLK
+pub struct MuxSysClk {
+    /// The hardware for configuring
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    /// The clock providers
+    clocks: [alloc::boxed::Box<super::ClockRef>; 3],
+}
+
+impl MuxSysClk {
+    /// Create a new mux
+    pub fn new(
+        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+        clocks: [alloc::boxed::Box<super::ClockRef>; 3],
+    ) -> Self {
+        Self {
+            rcc: rcc.clone(),
+            clocks,
+        }
+    }
+}
+
+impl super::ClockRefTrait for MuxSysClk {
+    fn enable(&self) {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux_sysclk();
+        self.clocks[v as usize].enable();
+    }
+
+    fn disable(&self) {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux_sysclk();
+        self.clocks[v as usize].disable();
+    }
+
+    fn is_ready(&self) -> bool {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux_sysclk();
+        self.clocks[v as usize].is_ready()
+    }
+
+    fn frequency(&self) -> Option<u64> {
+        let rcc = self.rcc.lock();
+        let v = rcc.get_mux_sysclk();
+        drop(rcc);
+        self.clocks[v as usize].frequency().map(|f| f as u64)
+    }
+}
+
+impl super::ClockMuxTrait for MuxSysClk {
+    fn select(&self, i: usize) {
+        let mut rcc = self.rcc.lock();
+        rcc.set_mux_sysclk(i as u8);
     }
 }

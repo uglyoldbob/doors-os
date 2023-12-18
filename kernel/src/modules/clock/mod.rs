@@ -31,6 +31,9 @@ pub enum ClockProvider {
     /// The internal oscillator for the smt32f769 processor
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769Hsi(stm32f769::InternalOscillator),
+    /// The main pll for the stm32f769 processor
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32F769MainPll(stm32f769::PllMain),
     /// A fake clock provider
     Dummy(DummyClock),
 }
