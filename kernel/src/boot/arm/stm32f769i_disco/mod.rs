@@ -149,13 +149,26 @@ pub extern "C" fn _start() -> ! {
             0x4001_6c00,
         )
     };
+
+    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi);
+
     let dsi_pll = crate::modules::clock::PllProvider::Stm32f769DsiPll(dsi.clone());
     loop {
         if crate::modules::clock::PllProviderTrait::set_input_divider(&dsi_pll, 1).is_ok() {
             break;
         }
     }
+    loop {
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&dsi_pll, 750_000_000).is_ok()
+        {
+            break;
+        }
+    }
+    loop {
+        if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 16).is_ok() {
+            break;
+        }
+    }
 
-    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi);
     crate::main()
 }

@@ -85,7 +85,7 @@ impl Module {
         iclk: [&crate::modules::clock::ClockRef; 2],
         addr: usize,
     ) -> Self {
-        let mut nclk: [crate::modules::clock::ClockRef; 2] = [iclk[0].clone(), iclk[1].clone()];
+        let nclk: [crate::modules::clock::ClockRef; 2] = [iclk[0].clone(), iclk[1].clone()];
         Self {
             cc: cc.clone(),
             internals: LockedArc::new(ModuleInternals {
@@ -99,15 +99,19 @@ impl Module {
     fn get_input_divider(&self) -> u32 {
         let internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
-        let val = (v & 0x7800) >> 11;
-        val
+        let val = (v >> 11) & 0xF;
+        if val == 0 {
+            1
+        } else {
+            val
+        }
     }
 
     /// Set the vco multiplier of the pll
     fn set_multiplier(&self, d: u32) {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
-        let newval = (v & !0x30000) | (d as u32 & 0x7F) << 2;
+        let newval = (v & !0x1FC) | ((d as u32 & 0x7F) << 2);
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
     }
 
@@ -195,7 +199,8 @@ impl crate::modules::clock::PllProviderTrait for Module {
         let id = self.get_input_divider();
         let vco_mul = self.get_multiplier();
         if let Some(fin) = self.iclk[1].frequency() {
-            let fout = (fin * vco_mul as u64) / (id as u64 * divider);
+            let vco_freq = fin as u32 * vco_mul as u32;
+            let fout = vco_freq / (id as u32 * d as u32);
             if !(31_250_000..=82_500_000).contains(&fout) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
             }
