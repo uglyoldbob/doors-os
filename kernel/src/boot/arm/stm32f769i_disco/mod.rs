@@ -72,34 +72,39 @@ pub extern "C" fn _start() -> ! {
 
     let mux1 = crate::modules::clock::ClockMux::Stm32f769Mux1(mux1);
     let mux1 = crate::modules::clock::ClockRef::Mux(mux1);
-    let divider = crate::modules::clock::stm32f769::Divider1::new(&rcc_mod, mux1);
+    let divider = crate::modules::clock::stm32f769::Divider1::new(&rcc_mod, mux1.clone());
     divider.set_divider(4);
 
     let divider = crate::modules::clock::ClockRef::Stm32f769MainDivider(divider);
 
-    let pll_main = crate::modules::clock::stm32f769::PllMain::new(&rcc_mod, divider);
+    let pll_main_clock = crate::modules::clock::stm32f769::PllMain::new(&rcc_mod, divider);
+    let pll_main = crate::modules::clock::PllProvider::Stm32f769MainPll(pll_main_clock.clone());
     loop {
-        if pll_main.set_vco_frequency(400_000_000).is_ok() {
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_main, 400_000_000)
+            .is_ok()
+        {
             break;
         }
     }
 
-    pll_main.set_post_divider(0, 2);
+    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 0, 2);
 
     fmc.set_wait_states(6);
 
-    crate::modules::clock::ClockProviderTrait::enable(&pll_main, 0);
+    crate::modules::clock::ClockProviderTrait::enable(&pll_main_clock, 0);
 
-    while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main, 0) {}
+    while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main_clock, 0) {}
 
-    let pll_clock = crate::modules::clock::ClockProvider::Stm32F769MainPll(pll_main).get_ref(0);
+    let pll_clock = crate::modules::clock::ClockProvider::Stm32F769MainPll(pll_main_clock.clone());
+
+    let pll_ref = pll_clock.get_ref(0);
 
     let sysclk_mux = crate::modules::clock::stm32f769::MuxSysClk::new(
         &rcc_mod,
         [
             alloc::boxed::Box::new(into),
             alloc::boxed::Box::new(exto),
-            alloc::boxed::Box::new(pll_clock),
+            alloc::boxed::Box::new(pll_ref),
         ],
     );
 
@@ -133,7 +138,14 @@ pub extern "C" fn _start() -> ! {
         drop(gpio);
     }
 
-    let dsi = unsafe { crate::modules::video::mipi_dsi::stm32f769::Module::new(&rcc, 0x4001_6c00) };
+    let dsi_clock1 = mux1.clone();
+    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
+    let dsi_byte_clock = pll_clock.get_ref(2);
+    let dsi_pll = 42;
+
+    let dsi = unsafe {
+        crate::modules::video::mipi_dsi::stm32f769::Module::new(&rcc, &dsi_byte_clock, 0x4001_6c00)
+    };
     crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi);
     crate::main()
 }

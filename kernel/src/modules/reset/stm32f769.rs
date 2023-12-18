@@ -203,4 +203,18 @@ impl<'a> Module<'a> {
         newval |= (mask & val as u32) << shift;
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[1], newval) };
     }
+
+    /// Get the specified main pll dividor
+    pub fn get_main_pll_divisor(&self, i: usize) -> u8 {
+        let (mask, shift, shift2) = match i {
+            0 => (3, 16, 15),
+            1 => (0xF, 24, 24),
+            2 => (7, 28, 28),
+            _ => {
+                panic!("Invalid pll output specified");
+            }
+        };
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & (mask << shift);
+        (v >> shift2) as u8
+    }
 }

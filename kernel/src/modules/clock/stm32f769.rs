@@ -219,10 +219,13 @@ impl super::ClockProviderTrait for PllMain {
         rcc.main_pll_locked()
     }
 
-    fn frequency(&self, _i: usize) -> Option<u64> {
-        self.iclk
+    fn frequency(&self, i: usize) -> Option<u64> {
+        let vco = self
+            .iclk
             .frequency()
-            .map(|f| f as u64 * self.get_multiplier())
+            .map(|f| f as u64 * self.get_multiplier() as u64);
+        let div = super::PllProviderTrait::get_post_divider(self, i) as u64;
+        vco.map(|f| f / div as u64)
     }
 }
 
@@ -245,19 +248,36 @@ impl PllMain {
     }
 
     /// Get the multiplier for the pll
-    fn get_multiplier(&self) -> u64 {
+    fn get_multiplier(&self) -> u32 {
         let rcc = self.rcc.lock();
-        rcc.get_multiplier1() as u64
+        rcc.get_multiplier1()
+    }
+}
+
+impl super::PllProviderTrait for PllMain {
+    fn get_input_frequency(&self) -> Option<u64> {
+        self.iclk.frequency()
     }
 
-    /// Set the divider to divide the vco output by for clock output
-    pub fn set_post_divider(&self, i: usize, d: u8) {
+    fn set_input_divider(&self, d: u32) -> Result<(), super::PllDividerErr> {
+        if d != 1 {
+            return Err(super::PllDividerErr::ImpossibleDivisor);
+        }
+        Ok(())
+    }
+
+    fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, super::PllDividerErr> {
         let mut rcc = self.rcc.lock();
-        rcc.set_main_pll_divisor(i, d)
+        rcc.set_main_pll_divisor(i, d as u8);
+        Ok(rcc.get_main_pll_divisor(i) as u32)
     }
 
-    /// Set the frequency of the vco in the pll
-    pub fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
+    fn get_post_divider(&self, i: usize) -> u32 {
+        let rcc = self.rcc.lock();
+        rcc.get_main_pll_divisor(i) as u32
+    }
+
+    fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
         if (100_000_000..=432_000_000).contains(&f) {
             if let Some(fin) = self.iclk.frequency() {
                 let multiplier = f / fin;

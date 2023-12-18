@@ -162,6 +162,75 @@ pub trait ClockDividerTrait {
     fn set_divisor(&self, d: usize) -> Result<(), ()>;
 }
 
+/// The trait common to all pll providers
+#[enum_dispatch::enum_dispatch]
+pub trait PllProviderTrait {
+    /// Set the input frequency of the pll
+    fn set_internal_input_frequency(&self, f: u64) -> Result<(), PllDividerErr> {
+        if let Some(fin) = self.get_input_frequency() {
+            let divider = fin / f;
+            self.set_input_divider(divider as u32)
+        } else {
+            Err(PllDividerErr::UnknownInputFrequency)
+        }
+    }
+    /// Get the input frequency
+    fn get_input_frequency(&self) -> Option<u64>;
+    /// Set the input divider for the pll
+    fn set_input_divider(&self, d: u32) -> Result<(), PllDividerErr>;
+    /// Set the post divider
+    fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, PllDividerErr>;
+    /// Get the post divider
+    fn get_post_divider(&self, i: usize) -> u32;
+    /// Set the vco frequency of the pll
+    fn set_vco_frequency(&self, f: u64) -> Result<(), PllVcoSetError>;
+}
+
+/// An enumeration of all the types of pll providers
+#[derive(Clone)]
+#[enum_dispatch::enum_dispatch(PllProviderTrait)]
+pub enum PllProvider {
+    /// The main pll for the stm32f769
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769MainPll(stm32f769::PllMain),
+    /// The dsi pll for the stm32f769
+    Stm32f769DsiPll(crate::modules::video::mipi_dsi::stm32f769::Module),
+    /// A dummy pll provider
+    Dummy(DummyClock),
+}
+
+impl PllProviderTrait for DummyClock {
+    fn get_input_frequency(&self) -> Option<u64> {
+        None
+    }
+
+    fn set_input_divider(&self, _d: u32) -> Result<(), PllDividerErr> {
+        Ok(())
+    }
+
+    fn set_post_divider(&self, _i: usize, _d: u32) -> Result<u32, PllDividerErr> {
+        Ok(1)
+    }
+
+    fn get_post_divider(&self, _i: usize) -> u32 {
+        1
+    }
+
+    fn set_vco_frequency(&self, _f: u64) -> Result<(), PllVcoSetError> {
+        Ok(())
+    }
+}
+
+/// Errors that can occur setting the input divider of a pll
+pub enum PllDividerErr {
+    /// The divisor is not possible
+    ImpossibleDivisor,
+    /// The input frequency is unknown and the the internal input frequency cannot be set
+    UnknownInputFrequency,
+    /// The input frequency to the divider is out of range
+    InputFrequencyOutOfRange,
+}
+
 /// Potential errors for setting pll vco frequency
 pub enum PllVcoSetError {
     /// The frequency requested for the vco is out of range for the vco
@@ -170,4 +239,6 @@ pub enum PllVcoSetError {
     UnknownInputFrequency,
     /// The pll cannot hit the desired frequency due to adjustment limits
     CannotHitFrequency,
+    /// The input frequency is out of range
+    InputFrequencyOutOfRange,
 }

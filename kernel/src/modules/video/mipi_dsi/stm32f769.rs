@@ -1,19 +1,25 @@
 //! Dsi related code for the stm32f769
 
-use alloc::sync::Arc;
+use crate::modules::clock::{ClockProviderTrait, ClockRefTrait};
+use crate::modules::clock::{PllDividerErr, PllVcoSetError};
+use crate::LockedArc;
 
-use crate::modules::clock::ClockProviderTrait;
-
+/// The memory mapped registers of the ltdc hardware
 struct LtdcRegisters {
+    /// The registers
     regs: [u8; 5],
 }
 
+/// The ltdc module of the stm32f769 processor
 struct Ltdc {
+    /// The clock provider
     cc: crate::modules::clock::ClockProvider,
+    /// The memory mapped registers
     regs: &'static mut LtdcRegisters,
 }
 
 impl Ltdc {
+    /// Build a new object
     pub unsafe fn new(cc: &crate::modules::clock::ClockProvider, addr: usize) -> Self {
         Self {
             cc: cc.clone(),
@@ -21,48 +27,175 @@ impl Ltdc {
         }
     }
 
+    /// Enable the clock input for the hardware
     pub fn enable(&self) {
         self.cc.enable(4 * 32 + 26);
     }
 
+    /// Disable the clock input for the hardware
     pub fn disable(&self) {
         self.cc.disable(4 * 32 + 26);
     }
 }
 
+/// The memory mapped registers for the dsi hardware
 struct DsiRegisters {
-    regs: [u8; 5],
+    /// The registers
+    regs: [u32; 269],
+}
+
+struct ModuleInternals {
+    /// The registers for the hardware
+    regs: &'static mut DsiRegisters,
 }
 
 /// The dsi hardware implementation
+#[derive(Clone)]
 pub struct Module {
     /// The hardware for enabling and disabling the clock
     cc: crate::modules::clock::ClockProvider,
-    /// The registers for the hardware
-    regs: &'static mut DsiRegisters,
+    /// The input clock for the pll
+    iclk: crate::modules::clock::ClockRef,
+    // The internals for the hardware
+    internals: LockedArc<ModuleInternals>,
     /// The related ltdc hardware
-    ltdc: Ltdc,
+    ltdc: LockedArc<Ltdc>,
 }
 
 impl super::MipiDsiTrait for Module {
     fn enable(&self) {
         self.cc.enable(4 * 32 + 27);
-        self.ltdc.enable();
+        let ltdc = self.ltdc.lock();
+        ltdc.enable();
     }
 
     fn disable(&self) {
-        self.ltdc.disable();
+        let ltdc = self.ltdc.lock();
+        ltdc.disable();
+        drop(ltdc);
         self.cc.disable(4 * 32 + 27);
     }
 }
 
 impl Module {
     /// Create a new hardware instance
-    pub unsafe fn new(cc: &crate::modules::clock::ClockProvider, addr: usize) -> Self {
+    pub unsafe fn new(
+        cc: &crate::modules::clock::ClockProvider,
+        iclk: &crate::modules::clock::ClockRef,
+        addr: usize,
+    ) -> Self {
         Self {
             cc: cc.clone(),
-            regs: &mut *(addr as *mut DsiRegisters),
-            ltdc: Ltdc::new(cc, 0x4001_6800),
+            internals: LockedArc::new(ModuleInternals {
+                regs: &mut *(addr as *mut DsiRegisters),
+            }),
+            ltdc: LockedArc::new(Ltdc::new(cc, 0x4001_6800)),
+            iclk: iclk.clone(),
+        }
+    }
+
+    fn get_input_divider(&self) -> u32 {
+        let internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let val = (v & 0x7800) >> 11;
+        val
+    }
+
+    /// Set the vco multiplier of the pll
+    fn set_multiplier(&self, d: u32) {
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let newval = (v & !0x30000) | (d as u32 & 0x7F) << 2;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+    }
+
+    /// Get the vco multiplier of the pll
+    fn get_multiplier(&self) -> u32 {
+        let internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        (v >> 2) & 0x7F
+    }
+}
+
+impl crate::modules::clock::PllProviderTrait for Module {
+    fn get_input_frequency(&self) -> Option<u64> {
+        self.iclk.frequency()
+    }
+
+    fn set_input_divider(&self, d: u32) -> Result<(), crate::modules::clock::PllDividerErr> {
+        if (d & !7) != 0 {
+            return Err(PllDividerErr::ImpossibleDivisor);
+        }
+        if let Some(fin) = self.iclk.frequency() {
+            if !(4_000_000..=100_000_000).contains(&fin) {
+                return Err(PllDividerErr::InputFrequencyOutOfRange);
+            }
+            let internal_freq = fin / d as u64;
+            if !(4_000_000..25_000_000).contains(&internal_freq) {
+                return Err(PllDividerErr::InputFrequencyOutOfRange);
+            }
+        } else {
+            return Err(PllDividerErr::UnknownInputFrequency);
+        }
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let newval = (v & !0x7800) | (d & 0xF) << 11;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        Ok(())
+    }
+
+    /// This divider accounts for the divide by 2 factor already present in the dsi pll.
+    fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, PllDividerErr> {
+        let divider = match d {
+            2 => 0,
+            4 => 1,
+            8 => 2,
+            16 => 3,
+            _ => return Err(PllDividerErr::ImpossibleDivisor),
+        };
+
+        let id = self.get_input_divider();
+        let vco_mul = self.get_multiplier();
+        if let Some(fin) = self.iclk.frequency() {
+            let fout = (fin * vco_mul as u64) / (id as u64 * divider);
+            if !(31_250_000..=82_500_000).contains(&fout) {
+                return Err(PllDividerErr::InputFrequencyOutOfRange);
+            }
+        } else {
+            return Err(PllDividerErr::UnknownInputFrequency);
+        }
+
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let newval = (v & !0x30000) | (divider as u32) << 2;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        Ok((unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) } >> 16) & 0x3)
+    }
+
+    fn get_post_divider(&self, _i: usize) -> u32 {
+        let internals = self.internals.lock();
+        let d = (unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) } >> 16) & 3;
+        match d {
+            0 => 2,
+            1 => 4,
+            2 => 8,
+            3 => 16,
+            _ => unreachable!(),
+        }
+    }
+
+    fn set_vco_frequency(&self, f: u64) -> Result<(), PllVcoSetError> {
+        if !(500_000_000..=1_000_000_000).contains(&f) {
+            return Err(PllVcoSetError::FrequencyOutOfRange);
+        }
+
+        if let Some(fin) = self.iclk.frequency() {
+            let fin = fin / self.get_input_divider() as u64;
+            let multiplier = f / fin;
+            self.set_multiplier(multiplier as u32);
+            Ok(())
+        } else {
+            Err(PllVcoSetError::UnknownInputFrequency)
         }
     }
 }
