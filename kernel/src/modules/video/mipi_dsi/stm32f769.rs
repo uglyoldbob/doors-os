@@ -117,6 +117,42 @@ impl Module {
     }
 }
 
+impl crate::modules::clock::ClockProviderTrait for Module {
+    /// Enable the pll
+    fn enable(&self, _i: usize) {
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let newval = v | 1;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+    }
+
+    /// Disable the pll
+    fn disable(&self, _i: usize) {
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let newval = v & !1;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+    }
+
+    fn is_ready(&self, _i: usize) -> bool {
+        let internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[259]) };
+        (v & 1 << 8) != 0
+    }
+
+    fn frequency(&self, i: usize) -> Option<u64> {
+        if let Some(fin) = self.iclk.frequency() {
+            let id = self.get_input_divider();
+            let vco_mul = self.get_multiplier();
+            let divider = crate::modules::clock::PllProviderTrait::get_post_divider(self, i) as u64;
+            let fout = (fin * vco_mul as u64) / (id as u64 * divider);
+            return Some(fout);
+        } else {
+            return None;
+        }
+    }
+}
+
 impl crate::modules::clock::PllProviderTrait for Module {
     fn get_input_frequency(&self) -> Option<u64> {
         self.iclk.frequency()

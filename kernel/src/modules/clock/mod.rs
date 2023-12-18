@@ -164,7 +164,7 @@ pub trait ClockDividerTrait {
 
 /// The trait common to all pll providers
 #[enum_dispatch::enum_dispatch]
-pub trait PllProviderTrait {
+pub trait PllProviderTrait: ClockProviderTrait {
     /// Set the input frequency of the pll
     fn set_internal_input_frequency(&self, f: u64) -> Result<(), PllDividerErr> {
         if let Some(fin) = self.get_input_frequency() {
@@ -188,7 +188,7 @@ pub trait PllProviderTrait {
 
 /// An enumeration of all the types of pll providers
 #[derive(Clone)]
-#[enum_dispatch::enum_dispatch(PllProviderTrait)]
+#[enum_dispatch::enum_dispatch(ClockProviderTrait, PllProviderTrait)]
 pub enum PllProvider {
     /// The main pll for the stm32f769
     #[cfg(kernel_machine = "stm32f769i-disco")]
