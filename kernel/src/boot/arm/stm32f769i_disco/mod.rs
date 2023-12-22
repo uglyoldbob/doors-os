@@ -157,8 +157,6 @@ pub extern "C" fn _start() -> ! {
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_three, 2, 2);
 
-    let ltdc_divider = 42;
-
     let dsi_byte_clock = pll_main_provider.get_ref(2);
 
     let dsi = unsafe {
@@ -169,25 +167,24 @@ pub extern "C" fn _start() -> ! {
         )
     };
 
-    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi);
+    let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
+        link_speed: 600_000_000,
+        num_lanes: 2,
+        vcid: 0,
+    };
 
-    let dsi_pll = crate::modules::clock::PllProvider::Stm32f769DsiPll(dsi.clone());
-    loop {
-        if crate::modules::clock::PllProviderTrait::set_input_divider(&dsi_pll, 1).is_ok() {
-            break;
-        }
-    }
-    loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&dsi_pll, 750_000_000).is_ok()
-        {
-            break;
-        }
-    }
-    loop {
-        if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 16).is_ok() {
-            break;
-        }
-    }
+    let resolution = crate::modules::video::ScreenResolution {
+        width: 800,
+        height: 480,
+        hsync: 5,
+        vsync: 5,
+        h_b_porch: 5,
+        h_f_porch: 5,
+        v_b_porch: 5,
+        v_f_porch: 5,
+    };
+
+    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi, dsi_config, resolution);
 
     crate::main()
 }

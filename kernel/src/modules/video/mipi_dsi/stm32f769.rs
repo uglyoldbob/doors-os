@@ -7,7 +7,7 @@ use crate::LockedArc;
 /// The memory mapped registers of the ltdc hardware
 struct LtdcRegisters {
     /// The registers
-    regs: [u8; 5],
+    regs: [u32; 82],
 }
 
 /// The ltdc module of the stm32f769 processor
@@ -27,14 +27,52 @@ impl Ltdc {
         }
     }
 
+    /// Enable the ltdc hardware
+    pub fn enable(&mut self) {
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[6], v | 1) };
+    }
+
     /// Enable the clock input for the hardware
-    pub fn enable(&self) {
+    pub fn enable_clock(&self) {
         self.cc.enable(4 * 32 + 26);
     }
 
     /// Disable the clock input for the hardware
-    pub fn disable(&self) {
+    pub fn disable_clock(&self) {
         self.cc.disable(4 * 32 + 26);
+    }
+
+    pub fn configure(&mut self, resolution: &super::super::ScreenResolution) {
+        let v = (resolution.hsync as u32 - 1) << 16 | (resolution.vsync as u32 - 1);
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[2], v) };
+
+        let v = (resolution.h_b_porch as u32 + resolution.hsync as u32 - 1) << 16
+            | (resolution.v_b_porch as u32 + resolution.vsync as u32 - 1);
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[3], v) };
+
+        let v = (resolution.width as u32 + resolution.h_b_porch as u32 + resolution.hsync as u32
+            - 1)
+            << 16
+            | (resolution.height as u32 + resolution.v_b_porch as u32 + resolution.vsync as u32
+                - 1);
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[4], v) };
+
+        let v = (resolution.h_f_porch as u32
+            + resolution.width as u32
+            + resolution.h_b_porch as u32
+            + resolution.hsync as u32
+            - 1)
+            << 16
+            | (resolution.v_f_porch as u32
+                + resolution.height as u32
+                + resolution.v_b_porch as u32
+                + resolution.vsync as u32
+                - 1);
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[5], v) };
+
+        //trigger immediate load
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[9], 1) };
     }
 }
 
@@ -49,13 +87,13 @@ struct ModuleInternals {
     regs: &'static mut DsiRegisters,
 }
 
-/// The dsi hardware implementation
+/// The dsi hardware implementation. The pll of the stm32f769 is integrated into this struct functionality.
 #[derive(Clone)]
 pub struct Module {
     /// The hardware for enabling and disabling the clock
-    cc: crate::modules::clock::ClockProvider,
+    cc: alloc::boxed::Box<crate::modules::clock::ClockProvider>,
     /// The input clocks. 0 is the optional clock for the byte clock, 1 is the input to the pll
-    iclk: [crate::modules::clock::ClockRef; 2],
+    iclk: [alloc::boxed::Box<crate::modules::clock::ClockRef>; 2],
     // The internals for the hardware
     internals: LockedArc<ModuleInternals>,
     /// The related ltdc hardware
@@ -63,15 +101,126 @@ pub struct Module {
 }
 
 impl super::MipiDsiTrait for Module {
-    fn enable(&self) {
+    fn enable(&self, config: super::MipiDsiConfig, resolution: super::super::ScreenResolution) {
         self.cc.enable(4 * 32 + 27);
-        let ltdc = self.ltdc.lock();
+        let mut ltdc = self.ltdc.lock();
+        ltdc.enable_clock();
+
+        ltdc.configure(&resolution);
+
+        self.enable_regulator();
+
+        //configure the pll
+        let dsi_pll = crate::modules::clock::PllProvider::Stm32f769DsiPll(self.clone());
+        loop {
+            if crate::modules::clock::PllProviderTrait::set_input_divider(&dsi_pll, 1).is_ok() {
+                break;
+            }
+        }
+        loop {
+            if crate::modules::clock::PllProviderTrait::set_vco_frequency(&dsi_pll, 750_000_000)
+                .is_ok()
+            {
+                break;
+            }
+        }
+        loop {
+            if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 16).is_ok() {
+                break;
+            }
+        }
+
+        //enable and wait for the pll
+        let pll_provider = crate::modules::clock::ClockProvider::Stm32f769DsiPll(self.clone());
+        crate::modules::clock::ClockProvider::enable(&pll_provider, 0);
+        while !crate::modules::clock::ClockProvider::is_ready(&pll_provider, 0) {}
+
+        let val = 4_000_000_000 / config.link_speed;
+        self.set_dphy_link(val);
+
+        // set the number of lanes (only 1 or 2 lanes supported here)
+        let mut internals = self.internals.lock();
+
+        // set the stop wait time for stopping high speed transmissions on dsi? (bits 16-23)
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[41]) } & 0xFF00;
+        let nlanes = ((config.num_lanes - 1) & 1) as u32;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[41], v | nlanes) };
+
+        //set automatic clock lane control and clock control
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[37]) } & 0xFF00;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[37], v | 3) };
+
+        //set transition time for dsi clock signal?
+        //set transition time for dsi data signals?
+        //set read time for dsi data signals?
+
+        //TODO put in actual values here
+        let ockdiv = 255;
+        let eckdiv = 30;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[2], (ockdiv << 8) | eckdiv) };
+
+        let pcrval = 0x1f;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[11], pcrval) };
+
+        //set vcid for the display
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[3], config.vcid as u32 & 3) };
+
+        // setup WCFGR with DSIM, COLMUX, TESRC, TEPOL, AR, and VSPOL?
+
+        //setup VMCR, VPCR, VCCR, VNPCR, VLCR, VHSACR, VHBPCR, VVSACR, VVBPCR, VVFPCR, VVACR registers
+
+        // pixels per packet (VPCR)
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[15], 200) };
+        //chunks per line
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[16], 4) };
+        // size of null packet
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[17], 1) };
+        // horizontal sync active length
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[18], resolution.width as u32) };
+        //horizontal back porch length
+        unsafe {
+            core::ptr::write_volatile(&mut internals.regs.regs[19], resolution.h_b_porch as u32)
+        };
+        //TODO calculate the number here
+        let v = (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
+            as u32;
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[20], v) };
+        //vsync length
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[21], resolution.vsync as u32) };
+        //vertical back porch length
+        unsafe {
+            core::ptr::write_volatile(&mut internals.regs.regs[22], resolution.v_b_porch as u32)
+        };
+        //vertical front porch duration
+        unsafe {
+            core::ptr::write_volatile(&mut internals.regs.regs[23], resolution.v_f_porch as u32)
+        };
+        //number of vertical lines
+        unsafe {
+            core::ptr::write_volatile(&mut internals.regs.regs[24], resolution.height as u32)
+        };
+
+        //enable data and clock
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[40]) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[40], v | (3 << 1)) };
+
+        //enable dsi host
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[1], 1) };
+
+        //enable dsi wrapper
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 3)) };
+
         ltdc.enable();
+
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 2)) };
+        drop(internals);
     }
 
     fn disable(&self) {
         let ltdc = self.ltdc.lock();
-        ltdc.disable();
+        ltdc.disable_clock();
         drop(ltdc);
         self.cc.disable(4 * 32 + 27);
     }
@@ -85,9 +234,12 @@ impl Module {
         iclk: [&crate::modules::clock::ClockRef; 2],
         addr: usize,
     ) -> Self {
-        let nclk: [crate::modules::clock::ClockRef; 2] = [iclk[0].clone(), iclk[1].clone()];
+        let nclk: [alloc::boxed::Box<crate::modules::clock::ClockRef>; 2] = [
+            alloc::boxed::Box::new(iclk[0].clone()),
+            alloc::boxed::Box::new(iclk[1].clone()),
+        ];
         Self {
-            cc: cc.clone(),
+            cc: alloc::boxed::Box::new(cc.clone()),
             internals: LockedArc::new(ModuleInternals {
                 regs: &mut *(addr as *mut DsiRegisters),
             }),
@@ -120,6 +272,22 @@ impl Module {
         let internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         (v >> 2) & 0x7F
+    }
+
+    /// Enable the voltage regulator
+    fn enable_regulator(&self) {
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
+        let newval = v | (1 << 24);
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+    }
+
+    /// Set the dphy link speed
+    fn set_dphy_link(&self, v: u64) {
+        let mut internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[262]) };
+        let newval = (v & !0x3F) | (v & 0x3F);
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[262], newval) };
     }
 }
 
