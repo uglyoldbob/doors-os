@@ -171,6 +171,7 @@ impl Divider1 {
     }
 
     /// Set the divider
+    /// TODO impose the frequency limit at runtime
     pub fn set_divider(&self, d: u32) {
         let mut rcc = self.rcc.lock();
         rcc.set_divider1(d);

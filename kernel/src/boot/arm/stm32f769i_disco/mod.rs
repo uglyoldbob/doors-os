@@ -49,6 +49,17 @@ pub extern "C" fn _start() -> ! {
     let rcc_mod = LockedArc::new(rcc_mod);
     let rcc = crate::modules::clock::ClockProvider::Stm32f769(rcc_mod.clone());
 
+    // the power interface - move to a dedicated module
+    crate::modules::clock::ClockProviderTrait::enable(&rcc, 3 * 32 + 28);
+
+    let power = unsafe { crate::modules::power::stm32f769::Power::new(0x4000_7000) };
+    //set vos for main power? (with power object)
+
+    let mut r = rcc_mod.lock();
+    r.apb_dividers(4, 2);
+    r.set_hse_bypass(true);
+    drop(r);
+
     let mut fmc = unsafe { crate::modules::memory::stm32f769::Fmc::new(0x4002_3c00) };
 
     let exto =
@@ -73,7 +84,7 @@ pub extern "C" fn _start() -> ! {
     let mux1 = crate::modules::clock::ClockMux::Stm32f769Mux1(mux1);
     let mux1 = crate::modules::clock::ClockRef::Mux(mux1);
     let divider = crate::modules::clock::stm32f769::Divider1::new(&rcc_mod, mux1.clone());
-    divider.set_divider(4);
+    divider.set_divider(25);
 
     let divider = crate::modules::clock::ClockRef::Stm32f769MainDivider(divider);
 
@@ -105,10 +116,19 @@ pub extern "C" fn _start() -> ! {
         }
     }
 
+    loop {
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_three, 400_000_000)
+            .is_ok()
+        {
+            break;
+        }
+    }
+
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 0, 2);
 
     fmc.set_wait_states(6);
 
+    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
     crate::modules::clock::ClockProviderTrait::enable(&pll_main_provider, 0);
     while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main_provider, 0) {}
 
@@ -154,8 +174,9 @@ pub extern "C" fn _start() -> ! {
     }
 
     let dsi_clock1 = mux1.clone();
-    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
+
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_three, 2, 2);
+    crate::modules::clock::ClockProviderTrait::enable(&pll_three, 0);
 
     let dsi_byte_clock = pll_main_provider.get_ref(2);
 

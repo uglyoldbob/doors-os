@@ -67,6 +67,30 @@ impl<'a> Module<'a> {
         }
     }
 
+    /// Set the dividers for the apb clocks
+    pub fn apb_dividers(&mut self, d1: u32, d2: u32) {
+        let d1 = match d1 {
+            0 => 1,
+            2 => 4,
+            4 => 5,
+            8 => 6,
+            16 => 7,
+            _ => panic!("Invalid divider"),
+        };
+        let d2 = match d2 {
+            0 => 1,
+            2 => 4,
+            4 => 5,
+            8 => 6,
+            16 => 7,
+            _ => panic!("Invalid divider"),
+        };
+        let v = (d2 & 7) << 13 | (d1 & 7) << 10;
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) } & !(0x3f << 10);
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[2], n | v) };
+        unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
+    }
+
     /// Disable the specified peripheral
     pub fn disable_peripheral(&mut self, i: u8) -> u32 {
         let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } & !(1 << i);
@@ -79,6 +103,15 @@ impl<'a> Module<'a> {
         let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } | (1 << i);
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[12], n) };
         unsafe { core::ptr::read_volatile(&self.registers.regs[12]) }
+    }
+
+    /// Enable the hse bypass to allow for a direct clock input on the hse
+    pub fn set_hse_bypass(&mut self, s: bool) {
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 18);
+        if s {
+            newval |= 1 << 18;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
     }
 
     /// Set the HSE clock
@@ -166,7 +199,7 @@ impl<'a> Module<'a> {
     /// Set the multiplier for the third pll
     pub fn set_multiplier3(&mut self, d: u32) {
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & !0x7FC0;
-        unsafe { core::ptr::write_volatile(&mut self.registers.regs[33], v | ((d << 6) & 0x7FC0)) };
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[34], v | ((d << 6) & 0x7FC0)) };
     }
 
     /// Get the multiplier for the third pll
@@ -228,7 +261,7 @@ impl<'a> Module<'a> {
 
     /// Set the mux for the sysclk generation
     pub fn set_mux_sysclk(&mut self, v: u8) {
-        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[3]) } & !3;
+        let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) } & !3;
         newval |= v as u32 & 3;
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[2], newval) };
     }
@@ -325,7 +358,10 @@ impl<'a> Module<'a> {
                 (divisor, 3, 16)
             }
             1 => (d, 0xF, 24),
-            2 => (d, 7, 28),
+            2 => {
+                assert!(d > 1);
+                (d, 7, 28)
+            }
             _ => {
                 panic!("Invalid pll output specified");
             }

@@ -1,2 +1,4 @@
 target
 build
+test
+kernel/config.toml

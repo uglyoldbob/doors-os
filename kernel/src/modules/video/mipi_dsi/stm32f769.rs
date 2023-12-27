@@ -44,6 +44,8 @@ impl Ltdc {
     }
 
     pub fn configure(&mut self, resolution: &super::super::ScreenResolution) {
+        self.enable();
+
         let v = (resolution.hsync as u32 - 1) << 16 | (resolution.vsync as u32 - 1);
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[2], v) };
 
