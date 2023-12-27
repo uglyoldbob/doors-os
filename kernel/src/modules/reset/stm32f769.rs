@@ -248,7 +248,7 @@ impl<'a> Module<'a> {
     pub fn set_third_pll(&mut self, v: bool) {
         let mut newval = unsafe { core::ptr::read_volatile(&self.registers.regs[0]) } & !(1 << 28);
         if v {
-            newval |= 1 << 26;
+            newval |= 1 << 28;
         }
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[0], newval) };
     }
