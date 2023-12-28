@@ -102,22 +102,26 @@ pub extern "C" fn _start() -> ! {
     let pll_three = crate::modules::clock::PllProvider::Stm32f769ThirdPll(pll_three);
 
     loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_main, 400_000_000)
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_main, 432_000_000)
             .is_ok()
         {
             break;
         }
     }
 
+    let mut r = rcc_mod.lock();
+    r.set_mco1_pll();
+    drop(r);
+
     loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_two, 400_000_000).is_ok()
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_two, 432_000_000).is_ok()
         {
             break;
         }
     }
 
     loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_three, 400_000_000)
+        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_three, 432_000_000)
             .is_ok()
         {
             break;

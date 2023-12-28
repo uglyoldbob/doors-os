@@ -91,6 +91,13 @@ impl<'a> Module<'a> {
         unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
     }
 
+    /// Set the mco1 divider
+    pub fn set_mco1_pll(&mut self) {
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) } & !(0x07600000);
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[2], n | 0x07600000) };
+        unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
+    }
+
     /// Disable the specified peripheral
     pub fn disable_peripheral(&mut self, i: u8) -> u32 {
         let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } & !(1 << i);

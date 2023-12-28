@@ -14,6 +14,10 @@ pub trait GpioTrait {
     fn get_pin(&self, i: usize) -> Option<GpioPin>;
     /// Control the reset line (if applicable) for this gpio provider. True means the device should be in reset.
     fn reset(&mut self, r: bool);
+    /// Set the alternate mode of the gpio (may be removed later)
+    fn set_alternate(&mut self, i: usize, m: u32);
+    /// Set the speed of the line
+    fn set_speed(&mut self, i: usize, s: u32);
 }
 
 #[enum_dispatch::enum_dispatch(GpioTrait)]
@@ -39,6 +43,9 @@ impl GpioTrait for DummyGpio {
     fn get_pin(&self, i: usize) -> Option<GpioPin> {
         None
     }
+
+    fn set_alternate(&mut self, i: usize, m: u32) {}
+    fn set_speed(&mut self, i: usize, s: u32) {}
 }
 
 impl GpioPinTrait for DummyGpio {

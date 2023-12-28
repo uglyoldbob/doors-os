@@ -124,12 +124,18 @@ fn main() -> ! {
     {
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
+
         let mh = gpio.module(9);
         drop(gpio);
         let mut g = mg.lock();
+
         let mut h = mh.lock();
         g.reset(false);
         h.reset(false);
+
+        g.set_alternate(8, 0);
+        g.set_speed(8, 3);
+
         g.set_output(12);
         h.set_output(5);
         h.set_output(13);

@@ -87,12 +87,21 @@ impl Ltdc {
 
         //layer 1 stuff
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[33], 1) };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[34], 800 << 16) };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[35], 480 << 16) };
+        unsafe {
+            core::ptr::write_volatile(&mut self.regs.regs[34], (resolution.width as u32) << 16)
+        };
+        unsafe {
+            core::ptr::write_volatile(&mut self.regs.regs[35], (resolution.height as u32) << 16)
+        };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[37], 1) };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[39], 0xFF424242) };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[43], 0x2002_0000) };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[44], 1600) };
+        unsafe {
+            core::ptr::write_volatile(
+                &mut self.regs.regs[44],
+                (resolution.width as u32 * 3) << 16 | (3 + resolution.width as u32 * 3),
+            )
+        };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[45], 480) };
 
         //trigger immediate load
@@ -193,7 +202,7 @@ impl super::MipiDsiTrait for Module {
 
         //TODO put in actual values here
         let ockdiv = 255;
-        let eckdiv = 30;
+        let eckdiv = 3;
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[2], (ockdiv << 8) | eckdiv) };
 
         let pcrval = 0x0;

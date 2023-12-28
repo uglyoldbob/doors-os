@@ -83,4 +83,35 @@ impl<'a> super::GpioTrait for Gpio<'a> {
             core::ptr::write_volatile(&mut self.registers.odr, newval);
         }
     }
+
+    fn set_alternate(&mut self, i: usize, m: u32) {
+        assert!(i < 16);
+        let v = unsafe { core::ptr::read_volatile(&self.registers.mode) } & !(3 << (2 * i));
+        unsafe {
+            core::ptr::write_volatile(&mut self.registers.mode, v | (2 << (2 * i)));
+            core::ptr::read_volatile(&self.registers.mode);
+        }
+        let m = m & 0xF;
+        if i < 8 {
+            let v = unsafe { core::ptr::read_volatile(&self.registers.afrl) } & !(0xF << (4 * i));
+            unsafe {
+                core::ptr::write_volatile(&mut self.registers.afrl, v | (m << (4 * i)));
+            }
+        } else {
+            let i = i - 8;
+            let v = unsafe { core::ptr::read_volatile(&self.registers.afrh) } & !(0xF << (4 * i));
+            unsafe {
+                core::ptr::write_volatile(&mut self.registers.afrh, v | (m << (4 * i)));
+            }
+        }
+    }
+
+    fn set_speed(&mut self, i: usize, s: u32) {
+        assert!(i < 16);
+        let s = s & 3;
+        let v = unsafe { core::ptr::read_volatile(&self.registers.ospeed) } & !(3 << (2 * i));
+        unsafe {
+            core::ptr::write_volatile(&mut self.registers.ospeed, v | (s << (2 * i)));
+        }
+    }
 }
