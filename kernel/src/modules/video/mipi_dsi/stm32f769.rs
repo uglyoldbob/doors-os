@@ -27,12 +27,13 @@ impl Ltdc {
         }
     }
 
-    /// do some debugging
+    /// do some debugging by dumping all registers
     pub fn debug(&self) {
         let mut d = crate::DEBUG_STUFF.lock();
-        for i in 0..16 {
-            d[i] = unsafe { core::ptr::read_volatile(&self.regs.regs[33 + i]) };
+        for (i, d) in d.iter_mut().enumerate() {
+            *d = unsafe { core::ptr::read_volatile(&self.regs.regs[i]) }
         }
+        drop(d);
     }
 
     /// Enable the ltdc hardware
@@ -133,6 +134,12 @@ impl super::MipiDsiTrait for Module {
 
         self.enable_regulator();
 
+        loop {
+            if self.regulator_ready() {
+                break;
+            }
+        }
+
         //configure the pll
         let dsi_pll = crate::modules::clock::PllProvider::Stm32f769DsiPll(self.clone());
         loop {
@@ -148,7 +155,7 @@ impl super::MipiDsiTrait for Module {
             }
         }
         loop {
-            if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 16).is_ok() {
+            if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 4).is_ok() {
                 break;
             }
         }
@@ -170,8 +177,15 @@ impl super::MipiDsiTrait for Module {
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[41], v | nlanes) };
 
         //set automatic clock lane control and clock control
-        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[37]) } & 0xFF00;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[37], v | 3) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[37], 1) };
+
+        // set max timeouts
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[30], 0xffffffff) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[31], 0xffff) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[32], 0xffff) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[33], 0x100ffff) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[34], 0xffff) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[35], 0xffff) };
 
         //set transition time for dsi clock signal?
         //set transition time for dsi data signals?
@@ -182,11 +196,15 @@ impl super::MipiDsiTrait for Module {
         let eckdiv = 30;
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[2], (ockdiv << 8) | eckdiv) };
 
-        let pcrval = 0x1f;
+        let pcrval = 0x0;
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[11], pcrval) };
 
         //set vcid for the display
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[3], config.vcid as u32 & 3) };
+
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], 0xffff) };
+
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[256], 1 << 6 | 1) };
 
         // setup WCFGR with DSIM, COLMUX, TESRC, TEPOL, AR, and VSPOL?
 
@@ -234,13 +252,17 @@ impl super::MipiDsiTrait for Module {
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 3)) };
 
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[64], 0x101) };
+
+        ltdc.debug();
         ltdc.enable();
 
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 2)) };
+        let mut d = crate::DEBUG_STUFF.lock();
+        d[0] = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
+        drop(d);
         drop(internals);
-
-        ltdc.debug();
     }
 
     fn disable(&self) {
@@ -307,11 +329,18 @@ impl Module {
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
     }
 
+    /// is the regulator ready
+    fn regulator_ready(&self) -> bool {
+        let internals = self.internals.lock();
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[259]) };
+        (v & (1 << 12)) != 0
+    }
+
     /// Set the dphy link speed
-    fn set_dphy_link(&self, v: u64) {
+    fn set_dphy_link(&self, nv: u64) {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[262]) };
-        let newval = (v & !0x3F) | (v & 0x3F);
+        let newval = (v & !0x3F) | (nv as u32 & 0x3F);
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[262], newval) };
     }
 }
@@ -344,7 +373,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
             let id = self.get_input_divider();
             let vco_mul = self.get_multiplier();
             let divider = crate::modules::clock::PllProviderTrait::get_post_divider(self, i) as u64;
-            let fout = (fin * vco_mul as u64) / (id as u64 * divider);
+            let fout = (2 * fin * vco_mul as u64) / (id as u64 * divider);
             return Some(fout);
         } else {
             return None;
@@ -393,7 +422,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
         let vco_mul = self.get_multiplier();
         if let Some(fin) = self.iclk[1].frequency() {
             let vco_freq = fin as u32 * vco_mul as u32;
-            let fout = vco_freq / (id as u32 * d as u32);
+            let fout = vco_freq / (2 * id as u32 * d as u32);
             if !(31_250_000..=82_500_000).contains(&fout) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
             }
@@ -427,7 +456,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
 
         if let Some(fin) = self.iclk[1].frequency() {
             let fin = fin / self.get_input_divider() as u64;
-            let multiplier = f / fin;
+            let multiplier = f / (2 * fin);
             self.set_multiplier(multiplier as u32);
             Ok(())
         } else {

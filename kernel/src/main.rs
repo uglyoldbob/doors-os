@@ -117,7 +117,7 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 static VGA: spin::Mutex<Option<alloc::boxed::Box<dyn TextDisplay>>> = spin::Mutex::new(None);
 
 /// Used to debug some stuff in the kernel
-pub static DEBUG_STUFF: Locked<[u32; 16]> = Locked::new([0; 16]);
+pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");

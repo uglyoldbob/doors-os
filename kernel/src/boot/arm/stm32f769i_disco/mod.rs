@@ -190,7 +190,7 @@ pub extern "C" fn _start() -> ! {
     };
 
     let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
-        link_speed: 600_000_000,
+        link_speed: 400_000_000,
         num_lanes: 2,
         vcid: 0,
     };
@@ -198,12 +198,12 @@ pub extern "C" fn _start() -> ! {
     let resolution = crate::modules::video::ScreenResolution {
         width: 800,
         height: 480,
-        hsync: 5,
-        vsync: 5,
-        h_b_porch: 5,
-        h_f_porch: 5,
-        v_b_porch: 5,
-        v_f_porch: 5,
+        hsync: 7,
+        vsync: 3,
+        h_b_porch: 7,
+        h_f_porch: 6,
+        v_b_porch: 2,
+        v_f_porch: 2,
     };
 
     crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi, dsi_config, resolution);
