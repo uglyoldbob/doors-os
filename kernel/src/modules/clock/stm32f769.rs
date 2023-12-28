@@ -26,22 +26,22 @@ impl ExternalOscillator {
 }
 
 impl super::ClockProviderTrait for ExternalOscillator {
-    fn enable(&self, _i: usize) {
+    fn enable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_hse(true);
     }
 
-    fn disable(&self, _i: usize) {
+    fn disable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_hse(false);
     }
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         let rcc = self.rcc.lock();
         rcc.hse_ready()
     }
 
-    fn frequency(&self, _i: usize) -> Option<u64> {
+    fn clock_frequency(&self, _i: usize) -> Option<u64> {
         Some(self.frequency as u64)
     }
 }
@@ -69,22 +69,22 @@ impl InternalOscillator {
 }
 
 impl super::ClockProviderTrait for InternalOscillator {
-    fn enable(&self, _i: usize) {
+    fn enable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_hsi(true);
     }
 
-    fn disable(&self, _i: usize) {
+    fn disable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_hsi(false);
     }
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         let mut rcc = self.rcc.lock();
         rcc.hsi_ready()
     }
 
-    fn frequency(&self, _i: usize) -> Option<u64> {
+    fn clock_frequency(&self, _i: usize) -> Option<u64> {
         Some(self.frequency as u64)
     }
 }
@@ -205,22 +205,22 @@ pub struct PllMain {
 }
 
 impl super::ClockProviderTrait for PllMain {
-    fn enable(&self, _i: usize) {
+    fn enable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_main_pll(true);
     }
 
-    fn disable(&self, _i: usize) {
+    fn disable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_main_pll(false);
     }
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         let rcc = self.rcc.lock();
         rcc.main_pll_locked()
     }
 
-    fn frequency(&self, i: usize) -> Option<u64> {
+    fn clock_frequency(&self, i: usize) -> Option<u64> {
         let vco = self
             .iclk
             .frequency()
@@ -387,22 +387,22 @@ impl PllTwo {
 }
 
 impl super::ClockProviderTrait for PllTwo {
-    fn enable(&self, _i: usize) {
+    fn enable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_second_pll(true);
     }
 
-    fn disable(&self, _i: usize) {
+    fn disable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_second_pll(false);
     }
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         let rcc = self.rcc.lock();
         rcc.second_pll_locked()
     }
 
-    fn frequency(&self, i: usize) -> Option<u64> {
+    fn clock_frequency(&self, i: usize) -> Option<u64> {
         let vco = self
             .iclk
             .frequency()
@@ -489,22 +489,22 @@ impl PllThree {
 }
 
 impl super::ClockProviderTrait for PllThree {
-    fn enable(&self, _i: usize) {
+    fn enable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_third_pll(true);
     }
 
-    fn disable(&self, _i: usize) {
+    fn disable_clock(&self, _i: usize) {
         let mut rcc = self.rcc.lock();
         rcc.set_third_pll(false);
     }
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         let rcc = self.rcc.lock();
         rcc.third_pll_locked()
     }
 
-    fn frequency(&self, i: usize) -> Option<u64> {
+    fn clock_frequency(&self, i: usize) -> Option<u64> {
         let vco = self
             .iclk
             .frequency()

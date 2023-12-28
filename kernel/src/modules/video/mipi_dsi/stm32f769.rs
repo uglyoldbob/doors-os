@@ -27,20 +27,29 @@ impl Ltdc {
         }
     }
 
+    /// do some debugging
+    pub fn debug(&self) {
+        let mut d = crate::DEBUG_STUFF.lock();
+        for i in 0..16 {
+            d[i] = unsafe { core::ptr::read_volatile(&self.regs.regs[33 + i]) };
+        }
+    }
+
     /// Enable the ltdc hardware
     pub fn enable(&mut self) {
         let v = unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[6], v | 1) };
+        unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
     }
 
     /// Enable the clock input for the hardware
     pub fn enable_clock(&self) {
-        self.cc.enable(4 * 32 + 26);
+        self.cc.enable_clock(4 * 32 + 26);
     }
 
     /// Disable the clock input for the hardware
     pub fn disable_clock(&self) {
-        self.cc.disable(4 * 32 + 26);
+        self.cc.disable_clock(4 * 32 + 26);
     }
 
     pub fn configure(&mut self, resolution: &super::super::ScreenResolution) {
@@ -73,6 +82,18 @@ impl Ltdc {
                 - 1);
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[5], v) };
 
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[5], v) };
+
+        //layer 1 stuff
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[33], 1) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[34], 800 << 16) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[35], 480 << 16) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[37], 1) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[39], 0xFF424242) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[43], 0x2002_0000) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[44], 1600) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[45], 480) };
+
         //trigger immediate load
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[9], 1) };
     }
@@ -104,7 +125,7 @@ pub struct Module {
 
 impl super::MipiDsiTrait for Module {
     fn enable(&self, config: super::MipiDsiConfig, resolution: super::super::ScreenResolution) {
-        self.cc.enable(4 * 32 + 27);
+        self.cc.enable_clock(4 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
 
@@ -134,8 +155,8 @@ impl super::MipiDsiTrait for Module {
 
         //enable and wait for the pll
         let pll_provider = crate::modules::clock::ClockProvider::Stm32f769DsiPll(self.clone());
-        crate::modules::clock::ClockProvider::enable(&pll_provider, 0);
-        while !crate::modules::clock::ClockProvider::is_ready(&pll_provider, 0) {}
+        crate::modules::clock::ClockProvider::enable_clock(&pll_provider, 0);
+        while !crate::modules::clock::ClockProvider::clock_is_ready(&pll_provider, 0) {}
 
         let val = 4_000_000_000 / config.link_speed;
         self.set_dphy_link(val);
@@ -218,13 +239,15 @@ impl super::MipiDsiTrait for Module {
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 2)) };
         drop(internals);
+
+        ltdc.debug();
     }
 
     fn disable(&self) {
         let ltdc = self.ltdc.lock();
         ltdc.disable_clock();
         drop(ltdc);
-        self.cc.disable(4 * 32 + 27);
+        self.cc.disable_clock(4 * 32 + 27);
     }
 }
 
@@ -295,7 +318,7 @@ impl Module {
 
 impl crate::modules::clock::ClockProviderTrait for Module {
     /// Enable the pll
-    fn enable(&self, _i: usize) {
+    fn enable_clock(&self, _i: usize) {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v | 1;
@@ -303,20 +326,20 @@ impl crate::modules::clock::ClockProviderTrait for Module {
     }
 
     /// Disable the pll
-    fn disable(&self, _i: usize) {
+    fn disable_clock(&self, _i: usize) {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v & !1;
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
     }
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         let internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[259]) };
         (v & 1 << 8) != 0
     }
 
-    fn frequency(&self, i: usize) -> Option<u64> {
+    fn clock_frequency(&self, i: usize) -> Option<u64> {
         if let Some(fin) = self.iclk[1].frequency() {
             let id = self.get_input_divider();
             let vco_mul = self.get_multiplier();

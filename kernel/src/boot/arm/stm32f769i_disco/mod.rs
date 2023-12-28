@@ -50,7 +50,7 @@ pub extern "C" fn _start() -> ! {
     let rcc = crate::modules::clock::ClockProvider::Stm32f769(rcc_mod.clone());
 
     // the power interface - move to a dedicated module
-    crate::modules::clock::ClockProviderTrait::enable(&rcc, 3 * 32 + 28);
+    crate::modules::clock::ClockProviderTrait::enable_clock(&rcc, 3 * 32 + 28);
 
     let power = unsafe { crate::modules::power::stm32f769::Power::new(0x4000_7000) };
     //set vos for main power? (with power object)
@@ -66,9 +66,9 @@ pub extern "C" fn _start() -> ! {
         unsafe { crate::modules::clock::stm32f769::ExternalOscillator::new(25_000_000, &rcc_mod) };
     let into =
         unsafe { crate::modules::clock::stm32f769::InternalOscillator::new(16_000_000, &rcc_mod) };
-    crate::modules::clock::ClockProviderTrait::enable(&exto, 0);
+    crate::modules::clock::ClockProviderTrait::enable_clock(&exto, 0);
 
-    while !crate::modules::clock::ClockProviderTrait::is_ready(&exto, 0) {}
+    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&exto, 0) {}
 
     let exto = crate::modules::clock::ClockProvider::Stm32f769Hse(exto).get_ref(0);
     let into = crate::modules::clock::ClockProvider::Stm32f769Hsi(into).get_ref(0);
@@ -129,8 +129,8 @@ pub extern "C" fn _start() -> ! {
     fmc.set_wait_states(6);
 
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
-    crate::modules::clock::ClockProviderTrait::enable(&pll_main_provider, 0);
-    while !crate::modules::clock::ClockProviderTrait::is_ready(&pll_main_provider, 0) {}
+    crate::modules::clock::ClockProviderTrait::enable_clock(&pll_main_provider, 0);
+    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&pll_main_provider, 0) {}
 
     let pll_ref = pll_main_provider.get_ref(0);
 
@@ -176,7 +176,8 @@ pub extern "C" fn _start() -> ! {
     let dsi_clock1 = mux1.clone();
 
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_three, 2, 2);
-    crate::modules::clock::ClockProviderTrait::enable(&pll_three, 0);
+    crate::modules::clock::ClockProviderTrait::enable_clock(&pll_three, 0);
+    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&pll_three, 0) {}
 
     let dsi_byte_clock = pll_main_provider.get_ref(2);
 

@@ -9,13 +9,13 @@ use crate::LockedArc;
 #[enum_dispatch::enum_dispatch]
 pub trait ClockProviderTrait {
     /// Enable the specified clock
-    fn enable(&self, i: usize);
+    fn enable_clock(&self, i: usize);
     /// Disable the specified clock
-    fn disable(&self, i: usize);
+    fn disable_clock(&self, i: usize);
     /// Is the specified clock ready?
-    fn is_ready(&self, i: usize) -> bool;
+    fn clock_is_ready(&self, i: usize) -> bool;
     /// What is the frequency of the clock (if it is known)
-    fn frequency(&self, i: usize) -> Option<u64>;
+    fn clock_frequency(&self, i: usize) -> Option<u64>;
 }
 
 /// An enumeration of all the types of gpio controllers
@@ -69,15 +69,15 @@ impl DummyClock {
 }
 
 impl ClockProviderTrait for DummyClock {
-    fn disable(&self, _i: usize) {}
+    fn disable_clock(&self, _i: usize) {}
 
-    fn enable(&self, _i: usize) {}
+    fn enable_clock(&self, _i: usize) {}
 
-    fn is_ready(&self, _i: usize) -> bool {
+    fn clock_is_ready(&self, _i: usize) -> bool {
         true
     }
 
-    fn frequency(&self, _i: usize) -> Option<u64> {
+    fn clock_frequency(&self, _i: usize) -> Option<u64> {
         None
     }
 }
@@ -119,19 +119,19 @@ pub struct ClockRefPlain {
 
 impl ClockRefTrait for ClockRefPlain {
     fn frequency(&self) -> Option<u64> {
-        self.clock_provider.frequency(self.index)
+        self.clock_provider.clock_frequency(self.index)
     }
 
     fn is_ready(&self) -> bool {
-        self.clock_provider.is_ready(self.index)
+        self.clock_provider.clock_is_ready(self.index)
     }
 
     fn enable(&self) {
-        self.clock_provider.enable(self.index);
+        self.clock_provider.enable_clock(self.index);
     }
 
     fn disable(&self) {
-        self.clock_provider.disable(self.index);
+        self.clock_provider.disable_clock(self.index);
     }
 }
 

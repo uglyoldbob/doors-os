@@ -52,9 +52,9 @@ impl<'a> Gpio<'a> {
 impl<'a> super::GpioTrait for Gpio<'a> {
     fn reset(&mut self, r: bool) {
         if !r {
-            self.cc.enable(self.index);
+            self.cc.enable_clock(self.index);
         } else {
-            self.cc.disable(self.index);
+            self.cc.disable_clock(self.index);
         }
     }
 
