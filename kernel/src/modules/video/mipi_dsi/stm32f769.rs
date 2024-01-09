@@ -141,7 +141,8 @@ impl ModuleInternals {
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v)};
 
         self.wait_command_fifo_empty();
-        let mut v = [(cmd>>8) as u8].iter();
+        let ta = [(cmd>>8) as u8];
+        let v = ta.iter();
         let v2 = data.iter();
         let v3 = v.chain(v2);
 

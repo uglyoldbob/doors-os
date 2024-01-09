@@ -179,6 +179,19 @@ pub extern "C" fn _start() -> ! {
         drop(gpio);
     }
 
+    if true {
+        let mut serials = crate::kernel::SERIAL.lock();
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4001_1000)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_4400)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_4800)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_4c00)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_5000)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4001_1400)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_7800)}.into());
+        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_7c00)}.into());
+        drop(serials);
+    }
+
     let dsi_clock1 = mux1.clone();
 
     crate::modules::clock::PllProviderTrait::set_post_divider(&pll_three, 2, 2);
