@@ -22,15 +22,8 @@ pub trait ClockProviderTrait {
 #[derive(Clone)]
 #[enum_dispatch::enum_dispatch(ClockProviderTrait)]
 pub enum ClockProvider {
-    /// The reset provider for the stm32f769i-disco board.
-    #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769(LockedArc<crate::modules::reset::stm32f769::Module<'static>>),
-    /// The external oscillator for the stm32f769 processor
-    #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769Hse(stm32f769::ExternalOscillator),
-    /// The internal oscillator for the smt32f769 processor
-    #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769Hsi(stm32f769::InternalOscillator),
+    /// The main clock provider for the stm32f769
+    Stm32f769Provider(stm32f769::ClockTree),
     /// The main pll for the stm32f769 processor
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32F769MainPll(stm32f769::PllMain),
@@ -54,6 +47,34 @@ impl ClockProvider {
             clock_provider: self.clone(),
             index: i,
         })
+    }
+}
+
+/// A fixed frequency clock provider
+#[derive(Clone)]
+pub struct FixedClock {
+    /// The frequency in hertz
+    f: Option<u64>,
+}
+
+impl FixedClock {
+    /// Construct a clock
+    pub fn new(f: Option<u64>) -> Self {
+        Self { f }
+    }
+}
+
+impl ClockRefTrait for FixedClock {
+    fn disable_clock(&self) {}
+
+    fn enable_clock(&self) {}
+
+    fn clock_is_ready(&self) -> bool {
+        true
+    }
+
+    fn clock_frequency(&self) -> Option<u64> {
+        self.f
     }
 }
 
@@ -86,19 +107,21 @@ impl ClockProviderTrait for DummyClock {
 #[enum_dispatch::enum_dispatch]
 pub trait ClockRefTrait {
     /// Get the frequency of the clock, if known
-    fn frequency(&self) -> Option<u64>;
+    fn clock_frequency(&self) -> Option<u64>;
     /// Is the clock ready
-    fn is_ready(&self) -> bool;
+    fn clock_is_ready(&self) -> bool;
     /// Enable the clock, if possible
-    fn enable(&self);
+    fn enable_clock(&self);
     /// Disable the clock, if possible
-    fn disable(&self);
+    fn disable_clock(&self);
 }
 
 /// A reference to a single clock
 #[derive(Clone)]
 #[enum_dispatch::enum_dispatch(ClockRefTrait)]
 pub enum ClockRef {
+    /// A fixed frequency clock
+    Fixed(FixedClock),
     /// A regular reference directly to a clock provider
     Plain(ClockRefPlain),
     /// A clock from a mux
@@ -118,35 +141,35 @@ pub struct ClockRefPlain {
 }
 
 impl ClockRefTrait for ClockRefPlain {
-    fn frequency(&self) -> Option<u64> {
+    fn clock_frequency(&self) -> Option<u64> {
         self.clock_provider.clock_frequency(self.index)
     }
 
-    fn is_ready(&self) -> bool {
+    fn clock_is_ready(&self) -> bool {
         self.clock_provider.clock_is_ready(self.index)
     }
 
-    fn enable(&self) {
+    fn enable_clock(&self) {
         self.clock_provider.enable_clock(self.index);
     }
 
-    fn disable(&self) {
+    fn disable_clock(&self) {
         self.clock_provider.disable_clock(self.index);
     }
 }
 
 impl ClockRefTrait for DummyClock {
-    fn frequency(&self) -> Option<u64> {
+    fn clock_frequency(&self) -> Option<u64> {
         None
     }
 
-    fn is_ready(&self) -> bool {
+    fn clock_is_ready(&self) -> bool {
         true
     }
 
-    fn enable(&self) {}
+    fn enable_clock(&self) {}
 
-    fn disable(&self) {}
+    fn disable_clock(&self) {}
 }
 
 /// The trait for clock mux devices

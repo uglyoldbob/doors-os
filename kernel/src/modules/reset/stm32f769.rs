@@ -31,34 +31,6 @@ impl<'a> super::ResetProviderTrait for LockedArc<Module<'a>> {
     fn enable(&self, _i: usize) {}
 }
 
-impl<'a> crate::modules::clock::ClockProviderTrait for LockedArc<Module<'a>> {
-    fn disable_clock(&self, i: usize) {
-        let mut s = self.lock();
-        let (reg_num, i) = calc_clock_register(i);
-
-        let n = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) } & !i;
-        unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
-        unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) };
-    }
-
-    fn enable_clock(&self, i: usize) {
-        let mut s = self.lock();
-        let (reg_num, i) = calc_clock_register(i);
-        let n = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) } | i;
-        unsafe { core::ptr::write_volatile(&mut s.registers.regs[reg_num], n) };
-        let _v2 = unsafe { core::ptr::read_volatile(&s.registers.regs[reg_num]) };
-    }
-
-    fn clock_is_ready(&self, _i: usize) -> bool {
-        true
-    }
-
-    fn clock_frequency(&self, _i: usize) -> Option<u64> {
-        //TODO: possibly keep track of the actual frequency of all possible clocks tracked by this trait
-        None
-    }
-}
-
 impl<'a> Module<'a> {
     /// Create a new peripheral with the specified address
     pub unsafe fn new(addr: u32) -> Self {

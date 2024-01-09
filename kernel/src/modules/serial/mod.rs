@@ -24,7 +24,5 @@ pub enum Serial {
 pub struct DummySerial {}
 
 impl SerialTrait for DummySerial {
-    fn setup(&self) {
-
-    }
+    fn setup(&self) {}
 }

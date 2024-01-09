@@ -18,8 +18,6 @@ pub mod modules;
 use alloc::sync::Arc;
 use doors_kernel_api::video::TextDisplay;
 
-use crate::modules::gpio::GpioTrait;
-
 /// A wrapper around box that allows for traits to be implemented on a Box
 pub struct Box<T> {
     /// The contained object
@@ -122,6 +120,15 @@ pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
     {
+        use crate::modules::serial::SerialTrait;
+        let mut serials = crate::kernel::SERIAL.lock();
+        let serial = serials.module(0);
+        drop(serials);
+        let s = serial.lock();
+        s.setup();
+    }
+    {
+        use crate::modules::gpio::GpioTrait;
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
 

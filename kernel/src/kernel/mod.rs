@@ -36,9 +36,7 @@ pub struct SerialHandler {
 impl SerialHandler {
     /// Create a new empty set of serial modules
     fn new() -> Self {
-        Self {
-            devs: Vec::new(),
-        }
+        Self { devs: Vec::new() }
     }
 
     /// Add a serial module to the system
@@ -57,6 +55,6 @@ lazy_static! {
     pub static ref GPIO: Locked<GpioHandler> =
         Locked::new(GpioHandler::new());
     /// The list of all serial ports for the system
-    pub static ref SERIAL: Locked<SerialHandler> = 
+    pub static ref SERIAL: Locked<SerialHandler> =
         Locked::new(SerialHandler::new());
 }

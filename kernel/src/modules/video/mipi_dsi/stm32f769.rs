@@ -123,7 +123,7 @@ struct ModuleInternals {
 impl ModuleInternals {
     fn command_fifo_empty(&self) -> bool {
         let v = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
-        (v & (1<<0)) != 0
+        (v & (1 << 0)) != 0
     }
 
     fn wait_command_fifo_empty(&self) {
@@ -137,36 +137,35 @@ impl ModuleInternals {
 
     fn simple_command_write(&mut self, channel: u8, cmd: u16, data: &[u8]) {
         self.wait_command_fifo_empty();
-        let v: u32  = 0x15 | (channel as u32 & 3)<<6 | ((cmd & 0xFF) as u32)<<16;
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v)};
+        let v: u32 = 0x15 | (channel as u32 & 3) << 6 | ((cmd & 0xFF) as u32) << 16;
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v) };
 
         self.wait_command_fifo_empty();
-        let ta = [(cmd>>8) as u8];
+        let ta = [(cmd >> 8) as u8];
         let v = ta.iter();
         let v2 = data.iter();
         let v3 = v.chain(v2);
 
         let mut index = 0;
-        let mut val : u32 = 0;
+        let mut val: u32 = 0;
         for (i, d) in v3.enumerate() {
-            val |= (*d as u32)<<(8*index);
+            val |= (*d as u32) << (8 * index);
             if index == 3 {
-                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val)};
+                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val) };
                 val = 0;
                 index = 0;
-            }
-            else {
+            } else {
                 index += 1;
             }
         }
         if index != 0 {
-            unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val)};
+            unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val) };
             val = 0;
             index = 0;
         }
-        let len : u32 = data.len() as u32 + 1;
-        let v: u32  = 0x39 | (channel as u32 & 3)<<6 | (len & 0xFFFF)<<8;
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v)};
+        let len: u32 = data.len() as u32 + 1;
+        let v: u32 = 0x39 | (channel as u32 & 3) << 6 | (len & 0xFFFF) << 8;
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v) };
     }
 }
 
@@ -227,7 +226,6 @@ impl super::MipiDsiTrait for Module {
         let val = 4_000_000_000 / config.link_speed;
         self.set_dphy_link(val);
 
-        
         let mut internals = self.internals.lock();
 
         // set the stop wait time for stopping high speed transmissions on dsi? (bits 16-23)
@@ -269,7 +267,6 @@ impl super::MipiDsiTrait for Module {
         //test pattern generator
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[14], 0x1010001) };
 
-
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], 200) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[26], 0) };
 
@@ -286,10 +283,15 @@ impl super::MipiDsiTrait for Module {
         // size of null packet
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[17], 1) };
         // horizontal sync active length
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[18], 16 * resolution.width as u32) };
+        unsafe {
+            core::ptr::write_volatile(&mut internals.regs.regs[18], 16 * resolution.width as u32)
+        };
         //horizontal back porch length
         unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[19], 16 * resolution.h_b_porch as u32)
+            core::ptr::write_volatile(
+                &mut internals.regs.regs[19],
+                16 * resolution.h_b_porch as u32,
+            )
         };
         //TODO calculate the number here
         let v = (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
@@ -310,9 +312,7 @@ impl super::MipiDsiTrait for Module {
             core::ptr::write_volatile(&mut internals.regs.regs[24], resolution.height as u32)
         };
 
-        unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[25], resolution.width as u32)
-        };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], resolution.width as u32) };
 
         //enable data and clock
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[40]) };
@@ -447,7 +447,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
     }
 
     fn clock_frequency(&self, i: usize) -> Option<u64> {
-        if let Some(fin) = self.iclk[1].frequency() {
+        if let Some(fin) = self.iclk[1].clock_frequency() {
             let id = self.get_input_divider();
             let vco_mul = self.get_multiplier();
             let divider = crate::modules::clock::PllProviderTrait::get_post_divider(self, i) as u64;
@@ -461,14 +461,14 @@ impl crate::modules::clock::ClockProviderTrait for Module {
 
 impl crate::modules::clock::PllProviderTrait for Module {
     fn get_input_frequency(&self) -> Option<u64> {
-        self.iclk[1].frequency()
+        self.iclk[1].clock_frequency()
     }
 
     fn set_input_divider(&self, d: u32) -> Result<(), crate::modules::clock::PllDividerErr> {
         if (d & !7) != 0 {
             return Err(PllDividerErr::ImpossibleDivisor);
         }
-        if let Some(fin) = self.iclk[1].frequency() {
+        if let Some(fin) = self.iclk[1].clock_frequency() {
             if !(4_000_000..=100_000_000).contains(&fin) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
             }
@@ -498,7 +498,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
 
         let id = self.get_input_divider();
         let vco_mul = self.get_multiplier();
-        if let Some(fin) = self.iclk[1].frequency() {
+        if let Some(fin) = self.iclk[1].clock_frequency() {
             let vco_freq = fin as u32 * vco_mul as u32;
             let fout = vco_freq / (2 * id as u32 * d as u32);
             if !(31_250_000..=500_000_000).contains(&fout) {
@@ -532,7 +532,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
             return Err(PllVcoSetError::FrequencyOutOfRange);
         }
 
-        if let Some(fin) = self.iclk[1].frequency() {
+        if let Some(fin) = self.iclk[1].clock_frequency() {
             let fin = fin / self.get_input_divider() as u64;
             let multiplier = f / (2 * fin);
             self.set_multiplier(multiplier as u32);

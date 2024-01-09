@@ -1,93 +1,10 @@
 //! Clock providers for the stm32f769i-disco board
 
+use alloc::boxed::Box;
+
 use super::ClockRefTrait;
-use crate::LockedArc;
+use crate::{modules::reset::ResetProviderTrait, LockedArc};
 
-/// The external oscillator for the stm32f769
-#[derive(Clone)]
-pub struct ExternalOscillator {
-    /// The hardware for configuring the oscillator
-    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
-    /// The frequency specified for the oscillator, specified in hertz
-    frequency: u32,
-}
-
-impl ExternalOscillator {
-    /// Create a new external oscillator with the specified frequency
-    pub unsafe fn new(
-        frequency: u32,
-        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
-    ) -> Self {
-        Self {
-            rcc: rcc.clone(),
-            frequency,
-        }
-    }
-}
-
-impl super::ClockProviderTrait for ExternalOscillator {
-    fn enable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
-        rcc.set_hse(true);
-    }
-
-    fn disable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
-        rcc.set_hse(false);
-    }
-
-    fn clock_is_ready(&self, _i: usize) -> bool {
-        let rcc = self.rcc.lock();
-        rcc.hse_ready()
-    }
-
-    fn clock_frequency(&self, _i: usize) -> Option<u64> {
-        Some(self.frequency as u64)
-    }
-}
-
-/// The internal oscillator for the stm32f769
-#[derive(Clone)]
-pub struct InternalOscillator {
-    /// The hardware for configuring the oscillator
-    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
-    /// The frequency specified for the oscillator, specified in hertz
-    frequency: u32,
-}
-
-impl InternalOscillator {
-    /// Create a new internal oscillator with the specified frequency
-    pub unsafe fn new(
-        frequency: u32,
-        rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
-    ) -> Self {
-        Self {
-            rcc: rcc.clone(),
-            frequency,
-        }
-    }
-}
-
-impl super::ClockProviderTrait for InternalOscillator {
-    fn enable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
-        rcc.set_hsi(true);
-    }
-
-    fn disable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
-        rcc.set_hsi(false);
-    }
-
-    fn clock_is_ready(&self, _i: usize) -> bool {
-        let mut rcc = self.rcc.lock();
-        rcc.hsi_ready()
-    }
-
-    fn clock_frequency(&self, _i: usize) -> Option<u64> {
-        Some(self.frequency as u64)
-    }
-}
 
 #[derive(Clone)]
 /// This mux selects the input for the main pll and the i2s pll of the stm32f769
@@ -112,33 +29,33 @@ impl Mux1 {
 }
 
 impl super::ClockRefTrait for Mux1 {
-    fn enable(&self) {
+    fn enable_clock(&self) {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux1();
         let i = if v { 1 } else { 0 };
-        self.clocks[i].enable();
+        self.clocks[i].enable_clock();
     }
 
-    fn disable(&self) {
+    fn disable_clock(&self) {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux1();
         let i = if v { 1 } else { 0 };
-        self.clocks[i].disable();
+        self.clocks[i].disable_clock();
     }
 
-    fn is_ready(&self) -> bool {
+    fn clock_is_ready(&self) -> bool {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux1();
         let i = if v { 1 } else { 0 };
-        self.clocks[i].is_ready()
+        self.clocks[i].clock_is_ready()
     }
 
-    fn frequency(&self) -> Option<u64> {
+    fn clock_frequency(&self) -> Option<u64> {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux1();
         drop(rcc);
         let i = if v { 1 } else { 0 };
-        self.clocks[i].frequency().map(|f| f as u64)
+        self.clocks[i].clock_frequency()
     }
 }
 
@@ -179,20 +96,20 @@ impl Divider1 {
 }
 
 impl super::ClockRefTrait for Divider1 {
-    fn frequency(&self) -> Option<u64> {
+    fn clock_frequency(&self) -> Option<u64> {
         let rcc = self.rcc.lock();
         let fin = rcc.get_divider1();
         drop(rcc);
-        self.iclk.frequency().map(|f| f as u64 / fin as u64)
+        self.iclk.clock_frequency().map(|f| f as u64 / fin as u64)
     }
 
-    fn is_ready(&self) -> bool {
+    fn clock_is_ready(&self) -> bool {
         true
     }
 
-    fn enable(&self) {}
+    fn enable_clock(&self) {}
 
-    fn disable(&self) {}
+    fn disable_clock(&self) {}
 }
 
 /// The main pll for the stm32f769
@@ -223,7 +140,7 @@ impl super::ClockProviderTrait for PllMain {
     fn clock_frequency(&self, i: usize) -> Option<u64> {
         let vco = self
             .iclk
-            .frequency()
+            .clock_frequency()
             .map(|f| f as u64 * self.get_multiplier() as u64);
         let div = super::PllProviderTrait::get_post_divider(self, i) as u64;
         vco.map(|f| f / div as u64)
@@ -257,7 +174,7 @@ impl PllMain {
 
 impl super::PllProviderTrait for PllMain {
     fn get_input_frequency(&self) -> Option<u64> {
-        self.iclk.frequency()
+        self.iclk.clock_frequency()
     }
 
     fn set_input_divider(&self, d: u32) -> Result<(), super::PllDividerErr> {
@@ -280,7 +197,7 @@ impl super::PllProviderTrait for PllMain {
 
     fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
         if (100_000_000..=432_000_000).contains(&f) {
-            if let Some(fin) = self.iclk.frequency() {
+            if let Some(fin) = self.iclk.clock_frequency() {
                 let multiplier = f / fin;
                 if (50..433).contains(&multiplier) {
                     self.set_multiplier(multiplier as u32);
@@ -319,29 +236,29 @@ impl MuxSysClk {
 }
 
 impl super::ClockRefTrait for MuxSysClk {
-    fn enable(&self) {
+    fn enable_clock(&self) {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux_sysclk();
-        self.clocks[v as usize].enable();
+        self.clocks[v as usize].enable_clock();
     }
 
-    fn disable(&self) {
+    fn disable_clock(&self) {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux_sysclk();
-        self.clocks[v as usize].disable();
+        self.clocks[v as usize].disable_clock();
     }
 
-    fn is_ready(&self) -> bool {
+    fn clock_is_ready(&self) -> bool {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux_sysclk();
-        self.clocks[v as usize].is_ready()
+        self.clocks[v as usize].clock_is_ready()
     }
 
-    fn frequency(&self) -> Option<u64> {
+    fn clock_frequency(&self) -> Option<u64> {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux_sysclk();
         drop(rcc);
-        self.clocks[v as usize].frequency().map(|f| f as u64)
+        self.clocks[v as usize].clock_frequency().map(|f| f as u64)
     }
 }
 
@@ -405,7 +322,7 @@ impl super::ClockProviderTrait for PllTwo {
     fn clock_frequency(&self, i: usize) -> Option<u64> {
         let vco = self
             .iclk
-            .frequency()
+            .clock_frequency()
             .map(|f| f as u64 * self.get_multiplier() as u64);
         let div = super::PllProviderTrait::get_post_divider(self, i) as u64;
         vco.map(|f| f / div as u64)
@@ -414,7 +331,7 @@ impl super::ClockProviderTrait for PllTwo {
 
 impl super::PllProviderTrait for PllTwo {
     fn get_input_frequency(&self) -> Option<u64> {
-        self.iclk.frequency()
+        self.iclk.clock_frequency()
     }
 
     fn set_input_divider(&self, d: u32) -> Result<(), super::PllDividerErr> {
@@ -437,7 +354,7 @@ impl super::PllProviderTrait for PllTwo {
 
     fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
         if (100_000_000..=432_000_000).contains(&f) {
-            if let Some(fin) = self.iclk.frequency() {
+            if let Some(fin) = self.iclk.clock_frequency() {
                 let multiplier = f / fin;
                 if (50..433).contains(&multiplier) {
                     self.set_multiplier(multiplier as u32);
@@ -507,7 +424,7 @@ impl super::ClockProviderTrait for PllThree {
     fn clock_frequency(&self, i: usize) -> Option<u64> {
         let vco = self
             .iclk
-            .frequency()
+            .clock_frequency()
             .map(|f| f as u64 * self.get_multiplier() as u64);
         let div = super::PllProviderTrait::get_post_divider(self, i) as u64;
         vco.map(|f| f / div as u64)
@@ -516,7 +433,7 @@ impl super::ClockProviderTrait for PllThree {
 
 impl super::PllProviderTrait for PllThree {
     fn get_input_frequency(&self) -> Option<u64> {
-        self.iclk.frequency()
+        self.iclk.clock_frequency()
     }
 
     fn set_input_divider(&self, d: u32) -> Result<(), super::PllDividerErr> {
@@ -539,7 +456,7 @@ impl super::PllProviderTrait for PllThree {
 
     fn set_vco_frequency(&self, f: u64) -> Result<(), super::PllVcoSetError> {
         if (100_000_000..=432_000_000).contains(&f) {
-            if let Some(fin) = self.iclk.frequency() {
+            if let Some(fin) = self.iclk.clock_frequency() {
                 let multiplier = f / fin;
                 if (50..433).contains(&multiplier) {
                     self.set_multiplier(multiplier as u32);
@@ -552,6 +469,101 @@ impl super::PllProviderTrait for PllThree {
             }
         } else {
             Err(super::PllVcoSetError::FrequencyOutOfRange)
+        }
+    }
+}
+
+/// The clock tree provider for the stm32f769
+#[derive(Clone)]
+pub struct ClockTree {
+    /// The external frequency of the low frequency oscillator
+    osc32: Box<crate::modules::clock::ClockRef>,
+    /// The external frequency of the high frequency oscillator
+    oscmain: Box<crate::modules::clock::ClockRef>,
+    /// The internal frequency of the main rc oscillator
+    oscint: Box<crate::modules::clock::ClockRef>,
+    /// The internal frequency of the main low frequency oscillator
+    osc32int: Box<crate::modules::clock::ClockRef>,
+    /// The hardware for configuring
+    rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+}
+
+impl ClockTree {
+    /// Construct a new clock tree
+    pub fn new(
+        osc32: crate::modules::clock::ClockRef,
+        oscmain: crate::modules::clock::ClockRef,
+        oscint: crate::modules::clock::ClockRef,
+        osc32int: crate::modules::clock::ClockRef,
+        rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
+    ) -> Self {
+        Self {
+            osc32: Box::new(osc32),
+            oscmain: Box::new(oscmain),
+            oscint: Box::new(oscint),
+            osc32int: Box::new(osc32int),
+            rcc,
+        }
+    }
+}
+
+impl super::ClockProviderTrait for ClockTree {
+    fn disable_clock(&self, i: usize) {
+        let mut rcc = self.rcc.lock();
+        let d = i / 32;
+        let dr = i % 32;
+        match (d, dr) {
+            (0, 0) => {
+                rcc.set_hse(false);
+            }
+            (0, 1) => {
+                rcc.set_hsi(false);
+            }
+            _ => panic!("Invalid clock specified"),
+        }
+    }
+
+    fn enable_clock(&self, i: usize) {
+        let mut rcc = self.rcc.lock();
+        let d = i / 32;
+        let dr = i % 32;
+        match (d, dr) {
+            (0, 0) => {
+                rcc.set_hse(true);
+            }
+            (0, 1) => {
+                rcc.set_hsi(true);
+            }
+            _ => panic!("Invalid clock specified"),
+        }
+    }
+
+    fn clock_is_ready(&self, i: usize) -> bool {
+        let mut rcc = self.rcc.lock();
+        let d = i / 32;
+        let dr = i % 32;
+        match (d, dr) {
+            (0, 0) => {
+                rcc.hse_ready()
+            }
+            (0, 1) => {
+                rcc.hsi_ready()
+            }
+            _ => panic!("Invalid clock specified"),
+        }
+    }
+
+    fn clock_frequency(&self, i: usize) -> Option<u64> {
+        let d = i / 32;
+        let dr = i % 32;
+        match (d, dr) {
+            (0, 0) => {
+                self.oscmain.clock_frequency()
+            }
+            (0, 1) => {
+                self.oscint.clock_frequency()
+            }
+            _ => panic!("Invalid clock specified"),
         }
     }
 }

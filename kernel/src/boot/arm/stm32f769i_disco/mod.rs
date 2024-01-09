@@ -47,14 +47,28 @@ pub extern "C" fn _start() -> ! {
     }
     drop(h);
 
+    let osc32 = crate::modules::clock::FixedClock::new(None);
+    let oscmain = crate::modules::clock::FixedClock::new(Some(25_000_000));
+    let oscint = crate::modules::clock::FixedClock::new(Some(16_000_000));
+    let osc32int = crate::modules::clock::FixedClock::new(Some(32_000));
+
     let rcc_mod = unsafe { crate::modules::reset::stm32f769::Module::new(0x4002_3800) };
     let rcc_mod = LockedArc::new(rcc_mod);
-    let rcc = crate::modules::clock::ClockProvider::Stm32f769(rcc_mod.clone());
 
-    // the power interface - move to a dedicated module
-    crate::modules::clock::ClockProviderTrait::enable_clock(&rcc, 3 * 32 + 28);
+    let mut ctree = crate::modules::clock::stm32f769::ClockTree::new(
+        osc32.into(),
+        oscmain.into(),
+        oscint.into(),
+        osc32int.into(),
+        rcc_mod.clone(),
+    );
 
-    let power = unsafe { crate::modules::power::stm32f769::Power::new(0x4000_7000) };
+    let ctree_provider = crate::modules::clock::ClockProvider::Stm32f769Provider(ctree.clone());
+
+    // enable the power interface
+    //crate::modules::clock::ClockProviderTrait::enable_clock(&ctree, 4 * 32 + 28);
+
+    //let power = unsafe { crate::modules::power::stm32f769::Power::new(0x4000_7000) };
     //set vos for main power? (with power object)
 
     let mut r = rcc_mod.lock();
@@ -64,106 +78,29 @@ pub extern "C" fn _start() -> ! {
 
     let mut fmc = unsafe { crate::modules::memory::stm32f769::Fmc::new(0x4002_3c00) };
 
-    let exto =
-        unsafe { crate::modules::clock::stm32f769::ExternalOscillator::new(25_000_000, &rcc_mod) };
-    let into =
-        unsafe { crate::modules::clock::stm32f769::InternalOscillator::new(16_000_000, &rcc_mod) };
-    crate::modules::clock::ClockProviderTrait::enable_clock(&exto, 0);
+    // enable the external oscillator
+    crate::modules::clock::ClockProviderTrait::enable_clock(&ctree, 0);
+    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&ctree, 0) {}
 
-    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&exto, 0) {}
+    
 
-    let exto = crate::modules::clock::ClockProvider::Stm32f769Hse(exto).get_ref(0);
-    let into = crate::modules::clock::ClockProvider::Stm32f769Hsi(into).get_ref(0);
-    let mux1 = crate::modules::clock::stm32f769::Mux1::new(
-        &rcc_mod,
-        [
-            alloc::boxed::Box::new(into.clone()),
-            alloc::boxed::Box::new(exto.clone()),
-        ],
-    );
-    crate::modules::clock::ClockMuxTrait::select(&mux1, 1);
-
-    let mux1 = crate::modules::clock::ClockMux::Stm32f769Mux1(mux1);
-    let mux1 = crate::modules::clock::ClockRef::Mux(mux1);
-    let divider = crate::modules::clock::stm32f769::Divider1::new(&rcc_mod, mux1.clone());
-    divider.set_divider(25);
-
-    let divider = crate::modules::clock::ClockRef::Stm32f769MainDivider(divider);
-
-    let pll_main = crate::modules::clock::stm32f769::PllMain::new(&rcc_mod, divider.clone());
-    let pll_main_provider =
-        crate::modules::clock::ClockProvider::Stm32F769MainPll(pll_main.clone());
-    let pll_main = crate::modules::clock::PllProvider::Stm32f769MainPll(pll_main.clone());
-    let pll_two = crate::modules::clock::stm32f769::PllTwo::new(&rcc_mod, divider.clone());
-    let pll_two_provider =
-        crate::modules::clock::ClockProvider::Stm32F769SecondPll(pll_two.clone());
-    let pll_two = crate::modules::clock::PllProvider::Stm32f769SecondPll(pll_two);
-    let pll_three = crate::modules::clock::stm32f769::PllThree::new(&rcc_mod, divider.clone());
-    let pll_three_provider =
-        crate::modules::clock::ClockProvider::Stm32F769ThirdPll(pll_three.clone());
-    let pll_three = crate::modules::clock::PllProvider::Stm32f769ThirdPll(pll_three);
-
-    loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_main, 432_000_000)
-            .is_ok()
-        {
-            break;
-        }
-    }
-
-    let mut r = rcc_mod.lock();
-    r.set_mco1_pll();
-    drop(r);
-
-    loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_two, 432_000_000).is_ok()
-        {
-            break;
-        }
-    }
-
-    loop {
-        if crate::modules::clock::PllProviderTrait::set_vco_frequency(&pll_three, 432_000_000)
-            .is_ok()
-        {
-            break;
-        }
-    }
-
-    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 0, 2);
+    //setup all three main pll of the system
 
     fmc.set_wait_states(6);
 
-    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_main, 2, 2);
-    crate::modules::clock::ClockProviderTrait::enable_clock(&pll_main_provider, 0);
-    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&pll_main_provider, 0) {}
+    let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 0, 0x4002_0000) };
+    let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 1, 0x4002_0400) };
+    let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 2, 0x4002_0800) };
+    let gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 3, 0x4002_0c00) };
+    let ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 4, 0x4002_1000) };
+    let gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 5, 0x4002_1400) };
+    let gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 6, 0x4002_1800) };
+    let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 7, 0x4002_1c00) };
+    let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 8, 0x4002_2000) };
+    let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 9, 0x4002_2400) };
+    let gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 10, 0x4002_2800) };
 
-    let pll_ref = pll_main_provider.get_ref(0);
-
-    let sysclk_mux = crate::modules::clock::stm32f769::MuxSysClk::new(
-        &rcc_mod,
-        [
-            alloc::boxed::Box::new(into),
-            alloc::boxed::Box::new(exto),
-            alloc::boxed::Box::new(pll_ref),
-        ],
-    );
-
-    crate::modules::clock::ClockMuxTrait::select(&sysclk_mux, 2);
-
-    let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 0, 0x4002_0000) };
-    let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 1, 0x4002_0400) };
-    let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 2, 0x4002_0800) };
-    let gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 3, 0x4002_0c00) };
-    let ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 4, 0x4002_1000) };
-    let gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 5, 0x4002_1400) };
-    let gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 6, 0x4002_1800) };
-    let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 7, 0x4002_1c00) };
-    let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 8, 0x4002_2000) };
-    let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 9, 0x4002_2400) };
-    let gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&rcc, 10, 0x4002_2800) };
-
-    if true {
+    {
         let mut gpio = crate::kernel::GPIO.lock();
         gpio.register_gpios(ga.into());
         gpio.register_gpios(gb.into());
@@ -178,70 +115,6 @@ pub extern "C" fn _start() -> ! {
         gpio.register_gpios(gk.into());
         drop(gpio);
     }
-
-    if true {
-        let mut serials = crate::kernel::SERIAL.lock();
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4001_1000)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_4400)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_4800)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_4c00)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_5000)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4001_1400)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_7800)}.into());
-        serials.register_serial(unsafe { crate::modules::serial::stm32f769::Usart::new(0x4000_7c00)}.into());
-        drop(serials);
-    }
-
-    let dsi_clock1 = mux1.clone();
-
-    crate::modules::clock::PllProviderTrait::set_post_divider(&pll_three, 2, 2);
-    crate::modules::clock::ClockProviderTrait::enable_clock(&pll_three, 0);
-    while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&pll_three, 0) {}
-
-    let dsi_byte_clock = pll_main_provider.get_ref(2);
-
-    let dsi = unsafe {
-        crate::modules::video::mipi_dsi::stm32f769::Module::new(
-            &rcc,
-            [&dsi_byte_clock, &dsi_clock1],
-            0x4001_6c00,
-        )
-    };
-
-    let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
-        link_speed: 500_000_000,
-        num_lanes: 2,
-        vcid: 0,
-    };
-
-    let resolution = crate::modules::video::ScreenResolution {
-        width: 800,
-        height: 480,
-        hsync: 2,
-        vsync: 1,
-        h_b_porch: 34,
-        h_f_porch: 34,
-        v_b_porch: 15,
-        v_f_porch: 16,
-    };
-
-    let mut gpio = crate::kernel::GPIO.lock();
-    let mj = gpio.module(9);
-    let mi= gpio.module(8);
-    drop(gpio);
-
-    let mut j = mj.lock();
-    j.reset(false);
-    j.set_output(15);
-    j.write_output(15, true);
-    drop(j);
-    let mut i = mi.lock();
-    i.reset(false);
-    i.set_output(14);
-    i.write_output(14, true);
-    drop(i);
-
-    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi, &dsi_config, &resolution);
 
     crate::main()
 }
