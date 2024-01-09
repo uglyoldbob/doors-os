@@ -19,7 +19,7 @@ pub struct MipiDsiConfig {
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiTrait {
     /// Enable the hardware
-    fn enable(&self, config: MipiDsiConfig, resolution: super::ScreenResolution);
+    fn enable(&self, config: &MipiDsiConfig, resolution: &super::ScreenResolution);
     /// Disable the hardware
     fn disable(&self);
 }
@@ -34,11 +34,21 @@ pub enum MipiDsiProvider {
     Dummy(DummyMipiCsi),
 }
 
+/// A DCS command that can be sent over mipi
+pub enum DcsCommand<'a> {
+    /// A short command
+    Short(u8),
+    /// A short command with a single parameter
+    ShortParam(u8, u8),
+    /// A long command with many parameters
+    Long(&'a [u8]),
+}
+
 /// A fake clock provider
 pub struct DummyMipiCsi {}
 
 impl MipiDsiTrait for DummyMipiCsi {
     fn disable(&self) {}
 
-    fn enable(&self, _config: MipiDsiConfig, _resolution: super::ScreenResolution) {}
+    fn enable(&self, _config: &MipiDsiConfig, _resolution: &super::ScreenResolution) {}
 }

@@ -15,6 +15,8 @@ extern "C" {
     pub static RAMLOAD: u8;
 }
 
+use crate::modules::gpio::GpioTrait;
+
 /// The entry point of the kernel
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
@@ -194,7 +196,7 @@ pub extern "C" fn _start() -> ! {
     };
 
     let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
-        link_speed: 400_000_000,
+        link_speed: 500_000_000,
         num_lanes: 2,
         vcid: 0,
     };
@@ -202,15 +204,31 @@ pub extern "C" fn _start() -> ! {
     let resolution = crate::modules::video::ScreenResolution {
         width: 800,
         height: 480,
-        hsync: 7,
-        vsync: 3,
-        h_b_porch: 7,
-        h_f_porch: 6,
-        v_b_porch: 2,
-        v_f_porch: 2,
+        hsync: 2,
+        vsync: 1,
+        h_b_porch: 34,
+        h_f_porch: 34,
+        v_b_porch: 15,
+        v_f_porch: 16,
     };
 
-    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi, dsi_config, resolution);
+    let mut gpio = crate::kernel::GPIO.lock();
+    let mj = gpio.module(9);
+    let mi= gpio.module(8);
+    drop(gpio);
+
+    let mut j = mj.lock();
+    j.reset(false);
+    j.set_output(15);
+    j.write_output(15, true);
+    drop(j);
+    let mut i = mi.lock();
+    i.reset(false);
+    i.set_output(14);
+    i.write_output(14, true);
+    drop(i);
+
+    crate::modules::video::mipi_dsi::MipiDsiTrait::enable(&dsi, &dsi_config, &resolution);
 
     crate::main()
 }

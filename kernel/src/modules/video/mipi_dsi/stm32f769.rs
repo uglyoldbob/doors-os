@@ -120,6 +120,55 @@ struct ModuleInternals {
     regs: &'static mut DsiRegisters,
 }
 
+impl ModuleInternals {
+    fn command_fifo_empty(&self) -> bool {
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+        (v & (1<<0)) != 0
+    }
+
+    fn wait_command_fifo_empty(&self) {
+        loop {
+            let v = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+            if (v & 1) != 0 {
+                break;
+            }
+        }
+    }
+
+    fn simple_command_write(&mut self, channel: u8, cmd: u16, data: &[u8]) {
+        self.wait_command_fifo_empty();
+        let v: u32  = 0x15 | (channel as u32 & 3)<<6 | ((cmd & 0xFF) as u32)<<16;
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v)};
+
+        self.wait_command_fifo_empty();
+        let mut v = [(cmd>>8) as u8].iter();
+        let v2 = data.iter();
+        let v3 = v.chain(v2);
+
+        let mut index = 0;
+        let mut val : u32 = 0;
+        for (i, d) in v3.enumerate() {
+            val |= (*d as u32)<<(8*index);
+            if index == 3 {
+                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val)};
+                val = 0;
+                index = 0;
+            }
+            else {
+                index += 1;
+            }
+        }
+        if index != 0 {
+            unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val)};
+            val = 0;
+            index = 0;
+        }
+        let len : u32 = data.len() as u32 + 1;
+        let v: u32  = 0x39 | (channel as u32 & 3)<<6 | (len & 0xFFFF)<<8;
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v)};
+    }
+}
+
 /// The dsi hardware implementation. The pll of the stm32f769 is integrated into this struct functionality.
 #[derive(Clone)]
 pub struct Module {
@@ -134,7 +183,7 @@ pub struct Module {
 }
 
 impl super::MipiDsiTrait for Module {
-    fn enable(&self, config: super::MipiDsiConfig, resolution: super::super::ScreenResolution) {
+    fn enable(&self, config: &super::MipiDsiConfig, resolution: &super::super::ScreenResolution) {
         self.cc.enable_clock(4 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
@@ -157,14 +206,14 @@ impl super::MipiDsiTrait for Module {
             }
         }
         loop {
-            if crate::modules::clock::PllProviderTrait::set_vco_frequency(&dsi_pll, 750_000_000)
+            if crate::modules::clock::PllProviderTrait::set_vco_frequency(&dsi_pll, 500_000_000)
                 .is_ok()
             {
                 break;
             }
         }
         loop {
-            if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 4).is_ok() {
+            if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
                 break;
             }
         }
@@ -177,13 +226,14 @@ impl super::MipiDsiTrait for Module {
         let val = 4_000_000_000 / config.link_speed;
         self.set_dphy_link(val);
 
-        // set the number of lanes (only 1 or 2 lanes supported here)
+        
         let mut internals = self.internals.lock();
 
         // set the stop wait time for stopping high speed transmissions on dsi? (bits 16-23)
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[41]) } & 0xFF00;
         let nlanes = ((config.num_lanes - 1) & 1) as u32;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[41], v | nlanes) };
+        // set the number of lanes (only 1 or 2 lanes supported here)
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[41], 0xa00 | nlanes) };
 
         //set automatic clock lane control and clock control
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[37], 1) };
@@ -195,46 +245,55 @@ impl super::MipiDsiTrait for Module {
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[33], 0x100ffff) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[34], 0xffff) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[35], 0xffff) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[38], 0x230023) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[39], 0x23230000) };
 
         //set transition time for dsi clock signal?
         //set transition time for dsi data signals?
         //set read time for dsi data signals?
 
         //TODO put in actual values here
-        let ockdiv = 255;
-        let eckdiv = 3;
+        let ockdiv = 0;
+        let eckdiv = 4;
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[2], (ockdiv << 8) | eckdiv) };
 
-        let pcrval = 0x0;
+        let pcrval = 0x4;
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[11], pcrval) };
 
         //set vcid for the display
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[3], config.vcid as u32 & 3) };
 
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], 0xffff) };
+        //video mode
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 0) };
+        //test pattern generator
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[14], 0x1010001) };
 
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[256], 1 << 6 | 1) };
+
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], 200) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[26], 0) };
+
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[256], 1 << 6) };
 
         // setup WCFGR with DSIM, COLMUX, TESRC, TEPOL, AR, and VSPOL?
 
         //setup VMCR, VPCR, VCCR, VNPCR, VLCR, VHSACR, VHBPCR, VVSACR, VVBPCR, VVFPCR, VVACR registers
 
         // pixels per packet (VPCR)
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[15], 200) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[15], resolution.width as u32) };
         //chunks per line
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[16], 4) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[16], 2) };
         // size of null packet
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[17], 1) };
         // horizontal sync active length
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[18], resolution.width as u32) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[18], 16 * resolution.width as u32) };
         //horizontal back porch length
         unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[19], resolution.h_b_porch as u32)
+            core::ptr::write_volatile(&mut internals.regs.regs[19], 16 * resolution.h_b_porch as u32)
         };
         //TODO calculate the number here
         let v = (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
             as u32;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[20], v) };
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[20], v * 16) };
         //vsync length
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[21], resolution.vsync as u32) };
         //vertical back porch length
@@ -250,6 +309,10 @@ impl super::MipiDsiTrait for Module {
             core::ptr::write_volatile(&mut internals.regs.regs[24], resolution.height as u32)
         };
 
+        unsafe {
+            core::ptr::write_volatile(&mut internals.regs.regs[25], resolution.width as u32)
+        };
+
         //enable data and clock
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[40]) };
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[40], v | (3 << 1)) };
@@ -262,6 +325,11 @@ impl super::MipiDsiTrait for Module {
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 3)) };
 
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[64], 0x101) };
+
+        //TODO: move these function calls to another layer specific to the display
+        internals.simple_command_write(0, 0xff00, &[0x80, 9, 1]);
+        internals.simple_command_write(0, 0xff80, &[0x80, 9]);
+        todo!("Finish display initialization commands");
 
         ltdc.debug();
         ltdc.enable();
@@ -432,7 +500,7 @@ impl crate::modules::clock::PllProviderTrait for Module {
         if let Some(fin) = self.iclk[1].frequency() {
             let vco_freq = fin as u32 * vco_mul as u32;
             let fout = vco_freq / (2 * id as u32 * d as u32);
-            if !(31_250_000..=82_500_000).contains(&fout) {
+            if !(31_250_000..=500_000_000).contains(&fout) {
                 return Err(PllDividerErr::InputFrequencyOutOfRange);
             }
         } else {
