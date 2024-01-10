@@ -598,7 +598,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => {
                 rcc.set_hsi(false);
             }
-            (1,i) => {
+            (1, i) => {
                 rcc.disable_peripheral(i as u8);
             }
             _ => panic!("Invalid clock specified"),
@@ -617,7 +617,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => {
                 rcc.set_hsi(true);
             }
-            (1,i) => {
+            (1, i) => {
                 rcc.enable_peripheral(i as u8);
             }
             _ => panic!("Invalid clock specified"),
@@ -647,6 +647,14 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
         }
     }
 
+    /// Get a clock reference. Here is a rundown of what each index refers to.
+    /// 0 - main oscillator
+    /// 1 - internal fast oscillator
+    /// 32 - gpioa clock (ahb1)
+    /// 64 - dcmi (ahb2)
+    /// 96 - fmc (ahb3)
+    /// 128 - tim2 (apb1)
+    /// 160 - tim1 (apb2)
     fn get_ref(&self, i: usize) -> super::ClockRef {
         super::ClockRef::Plain(super::ClockRefPlain {
             clock_provider: self.clone().into(),

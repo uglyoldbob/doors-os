@@ -94,7 +94,7 @@ impl ClockProviderTrait for DummyClock {
         None
     }
 
-    fn get_ref(&self,i:usize) -> ClockRef {
+    fn get_ref(&self, i: usize) -> ClockRef {
         panic!("Invalid clock");
     }
 }

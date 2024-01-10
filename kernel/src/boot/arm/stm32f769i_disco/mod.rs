@@ -94,7 +94,7 @@ pub extern "C" fn _start() -> ! {
     drop(r);
 
     let mut c = ctree.lock();
-    c.mux1_select(1);   //select the external oscillator
+    c.mux1_select(1); //select the external oscillator
     c.divider1_set(25); //divide down to a 1 mhz clock
     drop(c);
     crate::modules::clock::PllProviderTrait::run_closure(&ctree_pll, 0, &|pll| {
@@ -112,16 +112,26 @@ pub extern "C" fn _start() -> ! {
     c.main_mux_select(2); //use the pll as the sysclk
     drop(c);
 
-    let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+0, 0x4002_0000) };
-    let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+1, 0x4002_0400) };
-    let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+2, 0x4002_0800) };
-    let gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+3, 0x4002_0c00) };
-    let ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+4, 0x4002_1000) };
-    let gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+5, 0x4002_1400) };
-    let gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+6, 0x4002_1800) };
-    let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+7, 0x4002_1c00) };
-    let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+8, 0x4002_2000) };
-    let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+9, 0x4002_2400) };
+    let ga =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 0, 0x4002_0000) };
+    let gb =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 1, 0x4002_0400) };
+    let gc =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 2, 0x4002_0800) };
+    let gd =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 3, 0x4002_0c00) };
+    let ge =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 4, 0x4002_1000) };
+    let gf =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 5, 0x4002_1400) };
+    let gg =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 6, 0x4002_1800) };
+    let gh =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 7, 0x4002_1c00) };
+    let gi =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 8, 0x4002_2000) };
+    let gj =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 9, 0x4002_2400) };
     let gk =
         unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 10, 0x4002_2800) };
 
@@ -139,6 +149,83 @@ pub extern "C" fn _start() -> ! {
         gpio.register_gpios(gj.into());
         gpio.register_gpios(gk.into());
         drop(gpio);
+    }
+
+    {
+        let mut serials = crate::kernel::SERIAL.lock();
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4001_1000,
+                    ctree.get_ref(5 * 32 + 4),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4000_4400,
+                    ctree.get_ref(4 * 32 + 17),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4000_4800,
+                    ctree.get_ref(4 * 32 + 18),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4000_4c00,
+                    ctree.get_ref(4 * 32 + 19),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4000_5000,
+                    ctree.get_ref(4 * 32 + 20),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4001_1400,
+                    ctree.get_ref(5 * 32 + 5),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4000_7800,
+                    ctree.get_ref(4 * 32 + 30),
+                )
+            }
+            .into(),
+        );
+        serials.register_serial(
+            unsafe {
+                crate::modules::serial::stm32f769::Usart::new(
+                    0x4000_7c00,
+                    ctree.get_ref(4 * 32 + 31),
+                )
+            }
+            .into(),
+        );
+        drop(serials);
     }
 
     crate::main()

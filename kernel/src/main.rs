@@ -119,7 +119,7 @@ pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
-    
+
     {
         use crate::modules::gpio::GpioTrait;
         let mut gpio = crate::kernel::GPIO.lock();
