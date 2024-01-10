@@ -63,7 +63,7 @@ impl<'a> Module<'a> {
         unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
     }
 
-    /// Set the mco1 divider
+    /// Set the mco1 divider to sysclk / 5.
     pub fn set_mco1_pll(&mut self) {
         let n = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) } & !(0x07600000);
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[2], n | 0x07600000) };
