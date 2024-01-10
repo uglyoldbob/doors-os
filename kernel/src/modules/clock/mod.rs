@@ -23,7 +23,7 @@ pub trait ClockProviderTrait {
 #[enum_dispatch::enum_dispatch(ClockProviderTrait)]
 pub enum ClockProvider {
     /// The main clock provider for the stm32f769
-    Stm32f769Provider(stm32f769::ClockTree),
+    Stm32f769Provider(LockedArc<stm32f769::ClockTree>),
     /// The main pll for the stm32f769 processor
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32F769MainPll(stm32f769::PllMain),
@@ -201,9 +201,35 @@ pub trait ClockDividerTrait {
     fn set_divisor(&self, d: usize) -> Result<(), ()>;
 }
 
+/// The trait for devices that contain one or more pll
+#[enum_dispatch::enum_dispatch]
+pub trait PllProviderTrait {
+    /// Run a closure on the specified pll
+    fn run_closure(&self, i: u8, c: &dyn Fn(&mut Pll));
+}
+
+/// An enumeration of all the types of pll providers
+#[derive(Clone)]
+#[enum_dispatch::enum_dispatch(PllProviderTrait)]
+pub enum PllProvider {
+    /// A dummy for compilation
+    DummyProvider(DummyPllProvider),
+    /// The pll provider for the stm32f769 hardware
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769(LockedArc<stm32f769::ClockTree>),
+}
+
+/// A dummy provider of pll objects. Simply panics.
+#[derive(Clone)]
+pub struct DummyPllProvider {}
+
+impl PllProviderTrait for DummyPllProvider {
+    fn run_closure(&self, i: u8, c: &dyn Fn(&mut Pll)) {}
+}
+
 /// The trait common to all pll providers
 #[enum_dispatch::enum_dispatch]
-pub trait PllProviderTrait: ClockProviderTrait {
+pub trait PllTrait: ClockProviderTrait {
     /// Set the input frequency of the pll
     fn set_internal_input_frequency(&self, f: u64) -> Result<(), PllDividerErr> {
         if let Some(fin) = self.get_input_frequency() {
@@ -227,8 +253,8 @@ pub trait PllProviderTrait: ClockProviderTrait {
 
 /// An enumeration of all the types of pll providers
 #[derive(Clone)]
-#[enum_dispatch::enum_dispatch(ClockProviderTrait, PllProviderTrait)]
-pub enum PllProvider {
+#[enum_dispatch::enum_dispatch(ClockProviderTrait, PllTrait)]
+pub enum Pll {
     /// The main pll for the stm32f769
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769MainPll(stm32f769::PllMain),
@@ -244,7 +270,7 @@ pub enum PllProvider {
     Dummy(DummyClock),
 }
 
-impl PllProviderTrait for DummyClock {
+impl PllTrait for DummyClock {
     fn get_input_frequency(&self) -> Option<u64> {
         None
     }

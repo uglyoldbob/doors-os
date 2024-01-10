@@ -199,21 +199,19 @@ impl super::MipiDsiTrait for Module {
         }
 
         //configure the pll
-        let dsi_pll = crate::modules::clock::PllProvider::Stm32f769DsiPll(self.clone());
+        let dsi_pll = crate::modules::clock::Pll::Stm32f769DsiPll(self.clone());
         loop {
-            if crate::modules::clock::PllProviderTrait::set_input_divider(&dsi_pll, 1).is_ok() {
+            if crate::modules::clock::PllTrait::set_input_divider(&dsi_pll, 1).is_ok() {
                 break;
             }
         }
         loop {
-            if crate::modules::clock::PllProviderTrait::set_vco_frequency(&dsi_pll, 500_000_000)
-                .is_ok()
-            {
+            if crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 500_000_000).is_ok() {
                 break;
             }
         }
         loop {
-            if crate::modules::clock::PllProviderTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
+            if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
                 break;
             }
         }
@@ -450,7 +448,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
         if let Some(fin) = self.iclk[1].clock_frequency() {
             let id = self.get_input_divider();
             let vco_mul = self.get_multiplier();
-            let divider = crate::modules::clock::PllProviderTrait::get_post_divider(self, i) as u64;
+            let divider = crate::modules::clock::PllTrait::get_post_divider(self, i) as u64;
             let fout = (2 * fin * vco_mul as u64) / (id as u64 * divider);
             return Some(fout);
         } else {
@@ -459,7 +457,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
     }
 }
 
-impl crate::modules::clock::PllProviderTrait for Module {
+impl crate::modules::clock::PllTrait for Module {
     fn get_input_frequency(&self) -> Option<u64> {
         self.iclk[1].clock_frequency()
     }

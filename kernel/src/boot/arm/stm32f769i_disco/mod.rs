@@ -63,7 +63,10 @@ pub extern "C" fn _start() -> ! {
         rcc_mod.clone(),
     );
 
+    let ctree = LockedArc::new(ctree);
+
     let ctree_provider = crate::modules::clock::ClockProvider::Stm32f769Provider(ctree.clone());
+    let ctree_pll = crate::modules::clock::PllProvider::Stm32f769(ctree.clone());
 
     // enable the power interface
     //crate::modules::clock::ClockProviderTrait::enable_clock(&ctree, 4 * 32 + 28);
@@ -82,9 +85,12 @@ pub extern "C" fn _start() -> ! {
     crate::modules::clock::ClockProviderTrait::enable_clock(&ctree, 0);
     while !crate::modules::clock::ClockProviderTrait::clock_is_ready(&ctree, 0) {}
 
-    
-
     //setup all three main pll of the system
+
+    crate::modules::clock::PllProviderTrait::run_closure(&ctree_pll, 0, &|pll| {
+        use crate::modules::clock::PllTrait;
+        pll.get_input_frequency();
+    });
 
     fmc.set_wait_states(6);
 
@@ -98,7 +104,8 @@ pub extern "C" fn _start() -> ! {
     let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 7, 0x4002_1c00) };
     let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 8, 0x4002_2000) };
     let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 9, 0x4002_2400) };
-    let gk = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 10, 0x4002_2800) };
+    let gk =
+        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 10, 0x4002_2800) };
 
     {
         let mut gpio = crate::kernel::GPIO.lock();
