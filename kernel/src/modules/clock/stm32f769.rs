@@ -144,6 +144,13 @@ impl super::ClockProviderTrait for PllMain {
         let div = super::PllTrait::get_post_divider(self, i) as u64;
         vco.map(|f| f / div as u64)
     }
+
+    fn get_ref(&self, i: usize) -> super::ClockRef {
+        super::ClockRef::Plain(super::ClockRefPlain {
+            clock_provider: self.clone().into(),
+            index: i,
+        })
+    }
 }
 
 impl PllMain {
@@ -214,6 +221,7 @@ impl super::PllTrait for PllMain {
 }
 
 /// The mux for the SYSCLK
+#[derive(Clone)]
 pub struct MuxSysClk {
     /// The hardware for configuring
     rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
@@ -326,6 +334,13 @@ impl super::ClockProviderTrait for PllTwo {
         let div = super::PllTrait::get_post_divider(self, i) as u64;
         vco.map(|f| f / div as u64)
     }
+
+    fn get_ref(&self, i: usize) -> super::ClockRef {
+        super::ClockRef::Plain(super::ClockRefPlain {
+            clock_provider: self.clone().into(),
+            index: i,
+        })
+    }
 }
 
 impl super::PllTrait for PllTwo {
@@ -428,6 +443,13 @@ impl super::ClockProviderTrait for PllThree {
         let div = super::PllTrait::get_post_divider(self, i) as u64;
         vco.map(|f| f / div as u64)
     }
+
+    fn get_ref(&self, i: usize) -> super::ClockRef {
+        super::ClockRef::Plain(super::ClockRefPlain {
+            clock_provider: self.clone().into(),
+            index: i,
+        })
+    }
 }
 
 impl super::PllTrait for PllThree {
@@ -487,6 +509,10 @@ pub struct ClockTree {
     rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
     /// The mux for the main pll
     mux1: super::ClockMux,
+    /// The mux for the sysclk
+    sysmux: super::ClockMux,
+    /// The divider for the input to the plls
+    divider1: Divider1,
     /// The main pll
     pllmain: super::Pll,
 }
@@ -500,10 +526,20 @@ impl ClockTree {
         osc32int: crate::modules::clock::ClockRef,
         rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
     ) -> Self {
+        use crate::modules::clock::ClockProviderTrait;
         let mux1 = Mux1::new(&rcc, [Box::new(oscint.clone()), Box::new(oscmain.clone())]);
         let mux1 = super::ClockMux::Stm32f769Mux1(mux1);
-        let d1 = Divider1::new(&rcc, super::ClockRef::Mux(mux1.clone()));
-        let d1 = super::ClockRef::Stm32f769MainDivider(d1);
+        let d1_d = Divider1::new(&rcc, super::ClockRef::Mux(mux1.clone()));
+        let d1 = super::ClockRef::Stm32f769MainDivider(d1_d.clone());
+        let pll1 = super::Pll::Stm32f769MainPll(PllMain::new(&rcc, d1));
+        let sysclk_mux = crate::modules::clock::stm32f769::MuxSysClk::new(
+            &rcc,
+            [
+                alloc::boxed::Box::new(oscint.clone()),
+                alloc::boxed::Box::new(oscmain.clone()),
+                alloc::boxed::Box::new(pll1.get_ref(0)),
+            ],
+        );
         Self {
             osc32: Box::new(osc32),
             oscmain: Box::new(oscmain),
@@ -511,8 +547,27 @@ impl ClockTree {
             osc32int: Box::new(osc32int),
             rcc: rcc.clone(),
             mux1: mux1,
-            pllmain: super::Pll::Stm32f769MainPll(PllMain::new(&rcc, d1)),
+            divider1: d1_d,
+            sysmux: sysclk_mux.into(),
+            pllmain: pll1,
         }
+    }
+
+    /// Select the input for the first mux. 0 means use the hsi, 1 means use the hse.
+    pub fn mux1_select(&mut self, i: u8) {
+        use super::ClockMuxTrait;
+        self.mux1.select(i as usize);
+    }
+
+    /// set the division ratio of the divider that is before the main plls.
+    pub fn divider1_set(&mut self, i: usize) {
+        self.divider1.set_divider(i as u32);
+    }
+
+    /// Set the mux for the sysclk mux
+    pub fn main_mux_select(&mut self, i: usize) {
+        use super::ClockMuxTrait;
+        self.sysmux.select(i);
     }
 }
 
@@ -532,7 +587,7 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
 
 impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
     fn disable_clock(&self, i: usize) {
-        let mut s = self.lock();
+        let s = self.lock();
         let mut rcc = s.rcc.lock();
         let d = i / 32;
         let dr = i % 32;
@@ -543,12 +598,15 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => {
                 rcc.set_hsi(false);
             }
+            (1,i) => {
+                rcc.disable_peripheral(i as u8);
+            }
             _ => panic!("Invalid clock specified"),
         }
     }
 
     fn enable_clock(&self, i: usize) {
-        let mut s = self.lock();
+        let s = self.lock();
         let mut rcc = s.rcc.lock();
         let d = i / 32;
         let dr = i % 32;
@@ -559,13 +617,16 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => {
                 rcc.set_hsi(true);
             }
+            (1,i) => {
+                rcc.enable_peripheral(i as u8);
+            }
             _ => panic!("Invalid clock specified"),
         }
     }
 
     fn clock_is_ready(&self, i: usize) -> bool {
-        let mut s = self.lock();
-        let mut rcc = s.rcc.lock();
+        let s = self.lock();
+        let rcc = s.rcc.lock();
         let d = i / 32;
         let dr = i % 32;
         match (d, dr) {
@@ -576,7 +637,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
     }
 
     fn clock_frequency(&self, i: usize) -> Option<u64> {
-        let mut s = self.lock();
+        let s = self.lock();
         let d = i / 32;
         let dr = i % 32;
         match (d, dr) {
@@ -584,5 +645,12 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => s.oscint.clock_frequency(),
             _ => panic!("Invalid clock specified"),
         }
+    }
+
+    fn get_ref(&self, i: usize) -> super::ClockRef {
+        super::ClockRef::Plain(super::ClockRefPlain {
+            clock_provider: self.clone().into(),
+            index: i,
+        })
     }
 }

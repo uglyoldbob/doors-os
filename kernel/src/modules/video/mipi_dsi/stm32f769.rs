@@ -455,6 +455,13 @@ impl crate::modules::clock::ClockProviderTrait for Module {
             return None;
         }
     }
+
+    fn get_ref(&self, i: usize) -> crate::modules::clock::ClockRef {
+        crate::modules::clock::ClockRef::Plain(crate::modules::clock::ClockRefPlain {
+            clock_provider: self.clone().into(),
+            index: i,
+        })
+    }
 }
 
 impl crate::modules::clock::PllTrait for Module {

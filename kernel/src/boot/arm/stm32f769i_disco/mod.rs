@@ -15,6 +15,7 @@ extern "C" {
     pub static RAMLOAD: u8;
 }
 
+use crate::modules::clock::ClockProviderTrait;
 use crate::modules::gpio::GpioTrait;
 
 /// The entry point of the kernel
@@ -87,23 +88,40 @@ pub extern "C" fn _start() -> ! {
 
     //setup all three main pll of the system
 
+    //setup the mco clock output
+    let mut r = rcc_mod.lock();
+    r.set_mco1_pll();
+    drop(r);
+
+    let mut c = ctree.lock();
+    c.mux1_select(1);   //select the external oscillator
+    c.divider1_set(25); //divide down to a 1 mhz clock
+    drop(c);
     crate::modules::clock::PllProviderTrait::run_closure(&ctree_pll, 0, &|pll| {
         use crate::modules::clock::PllTrait;
-        pll.get_input_frequency();
+        pll.set_input_divider(1);
+        pll.set_vco_frequency(432_000_000);
+        pll.set_post_divider(0, 2);
+        pll.enable_clock(0);
+        while !pll.clock_is_ready(0) {}
     });
 
     fmc.set_wait_states(6);
 
-    let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 0, 0x4002_0000) };
-    let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 1, 0x4002_0400) };
-    let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 2, 0x4002_0800) };
-    let gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 3, 0x4002_0c00) };
-    let ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 4, 0x4002_1000) };
-    let gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 5, 0x4002_1400) };
-    let gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 6, 0x4002_1800) };
-    let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 7, 0x4002_1c00) };
-    let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 8, 0x4002_2000) };
-    let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 9, 0x4002_2400) };
+    let mut c = ctree.lock();
+    c.main_mux_select(2); //use the pll as the sysclk
+    drop(c);
+
+    let ga = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+0, 0x4002_0000) };
+    let gb = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+1, 0x4002_0400) };
+    let gc = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+2, 0x4002_0800) };
+    let gd = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+3, 0x4002_0c00) };
+    let ge = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+4, 0x4002_1000) };
+    let gf = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+5, 0x4002_1400) };
+    let gg = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+6, 0x4002_1800) };
+    let gh = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+7, 0x4002_1c00) };
+    let gi = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+8, 0x4002_2000) };
+    let gj = unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32+9, 0x4002_2400) };
     let gk =
         unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 10, 0x4002_2800) };
 

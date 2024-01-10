@@ -16,6 +16,8 @@ pub trait ClockProviderTrait {
     fn clock_is_ready(&self, i: usize) -> bool;
     /// What is the frequency of the clock (if it is known)
     fn clock_frequency(&self, i: usize) -> Option<u64>;
+    /// Get a `ClockRef` object from the provider
+    fn get_ref(&self, i: usize) -> ClockRef;
 }
 
 /// An enumeration of all the types of gpio controllers
@@ -38,16 +40,6 @@ pub enum ClockProvider {
     Stm32f769DsiPll(crate::modules::video::mipi_dsi::stm32f769::Module),
     /// A fake clock provider
     Dummy(DummyClock),
-}
-
-impl ClockProvider {
-    /// Get a `ClockRef` object from the provider
-    pub fn get_ref(&self, i: usize) -> ClockRef {
-        ClockRef::Plain(ClockRefPlain {
-            clock_provider: self.clone(),
-            index: i,
-        })
-    }
 }
 
 /// A fixed frequency clock provider
@@ -101,6 +93,10 @@ impl ClockProviderTrait for DummyClock {
     fn clock_frequency(&self, _i: usize) -> Option<u64> {
         None
     }
+
+    fn get_ref(&self,i:usize) -> ClockRef {
+        panic!("Invalid clock");
+    }
 }
 
 /// The trait for a single clock
@@ -135,9 +131,9 @@ pub enum ClockRef {
 #[derive(Clone)]
 pub struct ClockRefPlain {
     /// The provider of the clock
-    clock_provider: ClockProvider,
+    pub clock_provider: ClockProvider,
     /// The index of the clock for the provider
-    index: usize,
+    pub index: usize,
 }
 
 impl ClockRefTrait for ClockRefPlain {
@@ -188,6 +184,8 @@ pub enum ClockMux {
     /// The mux for the main pll and i2s pll of the stm32f769
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769Mux1(stm32f769::Mux1),
+    /// The mux for the sysclk on the stm32f769
+    Stm32f769SysClkMux(stm32f769::MuxSysClk),
 }
 
 impl ClockMuxTrait for DummyClock {
