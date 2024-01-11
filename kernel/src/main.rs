@@ -156,11 +156,11 @@ fn main() -> ! {
             h.write_output(5, true);
             h.write_output(13, true);
 
+            s.sync_transmit_str("i am groot\r\n");
+
             gpioa.write_output(12, false);
             h.write_output(5, false);
             h.write_output(13, false);
-
-            s.sync_transmit_str("i am groot\n");
         }
     }
 }
