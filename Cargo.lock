@@ -76,14 +76,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doors_kernel_api"
-version = "0.1.0"
-dependencies = [
- "arraystring",
- "spin 0.9.8",
-]
-
-[[package]]
 name = "doors_macros"
 version = "0.1.0"
 dependencies = [
@@ -154,7 +146,6 @@ version = "0.1.0"
 dependencies = [
  "acpi",
  "arraystring",
- "doors_kernel_api",
  "doors_macros",
  "doors_macros2",
  "enum_dispatch",

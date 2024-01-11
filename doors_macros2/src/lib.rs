@@ -8,7 +8,7 @@
 macro_rules! kernel_print {
     ( $($arg:tt)* ) => {
         {
-            let mut a: doors_kernel_api::FixedString = doors_kernel_api::FixedString::new();
+            let mut a: crate::FixedString = crate::FixedString::new();
             let r = core::fmt::write(
                 &mut a,
                 format_args!($($arg)*),

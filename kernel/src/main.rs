@@ -16,7 +16,10 @@ pub mod kernel;
 pub mod modules;
 
 use alloc::sync::Arc;
-use doors_kernel_api::video::TextDisplay;
+use modules::video::TextDisplay;
+
+/// A fixed string type that allows for strings of up to 80 characters.
+pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
 /// A wrapper around box that allows for traits to be implemented on a Box
 pub struct Box<T> {

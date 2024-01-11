@@ -29,7 +29,7 @@ impl<'a> X86VgaTextMode<'a> {
     }
 }
 
-impl<'a> doors_kernel_api::video::TextDisplay for X86VgaTextMode<'a> {
+impl<'a> crate::modules::video::TextDisplay for X86VgaTextMode<'a> {
     fn print_char(&mut self, d: char) {
         let p = if d.is_ascii() { d as u8 } else { b'?' };
         match d {
