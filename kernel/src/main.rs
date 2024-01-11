@@ -119,7 +119,14 @@ pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
-
+    {
+        use crate::modules::serial::SerialTrait;
+        let mut serials = crate::kernel::SERIAL.lock();
+        let serial = serials.module(0);
+        drop(serials);
+        let s = serial.lock();
+        s.setup(115200);
+    }
     {
         use crate::modules::gpio::GpioTrait;
         let mut gpio = crate::kernel::GPIO.lock();

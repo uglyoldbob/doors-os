@@ -151,78 +151,85 @@ pub extern "C" fn _start() -> ! {
         drop(gpio);
     }
 
+    //Setup the clocks of the usart to be the sysclock
+    let mut r = rcc_mod.lock();
+    for i in 0..7 {
+        r.set_usart_mux(i, 1);
+    }
+    drop(r);
+
     {
         let mut serials = crate::kernel::SERIAL.lock();
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4001_1000,
                     ctree.get_ref(5 * 32 + 4),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_4400,
                     ctree.get_ref(4 * 32 + 17),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_4800,
                     ctree.get_ref(4 * 32 + 18),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_4c00,
                     ctree.get_ref(4 * 32 + 19),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_5000,
                     ctree.get_ref(4 * 32 + 20),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4001_1400,
                     ctree.get_ref(5 * 32 + 5),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_7800,
                     ctree.get_ref(4 * 32 + 30),
                 )
-            }
+            })
             .into(),
         );
         serials.register_serial(
-            unsafe {
+            LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_7c00,
                     ctree.get_ref(4 * 32 + 31),
                 )
-            }
+            })
             .into(),
         );
         drop(serials);

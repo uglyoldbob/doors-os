@@ -142,7 +142,7 @@ impl super::ClockProviderTrait for PllMain {
             .clock_frequency()
             .map(|f| f as u64 * self.get_multiplier() as u64);
         let div = super::PllTrait::get_post_divider(self, i) as u64;
-        vco.map(|f| f / div as u64)
+        vco.map(|f| f / div)
     }
 
     fn get_ref(&self, i: usize) -> super::ClockRef {
@@ -265,7 +265,7 @@ impl super::ClockRefTrait for MuxSysClk {
         let rcc = self.rcc.lock();
         let v = rcc.get_mux_sysclk();
         drop(rcc);
-        self.clocks[v as usize].clock_frequency().map(|f| f as u64)
+        self.clocks[v as usize].clock_frequency()
     }
 }
 
@@ -601,6 +601,18 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (1, i) => {
                 rcc.disable_peripheral(i as u8);
             }
+            (2, i) => {
+                rcc.disable_peripheral(1 * 32 + i as u8);
+            }
+            (3, i) => {
+                rcc.disable_peripheral(2 * 32 + i as u8);
+            }
+            (4, i) => {
+                rcc.disable_peripheral(3 * 32 + i as u8);
+            }
+            (5, i) => {
+                rcc.disable_peripheral(4 * 32 + i as u8);
+            }
             _ => panic!("Invalid clock specified"),
         }
     }
@@ -620,6 +632,18 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (1, i) => {
                 rcc.enable_peripheral(i as u8);
             }
+            (2, i) => {
+                rcc.enable_peripheral(1 * 32 + i as u8);
+            }
+            (3, i) => {
+                rcc.enable_peripheral(2 * 32 + i as u8);
+            }
+            (4, i) => {
+                rcc.enable_peripheral(3 * 32 + i as u8);
+            }
+            (5, i) => {
+                rcc.enable_peripheral(4 * 32 + i as u8);
+            }
             _ => panic!("Invalid clock specified"),
         }
     }
@@ -632,6 +656,11 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
         match (d, dr) {
             (0, 0) => rcc.hse_ready(),
             (0, 1) => rcc.hsi_ready(),
+            (1, _) => true,
+            (2, _) => true,
+            (3, _) => true,
+            (4, _) => true,
+            (5, _) => true,
             _ => panic!("Invalid clock specified"),
         }
     }
@@ -640,9 +669,30 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
         let s = self.lock();
         let d = i / 32;
         let dr = i % 32;
+        let usart =
+            |rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>, id, apb| {
+                let rcc = rcc.lock();
+                let smux = rcc.get_usart_mux(id);
+                drop(rcc);
+                match smux {
+                    0 => todo!(),
+                    1 => s.sysmux.clock_frequency(),
+                    2 => s.oscint.clock_frequency(),
+                    3 => s.osc32.clock_frequency(),
+                    _ => unreachable!(),
+                }
+            };
         match (d, dr) {
             (0, 0) => s.oscmain.clock_frequency(),
             (0, 1) => s.oscint.clock_frequency(),
+            (4, 17) => usart(&s.rcc, 1, 0),
+            (4, 18) => usart(&s.rcc, 2, 0),
+            (4, 19) => usart(&s.rcc, 3, 0),
+            (4, 20) => usart(&s.rcc, 4, 0),
+            (4, 30) => usart(&s.rcc, 6, 0),
+            (4, 31) => usart(&s.rcc, 7, 0),
+            (5, 4) => usart(&s.rcc, 0, 1),
+            (5, 5) => usart(&s.rcc, 5, 1),
             _ => panic!("Invalid clock specified"),
         }
     }

@@ -72,16 +72,18 @@ impl<'a> Module<'a> {
 
     /// Disable the specified peripheral
     pub fn disable_peripheral(&mut self, i: u8) -> u32 {
-        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } & !(1 << i);
-        unsafe { core::ptr::write_volatile(&mut self.registers.regs[12], n) };
-        unsafe { core::ptr::read_volatile(&self.registers.regs[12]) }
+        let (reg, i) = calc_clock_register(i as usize);
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) } & !i;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[reg], n) };
+        unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) }
     }
 
     /// Enable the specified peripheral
     pub fn enable_peripheral(&mut self, i: u8) -> u32 {
-        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[12]) } | (1 << i);
-        unsafe { core::ptr::write_volatile(&mut self.registers.regs[12], n) };
-        unsafe { core::ptr::read_volatile(&self.registers.regs[12]) }
+        let (reg, i) = calc_clock_register(i as usize);
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) } | i;
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[reg], n) };
+        unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) }
     }
 
     /// Enable the hse bypass to allow for a direct clock input on the hse
@@ -159,7 +161,7 @@ impl<'a> Module<'a> {
 
     /// Get the multiplier for the main pll
     pub fn get_multiplier1(&self) -> u32 {
-        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & !0x7FC0;
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) };
         (v >> 6) & 0x1FF
     }
 
@@ -171,7 +173,7 @@ impl<'a> Module<'a> {
 
     /// Get the multiplier for the second pll
     pub fn get_multiplier2(&self) -> u32 {
-        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[33]) } & !0x7FC0;
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[33]) } & 0x7FC0;
         (v >> 6) & 0x1FF
     }
 
@@ -183,7 +185,7 @@ impl<'a> Module<'a> {
 
     /// Get the multiplier for the third pll
     pub fn get_multiplier3(&self) -> u32 {
-        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & !0x7FC0;
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & 0x7FC0;
         (v >> 6) & 0x1FF
     }
 
@@ -281,7 +283,11 @@ impl<'a> Module<'a> {
             }
         };
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[1]) } & (mask << shift);
-        (v >> shift2) as u8
+        let mut div = (v >> shift2) as u8;
+        if i == 0 {
+            div = 2 * (div + 1);
+        }
+        div
     }
 
     /// Set the specified second pll divisor
@@ -363,5 +369,23 @@ impl<'a> Module<'a> {
         };
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[34]) } & (mask << shift);
         (v >> shift2) as u8
+    }
+
+    /// Set the usart mux data for the specified usart module. See get_usart_mux
+    pub fn set_usart_mux(&mut self, i: u8, v: u8) {
+        let mask = 3u32 << (2 * i);
+        let ov = unsafe { core::ptr::read_volatile(&self.registers.regs[36]) } & !mask;
+        let nm = ((v & 3) as u32) << (2 * i);
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[36], ov | nm) };
+    }
+
+    /// Get the usart mux data for the specified usart module.
+    /// 0 = APB clock.
+    /// 1 = sysclock.
+    /// 2 = hsi clock.
+    /// 3 = lse clock.
+    pub fn get_usart_mux(&self, i: u8) -> u8 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[36]) };
+        ((v >> (2 * i)) & 3) as u8
     }
 }

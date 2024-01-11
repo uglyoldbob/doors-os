@@ -3,11 +3,13 @@
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
+use crate::LockedArc;
+
 /// The standard trait for serial ports
 #[enum_dispatch::enum_dispatch]
 pub trait SerialTrait {
     /// Setup the serial port
-    fn setup(&self);
+    fn setup(&self, rate: u32) -> Result<(), ()>;
 }
 
 #[enum_dispatch::enum_dispatch(SerialTrait)]
@@ -15,7 +17,7 @@ pub trait SerialTrait {
 pub enum Serial {
     /// The stm32f769 gpio module
     #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769(stm32f769::Usart),
+    Stm32f769(LockedArc<stm32f769::Usart>),
     /// The dummy implementation
     Dummy(DummySerial),
 }
@@ -24,5 +26,7 @@ pub enum Serial {
 pub struct DummySerial {}
 
 impl SerialTrait for DummySerial {
-    fn setup(&self) {}
+    fn setup(&self, rate: u32) -> Result<(), ()> {
+        Err(())
+    }
 }

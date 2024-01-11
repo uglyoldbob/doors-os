@@ -1,5 +1,7 @@
 //! Serial code for the stm32f769
 
+use crate::LockedArc;
+
 /// The register set for the usart hardware
 struct UsartRegisters {
     regs: [u32; 11],
@@ -23,9 +25,23 @@ impl Usart {
     }
 }
 
-impl super::SerialTrait for Usart {
-    fn setup(&self) {
+impl super::SerialTrait for LockedArc<Usart> {
+    fn setup(&self, rate: u32) -> Result<(), ()> {
         use crate::modules::clock::ClockRefTrait;
-        self.clock.enable_clock();
+        let mut s = self.lock();
+        s.clock.enable_clock();
+
+        if let Some(ifreq) = s.clock.clock_frequency() {
+            let divider = ifreq / rate as u64;
+            let mut debug = crate::DEBUG_STUFF.lock();
+            debug[0] = ifreq as u32;
+            debug[1] = rate;
+            debug[2] = divider as u32;
+            debug[3] = 42;
+            unsafe { core::ptr::write_volatile(&mut s.regs.regs[3], (divider as u32) & 0xffff) };
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
