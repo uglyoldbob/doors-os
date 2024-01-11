@@ -10,6 +10,10 @@ use crate::LockedArc;
 pub trait SerialTrait {
     /// Setup the serial port
     fn setup(&self, rate: u32) -> Result<(), ()>;
+    /// Transmit some data synchronously. This function returns once all data has been sent.
+    fn sync_transmit(&self, data: &[u8]);
+    /// Transmit some str data synchronously.
+    fn sync_transmit_str(&self, data: &str);
 }
 
 #[enum_dispatch::enum_dispatch(SerialTrait)]
@@ -29,4 +33,8 @@ impl SerialTrait for DummySerial {
     fn setup(&self, rate: u32) -> Result<(), ()> {
         Err(())
     }
+
+    fn sync_transmit(&self, data: &[u8]) {}
+
+    fn sync_transmit_str(&self, data: &str) {}
 }

@@ -120,40 +120,47 @@ pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 fn main() -> ! {
     doors_macros2::kernel_print!("I am groot\r\n");
     {
+        use crate::modules::gpio::GpioTrait;
         use crate::modules::serial::SerialTrait;
+
         let mut serials = crate::kernel::SERIAL.lock();
         let serial = serials.module(0);
         drop(serials);
         let s = serial.lock();
         s.setup(115200);
-    }
-    {
-        use crate::modules::gpio::GpioTrait;
+
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
 
         let mh = gpio.module(9);
         drop(gpio);
-        let mut g = mg.lock();
+        let mut gpioa = mg.lock();
 
         let mut h = mh.lock();
-        g.reset(false);
+        gpioa.reset(false);
         h.reset(false);
 
-        g.set_alternate(8, 0);
-        g.set_speed(8, 3);
+        //set the pin for the mco1 clock output
+        gpioa.set_alternate(8, 0);
+        //set the pins for the uart hardware
+        gpioa.set_alternate(9, 7);
+        gpioa.set_alternate(10, 7);
+        //enable high speed output for the clock output
+        gpioa.set_speed(8, 3);
 
-        g.set_output(12);
+        gpioa.set_output(12);
         h.set_output(5);
         h.set_output(13);
         loop {
-            g.write_output(12, true);
+            gpioa.write_output(12, true);
             h.write_output(5, true);
             h.write_output(13, true);
 
-            g.write_output(12, false);
+            gpioa.write_output(12, false);
             h.write_output(5, false);
             h.write_output(13, false);
+
+            s.sync_transmit_str("i am groot\n");
         }
     }
 }
