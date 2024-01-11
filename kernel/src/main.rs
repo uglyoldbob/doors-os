@@ -17,6 +17,7 @@ pub mod modules;
 
 use alloc::sync::Arc;
 use modules::video::TextDisplay;
+use modules::video::TextDisplayTrait;
 
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
@@ -115,7 +116,7 @@ impl<A> Locked<A> {
 static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot::new();
 
 /// The VGA instance used for x86 kernel printing
-static VGA: spin::Mutex<Option<alloc::boxed::Box<dyn TextDisplay>>> = spin::Mutex::new(None);
+static VGA: spin::Mutex<Option<TextDisplay>> = spin::Mutex::new(None);
 
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
@@ -131,6 +132,10 @@ fn main() -> ! {
         drop(serials);
         let s = serial.lock();
         s.setup(115200);
+        drop(s);
+        let mut v = VGA.lock();
+        v.replace(TextDisplay::SerialDisplay(crate::modules::video::VideoOverSerial::new(serial)));
+        drop(v);
 
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
@@ -154,12 +159,18 @@ fn main() -> ! {
         gpioa.set_output(12);
         h.set_output(5);
         h.set_output(13);
+        let mut count = 0;
         loop {
             gpioa.write_output(12, true);
             h.write_output(5, true);
             h.write_output(13, true);
 
-            s.sync_transmit_str("i am groot\r\n");
+            count += 1;
+            if count > 10 {
+                count = 0;
+            }
+
+            doors_macros2::kernel_print!("I am groot {}\r\n", count);
 
             gpioa.write_output(12, false);
             h.write_output(5, false);

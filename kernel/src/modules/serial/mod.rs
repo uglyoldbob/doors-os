@@ -16,8 +16,8 @@ pub trait SerialTrait {
     fn sync_transmit_str(&self, data: &str);
 }
 
-#[enum_dispatch::enum_dispatch(SerialTrait)]
 /// An enumeration of all the types of serial controllers
+#[enum_dispatch::enum_dispatch(SerialTrait)]
 pub enum Serial {
     /// The stm32f769 gpio module
     #[cfg(kernel_machine = "stm32f769i-disco")]

@@ -2,6 +2,8 @@
 
 use crate::Locked;
 
+use crate::modules::video::TextDisplayTrait;
+
 /// The panic handler
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {

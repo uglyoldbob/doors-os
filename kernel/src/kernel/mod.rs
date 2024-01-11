@@ -1,6 +1,6 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
-use crate::Locked;
+use crate::{Locked, LockedArc};
 use alloc::{sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
@@ -30,7 +30,7 @@ impl GpioHandler {
 /// Tracks all of the serial ports in the system
 pub struct SerialHandler {
     /// The individual devices
-    devs: Vec<Arc<Locked<crate::modules::serial::Serial>>>,
+    devs: Vec<LockedArc<crate::modules::serial::Serial>>,
 }
 
 impl SerialHandler {
@@ -41,11 +41,11 @@ impl SerialHandler {
 
     /// Add a serial module to the system
     pub fn register_serial(&mut self, m: crate::modules::serial::Serial) {
-        self.devs.push(Arc::new(Locked::new(m)));
+        self.devs.push(LockedArc::new(m));
     }
 
     /// Get a serial module
-    pub fn module(&mut self, i: usize) -> Arc<Locked<crate::modules::serial::Serial>> {
+    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::serial::Serial> {
         self.devs[i].clone()
     }
 }

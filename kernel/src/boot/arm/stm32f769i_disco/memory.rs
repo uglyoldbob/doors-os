@@ -5,6 +5,8 @@ use core::ptr::NonNull;
 
 use crate::Locked;
 
+use crate::modules::video::TextDisplayTrait;
+
 /// A container structure for a heap node
 /// Stores some calculations about how the node can allocate a chunk of memory
 struct HeapNodeAlign {

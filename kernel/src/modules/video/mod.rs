@@ -1,5 +1,9 @@
 //! Video related kernel modules
 
+use crate::LockedArc;
+
+use super::serial::SerialTrait;
+
 pub mod text;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod vga;
@@ -7,7 +11,8 @@ pub mod vga;
 pub mod mipi_dsi;
 
 /// This trait is used for text only video output hardware
-pub trait TextDisplay: Sync + Send {
+#[enum_dispatch::enum_dispatch]
+pub trait TextDisplayTrait: Sync + Send {
     /// Write a single character to the video hardware
     fn print_char(&mut self, d: char);
 
@@ -23,6 +28,41 @@ pub trait TextDisplay: Sync + Send {
         for _ in 0..=n {
             self.print_char(d);
         }
+    }
+}
+
+/// An enumeration of all the types of text display options
+#[enum_dispatch::enum_dispatch(TextDisplayTrait)]
+pub enum TextDisplay {
+    /// A serial port used for displaying text
+    SerialDisplay(VideoOverSerial),
+}
+
+/// Enables sending video text over a serial port
+pub struct VideoOverSerial {
+    port: LockedArc<super::serial::Serial>,
+}
+
+impl VideoOverSerial {
+    /// Build a new video over serial device
+    pub fn new(s: LockedArc<super::serial::Serial>) -> Self {
+        Self {
+            port: s,
+        }
+    }
+}
+
+impl TextDisplayTrait for VideoOverSerial {
+    fn print_char(&mut self, d: char) {
+        let mut port = self.port.lock();
+        let mut c = [0; 4];
+        let s = d.encode_utf8(&mut c);
+        port.sync_transmit_str(s);
+    }
+
+    fn print_str(&mut self,d: &str) {
+        let mut port = self.port.lock();
+        port.sync_transmit_str(d);
     }
 }
 
