@@ -12,8 +12,9 @@ SECTIONS
   {
     LONG(0x2007ffff);
     LONG(_start);
-    LONG(_start);
-    LONG(_start);
+    . = ALIGN(4);
+    KEEP(*(.isr_vector)) /* Startup code */
+    . = ALIGN(4);
   } > flash
 
   .text :

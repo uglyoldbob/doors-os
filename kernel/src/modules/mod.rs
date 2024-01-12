@@ -6,6 +6,7 @@ pub mod memory;
 pub mod power;
 pub mod reset;
 pub mod serial;
+pub mod timer;
 pub mod video;
 
 #[enum_dispatch::enum_dispatch]
