@@ -347,8 +347,16 @@ impl super::MipiDsiTrait for Module {
         internals.simple_command_write(0, 0xc1a1, &[0x0e]);
         internals.simple_command_write(0, 0xb3a6, &[0, 1]);
         internals.simple_command_write(0, 0xce80, &[0x85, 1, 0, 0x84, 1, 0]);
-        internals.simple_command_write(0, 0xcea0, &[0x18, 4, 3, 0x39, 0, 0, 0, 0x18, 3, 3, 0x3a, 0, 0, 0]);
-        internals.simple_command_write(0, 0xceb0, &[0x18, 2, 3, 0x3b, 0, 0, 0, 0x18, 1, 3, 0x3c, 0, 0, 0]);
+        internals.simple_command_write(
+            0,
+            0xcea0,
+            &[0x18, 4, 3, 0x39, 0, 0, 0, 0x18, 3, 3, 0x3a, 0, 0, 0],
+        );
+        internals.simple_command_write(
+            0,
+            0xceb0,
+            &[0x18, 2, 3, 0x3b, 0, 0, 0, 0x18, 1, 3, 0x3c, 0, 0, 0],
+        );
         internals.simple_command_write(0, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0]);
         internals.simple_command_write(0, 0xcfd0, &[0]);
         internals.simple_command_write(0, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -357,17 +365,49 @@ impl super::MipiDsiTrait for Module {
         internals.simple_command_write(0, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         internals.simple_command_write(0, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         internals.simple_command_write(0, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcbf0, &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        internals.simple_command_write(
+            0,
+            0xcbf0,
+            &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        );
         internals.simple_command_write(0, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcc90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x26, 0xa, 0xc, 2]);
-        internals.simple_command_write(0, 0xcca0, &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        internals.simple_command_write(
+            0,
+            0xcc90,
+            &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x26, 0xa, 0xc, 2],
+        );
+        internals.simple_command_write(
+            0,
+            0xcca0,
+            &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
         internals.simple_command_write(0, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xccc0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0xb, 9, 1]);
-        internals.simple_command_write(0, 0xccd0, &[0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        internals.simple_command_write(
+            0,
+            0xccc0,
+            &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0xb, 9, 1],
+        );
+        internals.simple_command_write(
+            0,
+            0xccd0,
+            &[0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
         internals.simple_command_write(0, 0xc581, &[0x66]);
         internals.simple_command_write(0, 0xf5b6, &[6]);
-        internals.simple_command_write(0, 0xe100, &[0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1]);
-        internals.simple_command_write(0, 0xe200, &[0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1]);
+        internals.simple_command_write(
+            0,
+            0xe100,
+            &[
+                0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
+            ],
+        );
+        internals.simple_command_write(
+            0,
+            0xe200,
+            &[
+                0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
+            ],
+        );
         internals.simple_command_write(0, 0xff00, &[0xff, 0xff, 0xff]);
 
         todo!("Finish display initialization commands");

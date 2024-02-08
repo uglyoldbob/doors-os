@@ -19,6 +19,8 @@ use alloc::sync::Arc;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
+use crate::modules::timer::TimerTrait;
+
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
@@ -126,6 +128,14 @@ fn main() -> ! {
     {
         use crate::modules::gpio::GpioTrait;
         use crate::modules::serial::SerialTrait;
+        use crate::modules::timer::TimerInstanceTrait;
+
+        let mut timers = crate::kernel::TIMERS.lock();
+        let tp = timers.module(0);
+        drop(timers);
+        let mut tpl = tp.lock();
+        let timer = tpl.get_timer(0);
+        drop(tpl);
 
         let mut serials = crate::kernel::SERIAL.lock();
         let serial = serials.module(0);
@@ -134,7 +144,9 @@ fn main() -> ! {
         s.setup(115200);
         drop(s);
         let mut v = VGA.lock();
-        v.replace(TextDisplay::SerialDisplay(crate::modules::video::VideoOverSerial::new(serial)));
+        v.replace(TextDisplay::SerialDisplay(
+            crate::modules::video::VideoOverSerial::new(serial),
+        ));
         drop(v);
 
         let mut gpio = crate::kernel::GPIO.lock();
@@ -170,11 +182,19 @@ fn main() -> ! {
                 count = 0;
             }
 
+            if let Ok(timer) = &timer {
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);
+            }
+
             doors_macros2::kernel_print!("I am groot {}\r\n", count);
 
             gpioa.write_output(12, false);
             h.write_output(5, false);
             h.write_output(13, false);
+
+            if let Ok(timer) = &timer {
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);
+            }
         }
     }
 }

@@ -50,11 +50,37 @@ impl SerialHandler {
     }
 }
 
+/// Tracks all timers in the kernel
+pub struct TimerHandler {
+    /// The timer providers
+    timerp: Vec<LockedArc<crate::modules::timer::Timer>>,
+}
+
+impl TimerHandler {
+    /// Create a new empty set of serial modules
+    fn new() -> Self {
+        Self { timerp: Vec::new() }
+    }
+
+    /// Add a serial module to the system
+    pub fn register_timer(&mut self, m: crate::modules::timer::Timer) {
+        self.timerp.push(LockedArc::new(m));
+    }
+
+    /// Get a serial module
+    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::timer::Timer> {
+        self.timerp[i].clone()
+    }
+}
+
 lazy_static! {
-    /// The entire list of gpios for a system
+    /// The entire list of gpios for the kernel
     pub static ref GPIO: Locked<GpioHandler> =
         Locked::new(GpioHandler::new());
-    /// The list of all serial ports for the system
+    /// The list of all serial ports for the kernel
     pub static ref SERIAL: Locked<SerialHandler> =
         Locked::new(SerialHandler::new());
+    /// The list of all timers for the kernel
+    pub static ref TIMERS: Locked<TimerHandler> =
+        Locked::new(TimerHandler::new());
 }

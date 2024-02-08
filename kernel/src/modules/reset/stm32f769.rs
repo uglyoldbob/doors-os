@@ -357,6 +357,49 @@ impl<'a> Module<'a> {
         unsafe { core::ptr::write_volatile(&mut self.registers.regs[34], newval) };
     }
 
+    /// The the prescaler for the apb1 domain
+    pub fn get_apb1_prescaler(&self) -> u8 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
+        let data = (v >> 10) & 7;
+        match data {
+            4 => 2,
+            5 => 4,
+            6 => 8,
+            7 => 16,
+            _ => 1,
+        }
+    }
+
+    /// The the prescaler for the apb2 domain
+    pub fn get_apb2_prescaler(&self) -> u8 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
+        let data = (v >> 13) & 7;
+        match data {
+            4 => 2,
+            5 => 4,
+            6 => 8,
+            7 => 16,
+            _ => 1,
+        }
+    }
+
+    /// Get the divider for the ahb domain
+    pub fn get_ahb_divider(&self) -> u16 {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[2]) };
+        let data = (v >> 4) & 0xF;
+        match data {
+            8 => 2,
+            9 => 4,
+            10 => 8,
+            11 => 16,
+            12 => 64,
+            13 => 128,
+            14 => 256,
+            15 => 512,
+            _ => 1,
+        }
+    }
+
     /// Get the specified second pll dividor
     pub fn get_third_pll_divisor(&self, i: usize) -> u8 {
         let (mask, shift, shift2) = match i {
@@ -387,5 +430,12 @@ impl<'a> Module<'a> {
     pub fn get_usart_mux(&self, i: u8) -> u8 {
         let v = unsafe { core::ptr::read_volatile(&self.registers.regs[36]) };
         ((v >> (2 * i)) & 3) as u8
+    }
+
+    /// Get the timer mux data for the specified timer module
+    pub fn get_timer_mux(&self) -> bool {
+        let v = unsafe { core::ptr::read_volatile(&self.registers.regs[35]) };
+        let bit = ((v >> 24) & 1) != 0;
+        bit
     }
 }

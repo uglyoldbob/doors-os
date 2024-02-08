@@ -497,19 +497,19 @@ impl super::PllTrait for PllThree {
 /// The clock tree provider for the stm32f769
 #[derive(Clone)]
 pub struct ClockTree {
-    /// The external frequency of the low frequency oscillator
+    /// The external frequency of the low frequency oscillator. Called LSE.
     osc32: Box<crate::modules::clock::ClockRef>,
-    /// The external frequency of the high frequency oscillator
+    /// The external frequency of the high frequency oscillator. Called HSE.
     oscmain: Box<crate::modules::clock::ClockRef>,
-    /// The internal frequency of the main rc oscillator
+    /// The internal frequency of the main rc oscillator. Called HSI.
     oscint: Box<crate::modules::clock::ClockRef>,
-    /// The internal frequency of the main low frequency oscillator
+    /// The internal frequency of the main low frequency oscillator. Called LSI.
     osc32int: Box<crate::modules::clock::ClockRef>,
     /// The hardware for configuring
     rcc: LockedArc<crate::modules::reset::stm32f769::Module<'static>>,
-    /// The mux for the main pll
+    /// The mux for the main pll. Element 0 provides PLLCLK.
     mux1: super::ClockMux,
-    /// The mux for the sysclk
+    /// The mux for the sysclk. Provides SYSCLK.
     sysmux: super::ClockMux,
     /// The divider for the input to the plls
     divider1: Divider1,
@@ -598,6 +598,8 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => {
                 rcc.set_hsi(false);
             }
+            (0, 2) => { //HCLK always enabled
+            }
             (1, i) => {
                 rcc.disable_peripheral(i as u8);
             }
@@ -629,6 +631,8 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => {
                 rcc.set_hsi(true);
             }
+            (0, 2) => { //HCLK always enabled
+            }
             (1, i) => {
                 rcc.enable_peripheral(i as u8);
             }
@@ -656,6 +660,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
         match (d, dr) {
             (0, 0) => rcc.hse_ready(),
             (0, 1) => rcc.hsi_ready(),
+            (0, 2) => true, //HCLK always ready
             (1, _) => true,
             (2, _) => true,
             (3, _) => true,
@@ -682,15 +687,43 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
                     _ => unreachable!(),
                 }
             };
+        let timer = |index, sysclk: Option<u64>, mux, prescaler| {
+            if mux {
+                match prescaler {
+                    1 | 2 | 4 => self.clock_frequency(2),   //HCLK
+                    _ => sysclk.map(|f| f * 4 / prescaler), //4 * PCLKx
+                }
+            } else {
+                if prescaler == 1 {
+                    sysclk.map(|f| f / prescaler) //PCLKx
+                } else {
+                    sysclk.map(|f| f * 4 / prescaler) //4 * PCLKx
+                }
+            }
+        };
         match (d, dr) {
             (0, 0) => s.oscmain.clock_frequency(),
             (0, 1) => s.oscint.clock_frequency(),
+            (0, 2) => {
+                let sysclk = s.mux1.clock_frequency();
+                let rcc = s.rcc.lock();
+                let divider = rcc.get_ahb_divider();
+                sysclk.map(|f| f / divider as u64)
+            }
             (4, 17) => usart(&s.rcc, 1, 0),
             (4, 18) => usart(&s.rcc, 2, 0),
             (4, 19) => usart(&s.rcc, 3, 0),
             (4, 20) => usart(&s.rcc, 4, 0),
             (4, 30) => usart(&s.rcc, 6, 0),
             (4, 31) => usart(&s.rcc, 7, 0),
+            (5, 0) => {
+                let rcc = s.rcc.lock();
+                let apb_prescaler = rcc.get_apb2_prescaler() as u64;
+                let mux = rcc.get_timer_mux();
+                drop(rcc);
+                let sysclk = s.mux1.clock_frequency();
+                timer(0, sysclk, mux, apb_prescaler)
+            }
             (5, 4) => usart(&s.rcc, 0, 1),
             (5, 5) => usart(&s.rcc, 5, 1),
             _ => panic!("Invalid clock specified"),

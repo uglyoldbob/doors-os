@@ -10,7 +10,7 @@ struct UsartRegisters {
 impl UsartRegisters {
     fn tx_empty(&self) -> bool {
         let v = unsafe { core::ptr::read_volatile(&self.regs[7]) };
-        (v & 1<<7) != 0
+        (v & 1 << 7) != 0
     }
 
     fn enable_tx(&mut self) {

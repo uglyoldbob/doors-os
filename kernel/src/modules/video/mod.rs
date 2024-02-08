@@ -46,9 +46,7 @@ pub struct VideoOverSerial {
 impl VideoOverSerial {
     /// Build a new video over serial device
     pub fn new(s: LockedArc<super::serial::Serial>) -> Self {
-        Self {
-            port: s,
-        }
+        Self { port: s }
     }
 }
 
@@ -60,7 +58,7 @@ impl TextDisplayTrait for VideoOverSerial {
         port.sync_transmit_str(s);
     }
 
-    fn print_str(&mut self,d: &str) {
+    fn print_str(&mut self, d: &str) {
         let mut port = self.port.lock();
         port.sync_transmit_str(d);
     }

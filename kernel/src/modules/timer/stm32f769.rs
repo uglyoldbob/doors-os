@@ -1,27 +1,179 @@
 //! Timer modules for the stm32f769
 
-use crate::LockedArc;
+use crate::{modules::clock::ClockRefTrait, LockedArc};
 
 struct Registers {
     regs: [u32; 16],
 }
 
-/// The basic timer module
-pub struct Timer {
+/// The basic timer module. This covers functionality of timer 1 and 8
+pub struct TimerGroup {
+    /// The registers
     regs: &'static mut Registers,
+    /// Indicates which of the individual clock modules exist.
+    clocks_used: u8,
+    /// Indicates the use count for the timergroup
+    usage: u8,
+    /// The input clock to the timer.
+    clock: crate::modules::clock::ClockRef,
 }
 
-impl Timer {
+impl TimerGroup {
     /// Build a new timer
-    pub unsafe fn new(addr: u32) -> Self {
+    pub unsafe fn new(clock: crate::modules::clock::ClockRef, addr: u32) -> Self {
         Self {
             regs: &mut *(addr as *mut Registers),
+            clocks_used: 0,
+            usage: 0,
+            clock,
+        }
+    }
+
+    /// Declare that the timer is being used, return ok if it can be adjusted.
+    fn try_adjust(&mut self, prescaler: u32) -> Result<(), ()> {
+        if self.usage == 0 {
+            if prescaler > 0x10000 {
+                return Err(());
+            }
+            unsafe { core::ptr::write_volatile(&mut self.regs.regs[10], prescaler - 1) };
+            self.usage += 1;
+            Ok(())
+        } else {
+            self.usage += 1;
+            Err(())
+        }
+    }
+
+    /// Returns the prescaler for the timer
+    fn prescaler(&self) -> u32 {
+        unsafe { core::ptr::read_volatile(&self.regs.regs[10]) }
+    }
+
+    /// Returns the count of the timer
+    fn counter(&self) -> u32 {
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[9]) };
+        v & 0xFFFF
+    }
+
+    /// Start the timer if it is not already running
+    fn start_timer(&mut self) {
+        let c = unsafe { core::ptr::read_volatile(&self.regs.regs[0]) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[0], c | 1) };
+    }
+
+    /// Stop the timer
+    fn stop_timer(&mut self) {
+        let c = unsafe { core::ptr::read_volatile(&self.regs.regs[0]) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[0], c & !1) };
+    }
+
+    /// Clear the compare flag
+    fn clear_compare(&mut self, i: u8) {
+        let bit = match i {
+            0..=3 => 1 + i,
+            4..=5 => 12 + i,
+            _ => panic!("Invalid timer"),
+        };
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[4]) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[4], v & !(1 << bit)) };
+    }
+
+    /// get the compare flag
+    fn get_compare(&self, i: u8) -> bool {
+        let bit = match i {
+            0..=3 => 1 + i,
+            4..=5 => 12 + i,
+            _ => panic!("Invalid timer"),
+        };
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[4]) };
+        (v & (1 << bit)) != 0
+    }
+
+    /// Sets the ccr for the specified timer
+    fn set_ccr(&mut self, i: u8, val: u16) {
+        let reg = match i {
+            0..=3 => 13 + i as usize,
+            4..=5 => 18 + i as usize,
+            _ => panic!("Invalid timer"),
+        };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[reg], val as u32) };
+    }
+}
+
+impl super::TimerTrait for LockedArc<TimerGroup> {
+    fn get_timer(&mut self, i: u8) -> Result<super::TimerInstance, super::TimerError> {
+        let mut s = self.lock();
+        let check = 1u8 << i;
+        if (s.clocks_used & check) == 0 {
+            s.clocks_used |= check;
+            Ok(super::TimerInstance::BasicStm327f69Timer(LockedArc::new(
+                Timer {
+                    timer: self.clone(),
+                    index: i,
+                },
+            )))
+        } else {
+            Err(super::TimerError::TimerIsAlreadyUsed)
         }
     }
 }
 
-impl super::TimerTrait for LockedArc<Timer> {
-    fn delay_ms(&self, _ms: u32) {
+/// An individual timer of the basic timergroup.
+pub struct Timer {
+    /// Reference to the hardware
+    timer: LockedArc<TimerGroup>,
+    /// Which timer in specific this timer is.
+    index: u8,
+}
 
+impl super::TimerInstanceTrait for LockedArc<Timer> {
+    fn delay_ms(&self, ms: u32) {
+        let s = self.lock();
+        let mut t = s.timer.lock();
+        t.clock.enable_clock();
+
+        let freq = t.clock.clock_frequency().unwrap();
+        let mut prescaler = freq / 2;
+        if prescaler > 0x10000 {
+            prescaler = 0x10000;
+        }
+        if t.try_adjust(prescaler as u32).is_err() {
+            prescaler = t.prescaler() as u64;
+        }
+
+        let counts_required = freq * 4 * ms as u64;
+        let counts_required = counts_required / 1000;
+        let counts_required = counts_required / prescaler;
+        if counts_required > 0xFFFF {
+            let mut counter = 0;
+            loop {
+                let ccr = t.counter() as u64 + 0xFFFF;
+                t.set_ccr(s.index, (ccr & 0xFFFF) as u16);
+                t.start_timer();
+                loop {
+                    let flag = t.get_compare(s.index);
+                    if flag {
+                        break;
+                    }
+                }
+                t.stop_timer();
+                counter += 0xffff;
+                if counter >= counts_required {
+                    break;
+                }
+            }
+        } else {
+            let ccr = t.counter() as u64 + counts_required;
+            t.set_ccr(s.index, (ccr & 0xFFFF) as u16);
+            t.clear_compare(s.index);
+            t.start_timer();
+            loop {
+                let flag = t.get_compare(s.index);
+                if flag {
+                    break;
+                }
+            }
+            t.stop_timer();
+        }
     }
 }

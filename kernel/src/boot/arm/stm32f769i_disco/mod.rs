@@ -282,7 +282,7 @@ use crate::modules::gpio::GpioTrait;
 
 /// The nmi handler
 pub extern "C" fn nmi_handler() {
-
+    loop {}
 }
 
 /// The default interrupt handler
@@ -505,6 +505,18 @@ pub extern "C" fn _start() -> ! {
             .into(),
         );
         drop(serials);
+    }
+
+    {
+        let timer = unsafe {
+            crate::modules::timer::stm32f769::TimerGroup::new(
+                ctree.get_ref(5 * 32 + 0),
+                0x4001_0000,
+            )
+        };
+        let timer = crate::modules::timer::Timer::Stm32f769(LockedArc::new(timer));
+        let mut timers = crate::kernel::TIMERS.lock();
+        timers.register_timer(timer);
     }
 
     crate::main()
