@@ -6,6 +6,7 @@ use crate::LockedArc;
 pub mod stm32f769;
 
 /// The errors that can occur obtaining a timer
+#[derive(Debug)]
 pub enum TimerError {
     /// The timer desired is in use
     TimerIsAlreadyUsed,

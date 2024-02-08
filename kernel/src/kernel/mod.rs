@@ -73,6 +73,34 @@ impl TimerHandler {
     }
 }
 
+/// Tracks all displays in the kernel
+pub struct DisplayHandler {
+    /// The dsi displays
+    displays: Vec<LockedArc<crate::modules::video::mipi_dsi::MipiDsiProvider>>,
+}
+
+impl DisplayHandler {
+    /// Create a new handler
+    pub fn new() -> Self {
+        Self {
+            displays: Vec::new(),
+        }
+    }
+
+    /// Register a display
+    pub fn register_display(&mut self, d: crate::modules::video::mipi_dsi::MipiDsiProvider) {
+        self.displays.push(LockedArc::new(d));
+    }
+
+    /// Get a display module
+    pub fn module(
+        &mut self,
+        i: usize,
+    ) -> LockedArc<crate::modules::video::mipi_dsi::MipiDsiProvider> {
+        self.displays[i].clone()
+    }
+}
+
 lazy_static! {
     /// The entire list of gpios for the kernel
     pub static ref GPIO: Locked<GpioHandler> =
@@ -83,4 +111,7 @@ lazy_static! {
     /// The list of all timers for the kernel
     pub static ref TIMERS: Locked<TimerHandler> =
         Locked::new(TimerHandler::new());
+    /// The list of the displays for the kernel
+    pub static ref DISPLAYS : Locked<DisplayHandler> =
+        Locked::new(DisplayHandler::new());
 }

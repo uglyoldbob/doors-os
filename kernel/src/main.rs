@@ -20,6 +20,8 @@ use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
 use crate::modules::timer::TimerTrait;
+use crate::modules::video::mipi_dsi::MipiDsiProvider;
+use crate::modules::video::mipi_dsi::MipiDsiTrait;
 
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
@@ -130,13 +132,6 @@ fn main() -> ! {
         use crate::modules::serial::SerialTrait;
         use crate::modules::timer::TimerInstanceTrait;
 
-        let mut timers = crate::kernel::TIMERS.lock();
-        let tp = timers.module(0);
-        drop(timers);
-        let mut tpl = tp.lock();
-        let timer = tpl.get_timer(0);
-        drop(tpl);
-
         let mut serials = crate::kernel::SERIAL.lock();
         let serial = serials.module(0);
         drop(serials);
@@ -172,6 +167,37 @@ fn main() -> ! {
         h.set_output(5);
         h.set_output(13);
         let mut count = 0;
+
+        let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
+            link_speed: 500_000_000,
+            num_lanes: 2,
+            vcid: 0,
+        };
+
+        let resolution = crate::modules::video::ScreenResolution {
+            width: 800,
+            height: 480,
+            hsync: 2,
+            vsync: 1,
+            h_b_porch: 34,
+            h_f_porch: 34,
+            v_b_porch: 15,
+            v_f_porch: 16,
+        };
+        let mut displays = crate::kernel::DISPLAYS.lock();
+        let dsi = displays.module(0);
+        let dsi = dsi.lock();
+        dsi.enable(&dsi_config, &resolution);
+        drop(dsi);
+        drop(displays);
+
+        let mut timers = crate::kernel::TIMERS.lock();
+        let tp = timers.module(0);
+        drop(timers);
+        let mut tpl = tp.lock();
+        let timer = tpl.get_timer(0);
+        drop(tpl);
+
         loop {
             gpioa.write_output(12, true);
             h.write_output(5, true);

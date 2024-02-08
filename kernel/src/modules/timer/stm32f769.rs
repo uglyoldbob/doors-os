@@ -44,6 +44,11 @@ impl TimerGroup {
         }
     }
 
+    /// Declare the timer is being less used
+    fn unadjust(&mut self) {
+        self.usage -= 1;
+    }
+
     /// Returns the prescaler for the timer
     fn prescaler(&self) -> u32 {
         unsafe { core::ptr::read_volatile(&self.regs.regs[10]) }
@@ -124,6 +129,15 @@ pub struct Timer {
     timer: LockedArc<TimerGroup>,
     /// Which timer in specific this timer is.
     index: u8,
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        let mut t = self.timer.lock();
+        t.unadjust();
+        let check = 1u8 << self.index;
+        t.clocks_used &= !check;
+    }
 }
 
 impl super::TimerInstanceTrait for LockedArc<Timer> {

@@ -45,12 +45,12 @@ impl Ltdc {
 
     /// Enable the clock input for the hardware
     pub fn enable_clock(&self) {
-        self.cc.enable_clock(4 * 32 + 26);
+        self.cc.enable_clock(5 * 32 + 26);
     }
 
     /// Disable the clock input for the hardware
     pub fn disable_clock(&self) {
-        self.cc.disable_clock(4 * 32 + 26);
+        self.cc.disable_clock(5 * 32 + 26);
     }
 
     pub fn configure(&mut self, resolution: &super::super::ScreenResolution) {
@@ -184,7 +184,7 @@ pub struct Module {
 
 impl super::MipiDsiTrait for Module {
     fn enable(&self, config: &super::MipiDsiConfig, resolution: &super::super::ScreenResolution) {
-        self.cc.enable_clock(4 * 32 + 27);
+        self.cc.enable_clock(5 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
 
@@ -329,9 +329,27 @@ impl super::MipiDsiTrait for Module {
         internals.simple_command_write(0, 0xff00, &[0x80, 9, 1]);
         internals.simple_command_write(0, 0xff80, &[0x80, 9]);
         internals.simple_command_write(0, 0xc480, &[0x30]);
-        todo!("Delay 10 milliseconds");
+        {
+            use crate::modules::timer::TimerTrait;
+            let mut timers = crate::kernel::TIMERS.lock();
+            let tp = timers.module(0);
+            drop(timers);
+            let mut tpl = tp.lock();
+            let timer = tpl.get_timer(0).unwrap();
+            drop(tpl);
+            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+        }
         internals.simple_command_write(0, 0xc48a, &[0x40]);
-        todo!("Delay 10 milliseconds");
+        {
+            use crate::modules::timer::TimerTrait;
+            let mut timers = crate::kernel::TIMERS.lock();
+            let tp = timers.module(0);
+            drop(timers);
+            let mut tpl = tp.lock();
+            let timer = tpl.get_timer(0).unwrap();
+            drop(tpl);
+            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+        }
         internals.simple_command_write(0, 0xc5b1, &[0xa9]);
         internals.simple_command_write(0, 0xc591, &[0x34]);
         internals.simple_command_write(0, 0xc0b4, &[0x50]);
@@ -410,7 +428,7 @@ impl super::MipiDsiTrait for Module {
         );
         internals.simple_command_write(0, 0xff00, &[0xff, 0xff, 0xff]);
 
-        todo!("Finish display initialization commands");
+        //todo!("Finish display initialization commands");
 
         ltdc.debug();
         ltdc.enable();

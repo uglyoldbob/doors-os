@@ -583,6 +583,23 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
             }
         }
     }
+
+    fn get_pll_reference(&self, i: u8) -> Option<super::Pll> {
+        let s = self.lock();
+        match i {
+            0 => Some(s.pllmain.clone()),
+            _ => None,
+        }
+    }
+
+    fn get_clock_mux(&self, i: u32) -> Option<super::ClockMux> {
+        let s = self.lock();
+        match i {
+            0 => Some(s.mux1.clone()),
+            1 => Some(s.sysmux.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {

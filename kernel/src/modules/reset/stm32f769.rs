@@ -73,16 +73,16 @@ impl<'a> Module<'a> {
     /// Disable the specified peripheral
     pub fn disable_peripheral(&mut self, i: u8) -> u32 {
         let (reg, i) = calc_clock_register(i as usize);
-        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) } & !i;
-        unsafe { core::ptr::write_volatile(&mut self.registers.regs[reg], n) };
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) };
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[reg], n & !i) };
         unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) }
     }
 
     /// Enable the specified peripheral
     pub fn enable_peripheral(&mut self, i: u8) -> u32 {
         let (reg, i) = calc_clock_register(i as usize);
-        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) } | i;
-        unsafe { core::ptr::write_volatile(&mut self.registers.regs[reg], n) };
+        let n = unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) };
+        unsafe { core::ptr::write_volatile(&mut self.registers.regs[reg], n | i) };
         unsafe { core::ptr::read_volatile(&self.registers.regs[reg]) }
     }
 

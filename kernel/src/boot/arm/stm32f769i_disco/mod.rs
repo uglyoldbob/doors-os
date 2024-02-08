@@ -2,6 +2,8 @@
 
 use alloc::sync::Arc;
 
+use crate::modules::serial::SerialTrait;
+use crate::modules::video::TextDisplay;
 use crate::LockedArc;
 
 pub mod memory;
@@ -277,7 +279,7 @@ impl IsrTable {
 #[link_section = ".isr_vector"]
 static ISR_TABLE: IsrTable = IsrTable::build();
 
-use crate::modules::clock::ClockProviderTrait;
+use crate::modules::clock::{ClockProviderTrait, PllProviderTrait};
 use crate::modules::gpio::GpioTrait;
 
 /// The nmi handler
@@ -518,6 +520,39 @@ pub extern "C" fn _start() -> ! {
         let mut timers = crate::kernel::TIMERS.lock();
         timers.register_timer(timer);
     }
+
+    let dsi_byte_clock = ctree_pll.get_pll_reference(0).unwrap().get_ref(2);
+    let dsi_clock1 =
+        crate::modules::clock::ClockRef::Mux(ctree_pll.get_clock_mux(0).unwrap().clone());
+
+    let dsi = unsafe {
+        crate::modules::video::mipi_dsi::stm32f769::Module::new(
+            &ctree_provider,
+            [&dsi_byte_clock, &dsi_clock1],
+            0x4001_6c00,
+        )
+    };
+
+    let mut gpio = crate::kernel::GPIO.lock();
+    let mj = gpio.module(9);
+    let mi = gpio.module(8);
+    drop(gpio);
+
+    let mut j = mj.lock();
+    j.reset(false);
+    j.set_output(15);
+    j.write_output(15, true);
+    drop(j);
+    let mut i = mi.lock();
+    i.reset(false);
+    i.set_output(14);
+    i.write_output(14, true);
+    drop(i);
+
+    let dsi = crate::modules::video::mipi_dsi::MipiDsiProvider::Stm32f769(dsi);
+    let mut displays = crate::kernel::DISPLAYS.lock();
+    displays.register_display(dsi);
+    drop(displays);
 
     crate::main()
 }

@@ -125,6 +125,8 @@ pub enum ClockRef {
     /// The input clock divider for the the main, i2s, and sai pll
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769MainDivider(stm32f769::Divider1),
+    /// A do nothing clock ref
+    Dummy(DummyClock),
 }
 
 /// A clock reference to a single clock.
@@ -204,6 +206,10 @@ pub trait ClockDividerTrait {
 pub trait PllProviderTrait {
     /// Run a closure on the specified pll
     fn run_closure(&self, i: u8, c: &dyn Fn(&mut Pll));
+    /// Get a reference to the specified pll
+    fn get_pll_reference(&self, i: u8) -> Option<Pll>;
+    /// Get the specified clock mux
+    fn get_clock_mux(&self, i: u32) -> Option<ClockMux>;
 }
 
 /// An enumeration of all the types of pll providers
@@ -223,6 +229,14 @@ pub struct DummyPllProvider {}
 
 impl PllProviderTrait for DummyPllProvider {
     fn run_closure(&self, i: u8, c: &dyn Fn(&mut Pll)) {}
+
+    fn get_pll_reference(&self, i: u8) -> Option<Pll> {
+        None
+    }
+
+    fn get_clock_mux(&self, i: u32) -> Option<ClockMux> {
+        None
+    }
 }
 
 /// The trait common to all pll providers
