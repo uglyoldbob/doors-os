@@ -190,8 +190,25 @@ impl ModuleInternals {
         let mut length_remaining = buf.len();
         let h = u32::from_le_bytes(packet.header);
         doors_macros2::kernel_print!("dcs packet length {:x} {}\r\n", h, length_remaining);
+
+        //Wait until command payload fifo are empty
+        loop {
+            let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+            if (val & 1) == 1 {
+                break;
+            }
+        }
+
         let mut offset = 0;
         while length_remaining > 0 {
+            //Wait until write payload fifo not full
+            loop {
+                let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+                if (val & (1 << 3)) == 0 {
+                    break;
+                }
+            }
+
             if length_remaining < 4 {
                 let mut tbuf: [u8; 4] = [0; 4];
                 for i in 0..length_remaining {
@@ -210,14 +227,6 @@ impl ModuleInternals {
                 offset += 4;
                 length_remaining -= 4;
             }
-
-            //Wait until write payload fifo not full
-            loop {
-                let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
-                if (val & (1 << 3)) == 0 {
-                    break;
-                }
-            }
         }
 
         //Write the header
@@ -232,10 +241,10 @@ impl ModuleInternals {
         }
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], header) };
 
-        //Wait until command payload fifo are empty
+        //Wait until command payload and write fifo are empty
         loop {
             let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
-            if (val & 1) == 1 {
+            if (val & 5) == 5 {
                 break;
             }
         }

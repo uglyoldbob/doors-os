@@ -60,7 +60,7 @@ impl<'a> super::GpioTrait for Gpio<'a> {
 
     fn get_pin(&self, i: usize) -> Option<super::GpioPin> {
         assert!(i < 16);
-        None
+        Some(super::GpioPin::Stm32f769(GpioPin { i: i as u8 }))
     }
 
     fn set_output(&mut self, i: usize) {

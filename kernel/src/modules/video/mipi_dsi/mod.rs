@@ -2,6 +2,8 @@
 
 use alloc::vec::Vec;
 
+use crate::{modules::gpio::GpioPinTrait, LockedArc};
+
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
@@ -129,7 +131,7 @@ pub trait DsiPanelTrait {
 #[enum_dispatch::enum_dispatch(DsiPanelTrait)]
 pub enum DsiPanel {
     /// The orisetech otm8009a dsi panel.
-    OrisetechOtm8009a(OrisetechOtm8009a),
+    OrisetechOtm8009a(LockedArc<OrisetechOtm8009a>),
     /// A do nothing dsi panel
     DummyPanel(DummyDsiPanel),
 }
@@ -148,7 +150,7 @@ pub trait MipiDsiDcsTrait {
     fn dcs_do_command<'a>(&mut self, cmd: DcsCommand<'a>) -> Result<(), ()>;
     /// A dcs write buffer command
     fn dcs_write_buffer(&mut self, channel: u8, buf: &[u8]) -> Result<(), ()> {
-        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), buf);
+        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::RequestAck, buf);
         if cmd.is_err() {
             return Err(());
         }
@@ -215,12 +217,14 @@ impl MipiDsiTrait for DummyMipiCsi {
 }
 
 /// The orisetech otm8009a panel. https://www.orientdisplay.com/pdf/OTM8009A.pdf
-pub struct OrisetechOtm8009a {}
+pub struct OrisetechOtm8009a {
+    reset: super::super::gpio::GpioPin,
+}
 
 impl OrisetechOtm8009a {
     /// Create a new panel
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(pin: super::super::gpio::GpioPin) -> Self {
+        Self { reset: pin }
     }
 
     /// Write a basic command to the panel
@@ -237,11 +241,13 @@ impl OrisetechOtm8009a {
     }
 }
 
-impl DsiPanelTrait for OrisetechOtm8009a {
+impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
     fn setup(&self, dsi: &mut MipiDsiDcs) {
-        self.write_command(dsi, 0xff00, &[0x80, 9, 1]);
-        self.write_command(dsi, 0xff80, &[0x80, 9]);
-        self.write_command(dsi, 0xc480, &[0x30]);
+        let mut s = self.lock();
+        s.reset.write_output(true);
+        s.write_command(dsi, 0xff00, &[0x80, 9, 1]);
+        s.write_command(dsi, 0xff80, &[0x80, 9]);
+        s.write_command(dsi, 0xc480, &[0x30]);
         {
             use crate::modules::timer::TimerTrait;
             let mut timers = crate::kernel::TIMERS.lock();
@@ -252,7 +258,7 @@ impl DsiPanelTrait for OrisetechOtm8009a {
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
-        self.write_command(dsi, 0xc48a, &[0x40]);
+        s.write_command(dsi, 0xc48a, &[0x40]);
         {
             use crate::modules::timer::TimerTrait;
             let mut timers = crate::kernel::TIMERS.lock();
@@ -263,83 +269,83 @@ impl DsiPanelTrait for OrisetechOtm8009a {
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
-        self.write_command(dsi, 0xc5b1, &[0xa9]);
-        self.write_command(dsi, 0xc591, &[0x34]);
-        self.write_command(dsi, 0xc0b4, &[0x50]);
-        self.write_command(dsi, 0xd900, &[0x4e]);
-        self.write_command(dsi, 0xc181, &[0x66]); //65 hz display frequency
-        self.write_command(dsi, 0xc592, &[1]);
-        self.write_command(dsi, 0xc595, &[0x34]);
-        self.write_command(dsi, 0xc594, &[0x33]);
-        self.write_command(dsi, 0xd800, &[0x79, 0x79]);
-        self.write_command(dsi, 0xc0a3, &[0x1b]);
-        self.write_command(dsi, 0xc582, &[0x83]);
-        self.write_command(dsi, 0xc480, &[0x83]);
-        self.write_command(dsi, 0xc1a1, &[0x0e]);
-        self.write_command(dsi, 0xb3a6, &[0, 1]);
-        self.write_command(dsi, 0xce80, &[0x85, 1, 0, 0x84, 1, 0]);
-        self.write_command(
+        s.write_command(dsi, 0xc5b1, &[0xa9]);
+        s.write_command(dsi, 0xc591, &[0x34]);
+        s.write_command(dsi, 0xc0b4, &[0x50]);
+        s.write_command(dsi, 0xd900, &[0x4e]);
+        s.write_command(dsi, 0xc181, &[0x66]); //65 hz display frequency
+        s.write_command(dsi, 0xc592, &[1]);
+        s.write_command(dsi, 0xc595, &[0x34]);
+        s.write_command(dsi, 0xc594, &[0x33]);
+        s.write_command(dsi, 0xd800, &[0x79, 0x79]);
+        s.write_command(dsi, 0xc0a3, &[0x1b]);
+        s.write_command(dsi, 0xc582, &[0x83]);
+        s.write_command(dsi, 0xc480, &[0x83]);
+        s.write_command(dsi, 0xc1a1, &[0x0e]);
+        s.write_command(dsi, 0xb3a6, &[0, 1]);
+        s.write_command(dsi, 0xce80, &[0x85, 1, 0, 0x84, 1, 0]);
+        s.write_command(
             dsi,
             0xcea0,
             &[0x18, 4, 3, 0x39, 0, 0, 0, 0x18, 3, 3, 0x3a, 0, 0, 0],
         );
-        self.write_command(
+        s.write_command(
             dsi,
             0xceb0,
             &[0x18, 2, 3, 0x3b, 0, 0, 0, 0x18, 1, 3, 0x3c, 0, 0, 0],
         );
-        self.write_command(dsi, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0]);
-        self.write_command(dsi, 0xcfd0, &[0]);
-        self.write_command(dsi, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        self.write_command(dsi, 0xcb90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        self.write_command(dsi, 0xcba0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        self.write_command(dsi, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        self.write_command(dsi, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        self.write_command(dsi, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        self.write_command(
+        s.write_command(dsi, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0]);
+        s.write_command(dsi, 0xcfd0, &[0]);
+        s.write_command(dsi, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcb90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcba0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(
             dsi,
             0xcbf0,
             &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
         );
-        self.write_command(dsi, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0]);
-        self.write_command(
+        s.write_command(dsi, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0]);
+        s.write_command(
             dsi,
             0xcc90,
             &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x26, 0xa, 0xc, 2],
         );
-        self.write_command(
+        s.write_command(
             dsi,
             0xcca0,
             &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         );
-        self.write_command(dsi, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0]);
-        self.write_command(
+        s.write_command(dsi, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0]);
+        s.write_command(
             dsi,
             0xccc0,
             &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0xb, 9, 1],
         );
-        self.write_command(
+        s.write_command(
             dsi,
             0xccd0,
             &[0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         );
-        self.write_command(dsi, 0xc581, &[0x66]);
-        self.write_command(dsi, 0xf5b6, &[6]);
-        self.write_command(
+        s.write_command(dsi, 0xc581, &[0x66]);
+        s.write_command(dsi, 0xf5b6, &[6]);
+        s.write_command(
             dsi,
             0xe100,
             &[
                 0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
             ],
         );
-        self.write_command(
+        s.write_command(
             dsi,
             0xe200,
             &[
                 0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
             ],
         );
-        self.write_command(dsi, 0xff00, &[0xff, 0xff, 0xff]);
+        s.write_command(dsi, 0xff00, &[0xff, 0xff, 0xff]);
 
         //todo!("Finish display initialization commands");
     }

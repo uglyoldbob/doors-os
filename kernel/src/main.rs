@@ -147,13 +147,13 @@ fn main() -> ! {
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
 
-        let mh = gpio.module(9);
+        let mj = gpio.module(9);
         drop(gpio);
         let mut gpioa = mg.lock();
 
-        let mut h = mh.lock();
+        let mut j = mj.lock();
         gpioa.reset(false);
-        h.reset(false);
+        j.reset(false);
 
         //set the pin for the mco1 clock output
         gpioa.set_alternate(8, 0);
@@ -164,9 +164,11 @@ fn main() -> ! {
         gpioa.set_speed(8, 3);
 
         gpioa.set_output(12);
-        h.set_output(5);
-        h.set_output(13);
+        j.set_output(5);
+        j.set_output(13);
         let mut count = 0;
+
+        let lcd_reset = j.get_pin(15).unwrap();
 
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
 
@@ -190,9 +192,9 @@ fn main() -> ! {
         let dsi = displays.module(0);
         let dsi = dsi.lock();
         let panel = Some(
-            crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(
-                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(),
-            ),
+            crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(LockedArc::new(
+                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(lcd_reset),
+            )),
         );
         dsi.enable(&dsi_config, &resolution, panel);
         drop(dsi);
@@ -207,8 +209,8 @@ fn main() -> ! {
 
         loop {
             gpioa.write_output(12, true);
-            h.write_output(5, true);
-            h.write_output(13, true);
+            j.write_output(5, true);
+            j.write_output(13, true);
 
             count += 1;
             if count > 10 {
@@ -222,8 +224,8 @@ fn main() -> ! {
             doors_macros2::kernel_print!("I am groot {}\r\n", count);
 
             gpioa.write_output(12, false);
-            h.write_output(5, false);
-            h.write_output(13, false);
+            j.write_output(5, false);
+            j.write_output(13, false);
 
             if let Ok(timer) = &timer {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);
