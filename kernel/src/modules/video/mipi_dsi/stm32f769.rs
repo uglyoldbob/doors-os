@@ -4,6 +4,8 @@ use crate::modules::clock::{ClockProviderTrait, ClockRefTrait};
 use crate::modules::clock::{PllDividerErr, PllVcoSetError};
 use crate::LockedArc;
 
+use super::DsiPanelTrait;
+
 /// The memory mapped registers of the ltdc hardware
 struct LtdcRegisters {
     /// The registers
@@ -109,6 +111,30 @@ impl Ltdc {
     }
 }
 
+/// The provider for dcs commands
+pub struct DcsProvider {
+    // The internals for the hardware
+    internals: LockedArc<ModuleInternals>,
+}
+
+impl super::MipiDsiDcsTrait for DcsProvider {
+    fn dcs_do_command<'a>(&mut self, cmd: super::DcsCommand<'a>) -> Result<(), ()> {
+        let flags = cmd.flags;
+        let packet = cmd.build_packet();
+        if packet.is_err() {
+            return Err(());
+        }
+        let packet = packet.unwrap();
+        let mut internals = self.internals.lock();
+        internals.message_config(flags);
+        internals.write_packet(&packet);
+        if let Some(buf) = cmd.recv {
+            internals.read_data(buf);
+        }
+        Ok(())
+    }
+}
+
 /// The memory mapped registers for the dsi hardware
 struct DsiRegisters {
     /// The registers
@@ -135,37 +161,109 @@ impl ModuleInternals {
         }
     }
 
-    fn simple_command_write(&mut self, channel: u8, cmd: u16, data: &[u8]) {
-        self.wait_command_fifo_empty();
-        let v: u32 = 0x15 | (channel as u32 & 3) << 6 | ((cmd & 0xFF) as u32) << 16;
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v) };
-
-        self.wait_command_fifo_empty();
-        let ta = [(cmd >> 8) as u8];
-        let v = ta.iter();
-        let v2 = data.iter();
-        let v3 = v.chain(v2);
-
-        let mut index = 0;
+    ///Process message flags of a command and set registers appropriately
+    fn message_config(&mut self, flags: super::DcsCommandFlags) {
         let mut val: u32 = 0;
-        for (i, d) in v3.enumerate() {
-            val |= (*d as u32) << (8 * index);
-            if index == 3 {
-                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val) };
-                val = 0;
-                index = 0;
+
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[6], 16 << 16 | 4) };
+        if flags.contains(super::DcsCommandFlags::RequestAck) {
+            val |= 2;
+        }
+        if flags.contains(super::DcsCommandFlags::Lpm) {
+            val |= 0x010F7F00;
+        }
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[26], val) };
+
+        let mut v = unsafe { core::ptr::read_volatile(&self.regs.regs[14]) };
+        if flags.contains(super::DcsCommandFlags::Lpm) {
+            v |= 1 << 15;
+        } else {
+            v &= !(1 << 15);
+        }
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[14], v) };
+    }
+
+    /// Write the packet to the device registers
+    fn write_packet(&mut self, packet: &super::DcsPacket) {
+        use crate::modules::video::TextDisplayTrait;
+        let buf = packet.data.unwrap_or(&[]);
+        let mut length_remaining = buf.len();
+        let h = u32::from_le_bytes(packet.header);
+        doors_macros2::kernel_print!("dcs packet length {:x} {}\r\n", h, length_remaining);
+        let mut offset = 0;
+        while length_remaining > 0 {
+            if length_remaining < 4 {
+                let mut tbuf: [u8; 4] = [0; 4];
+                for i in 0..length_remaining {
+                    tbuf[i] = buf[i + offset];
+                }
+                let contents = u32::from_le_bytes(tbuf);
+                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], contents) };
+                length_remaining = 0;
             } else {
-                index += 1;
+                let mut tbuf: [u8; 4] = [0; 4];
+                for i in 0..4 {
+                    tbuf[i] = buf[i + offset];
+                }
+                let contents = u32::from_le_bytes(tbuf);
+                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], contents) };
+                offset += 4;
+                length_remaining -= 4;
+            }
+
+            //Wait until write payload fifo not full
+            loop {
+                let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+                if (val & (1 << 3)) == 0 {
+                    break;
+                }
             }
         }
-        if index != 0 {
-            unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], val) };
-            val = 0;
-            index = 0;
+
+        //Write the header
+        let header = u32::from_le_bytes(packet.header);
+
+        //Wait until command fifo not full
+        loop {
+            let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+            if (val & (1 << 1)) == 0 {
+                break;
+            }
         }
-        let len: u32 = data.len() as u32 + 1;
-        let v: u32 = 0x39 | (channel as u32 & 3) << 6 | (len & 0xFFFF) << 8;
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], v) };
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], header) };
+
+        //Wait until command payload fifo are empty
+        loop {
+            let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+            if (val & 1) == 1 {
+                break;
+            }
+        }
+    }
+
+    /// Read data from the bus
+    fn read_data(&mut self, buf: &mut [u8]) {
+        //Wait until read operation is complete
+        loop {
+            let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+            if (val & (1 << 6)) == 0 {
+                break;
+            }
+        }
+        for i in (0..=buf.len()).step_by(4) {
+            //wait until fifo not empty
+            loop {
+                let val = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
+                if (val & (1 << 4)) == 0 {
+                    break;
+                }
+            }
+            let val = unsafe { core::ptr::read_volatile(&self.regs.regs[28]) };
+            let data = val.to_le_bytes();
+            for j in 0..=(buf.len() - i).max(4) {
+                buf[i + j] = data[j];
+            }
+        }
     }
 }
 
@@ -183,7 +281,12 @@ pub struct Module {
 }
 
 impl super::MipiDsiTrait for Module {
-    fn enable(&self, config: &super::MipiDsiConfig, resolution: &super::super::ScreenResolution) {
+    fn enable(
+        &self,
+        config: &super::MipiDsiConfig,
+        resolution: &super::super::ScreenResolution,
+        panel: Option<super::DsiPanel>,
+    ) {
         self.cc.enable_clock(5 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
@@ -325,110 +428,15 @@ impl super::MipiDsiTrait for Module {
 
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[64], 0x101) };
 
-        //TODO: move these function calls to another layer specific to the display
-        internals.simple_command_write(0, 0xff00, &[0x80, 9, 1]);
-        internals.simple_command_write(0, 0xff80, &[0x80, 9]);
-        internals.simple_command_write(0, 0xc480, &[0x30]);
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 1) };
+        drop(internals);
+        if let Some(panel) = panel {
+            panel.setup(&mut super::MipiDsiDcs::Stm32f769(DcsProvider {
+                internals: self.internals.clone(),
+            }));
         }
-        internals.simple_command_write(0, 0xc48a, &[0x40]);
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
-        }
-        internals.simple_command_write(0, 0xc5b1, &[0xa9]);
-        internals.simple_command_write(0, 0xc591, &[0x34]);
-        internals.simple_command_write(0, 0xc0b4, &[0x50]);
-        internals.simple_command_write(0, 0xd900, &[0x4e]);
-        internals.simple_command_write(0, 0xc181, &[0x66]); //65 hz display frequency
-        internals.simple_command_write(0, 0xc592, &[1]);
-        internals.simple_command_write(0, 0xc595, &[0x34]);
-        internals.simple_command_write(0, 0xc594, &[0x33]);
-        internals.simple_command_write(0, 0xd800, &[0x79, 0x79]);
-        internals.simple_command_write(0, 0xc0a3, &[0x1b]);
-        internals.simple_command_write(0, 0xc582, &[0x83]);
-        internals.simple_command_write(0, 0xc480, &[0x83]);
-        internals.simple_command_write(0, 0xc1a1, &[0x0e]);
-        internals.simple_command_write(0, 0xb3a6, &[0, 1]);
-        internals.simple_command_write(0, 0xce80, &[0x85, 1, 0, 0x84, 1, 0]);
-        internals.simple_command_write(
-            0,
-            0xcea0,
-            &[0x18, 4, 3, 0x39, 0, 0, 0, 0x18, 3, 3, 0x3a, 0, 0, 0],
-        );
-        internals.simple_command_write(
-            0,
-            0xceb0,
-            &[0x18, 2, 3, 0x3b, 0, 0, 0, 0x18, 1, 3, 0x3c, 0, 0, 0],
-        );
-        internals.simple_command_write(0, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0]);
-        internals.simple_command_write(0, 0xcfd0, &[0]);
-        internals.simple_command_write(0, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcb90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcba0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(0, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        internals.simple_command_write(
-            0,
-            0xcbf0,
-            &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
-        );
-        internals.simple_command_write(0, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0]);
-        internals.simple_command_write(
-            0,
-            0xcc90,
-            &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x26, 0xa, 0xc, 2],
-        );
-        internals.simple_command_write(
-            0,
-            0xcca0,
-            &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        );
-        internals.simple_command_write(0, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0]);
-        internals.simple_command_write(
-            0,
-            0xccc0,
-            &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0xb, 9, 1],
-        );
-        internals.simple_command_write(
-            0,
-            0xccd0,
-            &[0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        );
-        internals.simple_command_write(0, 0xc581, &[0x66]);
-        internals.simple_command_write(0, 0xf5b6, &[6]);
-        internals.simple_command_write(
-            0,
-            0xe100,
-            &[
-                0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
-            ],
-        );
-        internals.simple_command_write(
-            0,
-            0xe200,
-            &[
-                0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
-            ],
-        );
-        internals.simple_command_write(0, 0xff00, &[0xff, 0xff, 0xff]);
-
-        //todo!("Finish display initialization commands");
+        let mut internals = self.internals.lock();
+        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 0) };
 
         ltdc.debug();
         ltdc.enable();

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 arraystring = {version = "0.3.0", default-features=false }
+bitflags = "2.4.2"
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
 enum_dispatch = "0.3.12"

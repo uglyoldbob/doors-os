@@ -168,6 +168,8 @@ fn main() -> ! {
         h.set_output(13);
         let mut count = 0;
 
+        doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
+
         let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
             link_speed: 500_000_000,
             num_lanes: 2,
@@ -187,7 +189,12 @@ fn main() -> ! {
         let mut displays = crate::kernel::DISPLAYS.lock();
         let dsi = displays.module(0);
         let dsi = dsi.lock();
-        dsi.enable(&dsi_config, &resolution);
+        let panel = Some(
+            crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(
+                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(),
+            ),
+        );
+        dsi.enable(&dsi_config, &resolution, panel);
         drop(dsi);
         drop(displays);
 
