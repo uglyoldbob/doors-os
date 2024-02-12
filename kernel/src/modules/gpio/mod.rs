@@ -1,5 +1,7 @@
 //! For gpio drivers
 
+use crate::LockedArc;
+
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
@@ -25,7 +27,7 @@ pub trait GpioTrait {
 pub enum Gpio {
     /// The stm32f769 gpio module
     #[cfg(kernel_machine = "stm32f769i-disco")]
-    Stm32f769(stm32f769::Gpio<'static>),
+    Stm32f769(LockedArc<stm32f769::Gpio>),
     /// The dummy implementation
     Dummy(DummyGpio),
 }

@@ -386,28 +386,39 @@ pub extern "C" fn _start() -> ! {
     c.main_mux_select(2); //use the pll as the sysclk
     drop(c);
 
-    let ga =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 0, 0x4002_0000) };
-    let gb =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 1, 0x4002_0400) };
-    let gc =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 2, 0x4002_0800) };
-    let gd =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 3, 0x4002_0c00) };
-    let ge =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 4, 0x4002_1000) };
-    let gf =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 5, 0x4002_1400) };
-    let gg =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 6, 0x4002_1800) };
-    let gh =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 7, 0x4002_1c00) };
-    let gi =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 8, 0x4002_2000) };
-    let gj =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 9, 0x4002_2400) };
-    let gk =
-        unsafe { crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 10, 0x4002_2800) };
+    let ga = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 0, 0x4002_0000)
+    });
+    let gb = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 1, 0x4002_0400)
+    });
+    let gc = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 2, 0x4002_0800)
+    });
+    let gd = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 3, 0x4002_0c00)
+    });
+    let ge = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 4, 0x4002_1000)
+    });
+    let gf = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 5, 0x4002_1400)
+    });
+    let gg = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 6, 0x4002_1800)
+    });
+    let gh = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 7, 0x4002_1c00)
+    });
+    let gi = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 8, 0x4002_2000)
+    });
+    let gj = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 9, 0x4002_2400)
+    });
+    let gk = LockedArc::new(unsafe {
+        crate::modules::gpio::stm32f769::Gpio::new(&ctree_provider, 32 + 10, 0x4002_2800)
+    });
 
     {
         let mut gpio = crate::kernel::GPIO.lock();

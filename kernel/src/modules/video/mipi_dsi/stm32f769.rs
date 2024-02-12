@@ -317,11 +317,29 @@ impl super::MipiDsiTrait for Module {
                 break;
             }
         }
-        loop {
-            if crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 500_000_000).is_ok() {
-                break;
-            }
+        use crate::modules::video::TextDisplayTrait;
+        doors_macros2::kernel_print!("setting dsi pll frequency\r\n");
+        let e = crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 500_000_000);
+        match e {
+            Ok(_) => {}
+            Err(e) => loop {
+                match e {
+                    PllVcoSetError::FrequencyOutOfRange => {
+                        doors_macros2::kernel_print!("out of range\r\n")
+                    }
+                    PllVcoSetError::UnknownInputFrequency => {
+                        doors_macros2::kernel_print!("unknown input frequency\r\n")
+                    }
+                    PllVcoSetError::CannotHitFrequency => {
+                        doors_macros2::kernel_print!("cannot hit target frequency\r\n")
+                    }
+                    PllVcoSetError::InputFrequencyOutOfRange => {
+                        doors_macros2::kernel_print!("input out of range\r\n")
+                    }
+                }
+            },
         }
+        doors_macros2::kernel_print!("setting dsi pll post divider\r\n");
         loop {
             if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
                 break;
@@ -437,7 +455,7 @@ impl super::MipiDsiTrait for Module {
 
         unsafe { core::ptr::write_volatile(&mut internals.regs.regs[64], 0x101) };
 
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 1) };
+        //unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 1) };
         drop(internals);
         if let Some(panel) = panel {
             panel.setup(&mut super::MipiDsiDcs::Stm32f769(DcsProvider {
@@ -445,7 +463,7 @@ impl super::MipiDsiTrait for Module {
             }));
         }
         let mut internals = self.internals.lock();
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 0) };
+        //unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 0) };
 
         ltdc.debug();
         ltdc.enable();

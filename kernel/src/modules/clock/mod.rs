@@ -315,6 +315,7 @@ pub enum PllDividerErr {
 }
 
 /// Potential errors for setting pll vco frequency
+#[derive(Debug)]
 pub enum PllVcoSetError {
     /// The frequency requested for the vco is out of range for the vco
     FrequencyOutOfRange,

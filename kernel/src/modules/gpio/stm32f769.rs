@@ -1,8 +1,6 @@
 //! The driver for the gpio on the the stm32f769 processor
 
-use alloc::sync::Arc;
-
-use crate::{modules::clock::ClockProviderTrait, Locked};
+use crate::{modules::clock::ClockProviderTrait, LockedArc};
 
 struct GpioRegisters {
     mode: u32,
@@ -19,26 +17,33 @@ struct GpioRegisters {
 
 /// A gpio pin for the stm32f769 hardware
 pub struct GpioPin {
+    gpioref: LockedArc<Gpio>,
     i: u8,
 }
 
 impl super::GpioPinTrait for GpioPin {
-    fn set_output(&mut self) {}
+    fn set_output(&mut self) {
+        use super::GpioTrait;
+        self.gpioref.set_output(self.i as usize);
+    }
 
-    fn write_output(&mut self, v: bool) {}
+    fn write_output(&mut self, v: bool) {
+        use super::GpioTrait;
+        self.gpioref.write_output(self.i as usize, v);
+    }
 }
 
 /// A single stm32f769 gpio module
-pub struct Gpio<'a> {
+pub struct Gpio {
     /// The hardware for enabling and disabling the gpio module clock
     cc: crate::modules::clock::ClockProvider,
     /// The index for using the rcc
     index: usize,
     /// the memory mapped registers for the hardware
-    registers: &'a mut GpioRegisters,
+    registers: &'static mut GpioRegisters,
 }
 
-impl<'a> Gpio<'a> {
+impl Gpio {
     /// Construct a new gpio module with the specified address.
     pub unsafe fn new(cc: &crate::modules::clock::ClockProvider, index: usize, addr: u32) -> Self {
         Self {
@@ -49,69 +54,77 @@ impl<'a> Gpio<'a> {
     }
 }
 
-impl<'a> super::GpioTrait for Gpio<'a> {
+impl super::GpioTrait for LockedArc<Gpio> {
     fn reset(&mut self, r: bool) {
+        let s = self.lock();
         if !r {
-            self.cc.enable_clock(self.index);
+            s.cc.enable_clock(s.index);
         } else {
-            self.cc.disable_clock(self.index);
+            s.cc.disable_clock(s.index);
         }
     }
 
     fn get_pin(&self, i: usize) -> Option<super::GpioPin> {
         assert!(i < 16);
-        Some(super::GpioPin::Stm32f769(GpioPin { i: i as u8 }))
+        Some(super::GpioPin::Stm32f769(GpioPin {
+            gpioref: self.clone(),
+            i: i as u8,
+        }))
     }
 
     fn set_output(&mut self, i: usize) {
         assert!(i < 16);
+        let mut s = self.lock();
         let mode_filter = (3u32) << (2 * i);
-        let nm = unsafe { core::ptr::read_volatile(&self.registers.mode) } & !mode_filter;
+        let nm = unsafe { core::ptr::read_volatile(&s.registers.mode) } & !mode_filter;
         let mode = (1u32) << (2 * i);
-        unsafe { core::ptr::write_volatile(&mut self.registers.mode, nm | mode) };
+        unsafe { core::ptr::write_volatile(&mut s.registers.mode, nm | mode) };
     }
 
     fn write_output(&mut self, i: usize, v: bool) {
         assert!(i < 16);
+        let mut s = self.lock();
         let m = 1 << i;
         let newval = if v {
-            (unsafe { core::ptr::read_volatile(&self.registers.odr) } & !m) | m
+            (unsafe { core::ptr::read_volatile(&s.registers.odr) } & !m) | m
         } else {
-            (unsafe { core::ptr::read_volatile(&self.registers.odr) } & !m)
+            (unsafe { core::ptr::read_volatile(&s.registers.odr) } & !m)
         };
         unsafe {
-            core::ptr::write_volatile(&mut self.registers.odr, newval);
+            core::ptr::write_volatile(&mut s.registers.odr, newval);
         }
     }
 
     fn set_alternate(&mut self, i: usize, m: u32) {
         assert!(i < 16);
-        let v = unsafe { core::ptr::read_volatile(&self.registers.mode) } & !(3 << (2 * i));
+        let mut s = self.lock();
+        let v = unsafe { core::ptr::read_volatile(&s.registers.mode) } & !(3 << (2 * i));
         unsafe {
-            core::ptr::write_volatile(&mut self.registers.mode, v | (2 << (2 * i)));
-            core::ptr::read_volatile(&self.registers.mode);
+            core::ptr::write_volatile(&mut s.registers.mode, v | (2 << (2 * i)));
+            core::ptr::read_volatile(&s.registers.mode);
         }
         let m = m & 0xF;
         if i < 8 {
-            let v = unsafe { core::ptr::read_volatile(&self.registers.afrl) } & !(0xF << (4 * i));
+            let v = unsafe { core::ptr::read_volatile(&s.registers.afrl) } & !(0xF << (4 * i));
             unsafe {
-                core::ptr::write_volatile(&mut self.registers.afrl, v | (m << (4 * i)));
+                core::ptr::write_volatile(&mut s.registers.afrl, v | (m << (4 * i)));
             }
         } else {
             let i = i - 8;
-            let v = unsafe { core::ptr::read_volatile(&self.registers.afrh) } & !(0xF << (4 * i));
+            let v = unsafe { core::ptr::read_volatile(&s.registers.afrh) } & !(0xF << (4 * i));
             unsafe {
-                core::ptr::write_volatile(&mut self.registers.afrh, v | (m << (4 * i)));
+                core::ptr::write_volatile(&mut s.registers.afrh, v | (m << (4 * i)));
             }
         }
     }
 
-    fn set_speed(&mut self, i: usize, s: u32) {
+    fn set_speed(&mut self, i: usize, speed: u32) {
         assert!(i < 16);
-        let s = s & 3;
-        let v = unsafe { core::ptr::read_volatile(&self.registers.ospeed) } & !(3 << (2 * i));
+        let mut s = self.lock();
+        let speed = speed & 3;
+        let v = unsafe { core::ptr::read_volatile(&s.registers.ospeed) } & !(3 << (2 * i));
         unsafe {
-            core::ptr::write_volatile(&mut self.registers.ospeed, v | (s << (2 * i)));
+            core::ptr::write_volatile(&mut s.registers.ospeed, v | (speed << (2 * i)));
         }
     }
 }

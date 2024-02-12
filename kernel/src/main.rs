@@ -19,6 +19,7 @@ use alloc::sync::Arc;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
+use crate::modules::gpio::GpioPinTrait;
 use crate::modules::timer::TimerTrait;
 use crate::modules::video::mipi_dsi::MipiDsiProvider;
 use crate::modules::video::mipi_dsi::MipiDsiTrait;
@@ -148,9 +149,11 @@ fn main() -> ! {
         let mg = gpio.module(0);
 
         let mj = gpio.module(9);
+        let mi = gpio.module(8);
         drop(gpio);
         let mut gpioa = mg.lock();
 
+        let mut gpioi = mi.lock();
         let mut j = mj.lock();
         gpioa.reset(false);
         j.reset(false);
@@ -167,6 +170,12 @@ fn main() -> ! {
         j.set_output(5);
         j.set_output(13);
         let mut count = 0;
+
+        gpioi.reset(false);
+        let lcd_backlight = gpioi.get_pin(14).unwrap();
+        let mut led1 = gpioa.get_pin(12).unwrap();
+        let mut led2 = j.get_pin(5).unwrap();
+        let mut led3 = j.get_pin(13).unwrap();
 
         let lcd_reset = j.get_pin(15).unwrap();
 
@@ -193,7 +202,10 @@ fn main() -> ! {
         let dsi = dsi.lock();
         let panel = Some(
             crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(LockedArc::new(
-                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(lcd_reset),
+                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(
+                    lcd_reset,
+                    Some(lcd_backlight),
+                ),
             )),
         );
         dsi.enable(&dsi_config, &resolution, panel);
@@ -207,10 +219,13 @@ fn main() -> ! {
         let timer = tpl.get_timer(0);
         drop(tpl);
 
+        led1.set_output();
+        led2.set_output();
+        led2.set_output();
         loop {
-            gpioa.write_output(12, true);
-            j.write_output(5, true);
-            j.write_output(13, true);
+            led1.write_output(true);
+            led2.write_output(true);
+            led3.write_output(true);
 
             count += 1;
             if count > 10 {
@@ -223,9 +238,9 @@ fn main() -> ! {
 
             doors_macros2::kernel_print!("I am groot {}\r\n", count);
 
-            gpioa.write_output(12, false);
-            j.write_output(5, false);
-            j.write_output(13, false);
+            led1.write_output(false);
+            led2.write_output(false);
+            led3.write_output(false);
 
             if let Ok(timer) = &timer {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);

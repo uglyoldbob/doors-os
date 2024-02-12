@@ -29,11 +29,13 @@ pub struct DcsPacket<'a> {
 #[repr(u8)]
 pub enum DcsCommandType {
     /// A short write command
-    ShortWrite,
+    ShortWrite = 5,
+    /// A short read command
+    ShortRead = 6,
     /// A short write with parameter command
-    ShortWriteWithParameter,
+    ShortWriteWithParameter = 0x15,
     /// A long write command
-    LongWrite,
+    LongWrite = 0x39,
 }
 
 impl DcsCommandType {
@@ -90,6 +92,29 @@ impl<'a> DcsCommand<'a> {
             flags,
             send: data,
             recv: None,
+        })
+    }
+
+    /// Create a command that contains a write followed by a read
+    pub fn create_write_read(
+        channel: u8,
+        flags: DcsCommandFlags,
+        data: &'a [u8],
+        dout: &'a mut [u8],
+    ) -> Result<Self, ()> {
+        if data.len() == 0 {
+            return Err(());
+        }
+        if channel > 3 {
+            return Err(());
+        }
+        let kind = DcsCommandType::ShortRead;
+        Ok(Self {
+            channel,
+            kind,
+            flags,
+            send: data,
+            recv: Some(dout),
         })
     }
 
@@ -150,7 +175,15 @@ pub trait MipiDsiDcsTrait {
     fn dcs_do_command<'a>(&mut self, cmd: DcsCommand<'a>) -> Result<(), ()>;
     /// A dcs write buffer command
     fn dcs_write_buffer(&mut self, channel: u8, buf: &[u8]) -> Result<(), ()> {
-        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::RequestAck, buf);
+        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), buf);
+        if cmd.is_err() {
+            return Err(());
+        }
+        self.dcs_do_command(cmd.unwrap())
+    }
+    /// A dcs read write command
+    fn dcs_read_write(&mut self, channel: u8, buf: &[u8], dout: &mut [u8]) -> Result<(), ()> {
+        let cmd = DcsCommand::create_write_read(channel, DcsCommandFlags::empty(), buf, dout);
         if cmd.is_err() {
             return Err(());
         }
@@ -219,12 +252,16 @@ impl MipiDsiTrait for DummyMipiCsi {
 /// The orisetech otm8009a panel. https://www.orientdisplay.com/pdf/OTM8009A.pdf
 pub struct OrisetechOtm8009a {
     reset: super::super::gpio::GpioPin,
+    backlight: Option<super::super::gpio::GpioPin>,
 }
 
 impl OrisetechOtm8009a {
     /// Create a new panel
-    pub fn new(pin: super::super::gpio::GpioPin) -> Self {
-        Self { reset: pin }
+    pub fn new(
+        reset: super::super::gpio::GpioPin,
+        backlight: Option<super::super::gpio::GpioPin>,
+    ) -> Self {
+        Self { reset, backlight }
     }
 
     /// Write a basic command to the panel
@@ -239,12 +276,55 @@ impl OrisetechOtm8009a {
         let v: Vec<u8> = v3.map(|v| *v).collect();
         dsi.dcs_write_buffer(0, &v);
     }
+
+    /// Read id from the panel
+    fn read_id(&self, dsi: &mut MipiDsiDcs) -> Option<(u8, u8, u8)> {
+        let mut id1: u8 = 0;
+        let mut id2: u8 = 0;
+        let mut id3: u8 = 0;
+
+        let mut data: [u8; 1] = [0xda];
+        let mut buf: [u8; 1] = [0; 1];
+        if dsi.dcs_read_write(0, &data, &mut buf).is_err() {
+            return None;
+        }
+        id1 = buf[0];
+
+        data[0] = 0xdb;
+        if dsi.dcs_read_write(0, &data, &mut buf).is_err() {
+            return None;
+        }
+        id2 = buf[0];
+
+        data[0] = 0xdc;
+        if dsi.dcs_read_write(0, &data, &mut buf).is_err() {
+            return None;
+        }
+        id3 = buf[0];
+
+        Some((id1, id2, id3))
+    }
 }
 
 impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
     fn setup(&self, dsi: &mut MipiDsiDcs) {
+        use crate::modules::video::TextDisplayTrait;
         let mut s = self.lock();
+        s.reset.set_output();
+        if let Some(backlight) = &mut s.backlight {
+            backlight.set_output();
+            backlight.write_output(true);
+        }
         s.reset.write_output(true);
+
+        if false {
+            if let Some((a, b, c)) = s.read_id(dsi) {
+                doors_macros2::kernel_print!("Panel id is {:x} {:x} {:x}\r\n", a, b, c);
+            } else {
+                doors_macros2::kernel_print!("Panel id is error\r\n");
+            }
+        }
+
         s.write_command(dsi, 0xff00, &[0x80, 9, 1]);
         s.write_command(dsi, 0xff80, &[0x80, 9]);
         s.write_command(dsi, 0xc480, &[0x30]);
