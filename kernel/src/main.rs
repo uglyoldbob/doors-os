@@ -243,7 +243,7 @@ fn main() -> ! {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);
             }
 
-            doors_macros2::kernel_print!("I am groot {}\r\n", count);
+            //doors_macros2::kernel_print!("I am groot {}\r\n", count);
 
             led1.write_output(false);
             led2.write_output(false);

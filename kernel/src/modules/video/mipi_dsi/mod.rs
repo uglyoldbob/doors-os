@@ -360,7 +360,7 @@ impl OrisetechOtm8009a {
 
     /// Write a basic command to the panel
     fn write_command(&self, dsi: &mut MipiDsiDcs, cmd: u16, data: &[u8]) {
-        let first = [(cmd & 0xFF) as u8];
+        let first = [0, (cmd & 0xFF) as u8];
         dsi.dcs_write_buffer(0, &first);
 
         let ta = [(cmd >> 8) as u8];
@@ -449,7 +449,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             }
         }
 
-        if false {
+        if true {
             if let Some((a, b, c)) = s.read_id(dsi) {
                 doors_macros2::kernel_print!("Panel id is {:x} {:x} {:x}\r\n", a, b, c);
             } else {
