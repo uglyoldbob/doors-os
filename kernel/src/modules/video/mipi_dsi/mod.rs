@@ -4,6 +4,8 @@ use alloc::vec::Vec;
 
 use crate::{modules::gpio::GpioPinTrait, LockedArc};
 
+use super::ScreenResolution;
+
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
@@ -178,6 +180,8 @@ impl<'a> DcsCommand<'a> {
 pub trait DsiPanelTrait {
     /// Runs setup commands for the panel when initializing the hardware
     fn setup(&self, dsi: &mut MipiDsiDcs);
+    /// Returns an array of potential resolutions for the panel
+    fn get_resolutions(&self, resout: &mut Vec<ScreenResolution>);
 }
 
 /// Represents a single mipi-dsi panel
@@ -194,6 +198,8 @@ pub struct DummyDsiPanel {}
 
 impl DsiPanelTrait for DummyDsiPanel {
     fn setup(&self, _dsi: &mut MipiDsiDcs) {}
+
+    fn get_resolutions(&self, _resout: &mut Vec<ScreenResolution>) {}
 }
 
 /// The trait involved when sending dcs commands
@@ -219,7 +225,7 @@ pub trait MipiDsiDcsTrait {
     }
 
     /// A dcs nop command
-    fn dcs_basic_command(&mut self, channel: u8, cmd: DcsCommandType) -> Result<(),()> {
+    fn dcs_basic_command(&mut self, channel: u8, cmd: DcsCommandType) -> Result<(), ()> {
         let data = [cmd as u8];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
@@ -229,10 +235,16 @@ pub trait MipiDsiDcsTrait {
     }
 
     /// Set the column boundaries
-    fn dcs_set_column_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(),()> {
+    fn dcs_set_column_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(), ()> {
         let s8 = start.to_be_bytes();
         let e8 = end.to_be_bytes();
-        let data = [DcsCommandType::SetColumnAddress as u8, s8[0], s8[1], e8[0], e8[1]];
+        let data = [
+            DcsCommandType::SetColumnAddress as u8,
+            s8[0],
+            s8[1],
+            e8[0],
+            e8[1],
+        ];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
             return Err(());
@@ -241,10 +253,16 @@ pub trait MipiDsiDcsTrait {
     }
 
     ///Set the page address
-    fn dcs_set_page_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(),()> {
+    fn dcs_set_page_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(), ()> {
         let s8 = start.to_be_bytes();
         let e8 = end.to_be_bytes();
-        let data = [DcsCommandType::SetPageAddress as u8, s8[0], s8[1], e8[0], e8[1]];
+        let data = [
+            DcsCommandType::SetPageAddress as u8,
+            s8[0],
+            s8[1],
+            e8[0],
+            e8[1],
+        ];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
             return Err(());
@@ -253,7 +271,7 @@ pub trait MipiDsiDcsTrait {
     }
 
     /// Set the pixel format
-    fn dcs_set_pixel_format(&mut self, channel: u8, format: u8) -> Result<(),()> {
+    fn dcs_set_pixel_format(&mut self, channel: u8, format: u8) -> Result<(), ()> {
         let data = [DcsCommandType::SetPixelFormat as u8, format];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
@@ -286,12 +304,7 @@ impl MipiDsiDcsTrait for DummyDcsProvider {
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiTrait {
     /// Enable the hardware
-    fn enable(
-        &self,
-        config: &MipiDsiConfig,
-        resolution: &super::ScreenResolution,
-        panel: Option<DsiPanel>,
-    );
+    fn enable(&self, config: &MipiDsiConfig, panel: Option<DsiPanel>);
     /// Disable the hardware
     fn disable(&self);
 }
@@ -312,19 +325,14 @@ pub struct DummyMipiCsi {}
 impl MipiDsiTrait for DummyMipiCsi {
     fn disable(&self) {}
 
-    fn enable(
-        &self,
-        _config: &MipiDsiConfig,
-        _resolution: &super::ScreenResolution,
-        _panel: Option<DsiPanel>,
-    ) {
-    }
+    fn enable(&self, _config: &MipiDsiConfig, _panel: Option<DsiPanel>) {}
 }
 
 /// The orisetech otm8009a panel. https://www.orientdisplay.com/pdf/OTM8009A.pdf
 pub struct OrisetechOtm8009a {
     reset: super::super::gpio::GpioPin,
     backlight: Option<super::super::gpio::GpioPin>,
+    resolution: ScreenResolution,
 }
 
 impl OrisetechOtm8009a {
@@ -333,7 +341,21 @@ impl OrisetechOtm8009a {
         reset: super::super::gpio::GpioPin,
         backlight: Option<super::super::gpio::GpioPin>,
     ) -> Self {
-        Self { reset, backlight }
+        let resolution = crate::modules::video::ScreenResolution {
+            width: 480,
+            height: 800,
+            hsync: 32,
+            vsync: 10,
+            h_b_porch: 98,
+            h_f_porch: 98,
+            v_b_porch: 14,
+            v_f_porch: 15,
+        };
+        Self {
+            reset,
+            backlight,
+            resolution,
+        }
     }
 
     /// Write a basic command to the panel
@@ -379,6 +401,12 @@ impl OrisetechOtm8009a {
 }
 
 impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
+    fn get_resolutions(&self, resout: &mut Vec<ScreenResolution>) {
+        let s = self.lock();
+        resout.clear();
+        resout.push(s.resolution.clone());
+    }
+
     fn setup(&self, dsi: &mut MipiDsiDcs) {
         use crate::modules::video::TextDisplayTrait;
         let mut s = self.lock();
@@ -421,7 +449,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             }
         }
 
-        if true {
+        if false {
             if let Some((a, b, c)) = s.read_id(dsi) {
                 doors_macros2::kernel_print!("Panel id is {:x} {:x} {:x}\r\n", a, b, c);
             } else {
@@ -544,7 +572,6 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 120);
         }
-
 
         let data = [DcsCommandType::SetAddressMode as u8, 0];
         dsi.dcs_write_buffer(0, &data);

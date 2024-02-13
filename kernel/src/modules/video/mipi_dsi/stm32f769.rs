@@ -1,7 +1,10 @@
 //! Dsi related code for the stm32f769
 
+use alloc::vec::Vec;
+
 use crate::modules::clock::{ClockProviderTrait, ClockRefTrait};
 use crate::modules::clock::{PllDividerErr, PllVcoSetError};
+use crate::modules::video::ScreenResolution;
 use crate::LockedArc;
 
 use super::DsiPanelTrait;
@@ -122,16 +125,16 @@ impl super::MipiDsiDcsTrait for DcsProvider {
         let flags = cmd.flags;
         let mut internals = self.internals.lock();
         internals.message_config(flags);
-            let packet = cmd.build_packet();
-            if packet.is_err() {
-                return Err(());
-            }
-            let packet = packet.unwrap();
-            internals.write_packet(&packet);
-            drop(packet);
-            if let Some(buf) = cmd.recv.as_mut() {
-                internals.read_data(*buf);
-            }
+        let packet = cmd.build_packet();
+        if packet.is_err() {
+            return Err(());
+        }
+        let packet = packet.unwrap();
+        internals.write_packet(&packet);
+        drop(packet);
+        if let Some(buf) = cmd.recv.as_mut() {
+            internals.read_data(*buf);
+        }
         Ok(())
     }
 }
@@ -148,32 +151,25 @@ struct ModuleInternals {
 }
 
 impl ModuleInternals {
-    fn command_fifo_empty(&self) -> bool {
-        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
-        (v & (1 << 0)) != 0
-    }
-
-    fn wait_command_fifo_empty(&self) {
-        loop {
-            let v = unsafe { core::ptr::read_volatile(&self.regs.regs[29]) };
-            if (v & 1) != 0 {
-                break;
-            }
-        }
+    /// Write a register
+    fn write(&mut self, i: usize, d: u32) {
+        use crate::modules::video::TextDisplayTrait;
+        doors_macros2::kernel_print!("Write {:X} with {:X}\r\n", i, d);
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[i], d) };
     }
 
     ///Process message flags of a command and set registers appropriately
     fn message_config(&mut self, flags: super::DcsCommandFlags) {
         let mut val: u32 = 0;
 
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[6], 16 << 16 | 4) };
+        self.write(6, 16 << 16 | 4);
         if flags.contains(super::DcsCommandFlags::RequestAck) {
             val |= 2;
         }
         if flags.contains(super::DcsCommandFlags::Lpm) {
             val |= 0x010F7F00;
         }
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[26], val) };
+        self.write(26, val);
 
         let mut v = unsafe { core::ptr::read_volatile(&self.regs.regs[14]) };
         if flags.contains(super::DcsCommandFlags::Lpm) {
@@ -181,7 +177,7 @@ impl ModuleInternals {
         } else {
             v &= !(1 << 15);
         }
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[14], v) };
+        self.write(14, v);
     }
 
     /// Write the packet to the device registers
@@ -216,7 +212,7 @@ impl ModuleInternals {
                     tbuf[i] = buf[i + offset];
                 }
                 let contents = u32::from_le_bytes(tbuf);
-                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], contents) };
+                self.write(28, contents);
                 length_remaining = 0;
             } else {
                 let mut tbuf: [u8; 4] = [0; 4];
@@ -224,7 +220,7 @@ impl ModuleInternals {
                     tbuf[i] = buf[i + offset];
                 }
                 let contents = u32::from_le_bytes(tbuf);
-                unsafe { core::ptr::write_volatile(&mut self.regs.regs[28], contents) };
+                self.write(28, contents);
                 offset += 4;
                 length_remaining -= 4;
             }
@@ -240,7 +236,7 @@ impl ModuleInternals {
                 break;
             }
         }
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[27], header) };
+        self.write(27, header);
 
         //Wait until command payload and write fifo are empty
         loop {
@@ -291,17 +287,24 @@ pub struct Module {
 }
 
 impl super::MipiDsiTrait for Module {
-    fn enable(
-        &self,
-        config: &super::MipiDsiConfig,
-        resolution: &super::super::ScreenResolution,
-        panel: Option<super::DsiPanel>,
-    ) {
+    fn enable(&self, config: &super::MipiDsiConfig, panel: Option<super::DsiPanel>) {
         self.cc.enable_clock(5 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
 
-        ltdc.configure(&resolution);
+        let mut resolutions: Vec<ScreenResolution> = Vec::new();
+        if let Some(panel) = &panel {
+            panel.get_resolutions(&mut resolutions);
+        }
+        let resolution = if resolutions.len() > 0 {
+            Some(resolutions[0].clone())
+        } else {
+            None
+        };
+
+        if let Some(resolution) = &resolution {
+            ltdc.configure(resolution);
+        }
 
         self.enable_regulator();
 
@@ -342,7 +345,7 @@ impl super::MipiDsiTrait for Module {
         }
         doors_macros2::kernel_print!("setting dsi pll post divider\r\n");
         loop {
-            if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 16).is_ok() {
+            if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
                 break;
             }
         }
@@ -361,20 +364,20 @@ impl super::MipiDsiTrait for Module {
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[41]) } & 0xFF00;
         let nlanes = ((config.num_lanes - 1) & 1) as u32;
         // set the number of lanes (only 1 or 2 lanes supported here)
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[41], 0xa00 | nlanes) };
+        internals.write(41, 0xa00 | nlanes);
 
         //set automatic clock lane control and clock control
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[37], 1) };
+        internals.write(37, 1);
 
         // set max timeouts
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[30], 0xffffffff) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[31], 0xffff) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[32], 0xffff) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[33], 0x100ffff) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[34], 0xffff) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[35], 0xffff) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[38], 0x230023) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[39], 0x23230000) };
+        internals.write(30, 0xffffffff);
+        internals.write(31, 0xffff);
+        internals.write(32, 0xffff);
+        internals.write(33, 0x100ffff);
+        internals.write(34, 0xffff);
+        internals.write(35, 0xffff);
+        internals.write(38, 0x230023);
+        internals.write(39, 0x23230000);
 
         //set transition time for dsi clock signal?
         //set transition time for dsi data signals?
@@ -383,80 +386,58 @@ impl super::MipiDsiTrait for Module {
         //TODO put in actual values here
         let ockdiv = 0;
         let eckdiv = 4;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[2], (ockdiv << 8) | eckdiv) };
+        internals.write(2, (ockdiv << 8) | eckdiv);
 
         let pcrval = 0x4;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[11], pcrval) };
+        internals.write(1, pcrval);
 
         //set vcid for the display
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[3], config.vcid as u32 & 3) };
+        internals.write(3, config.vcid as u32 & 3);
 
         //video mode
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 0) };
+        internals.write(13, 0);
         //test pattern generator
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[14], 0x1010001) };
+        internals.write(14, 0x1010001);
 
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], 200) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[26], 0) };
+        internals.write(25, 200);
+        internals.write(26, 0);
 
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[256], 1 << 6) };
+        internals.write(256, 1 << 6);
 
         // setup WCFGR with DSIM, COLMUX, TESRC, TEPOL, AR, and VSPOL?
 
         //setup VMCR, VPCR, VCCR, VNPCR, VLCR, VHSACR, VHBPCR, VVSACR, VVBPCR, VVFPCR, VVACR registers
 
-        // pixels per packet (VPCR)
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[15], resolution.width as u32) };
-        //chunks per line
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[16], 2) };
-        // size of null packet
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[17], 1) };
-        // horizontal sync active length
-        unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[18], 16 * resolution.width as u32)
-        };
-        //horizontal back porch length
-        unsafe {
-            core::ptr::write_volatile(
-                &mut internals.regs.regs[19],
-                16 * resolution.h_b_porch as u32,
-            )
-        };
-        //TODO calculate the number here
-        let v = (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
-            as u32;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[20], v * 16) };
-        //vsync length
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[21], resolution.vsync as u32) };
-        //vertical back porch length
-        unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[22], resolution.v_b_porch as u32)
-        };
-        //vertical front porch duration
-        unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[23], resolution.v_f_porch as u32)
-        };
-        //number of vertical lines
-        unsafe {
-            core::ptr::write_volatile(&mut internals.regs.regs[24], resolution.height as u32)
-        };
-
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[25], resolution.width as u32) };
-
+        if let Some(resolution) = resolution {
+            // pixels per packet (VPCR)
+            internals.write(15, resolution.width as u32);
+            //chunks per line
+            internals.write(16, 2);
+            // size of null packet
+            internals.write(17, 1);
+            // horizontal sync active length
+            internals.write(18, 16 * resolution.width as u32);
+            //horizontal back porch length
+            internals.write(19, 16 * resolution.h_b_porch as u32,);
+            //TODO calculate the number here
+            let v =
+                (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
+                    as u32;
+            internals.write(20, v * 16);
+            //vsync length
+            internals.write(21, resolution.vsync as u32);
+            //vertical back porch length
+            internals.write(22, resolution.v_b_porch as u32);
+            //vertical front porch duration
+            internals.write(23, resolution.v_f_porch as u32);
+            //number of vertical lines
+            internals.write(24, resolution.height as u32);
+            internals.write(25, resolution.width as u32);
+        }
         //enable data and clock
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[40]) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[40], v | (3 << 1)) };
+        internals.write(40, v | (3 << 1));
 
-        //enable dsi host
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[1], 1) };
-
-        //enable dsi wrapper
-        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 3)) };
-
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[64], 0x101) };
-
-        //unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 1) };
         drop(internals);
         if let Some(panel) = panel {
             panel.setup(&mut super::MipiDsiDcs::Stm32f769(DcsProvider {
@@ -464,13 +445,21 @@ impl super::MipiDsiTrait for Module {
             }));
         }
         let mut internals = self.internals.lock();
-        //unsafe { core::ptr::write_volatile(&mut internals.regs.regs[13], 0) };
+
+        //enable dsi host
+        internals.write(1, 1);
+
+        //enable dsi wrapper
+        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
+        internals.write(257, v | (1 << 3));
+
+        internals.write(64, 0x101);
 
         ltdc.debug();
         ltdc.enable();
 
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[257], v | (1 << 2)) };
+        internals.write(257, v | (1 << 2));
         let mut d = crate::DEBUG_STUFF.lock();
         d[0] = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
         drop(d);

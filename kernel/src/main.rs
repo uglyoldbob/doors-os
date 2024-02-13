@@ -204,16 +204,6 @@ fn main() -> ! {
             vcid: 0,
         };
 
-        let resolution = crate::modules::video::ScreenResolution {
-            width: 800,
-            height: 480,
-            hsync: 2,
-            vsync: 1,
-            h_b_porch: 34,
-            h_f_porch: 34,
-            v_b_porch: 15,
-            v_f_porch: 16,
-        };
         let mut displays = crate::kernel::DISPLAYS.lock();
         let dsi = displays.module(0);
         let dsi = dsi.lock();
@@ -225,7 +215,7 @@ fn main() -> ! {
                 ),
             )),
         );
-        dsi.enable(&dsi_config, &resolution, panel);
+        dsi.enable(&dsi_config, panel);
         drop(dsi);
         drop(displays);
 

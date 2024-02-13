@@ -65,6 +65,7 @@ impl TextDisplayTrait for VideoOverSerial {
 }
 
 /// Represents a screen resolution
+#[derive(Clone)]
 pub struct ScreenResolution {
     /// The number of active pixels across the screen
     pub width: u16,
