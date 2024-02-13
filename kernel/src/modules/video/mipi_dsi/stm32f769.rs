@@ -88,15 +88,21 @@ impl Ltdc {
                 - 1);
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[5], v) };
 
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[5], v) };
+        let v = resolution.width as u32
+        + resolution.h_b_porch as u32
+        + resolution.hsync as u32;
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[16], v)};
 
         //layer 1 stuff
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[33], 1) };
+
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[3])} >> 16;
         unsafe {
-            core::ptr::write_volatile(&mut self.regs.regs[34], (resolution.width as u32) << 16)
+            core::ptr::write_volatile(&mut self.regs.regs[34], ((v + resolution.width as u32 + 1) << 16) | (v + 1))
         };
+
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[3])} & 0xFFFF;
         unsafe {
-            core::ptr::write_volatile(&mut self.regs.regs[35], (resolution.height as u32) << 16)
+            core::ptr::write_volatile(&mut self.regs.regs[35], ((v + resolution.height as u32 + 1) << 16) | (v + 1))
         };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[37], 1) };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[39], 0xFF424242) };
@@ -108,6 +114,8 @@ impl Ltdc {
             )
         };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[45], 480) };
+
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[33], 1) };
 
         //trigger immediate load
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[9], 1) };
@@ -282,10 +290,6 @@ impl super::MipiDsiTrait for Module {
             None
         };
 
-        if let Some(resolution) = &resolution {
-            ltdc.configure(resolution);
-        }
-
         self.enable_regulator();
 
         loop {
@@ -436,6 +440,12 @@ impl super::MipiDsiTrait for Module {
         internals.write(1, 1);
         
         drop(internals);
+
+        if let Some(resolution) = &resolution {
+            doors_macros2::kernel_print!("Setting up ltdc hardware with screen resolution\r\n");
+            ltdc.configure(resolution);
+        }
+
         if let Some(panel) = panel {
             panel.setup(&mut super::MipiDsiDcs::Stm32f769(DcsProvider {
                 internals: self.internals.clone(),
