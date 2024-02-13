@@ -118,19 +118,20 @@ pub struct DcsProvider {
 }
 
 impl super::MipiDsiDcsTrait for DcsProvider {
-    fn dcs_do_command<'a>(&mut self, cmd: super::DcsCommand<'a>) -> Result<(), ()> {
+    fn dcs_do_command<'a>(&mut self, cmd: &mut super::DcsCommand<'a>) -> Result<(), ()> {
         let flags = cmd.flags;
-        let packet = cmd.build_packet();
-        if packet.is_err() {
-            return Err(());
-        }
-        let packet = packet.unwrap();
         let mut internals = self.internals.lock();
         internals.message_config(flags);
-        internals.write_packet(&packet);
-        if let Some(buf) = cmd.recv {
-            internals.read_data(buf);
-        }
+            let packet = cmd.build_packet();
+            if packet.is_err() {
+                return Err(());
+            }
+            let packet = packet.unwrap();
+            internals.write_packet(&packet);
+            drop(packet);
+            if let Some(buf) = cmd.recv.as_mut() {
+                internals.read_data(*buf);
+            }
         Ok(())
     }
 }
@@ -341,7 +342,7 @@ impl super::MipiDsiTrait for Module {
         }
         doors_macros2::kernel_print!("setting dsi pll post divider\r\n");
         loop {
-            if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
+            if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 16).is_ok() {
                 break;
             }
         }

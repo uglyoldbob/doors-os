@@ -24,10 +24,38 @@ pub struct DcsPacket<'a> {
     data: Option<&'a [u8]>,
 }
 
-/// The types of Dcs commands
+/// The types of dcs commands, contained within the data portion of a dcs command instead of the header.
 #[derive(Clone, Copy)]
 #[repr(u8)]
 pub enum DcsCommandType {
+    /// Do nothing
+    Nop = 0,
+    /// Exit sleep mode
+    ExitSleep = 0x11,
+    /// Turn on the display
+    DisplayOn = 0x29,
+    /// Set the column address
+    SetColumnAddress = 0x2a,
+    /// Set the page address
+    SetPageAddress = 0x2b,
+    /// Start writing memory?
+    WriteMemoryStart = 0x2c,
+    /// Set the address mode
+    SetAddressMode = 0x36,
+    /// Set the pixel format
+    SetPixelFormat = 0x3a,
+    /// Set the display brightness
+    SetDisplayBrightness = 0x51,
+    ///Write control display
+    WriteControlDisplay = 0x53,
+    /// Set power saving feature
+    WritePowerSave = 0x55,
+}
+
+/// The types of Dcs commands, as found in the dcs header
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum DcsHeaderCommandType {
     /// A short write command
     ShortWrite = 5,
     /// A short read command
@@ -38,11 +66,11 @@ pub enum DcsCommandType {
     LongWrite = 0x39,
 }
 
-impl DcsCommandType {
+impl DcsHeaderCommandType {
     /// Is the command representable with a long command, true means long command, false means short command.
     pub fn is_long(&self) -> bool {
         match self {
-            DcsCommandType::LongWrite => true,
+            DcsHeaderCommandType::LongWrite => true,
             _ => false,
         }
     }
@@ -62,7 +90,7 @@ bitflags::bitflags! {
 /// A dcs command that can be sent over a mipi-dsi bus.
 pub struct DcsCommand<'a> {
     channel: u8,
-    kind: DcsCommandType,
+    kind: DcsHeaderCommandType,
     flags: DcsCommandFlags,
     send: &'a [u8],
     recv: Option<&'a mut [u8]>,
@@ -82,9 +110,9 @@ impl<'a> DcsCommand<'a> {
             return Err(());
         }
         let kind = match data.len() {
-            1 => DcsCommandType::ShortWrite,
-            2 => DcsCommandType::ShortWriteWithParameter,
-            _ => DcsCommandType::LongWrite,
+            1 => DcsHeaderCommandType::ShortWrite,
+            2 => DcsHeaderCommandType::ShortWriteWithParameter,
+            _ => DcsHeaderCommandType::LongWrite,
         };
         Ok(Self {
             channel,
@@ -108,7 +136,7 @@ impl<'a> DcsCommand<'a> {
         if channel > 3 {
             return Err(());
         }
-        let kind = DcsCommandType::ShortRead;
+        let kind = DcsHeaderCommandType::ShortRead;
         Ok(Self {
             channel,
             kind,
@@ -172,14 +200,14 @@ impl DsiPanelTrait for DummyDsiPanel {
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiDcsTrait {
     /// Dcs command that writes a buffer, not used yet.
-    fn dcs_do_command<'a>(&mut self, cmd: DcsCommand<'a>) -> Result<(), ()>;
+    fn dcs_do_command<'a>(&mut self, cmd: &mut DcsCommand<'a>) -> Result<(), ()>;
     /// A dcs write buffer command
     fn dcs_write_buffer(&mut self, channel: u8, buf: &[u8]) -> Result<(), ()> {
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), buf);
         if cmd.is_err() {
             return Err(());
         }
-        self.dcs_do_command(cmd.unwrap())
+        self.dcs_do_command(&mut cmd.unwrap())
     }
     /// A dcs read write command
     fn dcs_read_write(&mut self, channel: u8, buf: &[u8], dout: &mut [u8]) -> Result<(), ()> {
@@ -187,7 +215,51 @@ pub trait MipiDsiDcsTrait {
         if cmd.is_err() {
             return Err(());
         }
-        self.dcs_do_command(cmd.unwrap())
+        self.dcs_do_command(&mut cmd.unwrap())
+    }
+
+    /// A dcs nop command
+    fn dcs_basic_command(&mut self, channel: u8, cmd: DcsCommandType) -> Result<(),()> {
+        let data = [cmd as u8];
+        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
+        if cmd.is_err() {
+            return Err(());
+        }
+        self.dcs_do_command(&mut cmd.unwrap())
+    }
+
+    /// Set the column boundaries
+    fn dcs_set_column_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(),()> {
+        let s8 = start.to_be_bytes();
+        let e8 = end.to_be_bytes();
+        let data = [DcsCommandType::SetColumnAddress as u8, s8[0], s8[1], e8[0], e8[1]];
+        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
+        if cmd.is_err() {
+            return Err(());
+        }
+        self.dcs_do_command(&mut cmd.unwrap())
+    }
+
+    ///Set the page address
+    fn dcs_set_page_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(),()> {
+        let s8 = start.to_be_bytes();
+        let e8 = end.to_be_bytes();
+        let data = [DcsCommandType::SetPageAddress as u8, s8[0], s8[1], e8[0], e8[1]];
+        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
+        if cmd.is_err() {
+            return Err(());
+        }
+        self.dcs_do_command(&mut cmd.unwrap())
+    }
+
+    /// Set the pixel format
+    fn dcs_set_pixel_format(&mut self, channel: u8, format: u8) -> Result<(),()> {
+        let data = [DcsCommandType::SetPixelFormat as u8, format];
+        let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
+        if cmd.is_err() {
+            return Err(());
+        }
+        self.dcs_do_command(&mut cmd.unwrap())
     }
 }
 
@@ -205,7 +277,7 @@ pub enum MipiDsiDcs {
 pub struct DummyDcsProvider {}
 
 impl MipiDsiDcsTrait for DummyDcsProvider {
-    fn dcs_do_command<'a>(&mut self, _cmd: DcsCommand<'a>) -> Result<(), ()> {
+    fn dcs_do_command<'a>(&mut self, _cmd: &mut DcsCommand<'a>) -> Result<(), ()> {
         Err(())
     }
 }
@@ -315,9 +387,41 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             backlight.set_output();
             backlight.write_output(true);
         }
+        s.reset.write_output(false);
+
+        {
+            use crate::modules::timer::TimerTrait;
+            let mut timers = crate::kernel::TIMERS.lock();
+            let tp = timers.module(0);
+            drop(timers);
+            let mut tpl = tp.lock();
+            let timer = tpl.get_timer(0).unwrap();
+            drop(tpl);
+            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 40);
+        }
+
         s.reset.write_output(true);
 
+        {
+            use crate::modules::timer::TimerTrait;
+            let mut timers = crate::kernel::TIMERS.lock();
+            let tp = timers.module(0);
+            drop(timers);
+            let mut tpl = tp.lock();
+            let timer = tpl.get_timer(0).unwrap();
+            drop(tpl);
+            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
+        }
+
         if false {
+            let data: [u8; 1] = [0x0f];
+            let mut buf: [u8; 1] = [0; 1];
+            if dsi.dcs_read_write(0, &data, &mut buf).is_ok() {
+                doors_macros2::kernel_print!("diagnostic is {:X}", buf[0]);
+            }
+        }
+
+        if true {
             if let Some((a, b, c)) = s.read_id(dsi) {
                 doors_macros2::kernel_print!("Panel id is {:x} {:x} {:x}\r\n", a, b, c);
             } else {
@@ -427,6 +531,51 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         );
         s.write_command(dsi, 0xff00, &[0xff, 0xff, 0xff]);
 
-        //todo!("Finish display initialization commands");
+        dsi.dcs_basic_command(0, DcsCommandType::Nop);
+        dsi.dcs_basic_command(0, DcsCommandType::ExitSleep);
+
+        {
+            use crate::modules::timer::TimerTrait;
+            let mut timers = crate::kernel::TIMERS.lock();
+            let tp = timers.module(0);
+            drop(timers);
+            let mut tpl = tp.lock();
+            let timer = tpl.get_timer(0).unwrap();
+            drop(tpl);
+            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 120);
+        }
+
+
+        let data = [DcsCommandType::SetAddressMode as u8, 0];
+        dsi.dcs_write_buffer(0, &data);
+
+        dsi.dcs_set_column_address(0, 0, 799);
+        dsi.dcs_set_page_address(0, 0, 479);
+
+        //set pixel format
+        dsi.dcs_set_pixel_format(0, 0x77);
+
+        let data = [DcsCommandType::WritePowerSave as u8, 0];
+        dsi.dcs_write_buffer(0, &data);
+
+        dsi.dcs_basic_command(0, DcsCommandType::DisplayOn);
+        dsi.dcs_basic_command(0, DcsCommandType::Nop);
+        dsi.dcs_basic_command(0, DcsCommandType::WriteMemoryStart);
+
+        let data = [DcsCommandType::SetDisplayBrightness as u8, 240];
+        dsi.dcs_write_buffer(0, &data);
+
+        dsi.dcs_basic_command(0, DcsCommandType::WriteControlDisplay);
+
+        {
+            use crate::modules::timer::TimerTrait;
+            let mut timers = crate::kernel::TIMERS.lock();
+            let tp = timers.module(0);
+            drop(timers);
+            let mut tpl = tp.lock();
+            let timer = tpl.get_timer(0).unwrap();
+            drop(tpl);
+            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+        }
     }
 }
