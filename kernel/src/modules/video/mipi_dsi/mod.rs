@@ -577,8 +577,8 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         let data = [DcsCommandType::SetAddressMode as u8, 0];
         dsi.dcs_write_buffer(0, &data);
 
-        dsi.dcs_set_column_address(0, 0, 799);
-        dsi.dcs_set_page_address(0, 0, 479);
+        dsi.dcs_set_column_address(0, 0, 479);
+        dsi.dcs_set_page_address(0, 0, 799);
 
         //set pixel format
         dsi.dcs_set_pixel_format(0, 0x77);
