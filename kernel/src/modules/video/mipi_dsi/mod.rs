@@ -179,7 +179,7 @@ impl<'a> DcsCommand<'a> {
 #[enum_dispatch::enum_dispatch]
 pub trait DsiPanelTrait {
     /// Runs setup commands for the panel when initializing the hardware
-    fn setup(&self, dsi: &mut MipiDsiDcs);
+    fn setup(&self, dsi: &mut MipiDsiDcs, resolution: &ScreenResolution);
     /// Returns an array of potential resolutions for the panel
     fn get_resolutions(&self, resout: &mut Vec<ScreenResolution>);
 }
@@ -197,7 +197,7 @@ pub enum DsiPanel {
 pub struct DummyDsiPanel {}
 
 impl DsiPanelTrait for DummyDsiPanel {
-    fn setup(&self, _dsi: &mut MipiDsiDcs) {}
+    fn setup(&self, _dsi: &mut MipiDsiDcs, resolution: &ScreenResolution) {}
 
     fn get_resolutions(&self, _resout: &mut Vec<ScreenResolution>) {}
 }
@@ -407,7 +407,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         resout.push(s.resolution.clone());
     }
 
-    fn setup(&self, dsi: &mut MipiDsiDcs) {
+    fn setup(&self, dsi: &mut MipiDsiDcs, resolution: &ScreenResolution) {
         use crate::modules::video::TextDisplayTrait;
         let mut s = self.lock();
         s.reset.set_output();
@@ -577,8 +577,8 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         let data = [DcsCommandType::SetAddressMode as u8, 0];
         dsi.dcs_write_buffer(0, &data);
 
-        dsi.dcs_set_column_address(0, 0, 479);
-        dsi.dcs_set_page_address(0, 0, 799);
+        dsi.dcs_set_column_address(0, 0, resolution.width - 1);
+        dsi.dcs_set_page_address(0, 0, resolution.height - 1);
 
         //set pixel format
         dsi.dcs_set_pixel_format(0, 0x77);

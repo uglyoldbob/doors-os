@@ -463,9 +463,14 @@ impl super::MipiDsiTrait for Module {
         }
 
         if let Some(panel) = panel {
-            panel.setup(&mut super::MipiDsiDcs::Stm32f769(DcsProvider {
-                internals: self.internals.clone(),
-            }));
+            if let Some(resolution) = &resolution {
+                panel.setup(
+                    &mut super::MipiDsiDcs::Stm32f769(DcsProvider {
+                        internals: self.internals.clone(),
+                    }),
+                    resolution,
+                );
+            }
         }
         let mut internals = self.internals.lock();
 
