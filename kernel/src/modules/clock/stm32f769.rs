@@ -515,6 +515,10 @@ pub struct ClockTree {
     divider1: Divider1,
     /// The main pll
     pllmain: super::Pll,
+    /// The second pll
+    pll2: super::Pll,
+    /// The third pll
+    pll3: super::Pll,
 }
 
 impl ClockTree {
@@ -531,7 +535,9 @@ impl ClockTree {
         let mux1 = super::ClockMux::Stm32f769Mux1(mux1);
         let d1_d = Divider1::new(&rcc, super::ClockRef::Mux(mux1.clone()));
         let d1 = super::ClockRef::Stm32f769MainDivider(d1_d.clone());
-        let pll1 = super::Pll::Stm32f769MainPll(PllMain::new(&rcc, d1));
+        let pll1 = super::Pll::Stm32f769MainPll(PllMain::new(&rcc, d1.clone()));
+        let pll2 = super::Pll::Stm32f769SecondPll(PllTwo::new(&rcc, d1.clone()));
+        let pll3 = super::Pll::Stm32f769ThirdPll(PllThree::new(&rcc, d1.clone()));
         let sysclk_mux = crate::modules::clock::stm32f769::MuxSysClk::new(
             &rcc,
             [
@@ -550,6 +556,8 @@ impl ClockTree {
             divider1: d1_d,
             sysmux: sysclk_mux.into(),
             pllmain: pll1,
+            pll2,
+            pll3,
         }
     }
 
@@ -578,6 +586,12 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
             0 => {
                 c(&mut s.pllmain);
             }
+            1 => {
+                c(&mut s.pll2);
+            }
+            2 => {
+                c(&mut s.pll3);
+            }
             _ => {
                 panic!("Invalid pll");
             }
@@ -588,6 +602,8 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
         let s = self.lock();
         match i {
             0 => Some(s.pllmain.clone()),
+            1 => Some(s.pll2.clone()),
+            2 => Some(s.pll3.clone()),
             _ => None,
         }
     }

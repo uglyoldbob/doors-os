@@ -32,6 +32,12 @@ impl Ltdc {
         }
     }
 
+    fn write(&mut self, i: usize, val: u32) {
+        use crate::modules::video::TextDisplayTrait;
+        doors_macros2::kernel_print!("ltdc write register {:X} with {:X}\r\n", i * 4, val);
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[i], val) };
+    }
+
     /// do some debugging by dumping all registers
     pub fn debug(&self) {
         let mut d = crate::DEBUG_STUFF.lock();
@@ -44,7 +50,7 @@ impl Ltdc {
     /// Enable the ltdc hardware
     pub fn enable(&mut self) {
         let v = unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[6], v | 1) };
+        self.write(6, 1);
         unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
     }
 
@@ -59,21 +65,19 @@ impl Ltdc {
     }
 
     pub fn configure(&mut self, resolution: &super::super::ScreenResolution) {
-        self.enable();
-
         let v = (resolution.hsync as u32 - 1) << 16 | (resolution.vsync as u32 - 1);
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[2], v) };
+        self.write(2, v);
 
         let v = (resolution.h_b_porch as u32 + resolution.hsync as u32 - 1) << 16
             | (resolution.v_b_porch as u32 + resolution.vsync as u32 - 1);
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[3], v) };
+        self.write(3, v);
 
         let v = (resolution.width as u32 + resolution.h_b_porch as u32 + resolution.hsync as u32
             - 1)
             << 16
             | (resolution.height as u32 + resolution.v_b_porch as u32 + resolution.vsync as u32
                 - 1);
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[4], v) };
+        self.write(4, v);
 
         let v = (resolution.h_f_porch as u32
             + resolution.width as u32
@@ -86,39 +90,39 @@ impl Ltdc {
                 + resolution.v_b_porch as u32
                 + resolution.vsync as u32
                 - 1);
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[5], v) };
+        self.write(5, v);
 
-        let v = resolution.width as u32
-        + resolution.h_b_porch as u32
-        + resolution.hsync as u32;
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[16], v)};
+        let v = resolution.height as u32 + resolution.v_b_porch as u32 + resolution.vsync as u32;
+        self.write(16, v);
 
-        //layer 1 stuff
+        self.write(0x18 / 4, 0);
 
-        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[3])} >> 16;
-        unsafe {
-            core::ptr::write_volatile(&mut self.regs.regs[34], ((v + resolution.width as u32 + 1) << 16) | (v + 1))
-        };
+        self.write(11, 0xffffff);
 
-        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[3])} & 0xFFFF;
-        unsafe {
-            core::ptr::write_volatile(&mut self.regs.regs[35], ((v + resolution.height as u32 + 1) << 16) | (v + 1))
-        };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[37], 1) };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[39], 0xFF424242) };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[43], 0x2002_0000) };
-        unsafe {
-            core::ptr::write_volatile(
-                &mut self.regs.regs[44],
-                (resolution.width as u32 * 3) << 16 | (3 + resolution.width as u32 * 3),
-            )
-        };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[45], 480) };
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[3]) } >> 16;
+        self.write(34, ((v + resolution.width as u32) << 16) | (v + 1));
 
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[33], 1) };
+        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[3]) } & 0xFFFF;
+        self.write(35, ((v + resolution.height as u32) << 16) | (v + 1));
+
+        self.write(39, 0xffffffff);
+        self.write(
+            44,
+            (resolution.width as u32 * 2) << 16 | (3 + resolution.width as u32 * 2),
+        );
+        self.write(37, 2);
+        self.write(0x98 / 4, 0xff);
+
+        self.write(40, 0x405);
+        self.write(45, resolution.height as u32);
+        self.write(43, 0x2002_0000);
+
+        self.write(33, 1);
 
         //trigger immediate load
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[9], 1) };
+        self.write(9, 1);
+
+        self.enable();
     }
 }
 
@@ -173,8 +177,8 @@ impl ModuleInternals {
         let h = u32::from_le_bytes(packet.header);
         doors_macros2::kernel_print!("dcs packet length {:x} {}\r\n", h, length_remaining);
 
-        self.write(0x94/4, 0);
-        self.write(0x68/4, 0x10f7f00);
+        self.write(0x94 / 4, 0);
+        self.write(0x68 / 4, 0x10f7f00);
 
         //Wait until command payload fifo are empty
         loop {
@@ -290,24 +294,16 @@ impl super::MipiDsiTrait for Module {
             None
         };
 
-        self.enable_regulator();
-
-        loop {
-            if self.regulator_ready() {
-                break;
-            }
-        }
-
         //configure the pll
         let dsi_pll = crate::modules::clock::Pll::Stm32f769DsiPll(self.clone());
         loop {
-            if crate::modules::clock::PllTrait::set_input_divider(&dsi_pll, 1).is_ok() {
+            if crate::modules::clock::PllTrait::set_input_divider(&dsi_pll, 4).is_ok() {
                 break;
             }
         }
         use crate::modules::video::TextDisplayTrait;
         doors_macros2::kernel_print!("setting dsi pll frequency\r\n");
-        let e = crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 1_000_000_000);
+        let e = crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 937_500_000);
         match e {
             Ok(_) => {}
             Err(e) => loop {
@@ -338,43 +334,46 @@ impl super::MipiDsiTrait for Module {
         let dsi_frequency = dsi_pll.clock_frequency(0).unwrap() / 2;
         let pixclock = dsi_frequency / 15;
 
-        //enable and wait for the pll
-        let pll_provider = crate::modules::clock::ClockProvider::Stm32f769DsiPll(self.clone());
-        crate::modules::clock::ClockProvider::enable_clock(&pll_provider, 0);
-        while !crate::modules::clock::ClockProvider::clock_is_ready(&pll_provider, 0) {}
-
         let val = 4_000_000_000 / config.link_speed;
         self.set_dphy_link(val);
 
         let mut internals = self.internals.lock();
 
+        internals.write(0x400 / 4, 0);
+        internals.write(0x400 / 4, 10);
+
         internals.write(1, 0);
 
         let rate = 20;
-        let calc = (dsi_frequency / 8_000_000) / rate + 1;
-        internals.write(2, 0xa00 | (calc as u32));
+        //calculate the value of 3
+        internals.write(2, 0xa00 | 3);
 
         internals.write(3, 0);
         internals.write(4, 5);
         internals.write(5, 0);
         internals.write(6, 0x40004);
-        internals.write(0x2c/4, 0x1c);
-        internals.write(0x38/4, 0x3f02);
+        internals.write(0x2c / 4, 0x1c);
+        internals.write(0x38 / 4, 0x3f02);
         if let Some(resolution) = &resolution {
-            internals.write(0x3c/4, resolution.width as u32);
+            internals.write(0x3c / 4, resolution.width as u32);
         }
-        internals.write(0x78/4, 1000<<16 | 1000);
-        internals.write(0x8c/4, 0xd00);
-        internals.write(0x34/4, 1);
+        internals.write(0x78 / 4, 1000 << 16 | 1000);
+        internals.write(0x8c / 4, 0xd00);
+        internals.write(0x34 / 4, 1);
+
+        internals.write(0x404 / 4, 0);
 
         if let Some(resolution) = &resolution {
-            let htotal = (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync) as u64;
+            let htotal =
+                (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
+                    as u64;
             let calc1 = htotal * dsi_frequency / 8000;
             let (f, mut c2) = (calc1 % (pixclock / 1000), calc1 / (pixclock / 1000));
             if f != 0 {
                 c2 += 1;
             }
-            internals.write(0x50/4, c2 as u32);
+            c2 = 0x4fb; //todo remove this hack
+            internals.write(0x50 / 4, c2 as u32);
 
             let hsa = resolution.hsync as u64;
             let calc1: u64 = hsa * dsi_frequency / 8000;
@@ -382,7 +381,8 @@ impl super::MipiDsiTrait for Module {
             if f != 0 {
                 c2 += 1;
             }
-            internals.write(0x48/4, c2 as u32);
+            c2 = 0x3a; //todo remove this hack
+            internals.write(0x48 / 4, c2 as u32);
 
             let hbp = resolution.h_b_porch as u64;
             let calc1: u64 = hbp * dsi_frequency / 8000;
@@ -390,35 +390,50 @@ impl super::MipiDsiTrait for Module {
             if f != 0 {
                 c2 += 1;
             }
-            internals.write(0x4c/4, c2 as u32);
+            c2 = 0xb1; //todo remove this hack
+            internals.write(0x4c / 4, c2 as u32);
 
-            internals.write(0x60/4, resolution.height as u32);
-            internals.write(0x54/4, resolution.vsync as u32);
-            internals.write(0x5c/4, resolution.v_f_porch as u32);
-            internals.write(0x58/4, resolution.v_b_porch as u32);
+            internals.write(0x60 / 4, resolution.height as u32);
+            internals.write(0x54 / 4, resolution.vsync as u32);
+            internals.write(0x5c / 4, resolution.v_f_porch as u32);
+            internals.write(0x58 / 4, resolution.v_b_porch as u32);
         }
 
-        internals.write(0xa0/4, 0);
-        internals.write(0xb4/4, 0);
-        internals.write(0xb4/4, 1);
-        internals.write(0xb4/4, 0);
+        internals.write(0xa0 / 4, 0);
+        internals.write(0xb4 / 4, 0);
+        internals.write(0xb4 / 4, 1);
+        internals.write(0xb4 / 4, 0);
 
         //todo Calculate these
-        internals.write(0x9c/4, 0x40402710);
-        internals.write(0x98/4, 0x400040);
+        internals.write(0x9c / 4, 0x40402710);
+        internals.write(0x98 / 4, 0x400040);
 
         let nlanes = 1;
-        internals.write(0xa4/4, 0x2000 | nlanes);
+        internals.write(0xa4 / 4, 0x2000 | nlanes);
 
-        unsafe { core::ptr::read_volatile(&internals.regs.regs[0xbc/4]) };
-        unsafe { core::ptr::read_volatile(&internals.regs.regs[0xc0/4]) };
-        internals.write(0xc4/4, 0);
-        internals.write(0xc8/4,0);
+        unsafe { core::ptr::read_volatile(&internals.regs.regs[0xbc / 4]) };
+        unsafe { core::ptr::read_volatile(&internals.regs.regs[0xc0 / 4]) };
+        internals.write(0xc4 / 4, 0);
+        internals.write(0xc8 / 4, 0);
 
-        internals.write(0xa0/4, 6);
+        drop(internals);
+        //enable and wait for the pll
+        self.enable_regulator();
+        loop {
+            if self.regulator_ready() {
+                break;
+            }
+        }
+        let pll_provider = crate::modules::clock::ClockProvider::Stm32f769DsiPll(self.clone());
+        crate::modules::clock::ClockProvider::enable_clock(&pll_provider, 0);
+        while !crate::modules::clock::ClockProvider::clock_is_ready(&pll_provider, 0) {}
+
+        let mut internals = self.internals.lock();
+
+        internals.write(0xa0 / 4, 0xf);
 
         loop {
-            let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[0xb0/4]) };
+            let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[0xb0 / 4]) };
             if (v & 4) != 0 {
                 break;
             }
@@ -436,9 +451,10 @@ impl super::MipiDsiTrait for Module {
         }
 
         internals.write(1, 0);
-        internals.write(0x34/4, 1);
+        internals.write(0x34 / 4, 1);
+        internals.write(0x404 / 4, 0);
         internals.write(1, 1);
-        
+
         drop(internals);
 
         if let Some(resolution) = &resolution {
@@ -454,25 +470,15 @@ impl super::MipiDsiTrait for Module {
         let mut internals = self.internals.lock();
 
         internals.write(1, 0);
-        internals.write(0x34/4, 0);
-        internals.write(0x38/4, 0x3f02);
-        internals.write(0x94/4, 1);
-        internals.write(1, 1);
+        internals.write(0x34 / 4, 0);
+        internals.write(0x38 / 4, 0x3f02);
+        internals.write(0x94 / 4, 1);
 
         //enable dsi wrapper
-        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
-        internals.write(257, v | (1 << 3));
+        internals.write(0x404 / 4, 8);
 
-        internals.write(64, 0x101);
+        internals.write(1, 1);
 
-        ltdc.debug();
-        ltdc.enable();
-
-        let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
-        internals.write(257, v | (1 << 2));
-        let mut d = crate::DEBUG_STUFF.lock();
-        d[0] = unsafe { core::ptr::read_volatile(&internals.regs.regs[257]) };
-        drop(d);
         drop(internals);
     }
 
@@ -522,7 +528,7 @@ impl Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = (v & !0x1FC) | ((d as u32 & 0x7F) << 2);
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        internals.write(268, newval);
     }
 
     /// Get the vco multiplier of the pll
@@ -537,7 +543,7 @@ impl Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v | (1 << 24);
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        internals.write(268, newval);
     }
 
     /// is the regulator ready
@@ -552,7 +558,7 @@ impl Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[262]) };
         let newval = (v & !0x3F) | (nv as u32 & 0x3F);
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[262], newval) };
+        internals.write(262, newval);
     }
 }
 
@@ -562,7 +568,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v | 1;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        internals.write(268, newval);
     }
 
     /// Disable the pll
@@ -570,7 +576,7 @@ impl crate::modules::clock::ClockProviderTrait for Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v & !1;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        internals.write(268, newval);
     }
 
     fn clock_is_ready(&self, _i: usize) -> bool {
@@ -622,7 +628,7 @@ impl crate::modules::clock::PllTrait for Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = (v & !0x7800) | (d & 0xF) << 11;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        internals.write(268, newval);
         Ok(())
     }
 
@@ -651,7 +657,7 @@ impl crate::modules::clock::PllTrait for Module {
         let mut internals = self.internals.lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = (v & !0x30000) | (divider as u32) << 2;
-        unsafe { core::ptr::write_volatile(&mut internals.regs.regs[268], newval) };
+        internals.write(268, newval);
         Ok((unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) } >> 16) & 0x3)
     }
 

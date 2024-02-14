@@ -279,7 +279,7 @@ impl IsrTable {
 #[link_section = ".isr_vector"]
 static ISR_TABLE: IsrTable = IsrTable::build();
 
-use crate::modules::clock::{ClockProviderTrait, PllProviderTrait};
+use crate::modules::clock::{ClockProviderTrait, PllProviderTrait, PllTrait};
 use crate::modules::gpio::GpioTrait;
 
 /// The nmi handler
@@ -535,6 +535,12 @@ pub extern "C" fn _start() -> ! {
     let dsi_byte_clock = ctree_pll.get_pll_reference(0).unwrap().get_ref(2);
     let dsi_clock1 =
         crate::modules::clock::ClockRef::Mux(ctree_pll.get_clock_mux(0).unwrap().clone());
+
+    let mut ltdc_clock = ctree_pll.get_pll_reference(2).unwrap();
+
+    ltdc_clock.set_vco_frequency(195_000_000);
+    ltdc_clock.set_post_divider(2, 3);
+    ltdc_clock.enable_clock(2);
 
     let dsi = unsafe {
         crate::modules::video::mipi_dsi::stm32f769::Module::new(

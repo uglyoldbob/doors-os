@@ -412,6 +412,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         let mut s = self.lock();
         s.reset.set_output();
         if let Some(backlight) = &mut s.backlight {
+            doors_macros2::kernel_print!("Setting backlight to true\r\n");
             backlight.set_output();
             backlight.write_output(true);
         }
@@ -590,6 +591,9 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         dsi.dcs_basic_command(0, DcsCommandType::WriteMemoryStart);
 
         let data = [DcsCommandType::SetDisplayBrightness as u8, 240];
+        dsi.dcs_write_buffer(0, &data);
+
+        let data = [DcsCommandType::WriteControlDisplay as u8, 0x24];
         dsi.dcs_write_buffer(0, &data);
 
         dsi.dcs_basic_command(0, DcsCommandType::WriteControlDisplay);
