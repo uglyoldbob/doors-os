@@ -34,7 +34,6 @@ impl Ltdc {
 
     fn write(&mut self, i: usize, val: u32) {
         use crate::modules::video::TextDisplayTrait;
-        doors_macros2::kernel_print!("ltdc write register {:X} with {:X}\r\n", i * 4, val);
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[i], val) };
     }
 
@@ -164,18 +163,14 @@ struct ModuleInternals {
 impl ModuleInternals {
     /// Write a register
     fn write(&mut self, i: usize, d: u32) {
-        use crate::modules::video::TextDisplayTrait;
-        doors_macros2::kernel_print!("Write {:X} with {:X}\r\n", i * 4, d);
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[i], d) };
     }
 
     /// Write the packet to the device registers
     fn write_packet(&mut self, packet: &super::DcsPacket) {
-        use crate::modules::video::TextDisplayTrait;
         let buf = packet.data.unwrap_or(&[]);
         let mut length_remaining = buf.len();
         let h = u32::from_le_bytes(packet.header);
-        doors_macros2::kernel_print!("dcs packet length {:x} {}\r\n", h, length_remaining);
 
         self.write(0x94 / 4, 0);
         self.write(0x68 / 4, 0x10f7f00);
@@ -302,7 +297,6 @@ impl super::MipiDsiTrait for Module {
             }
         }
         use crate::modules::video::TextDisplayTrait;
-        doors_macros2::kernel_print!("setting dsi pll frequency\r\n");
         let e = crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 937_500_000);
         match e {
             Ok(_) => {}
@@ -323,13 +317,11 @@ impl super::MipiDsiTrait for Module {
                 }
             },
         }
-        doors_macros2::kernel_print!("setting dsi pll post divider\r\n");
         loop {
             if crate::modules::clock::PllTrait::set_post_divider(&dsi_pll, 0, 2).is_ok() {
                 break;
             }
         }
-        doors_macros2::kernel_print!("dsi pll freq is {:?}\r\n", dsi_pll.clock_frequency(0));
 
         let dsi_frequency = dsi_pll.clock_frequency(0).unwrap() / 2;
         let pixclock = dsi_frequency / 15;
@@ -458,7 +450,6 @@ impl super::MipiDsiTrait for Module {
         drop(internals);
 
         if let Some(resolution) = &resolution {
-            doors_macros2::kernel_print!("Setting up ltdc hardware with screen resolution\r\n");
             ltdc.configure(resolution);
         }
 

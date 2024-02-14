@@ -408,11 +408,9 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
     }
 
     fn setup(&self, dsi: &mut MipiDsiDcs, resolution: &ScreenResolution) {
-        use crate::modules::video::TextDisplayTrait;
         let mut s = self.lock();
         s.reset.set_output();
         if let Some(backlight) = &mut s.backlight {
-            doors_macros2::kernel_print!("Setting backlight to true\r\n");
             backlight.set_output();
             backlight.write_output(true);
         }
@@ -440,22 +438,6 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
-        }
-
-        if false {
-            let data: [u8; 1] = [0x0f];
-            let mut buf: [u8; 1] = [0; 1];
-            if dsi.dcs_read_write(0, &data, &mut buf).is_ok() {
-                doors_macros2::kernel_print!("diagnostic is {:X}", buf[0]);
-            }
-        }
-
-        if true {
-            if let Some((a, b, c)) = s.read_id(dsi) {
-                doors_macros2::kernel_print!("Panel id is {:x} {:x} {:x}\r\n", a, b, c);
-            } else {
-                doors_macros2::kernel_print!("Panel id is error\r\n");
-            }
         }
 
         s.write_command(dsi, 0xff00, &[0x80, 9, 1]);

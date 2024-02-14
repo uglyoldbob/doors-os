@@ -180,23 +180,6 @@ fn main() -> ! {
         let lcd_reset = j.get_pin(15).unwrap();
 
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
-        {
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            let mut count: u32 = 0;
-            for _ in 0..22 {
-                {
-                    use crate::modules::timer::TimerTrait;
-                    crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 1000);
-                }
-                count = count.wrapping_add(1);
-                doors_macros2::kernel_print!("DoorsOs Booting still {}\r\n", count);
-            }
-        }
 
         let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
             link_speed: 500_000_000,

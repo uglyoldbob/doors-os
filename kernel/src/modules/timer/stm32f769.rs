@@ -36,6 +36,7 @@ impl TimerGroup {
                 return Err(());
             }
             unsafe { core::ptr::write_volatile(&mut self.regs.regs[10], prescaler - 1) };
+            self.update();
             self.usage += 1;
             Ok(())
         } else {
@@ -54,6 +55,11 @@ impl TimerGroup {
         unsafe { core::ptr::read_volatile(&self.regs.regs[10]) }
     }
 
+    /// Returns the status register
+    fn status(&self) -> u32 {
+        unsafe { core::ptr::read_volatile(&self.regs.regs[4]) }
+    }
+
     /// Returns the count of the timer
     fn counter(&self) -> u32 {
         let v = unsafe { core::ptr::read_volatile(&self.regs.regs[9]) };
@@ -70,6 +76,11 @@ impl TimerGroup {
     fn stop_timer(&mut self) {
         let c = unsafe { core::ptr::read_volatile(&self.regs.regs[0]) };
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[0], c & !1) };
+    }
+
+    /// Generate an update event
+    fn update(&mut self) {
+        unsafe { core::ptr::write_volatile(&mut self.regs.regs[0x14 / 4], 1) };
     }
 
     /// Clear the compare flag
