@@ -158,7 +158,7 @@ impl super::TimerInstanceTrait for LockedArc<Timer> {
         t.clock.enable_clock();
 
         let freq = t.clock.clock_frequency().unwrap();
-        let mut prescaler = freq / 2;
+        let mut prescaler = freq / 2000;
         if prescaler > 0x10000 {
             prescaler = 0x10000;
         }
@@ -166,9 +166,13 @@ impl super::TimerInstanceTrait for LockedArc<Timer> {
             prescaler = t.prescaler() as u64;
         }
 
-        let counts_required = freq * 4 * ms as u64;
-        let counts_required = counts_required / 1000;
-        let counts_required = counts_required / prescaler;
+        let counts_required3 = freq * ms as u64;
+        let counts_required2 = counts_required3 / 1000;
+        let mut counts_required = counts_required2 / prescaler;
+        let count_mod = counts_required2 % prescaler;
+        if count_mod != 0 {
+            counts_required += 1;
+        }
         if counts_required > 0xFFFF {
             let mut counter = 0;
             loop {

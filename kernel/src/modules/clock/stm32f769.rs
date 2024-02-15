@@ -730,7 +730,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
                 if prescaler == 1 {
                     sysclk.map(|f| f / prescaler) //PCLKx
                 } else {
-                    sysclk.map(|f| f * 4 / prescaler) //4 * PCLKx
+                    sysclk.map(|f| f * 2 / prescaler) //2 * PCLKx
                 }
             }
         };
@@ -738,7 +738,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 0) => s.oscmain.clock_frequency(),
             (0, 1) => s.oscint.clock_frequency(),
             (0, 2) => {
-                let sysclk = s.mux1.clock_frequency();
+                let sysclk = s.sysmux.clock_frequency();
                 let rcc = s.rcc.lock();
                 let divider = rcc.get_ahb_divider();
                 sysclk.map(|f| f / divider as u64)
@@ -754,7 +754,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
                 let apb_prescaler = rcc.get_apb2_prescaler() as u64;
                 let mux = rcc.get_timer_mux();
                 drop(rcc);
-                let sysclk = s.mux1.clock_frequency();
+                let sysclk = s.sysmux.clock_frequency();
                 timer(0, sysclk, mux, apb_prescaler)
             }
             (5, 4) => usart(&s.rcc, 0, 1),

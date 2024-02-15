@@ -475,8 +475,6 @@ impl super::MipiDsiTrait for Module {
 
         internals.write(1, 1);
 
-        internals.write(0x38 / 4, 0x01013f02);
-
         drop(internals);
     }
 
