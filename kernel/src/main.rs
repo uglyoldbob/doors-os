@@ -16,6 +16,7 @@ pub mod kernel;
 pub mod modules;
 
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
@@ -212,6 +213,12 @@ fn main() -> ! {
         led1.set_output();
         led2.set_output();
         led2.set_output();
+
+        let mut testing: Vec<u32> = Vec::with_capacity(1024);
+        for _ in 0..1024 {
+            testing.push(0);
+        }
+
         loop {
             led1.write_output(true);
             led2.write_output(true);
@@ -221,9 +228,12 @@ fn main() -> ! {
             if count > 10 {
                 count = 0;
             }
+            for e in &mut testing {
+                *e = 0;
+            }
 
             if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 100);
             }
 
             //doors_macros2::kernel_print!("I am groot {}\r\n", count);
@@ -231,9 +241,12 @@ fn main() -> ! {
             led1.write_output(false);
             led2.write_output(false);
             led3.write_output(false);
+            for e in &mut testing {
+                *e = 0xffffffff;
+            }
 
             if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 1000);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 100);
             }
         }
     }

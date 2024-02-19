@@ -440,8 +440,11 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
         }
 
+        //enter command 2 mode, enable parameter shift
         s.write_command(dsi, 0xff00, &[0x80, 9, 1]);
+        //enter orise command 2 mode
         s.write_command(dsi, 0xff80, &[0x80, 9]);
+        //porch and non-display area are gnd
         s.write_command(dsi, 0xc480, &[0x30]);
         {
             use crate::modules::timer::TimerTrait;
@@ -453,6 +456,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
+        //unknown
         s.write_command(dsi, 0xc48a, &[0x40]);
         {
             use crate::modules::timer::TimerTrait;
@@ -464,68 +468,103 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
+        //power control 4 setting, sets te level, ledon level, vcom sample
         s.write_command(dsi, 0xc5b1, &[0xa9]);
+        //charge pump settings
         s.write_command(dsi, 0xc591, &[0x34]);
+        //panel driving mode
         s.write_command(dsi, 0xc0b4, &[0x50]);
+        //vcom voltage
         s.write_command(dsi, 0xd900, &[0x4e]);
-        s.write_command(dsi, 0xc181, &[0x66]); //65 hz display frequency
+        //display frequency idle and normal mode
+        s.write_command(dsi, 0xc181, &[0x55]); //60 hz display frequency
+                                               //charge pump settings
         s.write_command(dsi, 0xc592, &[1]);
+        //charge pump settings
         s.write_command(dsi, 0xc595, &[0x34]);
+        //charge pump settings
         s.write_command(dsi, 0xc594, &[0x33]);
+        //gvdd and nvgdd voltages
         s.write_command(dsi, 0xd800, &[0x79, 0x79]);
+        // sourde driver pull low timing
         s.write_command(dsi, 0xc0a3, &[0x1b]);
+        //power control setting?
         s.write_command(dsi, 0xc582, &[0x83]);
+        //?
         s.write_command(dsi, 0xc480, &[0x83]);
+        //rgb mode setting
         s.write_command(dsi, 0xc1a1, &[0x0e]);
+        //panel type (normal panel)
         s.write_command(dsi, 0xb3a6, &[0, 1]);
+        //goa vst settings
         s.write_command(dsi, 0xce80, &[0x85, 1, 0, 0x84, 1, 0]);
+        //goa clka1 settings
         s.write_command(
             dsi,
             0xcea0,
             &[0x18, 4, 3, 0x39, 0, 0, 0, 0x18, 3, 3, 0x3a, 0, 0, 0],
         );
+        //goa clk3 settings
         s.write_command(
             dsi,
             0xceb0,
             &[0x18, 2, 3, 0x3b, 0, 0, 0, 0x18, 1, 3, 0x3c, 0, 0, 0],
         );
+        //goa eclk settings
         s.write_command(dsi, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0]);
+        //goa other settings
         s.write_command(dsi, 0xcfd0, &[0]);
+        //goa pinmux settings
         s.write_command(dsi, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        //goa pad poweron settings
         s.write_command(dsi, 0xcb90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        //goa pad poweron settings
         s.write_command(dsi, 0xcba0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        //goa pad poweron settings
         s.write_command(dsi, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        //goa pad poweron settings
         s.write_command(dsi, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        //goa pad poweron settings
         s.write_command(dsi, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        //goa pad lvd settings
         s.write_command(
             dsi,
             0xcbf0,
             &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
         );
+        //goa settings for normal scan
         s.write_command(dsi, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0]);
+        //goa settings for normal scan
         s.write_command(
             dsi,
             0xcc90,
             &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x26, 0xa, 0xc, 2],
         );
+        //goa settings for normal scan
         s.write_command(
             dsi,
             0xcca0,
             &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         );
+        //goa settings for reverse scan
         s.write_command(dsi, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0]);
+        //goa settings for normal scan
         s.write_command(
             dsi,
             0xccc0,
             &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0xb, 9, 1],
         );
+        //goa settings for normal scan
         s.write_command(
             dsi,
             0xccd0,
             &[0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         );
+        //pump1 settings
         s.write_command(dsi, 0xc581, &[0x66]);
+        //?
         s.write_command(dsi, 0xf5b6, &[6]);
+        //gamma corrections
         s.write_command(
             dsi,
             0xe100,
@@ -533,6 +572,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
                 0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
             ],
         );
+        //gamma corrections
         s.write_command(
             dsi,
             0xe200,
@@ -540,6 +580,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
                 0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
             ],
         );
+        //?
         s.write_command(dsi, 0xff00, &[0xff, 0xff, 0xff]);
 
         dsi.dcs_basic_command(0, DcsCommandType::Nop);
