@@ -359,30 +359,28 @@ impl super::MipiDsiTrait for Module {
             let htotal =
                 (resolution.h_b_porch + resolution.h_f_porch + resolution.width + resolution.hsync)
                     as u64;
-            let calc1 = htotal * dsi_frequency / 8000;
-            let (f, mut c2) = (calc1 % (pixclock / 1000), calc1 / (pixclock / 1000));
+            let calc1 = htotal * dsi_frequency / 4000;
+            let p = pixclock / 500;
+            let (f, mut c2) = (calc1 % (p), calc1 / (p));
             if f != 0 {
                 c2 += 1;
             }
-            c2 = 0x4fb; //todo remove this hack
             internals.write(0x50 / 4, c2 as u32);
 
             let hsa = resolution.hsync as u64;
-            let calc1: u64 = hsa * dsi_frequency / 8000;
-            let (f, mut c2) = (calc1 % (pixclock / 1000), calc1 / (pixclock / 1000));
+            let calc1: u64 = hsa * dsi_frequency / 4000;
+            let (f, mut c2) = (calc1 % (p), calc1 / (p));
             if f != 0 {
                 c2 += 1;
             }
-            c2 = 0x3a; //todo remove this hack
             internals.write(0x48 / 4, c2 as u32);
 
             let hbp = resolution.h_b_porch as u64;
-            let calc1: u64 = hbp * dsi_frequency / 8000;
-            let (f, mut c2) = (calc1 % (pixclock / 1000), calc1 / (pixclock / 1000));
+            let calc1: u64 = hbp * dsi_frequency / 4000;
+            let (f, mut c2) = (calc1 % (p), calc1 / (p));
             if f != 0 {
                 c2 += 1;
             }
-            c2 = 0xb1; //todo remove this hack
             internals.write(0x4c / 4, c2 as u32);
 
             internals.write(0x60 / 4, resolution.height as u32);

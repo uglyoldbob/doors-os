@@ -219,6 +219,19 @@ fn main() -> ! {
             testing.push(0);
         }
 
+        let advance_val = |a: u32| {
+            if (a & 1) != 0 {
+                0x3f003f<<5
+            }
+            else if (a & 0x80) != 0 {
+                0x1f001f<<11
+            }
+            else {
+                0x1f001f
+            }
+        };
+        let mut color : u32 = 0x1F001F;
+
         loop {
             led1.write_output(true);
             led2.write_output(true);
@@ -229,8 +242,9 @@ fn main() -> ! {
                 count = 0;
             }
             for e in &mut testing {
-                *e = 0;
+                *e = color;
             }
+            color = advance_val(color);
 
             if let Ok(timer) = &timer {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 100);
@@ -242,8 +256,9 @@ fn main() -> ! {
             led2.write_output(false);
             led3.write_output(false);
             for e in &mut testing {
-                *e = 0xffffffff;
+                *e = color;
             }
+            color = advance_val(color);
 
             if let Ok(timer) = &timer {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 100);
