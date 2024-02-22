@@ -354,7 +354,7 @@ pub extern "C" fn _start() -> ! {
     r.set_hse_bypass(true);
     drop(r);
 
-    let mut fmc = unsafe { crate::modules::memory::stm32f769::Fmc::new(0x4002_3c00) };
+    let mut fic = unsafe { crate::modules::memory::stm32f769::FlashInterfaceController::new(0x4002_3c00) };
 
     // enable the external oscillator
     crate::modules::clock::ClockProviderTrait::enable_clock(&ctree, 0);
@@ -380,7 +380,7 @@ pub extern "C" fn _start() -> ! {
         while !pll.clock_is_ready(0) {}
     });
 
-    fmc.set_wait_states(6);
+    fic.set_wait_states(6);
 
     let mut c = ctree.lock();
     c.main_mux_select(2); //use the pll as the sysclk
@@ -531,6 +531,39 @@ pub extern "C" fn _start() -> ! {
         let mut timers = crate::kernel::TIMERS.lock();
         timers.register_timer(timer);
     }
+
+    {
+        use crate::modules::gpio::GpioTrait;
+        use crate::modules::serial::SerialTrait;
+        use crate::modules::timer::TimerInstanceTrait;
+
+        let mut gpio = crate::kernel::GPIO.lock();
+        let mg = gpio.module(0);
+        drop(gpio);
+        let mut gpioa = mg.lock();
+        gpioa.reset(false);
+        //set the pins for the uart hardware
+        gpioa.set_alternate(9, 7);
+        gpioa.set_alternate(10, 7);
+        drop(gpioa);
+
+        let mut serials = crate::kernel::SERIAL.lock();
+        let serial = serials.module(0);
+        drop(serials);
+        let s = serial.lock();
+        s.setup(115200);
+        drop(s);
+        let mut v = crate::VGA.lock();
+        v.replace(TextDisplay::SerialDisplay(
+            crate::modules::video::VideoOverSerial::new(serial),
+        ));
+        drop(v);
+    }
+
+    let fmc_clock = ctree.get_ref(3 * 32);
+    let mut fmc = unsafe { crate::modules::memory::stm32f769::SdramController::new(0xa000_0000, fmc_clock)};
+    fmc.setup_sdram();
+    //todo something with the buffer returned by the sdram setup
 
     let dsi_byte_clock = ctree_pll.get_pll_reference(0).unwrap().get_ref(2);
     let dsi_clock1 =

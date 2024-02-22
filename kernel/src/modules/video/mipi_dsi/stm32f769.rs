@@ -114,7 +114,7 @@ impl Ltdc {
 
         self.write(40, 0x405);
         self.write(45, resolution.height as u32);
-        self.write(43, 0x2002_0000);
+        self.write(43, 0xc000_0000);
 
         self.write(33, 1);
 
@@ -300,20 +300,18 @@ impl super::MipiDsiTrait for Module {
         let e = crate::modules::clock::PllTrait::set_vco_frequency(&dsi_pll, 937_500_000);
         match e {
             Ok(_) => {}
-            Err(e) => loop {
-                match e {
-                    PllVcoSetError::FrequencyOutOfRange => {
-                        doors_macros2::kernel_print!("out of range\r\n")
-                    }
-                    PllVcoSetError::UnknownInputFrequency => {
-                        doors_macros2::kernel_print!("unknown input frequency\r\n")
-                    }
-                    PllVcoSetError::CannotHitFrequency => {
-                        doors_macros2::kernel_print!("cannot hit target frequency\r\n")
-                    }
-                    PllVcoSetError::InputFrequencyOutOfRange => {
-                        doors_macros2::kernel_print!("input out of range\r\n")
-                    }
+            Err(e) => match e {
+                PllVcoSetError::FrequencyOutOfRange => {
+                    doors_macros2::kernel_print!("out of range\r\n")
+                }
+                PllVcoSetError::UnknownInputFrequency => {
+                    doors_macros2::kernel_print!("unknown input frequency\r\n")
+                }
+                PllVcoSetError::CannotHitFrequency => {
+                    doors_macros2::kernel_print!("cannot hit target frequency\r\n")
+                }
+                PllVcoSetError::InputFrequencyOutOfRange => {
+                    doors_macros2::kernel_print!("input out of range\r\n")
                 }
             },
         }
@@ -336,9 +334,11 @@ impl super::MipiDsiTrait for Module {
 
         internals.write(1, 0);
 
-        let rate = 20;
+        let escape_rate = 20_000_000;
+        let divider = dsi_frequency / 4;
+        let divider = divider / escape_rate + 1;
         //calculate the value of 3
-        internals.write(2, 0xa00 | 3);
+        internals.write(2, 0xa00 | (divider as u32 & 0xFF));
 
         internals.write(3, 0);
         internals.write(4, 5);
@@ -395,6 +395,8 @@ impl super::MipiDsiTrait for Module {
         internals.write(0xb4 / 4, 0);
 
         //todo Calculate these
+        //times from hs to lp and ls to hp modes
+        //for both clock and data lanes
         internals.write(0x9c / 4, 0x40402710);
         internals.write(0x98 / 4, 0x400040);
 

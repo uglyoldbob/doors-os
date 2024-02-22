@@ -128,23 +128,9 @@ static VGA: spin::Mutex<Option<TextDisplay>> = spin::Mutex::new(None);
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
 fn main() -> ! {
-    doors_macros2::kernel_print!("I am groot\r\n");
     {
         use crate::modules::gpio::GpioTrait;
-        use crate::modules::serial::SerialTrait;
         use crate::modules::timer::TimerInstanceTrait;
-
-        let mut serials = crate::kernel::SERIAL.lock();
-        let serial = serials.module(0);
-        drop(serials);
-        let s = serial.lock();
-        s.setup(115200);
-        drop(s);
-        let mut v = VGA.lock();
-        v.replace(TextDisplay::SerialDisplay(
-            crate::modules::video::VideoOverSerial::new(serial),
-        ));
-        drop(v);
 
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
@@ -161,9 +147,6 @@ fn main() -> ! {
 
         //set the pin for the mco1 clock output
         gpioa.set_alternate(8, 0);
-        //set the pins for the uart hardware
-        gpioa.set_alternate(9, 7);
-        gpioa.set_alternate(10, 7);
         //enable high speed output for the clock output
         gpioa.set_speed(8, 3);
 
@@ -214,23 +197,18 @@ fn main() -> ! {
         led2.set_output();
         led2.set_output();
 
-        let mut testing: Vec<u32> = Vec::with_capacity(1024);
-        for _ in 0..1024 {
-            testing.push(0);
-        }
+        let testing2 = unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
 
         let advance_val = |a: u32| {
             if (a & 1) != 0 {
-                0x3f003f<<5
-            }
-            else if (a & 0x80) != 0 {
-                0x1f001f<<11
-            }
-            else {
+                0x3f003f << 5
+            } else if (a & 0x80) != 0 {
+                0x1f001f << 11
+            } else {
                 0x1f001f
             }
         };
-        let mut color : u32 = 0x1F001F;
+        let mut color: u32 = 0x1F001F;
 
         loop {
             led1.write_output(true);
@@ -241,8 +219,8 @@ fn main() -> ! {
             if count > 10 {
                 count = 0;
             }
-            for e in &mut testing {
-                *e = color;
+            for e in testing2.iter_mut() {
+                *e = (color & 0xFFFF) as u16;
             }
             color = advance_val(color);
 
@@ -255,8 +233,8 @@ fn main() -> ! {
             led1.write_output(false);
             led2.write_output(false);
             led3.write_output(false);
-            for e in &mut testing {
-                *e = color;
+            for e in testing2.iter_mut() {
+                *e = (color & 0xFFFF) as u16;
             }
             color = advance_val(color);
 

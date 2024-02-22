@@ -24,6 +24,8 @@ pub trait TimerTrait {
 pub trait TimerInstanceTrait {
     /// Delay a specified number of milliseconds
     fn delay_ms(&self, ms: u32);
+    /// Delay a specified number of microseconds
+    fn delay_us(&self, us: u32);
 }
 
 /// An enumeration of all the types of timers
@@ -57,4 +59,6 @@ impl TimerTrait for DummyTimer {
 
 impl TimerInstanceTrait for DummyTimer {
     fn delay_ms(&self, _ms: u32) {}
+
+    fn delay_us(&self, _us: u32) {}
 }

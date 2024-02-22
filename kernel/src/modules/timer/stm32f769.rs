@@ -151,7 +151,67 @@ impl Drop for Timer {
     }
 }
 
+impl Timer {
+    fn delay_cycles(&self, counts_required: u64, mut t: spin::MutexGuard<'_, TimerGroup>) {
+        if counts_required > 0xFFFF {
+            let mut counter = 0;
+            loop {
+                let ccr = t.counter() as u64 + 0xFFFF;
+                t.set_ccr(self.index, (ccr & 0xFFFF) as u16);
+                t.start_timer();
+                loop {
+                    let flag = t.get_compare(self.index);
+                    if flag {
+                        break;
+                    }
+                }
+                t.stop_timer();
+                counter += 0xffff;
+                if counter >= counts_required {
+                    break;
+                }
+            }
+        } else {
+            let ccr = t.counter() as u64 + counts_required;
+            t.set_ccr(self.index, (ccr & 0xFFFF) as u16);
+            t.clear_compare(self.index);
+            t.start_timer();
+            loop {
+                let flag = t.get_compare(self.index);
+                if flag {
+                    break;
+                }
+            }
+            t.stop_timer();
+        }
+    }
+}
+
 impl super::TimerInstanceTrait for LockedArc<Timer> {
+    fn delay_us(&self, us: u32) {
+        let s = self.lock();
+        let mut t = s.timer.lock();
+        t.clock.enable_clock();
+
+        let freq = t.clock.clock_frequency().unwrap();
+        let mut prescaler = freq / 2000000;
+        if prescaler > 0x10000 {
+            prescaler = 0x10000;
+        }
+        if t.try_adjust(prescaler as u32).is_err() {
+            prescaler = t.prescaler() as u64;
+        }
+
+        let counts_required3 = freq * us as u64;
+        let counts_required2 = counts_required3 / 1_000_000;
+        let mut counts_required = counts_required2 / prescaler;
+        let count_mod = counts_required2 % prescaler;
+        if count_mod != 0 {
+            counts_required += 1;
+        }
+        s.delay_cycles(counts_required, t);
+    }
+
     fn delay_ms(&self, ms: u32) {
         let s = self.lock();
         let mut t = s.timer.lock();
@@ -173,36 +233,6 @@ impl super::TimerInstanceTrait for LockedArc<Timer> {
         if count_mod != 0 {
             counts_required += 1;
         }
-        if counts_required > 0xFFFF {
-            let mut counter = 0;
-            loop {
-                let ccr = t.counter() as u64 + 0xFFFF;
-                t.set_ccr(s.index, (ccr & 0xFFFF) as u16);
-                t.start_timer();
-                loop {
-                    let flag = t.get_compare(s.index);
-                    if flag {
-                        break;
-                    }
-                }
-                t.stop_timer();
-                counter += 0xffff;
-                if counter >= counts_required {
-                    break;
-                }
-            }
-        } else {
-            let ccr = t.counter() as u64 + counts_required;
-            t.set_ccr(s.index, (ccr & 0xFFFF) as u16);
-            t.clear_compare(s.index);
-            t.start_timer();
-            loop {
-                let flag = t.get_compare(s.index);
-                if flag {
-                    break;
-                }
-            }
-            t.stop_timer();
-        }
+        s.delay_cycles(counts_required, t);
     }
 }
