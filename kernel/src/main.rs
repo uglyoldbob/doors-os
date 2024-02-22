@@ -150,9 +150,6 @@ fn main() -> ! {
         //enable high speed output for the clock output
         gpioa.set_speed(8, 3);
 
-        gpioa.set_output(12);
-        j.set_output(5);
-        j.set_output(13);
         let mut count = 0;
 
         gpioi.reset(false);
@@ -195,7 +192,7 @@ fn main() -> ! {
 
         led1.set_output();
         led2.set_output();
-        led2.set_output();
+        led3.set_output();
 
         let testing2 = unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
 
@@ -225,10 +222,8 @@ fn main() -> ! {
             color = advance_val(color);
 
             if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 100);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 500);
             }
-
-            //doors_macros2::kernel_print!("I am groot {}\r\n", count);
 
             led1.write_output(false);
             led2.write_output(false);
@@ -239,7 +234,7 @@ fn main() -> ! {
             color = advance_val(color);
 
             if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 100);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 500);
             }
         }
     }
