@@ -127,6 +127,45 @@ static VGA: spin::Mutex<Option<TextDisplay>> = spin::Mutex::new(None);
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
+struct ColorCycler {
+    color: u16,
+    num_bits: u8,
+    shift: u8,
+}
+
+impl ColorCycler {
+    fn new() -> Self {
+        Self {
+            color: 1,
+            num_bits: 1,
+            shift: 0,
+        }
+    }
+
+    fn get_color(&self) -> u16 {
+        self.color
+    }
+
+    fn advance(&mut self) {
+        if (self.num_bits + self.shift) < 15 {
+            self.shift += 1;
+        }
+        else {
+            self.shift = 0;
+            if self.num_bits < 14 {
+                self.num_bits += 1;
+            }
+            else {
+                self.num_bits = 1;
+            }
+        }
+
+        let ones = 0xffff>>(16-self.num_bits);
+        let val = ones<<self.shift;
+        self.color = val;
+    }
+}
+
 fn main() -> ! {
     {
         use crate::modules::gpio::GpioTrait;
@@ -196,16 +235,7 @@ fn main() -> ! {
 
         let testing2 = unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
 
-        let advance_val = |a: u32| {
-            if (a & 1) != 0 {
-                0x3f003f << 5
-            } else if (a & 0x80) != 0 {
-                0x1f001f << 11
-            } else {
-                0x1f001f
-            }
-        };
-        let mut color: u32 = 0x1F001F;
+        let mut color = ColorCycler::new();
 
         loop {
             led1.write_output(true);
@@ -217,9 +247,9 @@ fn main() -> ! {
                 count = 0;
             }
             for e in testing2.iter_mut() {
-                *e = (color & 0xFFFF) as u16;
+                *e = color.get_color();
             }
-            color = advance_val(color);
+            color.advance();
 
             if let Ok(timer) = &timer {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 500);
@@ -229,9 +259,9 @@ fn main() -> ! {
             led2.write_output(false);
             led3.write_output(false);
             for e in testing2.iter_mut() {
-                *e = (color & 0xFFFF) as u16;
+                *e = color.get_color();
             }
-            color = advance_val(color);
+            color.advance();
 
             if let Ok(timer) = &timer {
                 crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 500);

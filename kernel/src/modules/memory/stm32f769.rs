@@ -320,7 +320,7 @@ impl SdramController {
         let val = 1542<<1;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x154) / 4], val) };
 
-        unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u8, 32 * 1024 * 1024) }
+        unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u8, 16 * 1024 * 1024) }
     }
 }
 
