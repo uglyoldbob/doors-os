@@ -175,11 +175,29 @@ impl<'a> DcsCommand<'a> {
     }
 }
 
+/// Errors that can occur when setting up a dsi panel
+pub enum PanelSetupError {
+    /// Timeout communicating with the display
+    Timeout,
+    /// A command for setup failed
+    CommandFailed(DcsCommandError),
+}
+
+impl From<DcsCommandError> for PanelSetupError {
+    fn from(value: DcsCommandError) -> Self {
+        PanelSetupError::CommandFailed(value)
+    }
+}
+
 /// A trait that mipi-dsi panels implement.
 #[enum_dispatch::enum_dispatch]
 pub trait DsiPanelTrait {
     /// Runs setup commands for the panel when initializing the hardware
-    fn setup(&self, dsi: &mut MipiDsiDcs, resolution: &ScreenResolution);
+    fn setup(
+        &self,
+        dsi: &mut MipiDsiDcs,
+        resolution: &ScreenResolution,
+    ) -> Result<(), PanelSetupError>;
     /// Returns an array of potential resolutions for the panel
     fn get_resolutions(&self, resout: &mut Vec<ScreenResolution>);
 }
@@ -197,45 +215,75 @@ pub enum DsiPanel {
 pub struct DummyDsiPanel {}
 
 impl DsiPanelTrait for DummyDsiPanel {
-    fn setup(&self, _dsi: &mut MipiDsiDcs, resolution: &ScreenResolution) {}
+    fn setup(
+        &self,
+        _dsi: &mut MipiDsiDcs,
+        _resolution: &ScreenResolution,
+    ) -> Result<(), PanelSetupError> {
+        Ok(())
+    }
 
     fn get_resolutions(&self, _resout: &mut Vec<ScreenResolution>) {}
+}
+
+/// The errors that can occur when transferring a dcs command on a mipi-dsi bus.
+pub enum DcsCommandError {
+    /// A timeout occurred.
+    Timeout,
+    /// An invalid command was attempted
+    InvalidCommand,
+    /// An invalid packet was attempted
+    InvalidPacket,
 }
 
 /// The trait involved when sending dcs commands
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiDcsTrait {
     /// Dcs command that writes a buffer, not used yet.
-    fn dcs_do_command<'a>(&mut self, cmd: &mut DcsCommand<'a>) -> Result<(), ()>;
+    fn dcs_do_command<'a>(&mut self, cmd: &mut DcsCommand<'a>) -> Result<(), DcsCommandError>;
     /// A dcs write buffer command
-    fn dcs_write_buffer(&mut self, channel: u8, buf: &[u8]) -> Result<(), ()> {
+    fn dcs_write_buffer(&mut self, channel: u8, buf: &[u8]) -> Result<(), DcsCommandError> {
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), buf);
         if cmd.is_err() {
-            return Err(());
+            return Err(DcsCommandError::InvalidCommand);
         }
         self.dcs_do_command(&mut cmd.unwrap())
     }
     /// A dcs read write command
-    fn dcs_read_write(&mut self, channel: u8, buf: &[u8], dout: &mut [u8]) -> Result<(), ()> {
+    fn dcs_read_write(
+        &mut self,
+        channel: u8,
+        buf: &[u8],
+        dout: &mut [u8],
+    ) -> Result<(), DcsCommandError> {
         let cmd = DcsCommand::create_write_read(channel, DcsCommandFlags::empty(), buf, dout);
         if cmd.is_err() {
-            return Err(());
+            return Err(DcsCommandError::InvalidCommand);
         }
         self.dcs_do_command(&mut cmd.unwrap())
     }
 
     /// A dcs nop command
-    fn dcs_basic_command(&mut self, channel: u8, cmd: DcsCommandType) -> Result<(), ()> {
+    fn dcs_basic_command(
+        &mut self,
+        channel: u8,
+        cmd: DcsCommandType,
+    ) -> Result<(), DcsCommandError> {
         let data = [cmd as u8];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
-            return Err(());
+            return Err(DcsCommandError::InvalidCommand);
         }
         self.dcs_do_command(&mut cmd.unwrap())
     }
 
     /// Set the column boundaries
-    fn dcs_set_column_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(), ()> {
+    fn dcs_set_column_address(
+        &mut self,
+        channel: u8,
+        start: u16,
+        end: u16,
+    ) -> Result<(), DcsCommandError> {
         let s8 = start.to_be_bytes();
         let e8 = end.to_be_bytes();
         let data = [
@@ -247,13 +295,18 @@ pub trait MipiDsiDcsTrait {
         ];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
-            return Err(());
+            return Err(DcsCommandError::InvalidCommand);
         }
         self.dcs_do_command(&mut cmd.unwrap())
     }
 
     ///Set the page address
-    fn dcs_set_page_address(&mut self, channel: u8, start: u16, end: u16) -> Result<(), ()> {
+    fn dcs_set_page_address(
+        &mut self,
+        channel: u8,
+        start: u16,
+        end: u16,
+    ) -> Result<(), DcsCommandError> {
         let s8 = start.to_be_bytes();
         let e8 = end.to_be_bytes();
         let data = [
@@ -265,17 +318,17 @@ pub trait MipiDsiDcsTrait {
         ];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
-            return Err(());
+            return Err(DcsCommandError::InvalidCommand);
         }
         self.dcs_do_command(&mut cmd.unwrap())
     }
 
     /// Set the pixel format
-    fn dcs_set_pixel_format(&mut self, channel: u8, format: u8) -> Result<(), ()> {
+    fn dcs_set_pixel_format(&mut self, channel: u8, format: u8) -> Result<(), DcsCommandError> {
         let data = [DcsCommandType::SetPixelFormat as u8, format];
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), &data);
         if cmd.is_err() {
-            return Err(());
+            return Err(DcsCommandError::InvalidCommand);
         }
         self.dcs_do_command(&mut cmd.unwrap())
     }
@@ -295,16 +348,25 @@ pub enum MipiDsiDcs {
 pub struct DummyDcsProvider {}
 
 impl MipiDsiDcsTrait for DummyDcsProvider {
-    fn dcs_do_command<'a>(&mut self, _cmd: &mut DcsCommand<'a>) -> Result<(), ()> {
-        Err(())
+    fn dcs_do_command<'a>(&mut self, _cmd: &mut DcsCommand<'a>) -> Result<(), DcsCommandError> {
+        Ok(())
     }
+}
+
+/// The errors that can occur enabling a dsi module.
+pub enum DsiEnableError {
+    /// An error occurred seting up an attached panel
+    PanelError(PanelSetupError),
+    /// An unknown error occurred
+    Unknown,
 }
 
 /// The trait that all mipi dsi providers must implement
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiTrait {
     /// Enable the hardware
-    fn enable(&self, config: &MipiDsiConfig, panel: Option<DsiPanel>);
+    fn enable(&self, config: &MipiDsiConfig, panel: Option<DsiPanel>)
+        -> Result<(), DsiEnableError>;
     /// Disable the hardware
     fn disable(&self);
 }
@@ -325,7 +387,13 @@ pub struct DummyMipiCsi {}
 impl MipiDsiTrait for DummyMipiCsi {
     fn disable(&self) {}
 
-    fn enable(&self, _config: &MipiDsiConfig, _panel: Option<DsiPanel>) {}
+    fn enable(
+        &self,
+        _config: &MipiDsiConfig,
+        _panel: Option<DsiPanel>,
+    ) -> Result<(), DsiEnableError> {
+        Ok(())
+    }
 }
 
 /// The orisetech otm8009a panel. https://www.orientdisplay.com/pdf/OTM8009A.pdf
@@ -359,16 +427,22 @@ impl OrisetechOtm8009a {
     }
 
     /// Write a basic command to the panel
-    fn write_command(&self, dsi: &mut MipiDsiDcs, cmd: u16, data: &[u8]) {
+    fn write_command(
+        &self,
+        dsi: &mut MipiDsiDcs,
+        cmd: u16,
+        data: &[u8],
+    ) -> Result<(), DcsCommandError> {
         let first = [0, (cmd & 0xFF) as u8];
-        dsi.dcs_write_buffer(0, &first);
+        dsi.dcs_write_buffer(0, &first)?;
 
         let ta = [(cmd >> 8) as u8];
         let v = ta.iter();
         let v2 = data.iter();
         let v3 = v.chain(v2);
         let v: Vec<u8> = v3.map(|v| *v).collect();
-        dsi.dcs_write_buffer(0, &v);
+        dsi.dcs_write_buffer(0, &v)?;
+        Ok(())
     }
 
     /// Read id from the panel
@@ -407,7 +481,11 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         resout.push(s.resolution.clone());
     }
 
-    fn setup(&self, dsi: &mut MipiDsiDcs, resolution: &ScreenResolution) {
+    fn setup(
+        &self,
+        dsi: &mut MipiDsiDcs,
+        resolution: &ScreenResolution,
+    ) -> Result<(), PanelSetupError> {
         let mut s = self.lock();
         s.reset.set_output();
         if let Some(backlight) = &mut s.backlight {
@@ -441,11 +519,11 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         }
 
         //enter command 2 mode, enable parameter shift
-        s.write_command(dsi, 0xff00, &[0x80, 9, 1]);
+        s.write_command(dsi, 0xff00, &[0x80, 9, 1])?;
         //enter orise command 2 mode
-        s.write_command(dsi, 0xff80, &[0x80, 9]);
+        s.write_command(dsi, 0xff80, &[0x80, 9])?;
         //porch and non-display area are gnd
-        s.write_command(dsi, 0xc480, &[0x30]);
+        s.write_command(dsi, 0xc480, &[0x30])?;
         {
             use crate::modules::timer::TimerTrait;
             let mut timers = crate::kernel::TIMERS.lock();
@@ -457,7 +535,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
         //unknown
-        s.write_command(dsi, 0xc48a, &[0x40]);
+        s.write_command(dsi, 0xc48a, &[0x40])?;
         {
             use crate::modules::timer::TimerTrait;
             let mut timers = crate::kernel::TIMERS.lock();
@@ -469,101 +547,101 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
         //power control 4 setting, sets te level, ledon level, vcom sample
-        s.write_command(dsi, 0xc5b1, &[0xa9]);
+        s.write_command(dsi, 0xc5b1, &[0xa9])?;
         //charge pump settings
-        s.write_command(dsi, 0xc591, &[0x34]);
+        s.write_command(dsi, 0xc591, &[0x34])?;
         //panel driving mode
-        s.write_command(dsi, 0xc0b4, &[0x50]);
+        s.write_command(dsi, 0xc0b4, &[0x50])?;
         //vcom voltage
-        s.write_command(dsi, 0xd900, &[0x4e]);
+        s.write_command(dsi, 0xd900, &[0x4e])?;
         //display frequency idle and normal mode
-        s.write_command(dsi, 0xc181, &[0x55]); //60 hz display frequency
-                                               //charge pump settings
-        s.write_command(dsi, 0xc592, &[1]);
+        s.write_command(dsi, 0xc181, &[0x55])?; //60 hz display frequency
+                                                //charge pump settings
+        s.write_command(dsi, 0xc592, &[1])?;
         //charge pump settings
-        s.write_command(dsi, 0xc595, &[0x34]);
+        s.write_command(dsi, 0xc595, &[0x34])?;
         //charge pump settings
-        s.write_command(dsi, 0xc594, &[0x33]);
+        s.write_command(dsi, 0xc594, &[0x33])?;
         //gvdd and nvgdd voltages
-        s.write_command(dsi, 0xd800, &[0x79, 0x79]);
+        s.write_command(dsi, 0xd800, &[0x79, 0x79])?;
         // sourde driver pull low timing
-        s.write_command(dsi, 0xc0a3, &[0x1b]);
+        s.write_command(dsi, 0xc0a3, &[0x1b])?;
         //power control setting?
-        s.write_command(dsi, 0xc582, &[0x83]);
+        s.write_command(dsi, 0xc582, &[0x83])?;
         //?
-        s.write_command(dsi, 0xc480, &[0x83]);
+        s.write_command(dsi, 0xc480, &[0x83])?;
         //rgb mode setting
-        s.write_command(dsi, 0xc1a1, &[0x0e]);
+        s.write_command(dsi, 0xc1a1, &[0x0e])?;
         //panel type (normal panel)
-        s.write_command(dsi, 0xb3a6, &[0, 1]);
+        s.write_command(dsi, 0xb3a6, &[0, 1])?;
         //goa vst settings
-        s.write_command(dsi, 0xce80, &[0x85, 1, 0, 0x84, 1, 0]);
+        s.write_command(dsi, 0xce80, &[0x85, 1, 0, 0x84, 1, 0])?;
         //goa clka1 settings
         s.write_command(
             dsi,
             0xcea0,
             &[0x18, 4, 3, 0x39, 0, 0, 0, 0x18, 3, 3, 0x3a, 0, 0, 0],
-        );
+        )?;
         //goa clk3 settings
         s.write_command(
             dsi,
             0xceb0,
             &[0x18, 2, 3, 0x3b, 0, 0, 0, 0x18, 1, 3, 0x3c, 0, 0, 0],
-        );
+        )?;
         //goa eclk settings
-        s.write_command(dsi, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0]);
+        s.write_command(dsi, 0xcfc0, &[0x1, 1, 0x20, 0x20, 0, 0, 1, 2, 0, 0])?;
         //goa other settings
-        s.write_command(dsi, 0xcfd0, &[0]);
+        s.write_command(dsi, 0xcfd0, &[0])?;
         //goa pinmux settings
-        s.write_command(dsi, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcb80, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
         //goa pad poweron settings
-        s.write_command(dsi, 0xcb90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcb90, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
         //goa pad poweron settings
-        s.write_command(dsi, 0xcba0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcba0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
         //goa pad poweron settings
-        s.write_command(dsi, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcbb0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
         //goa pad poweron settings
-        s.write_command(dsi, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcbc0, &[0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
         //goa pad poweron settings
-        s.write_command(dsi, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcbe0, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
         //goa pad lvd settings
         s.write_command(
             dsi,
             0xcbf0,
             &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
-        );
+        )?;
         //goa settings for normal scan
-        s.write_command(dsi, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xcc80, &[0, 0x26, 9, 0xb, 1, 0x25, 0, 0, 0, 0])?;
         //goa settings for normal scan
         s.write_command(
             dsi,
             0xcc90,
             &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x26, 0xa, 0xc, 2],
-        );
+        )?;
         //goa settings for normal scan
         s.write_command(
             dsi,
             0xcca0,
             &[0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        );
+        )?;
         //goa settings for reverse scan
-        s.write_command(dsi, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0]);
+        s.write_command(dsi, 0xccb0, &[0, 0x25, 0xc, 0xa, 2, 0x26, 0, 0, 0, 0])?;
         //goa settings for normal scan
         s.write_command(
             dsi,
             0xccc0,
             &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x25, 0xb, 9, 1],
-        );
+        )?;
         //goa settings for normal scan
         s.write_command(
             dsi,
             0xccd0,
             &[0x26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        );
+        )?;
         //pump1 settings
-        s.write_command(dsi, 0xc581, &[0x66]);
+        s.write_command(dsi, 0xc581, &[0x66])?;
         //?
-        s.write_command(dsi, 0xf5b6, &[6]);
+        s.write_command(dsi, 0xf5b6, &[6])?;
         //gamma corrections
         s.write_command(
             dsi,
@@ -571,7 +649,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             &[
                 0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
             ],
-        );
+        )?;
         //gamma corrections
         s.write_command(
             dsi,
@@ -579,12 +657,12 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             &[
                 0, 9, 0xf, 0xe, 7, 0x10, 0xb, 0xa, 4, 7, 0xb, 8, 0xf, 0x10, 0xa, 1,
             ],
-        );
+        )?;
         //?
-        s.write_command(dsi, 0xff00, &[0xff, 0xff, 0xff]);
+        s.write_command(dsi, 0xff00, &[0xff, 0xff, 0xff])?;
 
-        dsi.dcs_basic_command(0, DcsCommandType::Nop);
-        dsi.dcs_basic_command(0, DcsCommandType::ExitSleep);
+        dsi.dcs_basic_command(0, DcsCommandType::Nop)?;
+        dsi.dcs_basic_command(0, DcsCommandType::ExitSleep)?;
 
         {
             use crate::modules::timer::TimerTrait;
@@ -598,28 +676,28 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         }
 
         let data = [DcsCommandType::SetAddressMode as u8, 0];
-        dsi.dcs_write_buffer(0, &data);
+        dsi.dcs_write_buffer(0, &data)?;
 
-        dsi.dcs_set_column_address(0, 0, resolution.width - 1);
-        dsi.dcs_set_page_address(0, 0, resolution.height - 1);
+        dsi.dcs_set_column_address(0, 0, resolution.width - 1)?;
+        dsi.dcs_set_page_address(0, 0, resolution.height - 1)?;
 
         //set pixel format
-        dsi.dcs_set_pixel_format(0, 0x77);
+        dsi.dcs_set_pixel_format(0, 0x77)?;
 
         let data = [DcsCommandType::WritePowerSave as u8, 0];
-        dsi.dcs_write_buffer(0, &data);
+        dsi.dcs_write_buffer(0, &data)?;
 
-        dsi.dcs_basic_command(0, DcsCommandType::DisplayOn);
-        dsi.dcs_basic_command(0, DcsCommandType::Nop);
-        dsi.dcs_basic_command(0, DcsCommandType::WriteMemoryStart);
+        dsi.dcs_basic_command(0, DcsCommandType::DisplayOn)?;
+        dsi.dcs_basic_command(0, DcsCommandType::Nop)?;
+        dsi.dcs_basic_command(0, DcsCommandType::WriteMemoryStart)?;
 
         let data = [DcsCommandType::SetDisplayBrightness as u8, 240];
-        dsi.dcs_write_buffer(0, &data);
+        dsi.dcs_write_buffer(0, &data)?;
 
         let data = [DcsCommandType::WriteControlDisplay as u8, 0x24];
-        dsi.dcs_write_buffer(0, &data);
+        dsi.dcs_write_buffer(0, &data)?;
 
-        dsi.dcs_basic_command(0, DcsCommandType::WriteControlDisplay);
+        dsi.dcs_basic_command(0, DcsCommandType::WriteControlDisplay)?;
 
         {
             use crate::modules::timer::TimerTrait;
@@ -631,5 +709,6 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
         }
+        Ok(())
     }
 }

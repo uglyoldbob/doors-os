@@ -52,14 +52,14 @@ impl VideoOverSerial {
 
 impl TextDisplayTrait for VideoOverSerial {
     fn print_char(&mut self, d: char) {
-        let mut port = self.port.lock();
+        let port = self.port.lock();
         let mut c = [0; 4];
         let s = d.encode_utf8(&mut c);
         port.sync_transmit_str(s);
     }
 
     fn print_str(&mut self, d: &str) {
-        let mut port = self.port.lock();
+        let port = self.port.lock();
         port.sync_transmit_str(d);
     }
 }

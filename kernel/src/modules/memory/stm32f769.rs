@@ -47,8 +47,8 @@ impl SdramController {
     /// Wait until the sdram controller is not busy
     fn sdram_wait_until_not_busy(&mut self) {
         loop {
-            let val = unsafe { core::ptr::read_volatile(&self.regs[0x158/4]) };
-            if (val & (1<<5)) == 0 {
+            let val = unsafe { core::ptr::read_volatile(&self.regs[0x158 / 4]) };
+            if (val & (1 << 5)) == 0 {
                 break;
             }
         }
@@ -128,7 +128,7 @@ impl SdramController {
             gpiof.set_alternate(15, 12); //a9
             gpiog.set_alternate(0, 12); //a10
             gpiog.set_alternate(1, 12); //a11
-            //a12 not connected
+                                        //a12 not connected
 
             gpiog.set_alternate(4, 12); //ba0
             gpiog.set_alternate(5, 12); //ba1
@@ -191,7 +191,7 @@ impl SdramController {
             gpiof.set_speed(15, 3); //a9
             gpiog.set_speed(0, 3); //a10
             gpiog.set_speed(1, 3); //a11
-            //a12 not connected
+                                   //a12 not connected
 
             gpiog.set_speed(4, 3); //ba0
             gpiog.set_speed(5, 3); //ba1
@@ -207,9 +207,7 @@ impl SdramController {
             gpiof.set_speed(11, 3); //nras
             gpiog.set_speed(15, 3); //ncas
             gpioh.set_speed(5, 3); //nwe
-
         }
-
 
         let control = SdramControl {
             columns: 0,
@@ -243,16 +241,16 @@ impl SdramController {
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x140) / 4], val) };
 
         let val = (timing.tmrd as u32)
-            | (timing.txsr as u32)<<4
-            | (timing.tras as u32)<<8
-            | (timing.trc as u32)<<12
-            | (timing.twr as u32)<<16
-            | (timing.trp as u32)<<20
-            | (timing.trcd as u32)<<24;
+            | (timing.txsr as u32) << 4
+            | (timing.tras as u32) << 8
+            | (timing.trc as u32) << 12
+            | (timing.twr as u32) << 16
+            | (timing.trp as u32) << 20
+            | (timing.trcd as u32) << 24;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x148) / 4], val) };
-        
+
         // clock configuration enable for bank 1
-        let val = (1<<4) | 1;
+        let val = (1 << 4) | 1;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
 
         {
@@ -268,7 +266,7 @@ impl SdramController {
         self.sdram_wait_until_not_busy();
 
         //precharge bank
-        let val = (1<<4) | 2;
+        let val = (1 << 4) | 2;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
         {
             use crate::modules::timer::TimerTrait;
@@ -283,7 +281,7 @@ impl SdramController {
         self.sdram_wait_until_not_busy();
 
         // auto-refresh command with 8 auto-refresh cycles
-        let val = (1<<4) | 3 | 7<<5;
+        let val = (1 << 4) | 3 | 7 << 5;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
         {
             use crate::modules::timer::TimerTrait;
@@ -298,7 +296,7 @@ impl SdramController {
         self.sdram_wait_until_not_busy();
 
         //load mode register with cas latency
-        let val = (1<<4) | 4 | (control.cas_latency as u32)<<13;
+        let val = (1 << 4) | 4 | (control.cas_latency as u32) << 13;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
         {
             use crate::modules::timer::TimerTrait;
@@ -313,11 +311,11 @@ impl SdramController {
         self.sdram_wait_until_not_busy();
 
         //normal mode command
-        let val = 1<<4;
+        let val = 1 << 4;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
 
         //refresh the timer
-        let val = 1542<<1;
+        let val = 1542 << 1;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x154) / 4], val) };
 
         unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u8, 16 * 1024 * 1024) }
@@ -361,4 +359,3 @@ struct SdramTiming {
     /// Delay between active and read/write commands. 0 = 1 cycle, 15 = 16 cycles.
     trcd: u8,
 }
-

@@ -16,7 +16,6 @@ pub mod kernel;
 pub mod modules;
 
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
@@ -149,19 +148,17 @@ impl ColorCycler {
     fn advance(&mut self) {
         if (self.num_bits + self.shift) < 15 {
             self.shift += 1;
-        }
-        else {
+        } else {
             self.shift = 0;
             if self.num_bits < 14 {
                 self.num_bits += 1;
-            }
-            else {
+            } else {
                 self.num_bits = 1;
             }
         }
 
-        let ones = 0xffff>>(16-self.num_bits);
-        let val = ones<<self.shift;
+        let ones = 0xffff >> (16 - self.num_bits);
+        let val = ones << self.shift;
         self.color = val;
     }
 }
@@ -233,7 +230,8 @@ fn main() -> ! {
         led2.set_output();
         led3.set_output();
 
-        let testing2 = unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
+        let testing2 =
+            unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
 
         let mut color = ColorCycler::new();
 
@@ -249,6 +247,9 @@ fn main() -> ! {
             for e in testing2.iter_mut() {
                 *e = color.get_color();
             }
+            for i in 0..800 {
+                testing2[i * 480 + 32] = 0;
+            }
             color.advance();
 
             if let Ok(timer) = &timer {
@@ -260,6 +261,9 @@ fn main() -> ! {
             led3.write_output(false);
             for e in testing2.iter_mut() {
                 *e = color.get_color();
+            }
+            for i in 0..800 {
+                testing2[i * 480 + 32] = 0;
             }
             color.advance();
 

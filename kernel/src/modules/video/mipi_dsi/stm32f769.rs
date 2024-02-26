@@ -132,12 +132,14 @@ pub struct DcsProvider {
 }
 
 impl super::MipiDsiDcsTrait for DcsProvider {
-    fn dcs_do_command<'a>(&mut self, cmd: &mut super::DcsCommand<'a>) -> Result<(), ()> {
-        let flags = cmd.flags;
+    fn dcs_do_command<'a>(
+        &mut self,
+        cmd: &mut super::DcsCommand<'a>,
+    ) -> Result<(), super::DcsCommandError> {
         let mut internals = self.internals.lock();
         let packet = cmd.build_packet();
         if packet.is_err() {
-            return Err(());
+            return Err(super::DcsCommandError::InvalidPacket);
         }
         let packet = packet.unwrap();
         internals.write_packet(&packet);
@@ -274,7 +276,11 @@ pub struct Module {
 }
 
 impl super::MipiDsiTrait for Module {
-    fn enable(&self, config: &super::MipiDsiConfig, panel: Option<super::DsiPanel>) {
+    fn enable(
+        &self,
+        config: &super::MipiDsiConfig,
+        panel: Option<super::DsiPanel>,
+    ) -> Result<(), super::DsiEnableError> {
         self.cc.enable_clock(5 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
@@ -455,12 +461,16 @@ impl super::MipiDsiTrait for Module {
 
         if let Some(panel) = panel {
             if let Some(resolution) = &resolution {
-                panel.setup(
+                if let Err(e) = panel.setup(
                     &mut super::MipiDsiDcs::Stm32f769(DcsProvider {
                         internals: self.internals.clone(),
                     }),
                     resolution,
-                );
+                ) {
+                    return Err(crate::modules::video::mipi_dsi::DsiEnableError::PanelError(
+                        e,
+                    ));
+                }
             }
         }
         let mut internals = self.internals.lock();
@@ -476,6 +486,7 @@ impl super::MipiDsiTrait for Module {
         internals.write(1, 1);
 
         drop(internals);
+        Ok(())
     }
 
     fn disable(&self) {

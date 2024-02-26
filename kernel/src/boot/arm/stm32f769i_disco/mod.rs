@@ -354,7 +354,8 @@ pub extern "C" fn _start() -> ! {
     r.set_hse_bypass(true);
     drop(r);
 
-    let mut fic = unsafe { crate::modules::memory::stm32f769::FlashInterfaceController::new(0x4002_3c00) };
+    let mut fic =
+        unsafe { crate::modules::memory::stm32f769::FlashInterfaceController::new(0x4002_3c00) };
 
     // enable the external oscillator
     crate::modules::clock::ClockProviderTrait::enable_clock(&ctree, 0);
@@ -561,7 +562,8 @@ pub extern "C" fn _start() -> ! {
     }
 
     let fmc_clock = ctree.get_ref(3 * 32);
-    let mut fmc = unsafe { crate::modules::memory::stm32f769::SdramController::new(0xa000_0000, fmc_clock)};
+    let mut fmc =
+        unsafe { crate::modules::memory::stm32f769::SdramController::new(0xa000_0000, fmc_clock) };
     fmc.setup_sdram();
     //todo something with the buffer returned by the sdram setup
 
