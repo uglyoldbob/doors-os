@@ -76,7 +76,7 @@ impl TimerHandler {
 /// Tracks all displays in the kernel
 pub struct DisplayHandler {
     /// The dsi displays
-    displays: Vec<LockedArc<crate::modules::video::mipi_dsi::MipiDsiProvider>>,
+    displays: Vec<LockedArc<crate::modules::video::Display>>,
 }
 
 impl DisplayHandler {
@@ -88,15 +88,12 @@ impl DisplayHandler {
     }
 
     /// Register a display
-    pub fn register_display(&mut self, d: crate::modules::video::mipi_dsi::MipiDsiProvider) {
+    pub fn register_display(&mut self, d: crate::modules::video::Display) {
         self.displays.push(LockedArc::new(d));
     }
 
     /// Get a display module
-    pub fn module(
-        &mut self,
-        i: usize,
-    ) -> LockedArc<crate::modules::video::mipi_dsi::MipiDsiProvider> {
+    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::video::Display> {
         self.displays[i].clone()
     }
 }

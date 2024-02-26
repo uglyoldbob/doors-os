@@ -166,18 +166,14 @@ impl ColorCycler {
 fn main() -> ! {
     {
         use crate::modules::gpio::GpioTrait;
-        use crate::modules::timer::TimerInstanceTrait;
 
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
 
         let mj = gpio.module(9);
-        let mi = gpio.module(8);
         drop(gpio);
-        let mut gpioa = mg.lock();
-
-        let mut gpioi = mi.lock();
-        let mut j = mj.lock();
+        let gpioa = mg.lock();
+        let j = mj.lock();
 
         let mut mco_pin = gpioa.get_pin(8).unwrap();
         mco_pin.set_alternate(0);
@@ -185,35 +181,11 @@ fn main() -> ! {
 
         let mut count = 0;
 
-        let lcd_backlight = gpioi.get_pin(14).unwrap();
         let mut led1 = gpioa.get_pin(12).unwrap();
         let mut led2 = j.get_pin(5).unwrap();
         let mut led3 = j.get_pin(13).unwrap();
 
-        let lcd_reset = j.get_pin(15);
-
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
-
-        let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
-            link_speed: 500_000_000,
-            num_lanes: 2,
-            vcid: 0,
-        };
-
-        let mut displays = crate::kernel::DISPLAYS.lock();
-        let dsi = displays.module(0);
-        let dsi = dsi.lock();
-        let panel = Some(
-            crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(LockedArc::new(
-                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(
-                    lcd_reset,
-                    Some(lcd_backlight),
-                ),
-            )),
-        );
-        dsi.enable(&dsi_config, panel);
-        drop(dsi);
-        drop(displays);
 
         let mut timers = crate::kernel::TIMERS.lock();
         let tp = timers.module(0);
@@ -230,11 +202,12 @@ fn main() -> ! {
             unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
 
         let mut color = ColorCycler::new();
+        let mut led = false;
 
         loop {
-            led1.write_output(true);
-            led2.write_output(true);
-            led3.write_output(true);
+            led1.write_output(led);
+            led2.write_output(led);
+            led3.write_output(led);
 
             count += 1;
             if count > 10 {
@@ -247,24 +220,10 @@ fn main() -> ! {
                 testing2[i * 480 + 32] = 0;
             }
             color.advance();
+            led = !led;
 
             if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 500);
-            }
-
-            led1.write_output(false);
-            led2.write_output(false);
-            led3.write_output(false);
-            for e in testing2.iter_mut() {
-                *e = color.get_color();
-            }
-            for i in 0..800 {
-                testing2[i * 480 + 32] = 0;
-            }
-            color.advance();
-
-            if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 500);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 250);
             }
         }
     }

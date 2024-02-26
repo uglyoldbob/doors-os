@@ -1,5 +1,7 @@
 //! Video related kernel modules
 
+use alloc::vec::Vec;
+
 use crate::LockedArc;
 
 use super::serial::SerialTrait;
@@ -9,6 +11,38 @@ pub mod text;
 pub mod vga;
 
 pub mod mipi_dsi;
+
+/// A simple memory based framebuffer
+pub struct SimpleRamFramebuffer {
+    /// The actual contents of the framebuffer
+    buffer: Vec<u8>,
+}
+
+impl FramebufferTrait for SimpleRamFramebuffer {
+    unsafe fn address(&self) -> usize {
+        self.buffer.as_ptr() as usize
+    }
+}
+
+/// The trait for all framebuffer devices
+#[enum_dispatch::enum_dispatch]
+pub trait FramebufferTrait {
+    /// Return the address of the framebuffer
+    unsafe fn address(&self) -> usize;
+}
+
+/// A framebuffer for the kernel
+#[enum_dispatch::enum_dispatch(FramebufferTrait)]
+pub enum Framebuffer {
+    /// A framebuffer that lives in plain memory
+    SimpleRam(SimpleRamFramebuffer),
+}
+
+/// The various types of graphics displays that can exist
+pub enum Display {
+    /// A framebuffer based display
+    Framebuffer(Framebuffer),
+}
 
 /// This trait is used for text only video output hardware
 #[enum_dispatch::enum_dispatch]

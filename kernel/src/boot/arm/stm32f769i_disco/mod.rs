@@ -1,5 +1,6 @@
 //! Boot code for the stm32F769i-disco development board
 
+use crate::modules::video::mipi_dsi::MipiDsiTrait;
 use crate::modules::video::TextDisplay;
 use crate::LockedArc;
 
@@ -588,10 +589,33 @@ pub extern "C" fn _start() -> ! {
         )
     };
 
-    let dsi = crate::modules::video::mipi_dsi::MipiDsiProvider::Stm32f769(dsi);
-    let mut displays = crate::kernel::DISPLAYS.lock();
-    displays.register_display(dsi);
-    drop(displays);
+    let mut gpio = crate::kernel::GPIO.lock();
+    let mj = gpio.module(9);
+    let mi = gpio.module(8);
+    drop(gpio);
+    let gpioi = mi.lock();
+    let gpioj = mj.lock();
+
+    let lcd_backlight = gpioi.get_pin(14).unwrap();
+    let lcd_reset = gpioj.get_pin(15);
+
+    drop(gpioi);
+    drop(gpioj);
+    drop(mi);
+    drop(mj);
+
+    let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
+        link_speed: 500_000_000,
+        num_lanes: 2,
+        vcid: 0,
+    };
+
+    let panel = Some(
+        crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(LockedArc::new(
+            crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(lcd_reset, Some(lcd_backlight)),
+        )),
+    );
+    dsi.enable(&dsi_config, panel);
 
     crate::main()
 }
