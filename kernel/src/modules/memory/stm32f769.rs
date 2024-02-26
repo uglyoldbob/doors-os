@@ -85,7 +85,6 @@ impl SdramController {
 
         let mut pins = [
             gpiod.get_pin(14).unwrap(), //d0
-            gpiod.get_pin(14).unwrap(), //d0
             gpiod.get_pin(15).unwrap(), //d1
             gpiod.get_pin(0).unwrap(),  //d2
             gpiod.get_pin(1).unwrap(),  //d3

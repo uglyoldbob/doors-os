@@ -58,7 +58,7 @@ pub struct Gpio {
     /// the memory mapped registers for the hardware
     registers: &'static mut GpioRegisters,
     /// Keeps track of which gpio are used
-    used: u8,
+    used: u32,
 }
 
 impl LockedArc<Gpio> {

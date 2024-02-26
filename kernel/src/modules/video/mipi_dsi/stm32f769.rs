@@ -275,7 +275,7 @@ pub struct Module {
     /// The related ltdc hardware
     ltdc: LockedArc<Ltdc>,
     /// The reset pin for the dsi bus
-    reset_gpio: LockedArc<GpioPin>,
+    reset_gpio: Option<LockedArc<GpioPin>>,
 }
 
 impl super::MipiDsiTrait for Module {
@@ -284,8 +284,8 @@ impl super::MipiDsiTrait for Module {
         config: &super::MipiDsiConfig,
         panel: Option<super::DsiPanel>,
     ) -> Result<(), super::DsiEnableError> {
-        {
-            let mut reset = self.reset_gpio.lock();
+        if let Some(reset) = &self.reset_gpio {
+            let mut reset = reset.lock();
             reset.set_output();
             reset.write_output(true);
         }
@@ -511,13 +511,14 @@ impl Module {
     pub unsafe fn new(
         cc: &crate::modules::clock::ClockProvider,
         iclk: [&crate::modules::clock::ClockRef; 2],
-        reset_pin: crate::modules::gpio::GpioPin,
+        reset_pin: Option<crate::modules::gpio::GpioPin>,
         addr: usize,
     ) -> Self {
         let nclk: [alloc::boxed::Box<crate::modules::clock::ClockRef>; 2] = [
             alloc::boxed::Box::new(iclk[0].clone()),
             alloc::boxed::Box::new(iclk[1].clone()),
         ];
+        let reset = reset_pin.map(|f| LockedArc::new(f));
         Self {
             cc: alloc::boxed::Box::new(cc.clone()),
             internals: LockedArc::new(ModuleInternals {
@@ -525,7 +526,7 @@ impl Module {
             }),
             ltdc: LockedArc::new(Ltdc::new(cc, 0x4001_6800)),
             iclk: nclk,
-            reset_gpio: LockedArc::new(reset_pin),
+            reset_gpio: reset,
         }
     }
 

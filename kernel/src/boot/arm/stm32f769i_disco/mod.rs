@@ -579,19 +579,11 @@ pub extern "C" fn _start() -> ! {
     ltdc_clock.set_post_divider(2, 3);
     ltdc_clock.enable_clock(2);
 
-    let mut gpio = crate::kernel::GPIO.lock();
-    let mj = gpio.module(9);
-    drop(gpio);
-
-    let j = mj.lock();
-    let dsi_reset = j.get_pin(15).unwrap();
-    drop(j);
-
     let dsi = unsafe {
         crate::modules::video::mipi_dsi::stm32f769::Module::new(
             &ctree_provider,
             [&dsi_byte_clock, &dsi_clock1],
-            dsi_reset,
+            None,
             0x4001_6c00,
         )
     };

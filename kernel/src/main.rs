@@ -190,7 +190,7 @@ fn main() -> ! {
         let mut led2 = j.get_pin(5).unwrap();
         let mut led3 = j.get_pin(13).unwrap();
 
-        let lcd_reset = j.get_pin(15).unwrap();
+        let lcd_reset = j.get_pin(15);
 
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
 

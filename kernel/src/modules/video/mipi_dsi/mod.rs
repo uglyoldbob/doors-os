@@ -398,7 +398,7 @@ impl MipiDsiTrait for DummyMipiCsi {
 
 /// The orisetech otm8009a panel. https://www.orientdisplay.com/pdf/OTM8009A.pdf
 pub struct OrisetechOtm8009a {
-    reset: super::super::gpio::GpioPin,
+    reset: Option<super::super::gpio::GpioPin>,
     backlight: Option<super::super::gpio::GpioPin>,
     resolution: ScreenResolution,
 }
@@ -406,7 +406,7 @@ pub struct OrisetechOtm8009a {
 impl OrisetechOtm8009a {
     /// Create a new panel
     pub fn new(
-        reset: super::super::gpio::GpioPin,
+        reset: Option<super::super::gpio::GpioPin>,
         backlight: Option<super::super::gpio::GpioPin>,
     ) -> Self {
         let resolution = crate::modules::video::ScreenResolution {
@@ -487,35 +487,38 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         resolution: &ScreenResolution,
     ) -> Result<(), PanelSetupError> {
         let mut s = self.lock();
-        s.reset.set_output();
         if let Some(backlight) = &mut s.backlight {
             backlight.set_output();
             backlight.write_output(true);
         }
-        s.reset.write_output(false);
 
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 40);
-        }
+        if let Some(r) = &mut s.reset {
+            r.set_output();
+            r.write_output(false);
 
-        s.reset.write_output(true);
+            {
+                use crate::modules::timer::TimerTrait;
+                let mut timers = crate::kernel::TIMERS.lock();
+                let tp = timers.module(0);
+                drop(timers);
+                let mut tpl = tp.lock();
+                let timer = tpl.get_timer(0).unwrap();
+                drop(tpl);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 40);
+            }
 
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
+            r.write_output(true);
+
+            {
+                use crate::modules::timer::TimerTrait;
+                let mut timers = crate::kernel::TIMERS.lock();
+                let tp = timers.module(0);
+                drop(timers);
+                let mut tpl = tp.lock();
+                let timer = tpl.get_timer(0).unwrap();
+                drop(tpl);
+                crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
+            }
         }
 
         //enter command 2 mode, enable parameter shift
