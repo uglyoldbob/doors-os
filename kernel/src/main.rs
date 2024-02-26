@@ -178,17 +178,13 @@ fn main() -> ! {
 
         let mut gpioi = mi.lock();
         let mut j = mj.lock();
-        gpioa.reset(false);
-        j.reset(false);
 
-        //set the pin for the mco1 clock output
-        gpioa.set_alternate(8, 0);
-        //enable high speed output for the clock output
-        gpioa.set_speed(8, 3);
+        let mut mco_pin = gpioa.get_pin(8).unwrap();
+        mco_pin.set_alternate(0);
+        mco_pin.set_speed(3);
 
         let mut count = 0;
 
-        gpioi.reset(false);
         let lcd_backlight = gpioi.get_pin(14).unwrap();
         let mut led1 = gpioa.get_pin(12).unwrap();
         let mut led2 = j.get_pin(5).unwrap();

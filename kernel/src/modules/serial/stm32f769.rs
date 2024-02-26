@@ -30,14 +30,21 @@ pub struct Usart {
     regs: &'static mut UsartRegisters,
     /// The clock line for this hardware
     clock: crate::modules::clock::ClockRef,
+    /// The pins for the serial port, so they can be pinmuxed
+    pins: [Option<crate::modules::gpio::GpioPin>; 2],
 }
 
 impl Usart {
     /// Create an instance of the usart hardware
-    pub unsafe fn new(addr: u32, c: crate::modules::clock::ClockRef) -> Self {
+    pub unsafe fn new(
+        addr: u32,
+        c: crate::modules::clock::ClockRef,
+        gpios: [Option<crate::modules::gpio::GpioPin>; 2],
+    ) -> Self {
         Self {
             regs: &mut *(addr as *mut UsartRegisters),
             clock: c,
+            pins: gpios,
         }
     }
 }
@@ -46,6 +53,12 @@ impl super::SerialTrait for LockedArc<Usart> {
     fn setup(&self, rate: u32) -> Result<(), ()> {
         use crate::modules::clock::ClockRefTrait;
         let mut s = self.lock();
+        for up in &mut s.pins {
+            if let Some(p) = up {
+                use crate::modules::gpio::GpioPinTrait;
+                p.set_alternate(7);
+            }
+        }
         s.clock.enable_clock();
 
         if let Some(ifreq) = s.clock.clock_frequency() {

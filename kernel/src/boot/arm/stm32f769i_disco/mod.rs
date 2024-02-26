@@ -1,8 +1,5 @@
 //! Boot code for the stm32F769i-disco development board
 
-use alloc::sync::Arc;
-
-use crate::modules::serial::SerialTrait;
 use crate::modules::video::TextDisplay;
 use crate::LockedArc;
 
@@ -18,6 +15,7 @@ extern "C" {
 }
 
 /// The definition of the isr table, starting at the nmi handler.
+#[allow(dead_code)]
 struct IsrTable {
     nmi: extern "C" fn(),
     hardfault: extern "C" fn(),
@@ -330,7 +328,7 @@ pub extern "C" fn _start() -> ! {
     let rcc_mod = unsafe { crate::modules::reset::stm32f769::Module::new(0x4002_3800) };
     let rcc_mod = LockedArc::new(rcc_mod);
 
-    let mut ctree = crate::modules::clock::stm32f769::ClockTree::new(
+    let ctree = crate::modules::clock::stm32f769::ClockTree::new(
         osc32.into(),
         oscmain.into(),
         oscint.into(),
@@ -373,7 +371,6 @@ pub extern "C" fn _start() -> ! {
     c.divider1_set(25); //divide down to a 1 mhz clock
     drop(c);
     crate::modules::clock::PllProviderTrait::run_closure(&ctree_pll, 0, &|pll| {
-        use crate::modules::clock::PllTrait;
         pll.set_input_divider(1);
         pll.set_vco_frequency(432_000_000);
         pll.set_post_divider(0, 2);
@@ -445,12 +442,21 @@ pub extern "C" fn _start() -> ! {
     drop(r);
 
     {
+        let mut gpio = crate::kernel::GPIO.lock();
+        let mg = gpio.module(0);
+        drop(gpio);
+        let mut gpioa = mg.lock();
+        let uart_tx = gpioa.get_pin(9);
+        let uart_rx = gpioa.get_pin(10);
+        drop(gpioa);
+
         let mut serials = crate::kernel::SERIAL.lock();
         serials.register_serial(
             LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4001_1000,
                     ctree.get_ref(5 * 32 + 4),
+                    [uart_tx, uart_rx],
                 )
             })
             .into(),
@@ -460,6 +466,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_4400,
                     ctree.get_ref(4 * 32 + 17),
+                    [None, None],
                 )
             })
             .into(),
@@ -469,6 +476,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_4800,
                     ctree.get_ref(4 * 32 + 18),
+                    [None, None],
                 )
             })
             .into(),
@@ -478,6 +486,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_4c00,
                     ctree.get_ref(4 * 32 + 19),
+                    [None, None],
                 )
             })
             .into(),
@@ -487,6 +496,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_5000,
                     ctree.get_ref(4 * 32 + 20),
+                    [None, None],
                 )
             })
             .into(),
@@ -496,6 +506,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4001_1400,
                     ctree.get_ref(5 * 32 + 5),
+                    [None, None],
                 )
             })
             .into(),
@@ -505,6 +516,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_7800,
                     ctree.get_ref(4 * 32 + 30),
+                    [None, None],
                 )
             })
             .into(),
@@ -514,6 +526,7 @@ pub extern "C" fn _start() -> ! {
                 crate::modules::serial::stm32f769::Usart::new(
                     0x4000_7c00,
                     ctree.get_ref(4 * 32 + 31),
+                    [None, None],
                 )
             })
             .into(),
@@ -534,31 +547,20 @@ pub extern "C" fn _start() -> ! {
     }
 
     {
-        use crate::modules::gpio::GpioTrait;
         use crate::modules::serial::SerialTrait;
-        use crate::modules::timer::TimerInstanceTrait;
-
-        let mut gpio = crate::kernel::GPIO.lock();
-        let mg = gpio.module(0);
-        drop(gpio);
-        let mut gpioa = mg.lock();
-        gpioa.reset(false);
-        //set the pins for the uart hardware
-        gpioa.set_alternate(9, 7);
-        gpioa.set_alternate(10, 7);
-        drop(gpioa);
-
         let mut serials = crate::kernel::SERIAL.lock();
         let serial = serials.module(0);
         drop(serials);
         let s = serial.lock();
-        s.setup(115200);
+        let serial_setup = s.setup(115200);
         drop(s);
-        let mut v = crate::VGA.lock();
-        v.replace(TextDisplay::SerialDisplay(
-            crate::modules::video::VideoOverSerial::new(serial),
-        ));
-        drop(v);
+        if serial_setup.is_ok() {
+            let mut v = crate::VGA.lock();
+            v.replace(TextDisplay::SerialDisplay(
+                crate::modules::video::VideoOverSerial::new(serial),
+            ));
+            drop(v);
+        }
     }
 
     let fmc_clock = ctree.get_ref(3 * 32);
@@ -577,29 +579,22 @@ pub extern "C" fn _start() -> ! {
     ltdc_clock.set_post_divider(2, 3);
     ltdc_clock.enable_clock(2);
 
+    let mut gpio = crate::kernel::GPIO.lock();
+    let mj = gpio.module(9);
+    drop(gpio);
+
+    let j = mj.lock();
+    let dsi_reset = j.get_pin(15).unwrap();
+    drop(j);
+
     let dsi = unsafe {
         crate::modules::video::mipi_dsi::stm32f769::Module::new(
             &ctree_provider,
             [&dsi_byte_clock, &dsi_clock1],
+            dsi_reset,
             0x4001_6c00,
         )
     };
-
-    let mut gpio = crate::kernel::GPIO.lock();
-    let mj = gpio.module(9);
-    let mi = gpio.module(8);
-    drop(gpio);
-
-    let mut j = mj.lock();
-    j.reset(false);
-    j.set_output(15);
-    j.write_output(15, true);
-    drop(j);
-    let mut i = mi.lock();
-    i.reset(false);
-    i.set_output(14);
-    i.write_output(14, true);
-    drop(i);
 
     let dsi = crate::modules::video::mipi_dsi::MipiDsiProvider::Stm32f769(dsi);
     let mut displays = crate::kernel::DISPLAYS.lock();

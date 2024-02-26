@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 
 use crate::modules::clock::{ClockProviderTrait, ClockRefTrait};
 use crate::modules::clock::{PllDividerErr, PllVcoSetError};
+use crate::modules::gpio::{GpioPin, GpioPinTrait};
 use crate::modules::video::ScreenResolution;
 use crate::LockedArc;
 
@@ -273,6 +274,8 @@ pub struct Module {
     internals: LockedArc<ModuleInternals>,
     /// The related ltdc hardware
     ltdc: LockedArc<Ltdc>,
+    /// The reset pin for the dsi bus
+    reset_gpio: LockedArc<GpioPin>,
 }
 
 impl super::MipiDsiTrait for Module {
@@ -281,6 +284,11 @@ impl super::MipiDsiTrait for Module {
         config: &super::MipiDsiConfig,
         panel: Option<super::DsiPanel>,
     ) -> Result<(), super::DsiEnableError> {
+        {
+            let mut reset = self.reset_gpio.lock();
+            reset.set_output();
+            reset.write_output(true);
+        }
         self.cc.enable_clock(5 * 32 + 27);
         let mut ltdc = self.ltdc.lock();
         ltdc.enable_clock();
@@ -503,6 +511,7 @@ impl Module {
     pub unsafe fn new(
         cc: &crate::modules::clock::ClockProvider,
         iclk: [&crate::modules::clock::ClockRef; 2],
+        reset_pin: crate::modules::gpio::GpioPin,
         addr: usize,
     ) -> Self {
         let nclk: [alloc::boxed::Box<crate::modules::clock::ClockRef>; 2] = [
@@ -516,6 +525,7 @@ impl Module {
             }),
             ltdc: LockedArc::new(Ltdc::new(cc, 0x4001_6800)),
             iclk: nclk,
+            reset_gpio: LockedArc::new(reset_pin),
         }
     }
 

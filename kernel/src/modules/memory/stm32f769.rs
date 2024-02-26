@@ -1,5 +1,9 @@
 //! The memory controllers for the stm32f769 processor.
 
+use alloc::vec::Vec;
+
+use crate::modules::gpio::GpioPinTrait;
+
 /// The registers for the peripheral.
 pub struct Registers {
     regs: [u32; 10],
@@ -33,6 +37,8 @@ pub struct SdramController {
     regs: &'static mut [u32],
     /// The input clock
     clock: crate::modules::clock::ClockRef,
+    /// The pins for the controller
+    pins: Vec<crate::modules::gpio::GpioPin>,
 }
 
 impl SdramController {
@@ -41,6 +47,7 @@ impl SdramController {
         Self {
             regs: core::slice::from_raw_parts_mut(addr as *mut u32, 87),
             clock,
+            pins: Vec::new(),
         }
     }
 
@@ -60,153 +67,90 @@ impl SdramController {
         use crate::modules::gpio::GpioTrait;
         self.clock.enable_clock();
 
-        {
-            let mut gpio = crate::kernel::GPIO.lock();
-            let gd = gpio.module(3);
-            let ge = gpio.module(4);
-            let gf = gpio.module(5);
-            let gg = gpio.module(6);
-            let gh = gpio.module(7);
-            let gi = gpio.module(8);
-            let mut gpiod = gd.lock();
-            let mut gpioe = ge.lock();
-            let mut gpiof = gf.lock();
-            let mut gpiog = gg.lock();
-            let mut gpioh = gh.lock();
-            let mut gpioi = gi.lock();
+        let mut gpio = crate::kernel::GPIO.lock();
+        let gd = gpio.module(3);
+        let ge = gpio.module(4);
+        let gf = gpio.module(5);
+        let gg = gpio.module(6);
+        let gh = gpio.module(7);
+        let gi = gpio.module(8);
+        let gpiod = gd.lock();
+        let gpioe = ge.lock();
+        let gpiof = gf.lock();
+        let gpiog = gg.lock();
+        let gpioh = gh.lock();
+        let gpioi = gi.lock();
 
-            gpiod.reset(false);
-            gpioe.reset(false);
-            gpiof.reset(false);
-            gpiog.reset(false);
-            gpioh.reset(false);
-            gpioi.reset(false);
-            //setup the fmc pins for sdram
+        //setup the fmc pins for sdram
 
-            gpiod.set_alternate(14, 12); //d0
-            gpiod.set_alternate(15, 12); //d1
-            gpiod.set_alternate(0, 12); //d2
-            gpiod.set_alternate(1, 12); //d3
-            gpioe.set_alternate(7, 12); //d4
-            gpioe.set_alternate(8, 12); //d5
-            gpioe.set_alternate(9, 12); //d6
-            gpioe.set_alternate(10, 12); //d7
-            gpioe.set_alternate(11, 12); //d8
-            gpioe.set_alternate(12, 12); //d9
-            gpioe.set_alternate(13, 12); //d10
-            gpioe.set_alternate(14, 12); //d11
-            gpioe.set_alternate(15, 12); //d12
-            gpiod.set_alternate(8, 12); //d13
-            gpiod.set_alternate(9, 12); //d14
-            gpiod.set_alternate(10, 12); //d15
-            gpioh.set_alternate(8, 12); //d16
-            gpioh.set_alternate(9, 12); //d17
-            gpioh.set_alternate(10, 12); //d18
-            gpioh.set_alternate(11, 12); //d19
-            gpioh.set_alternate(12, 12); //d20
-            gpioh.set_alternate(13, 12); //d21
-            gpioh.set_alternate(14, 12); //d22
-            gpioh.set_alternate(15, 12); //d23
-            gpioi.set_alternate(0, 12); //d24
-            gpioi.set_alternate(1, 12); //d25
-            gpioi.set_alternate(2, 12); //d26
-            gpioi.set_alternate(3, 12); //d27
-            gpioi.set_alternate(6, 12); //d28
-            gpioi.set_alternate(7, 12); //d29
-            gpioi.set_alternate(9, 12); //d30
-            gpioi.set_alternate(10, 12); //d31
+        let mut pins = [
+            gpiod.get_pin(14).unwrap(), //d0
+            gpiod.get_pin(14).unwrap(), //d0
+            gpiod.get_pin(15).unwrap(), //d1
+            gpiod.get_pin(0).unwrap(),  //d2
+            gpiod.get_pin(1).unwrap(),  //d3
+            gpioe.get_pin(7).unwrap(),  //d4
+            gpioe.get_pin(8).unwrap(),  //d5
+            gpioe.get_pin(9).unwrap(),  //d6
+            gpioe.get_pin(10).unwrap(), //d7
+            gpioe.get_pin(11).unwrap(), //d8
+            gpioe.get_pin(12).unwrap(), //d9
+            gpioe.get_pin(13).unwrap(), //d10
+            gpioe.get_pin(14).unwrap(), //d11
+            gpioe.get_pin(15).unwrap(), //d12
+            gpiod.get_pin(8).unwrap(),  //d13
+            gpiod.get_pin(9).unwrap(),  //d14
+            gpiod.get_pin(10).unwrap(), //d15
+            gpioh.get_pin(8).unwrap(),  //d16
+            gpioh.get_pin(9).unwrap(),  //d17
+            gpioh.get_pin(10).unwrap(), //d18
+            gpioh.get_pin(11).unwrap(), //d19
+            gpioh.get_pin(12).unwrap(), //d20
+            gpioh.get_pin(13).unwrap(), //d21
+            gpioh.get_pin(14).unwrap(), //d22
+            gpioh.get_pin(15).unwrap(), //d23
+            gpioi.get_pin(0).unwrap(),  //d24
+            gpioi.get_pin(1).unwrap(),  //d25
+            gpioi.get_pin(2).unwrap(),  //d26
+            gpioi.get_pin(3).unwrap(),  //d27
+            gpioi.get_pin(6).unwrap(),  //d28
+            gpioi.get_pin(7).unwrap(),  //d29
+            gpioi.get_pin(9).unwrap(),  //d30
+            gpioi.get_pin(10).unwrap(), //d31
+            gpiof.get_pin(0).unwrap(),  //a0
+            gpiof.get_pin(1).unwrap(),  //a1
+            gpiof.get_pin(2).unwrap(),  //a2
+            gpiof.get_pin(3).unwrap(),  //a3
+            gpiof.get_pin(4).unwrap(),  //a4
+            gpiof.get_pin(5).unwrap(),  //a5
+            gpiof.get_pin(12).unwrap(), //a6
+            gpiof.get_pin(13).unwrap(), //a7
+            gpiof.get_pin(14).unwrap(), //a8
+            gpiof.get_pin(15).unwrap(), //a9
+            gpiog.get_pin(0).unwrap(),  //a10
+            gpiog.get_pin(1).unwrap(),  //a11
+            //a12 not connected
+            gpiog.get_pin(4).unwrap(),  //ba0
+            gpiog.get_pin(5).unwrap(),  //ba1
+            gpioe.get_pin(0).unwrap(),  //nbl0
+            gpioe.get_pin(1).unwrap(),  //nbl1
+            gpioi.get_pin(4).unwrap(),  //nbl2
+            gpioi.get_pin(5).unwrap(),  //nbl3
+            gpiog.get_pin(8).unwrap(),  //clk
+            gpioh.get_pin(2).unwrap(),  //cke0
+            gpioh.get_pin(3).unwrap(),  //ne0
+            gpiof.get_pin(11).unwrap(), //nras
+            gpiog.get_pin(15).unwrap(), //ncas
+            gpioh.get_pin(5).unwrap(),  //nwe
+        ];
 
-            gpiof.set_alternate(0, 12); //a0
-            gpiof.set_alternate(1, 12); //a1
-            gpiof.set_alternate(2, 12); //a2
-            gpiof.set_alternate(3, 12); //a3
-            gpiof.set_alternate(4, 12); //a4
-            gpiof.set_alternate(5, 12); //a5
-            gpiof.set_alternate(12, 12); //a6
-            gpiof.set_alternate(13, 12); //a7
-            gpiof.set_alternate(14, 12); //a8
-            gpiof.set_alternate(15, 12); //a9
-            gpiog.set_alternate(0, 12); //a10
-            gpiog.set_alternate(1, 12); //a11
-                                        //a12 not connected
+        for p in pins.iter_mut() {
+            p.set_alternate(12);
+            p.set_speed(3);
+        }
 
-            gpiog.set_alternate(4, 12); //ba0
-            gpiog.set_alternate(5, 12); //ba1
-
-            gpioe.set_alternate(0, 12); //nbl0
-            gpioe.set_alternate(1, 12); //nbl1
-            gpioi.set_alternate(4, 12); //nbl2
-            gpioi.set_alternate(5, 12); //nbl3
-
-            gpiog.set_alternate(8, 12); //clk
-            gpioh.set_alternate(2, 12); //cke0
-            gpioh.set_alternate(3, 12); //ne0
-            gpiof.set_alternate(11, 12); //nras
-            gpiog.set_alternate(15, 12); //ncas
-            gpioh.set_alternate(5, 12); //nwe
-
-            //set gpio speed for maximum
-            gpiod.set_speed(14, 3); //d0
-            gpiod.set_speed(15, 3); //d1
-            gpiod.set_speed(0, 3); //d2
-            gpiod.set_speed(1, 3); //d3
-            gpioe.set_speed(7, 3); //d4
-            gpioe.set_speed(8, 3); //d5
-            gpioe.set_speed(9, 3); //d6
-            gpioe.set_speed(10, 3); //d7
-            gpioe.set_speed(11, 3); //d8
-            gpioe.set_speed(12, 3); //d9
-            gpioe.set_speed(13, 3); //d10
-            gpioe.set_speed(14, 3); //d11
-            gpioe.set_speed(15, 3); //d12
-            gpiod.set_speed(8, 3); //d13
-            gpiod.set_speed(9, 3); //d14
-            gpiod.set_speed(10, 3); //d15
-            gpioh.set_speed(8, 3); //d16
-            gpioh.set_speed(9, 3); //d17
-            gpioh.set_speed(10, 3); //d18
-            gpioh.set_speed(11, 3); //d19
-            gpioh.set_speed(12, 3); //d20
-            gpioh.set_speed(13, 3); //d21
-            gpioh.set_speed(14, 3); //d22
-            gpioh.set_speed(15, 3); //d23
-            gpioi.set_speed(0, 3); //d24
-            gpioi.set_speed(1, 3); //d25
-            gpioi.set_speed(2, 3); //d26
-            gpioi.set_speed(3, 3); //d27
-            gpioi.set_speed(6, 3); //d28
-            gpioi.set_speed(7, 3); //d29
-            gpioi.set_speed(9, 3); //d30
-            gpioi.set_speed(10, 3); //d31
-
-            gpiof.set_speed(0, 3); //a0
-            gpiof.set_speed(1, 3); //a1
-            gpiof.set_speed(2, 3); //a2
-            gpiof.set_speed(3, 3); //a3
-            gpiof.set_speed(4, 3); //a4
-            gpiof.set_speed(5, 3); //a5
-            gpiof.set_speed(12, 3); //a6
-            gpiof.set_speed(13, 3); //a7
-            gpiof.set_speed(14, 3); //a8
-            gpiof.set_speed(15, 3); //a9
-            gpiog.set_speed(0, 3); //a10
-            gpiog.set_speed(1, 3); //a11
-                                   //a12 not connected
-
-            gpiog.set_speed(4, 3); //ba0
-            gpiog.set_speed(5, 3); //ba1
-
-            gpioe.set_speed(0, 3); //nbl0
-            gpioe.set_speed(1, 3); //nbl1
-            gpioi.set_speed(4, 3); //nbl2
-            gpioi.set_speed(5, 3); //nbl3
-
-            gpiog.set_speed(8, 3); //clk
-            gpioh.set_speed(2, 3); //cke0
-            gpioh.set_speed(3, 3); //ne0
-            gpiof.set_speed(11, 3); //nras
-            gpiog.set_speed(15, 3); //ncas
-            gpioh.set_speed(5, 3); //nwe
+        for p in pins {
+            self.pins.push(p);
         }
 
         let control = SdramControl {
