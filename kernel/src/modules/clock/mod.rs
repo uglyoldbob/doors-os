@@ -94,7 +94,7 @@ impl ClockProviderTrait for DummyClock {
         None
     }
 
-    fn get_ref(&self, i: usize) -> ClockRef {
+    fn get_ref(&self, _i: usize) -> ClockRef {
         panic!("Invalid clock");
     }
 }
@@ -204,8 +204,8 @@ pub trait ClockDividerTrait {
 /// The trait for devices that contain one or more pll
 #[enum_dispatch::enum_dispatch]
 pub trait PllProviderTrait {
-    /// Run a closure on the specified pll
-    fn run_closure(&self, i: u8, c: &dyn Fn(&mut Pll));
+    /// Run a closure on the specified pll, returning a generic type (a Result might be beneficial).
+    fn run_closure<T>(&self, i: u8, c: &dyn Fn(&mut Pll) -> T) -> Option<T>;
     /// Get a reference to the specified pll
     fn get_pll_reference(&self, i: u8) -> Option<Pll>;
     /// Get the specified clock mux
@@ -228,13 +228,15 @@ pub enum PllProvider {
 pub struct DummyPllProvider {}
 
 impl PllProviderTrait for DummyPllProvider {
-    fn run_closure(&self, i: u8, c: &dyn Fn(&mut Pll)) {}
-
-    fn get_pll_reference(&self, i: u8) -> Option<Pll> {
+    fn run_closure<T>(&self, _i: u8, _c: &dyn Fn(&mut Pll) -> T) -> Option<T> {
         None
     }
 
-    fn get_clock_mux(&self, i: u32) -> Option<ClockMux> {
+    fn get_pll_reference(&self, _i: u8) -> Option<Pll> {
+        None
+    }
+
+    fn get_clock_mux(&self, _i: u32) -> Option<ClockMux> {
         None
     }
 }

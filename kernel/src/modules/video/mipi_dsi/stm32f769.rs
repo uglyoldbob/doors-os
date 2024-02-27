@@ -34,22 +34,11 @@ impl Ltdc {
     }
 
     fn write(&mut self, i: usize, val: u32) {
-        use crate::modules::video::TextDisplayTrait;
         unsafe { core::ptr::write_volatile(&mut self.regs.regs[i], val) };
-    }
-
-    /// do some debugging by dumping all registers
-    pub fn debug(&self) {
-        let mut d = crate::DEBUG_STUFF.lock();
-        for (i, d) in d.iter_mut().enumerate() {
-            *d = unsafe { core::ptr::read_volatile(&self.regs.regs[i]) }
-        }
-        drop(d);
     }
 
     /// Enable the ltdc hardware
     pub fn enable(&mut self) {
-        let v = unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
         self.write(6, 1);
         unsafe { core::ptr::read_volatile(&self.regs.regs[6]) };
     }
@@ -173,7 +162,6 @@ impl ModuleInternals {
     fn write_packet(&mut self, packet: &super::DcsPacket) {
         let buf = packet.data.unwrap_or(&[]);
         let mut length_remaining = buf.len();
-        let h = u32::from_le_bytes(packet.header);
 
         self.write(0x94 / 4, 0);
         self.write(0x68 / 4, 0x10f7f00);
@@ -654,7 +642,7 @@ impl crate::modules::clock::PllTrait for Module {
     }
 
     /// This divider accounts for the divide by 2 factor already present in the dsi pll.
-    fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, PllDividerErr> {
+    fn set_post_divider(&self, _i: usize, d: u32) -> Result<u32, PllDividerErr> {
         let divider = match d {
             2 => 0,
             4 => 1,

@@ -28,6 +28,6 @@ pub enum ResetProvider {
 pub struct DummyReset {}
 
 impl ResetProviderTrait for DummyReset {
-    fn disable(&self, i: usize) {}
-    fn enable(&self, i: usize) {}
+    fn disable(&self, _i: usize) {}
+    fn enable(&self, _i: usize) {}
 }

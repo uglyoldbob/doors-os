@@ -21,7 +21,6 @@ pub struct MipiDsiConfig {
 
 /// A dcs packet structure that can be sent directly over mipi-dsi
 pub struct DcsPacket<'a> {
-    length: usize,
     header: [u8; 4],
     data: Option<&'a [u8]>,
 }
@@ -166,12 +165,7 @@ impl<'a> DcsCommand<'a> {
             }
             None
         };
-        let length = 4 + data.map_or(0, |f| f.len());
-        Ok(DcsPacket {
-            header,
-            length,
-            data,
-        })
+        Ok(DcsPacket { header, data })
     }
 }
 
@@ -446,34 +440,6 @@ impl OrisetechOtm8009a {
         let v: Vec<u8> = v3.map(|v| *v).collect();
         dsi.dcs_write_buffer(0, &v)?;
         Ok(())
-    }
-
-    /// Read id from the panel
-    fn read_id(&self, dsi: &mut MipiDsiDcs) -> Option<(u8, u8, u8)> {
-        let mut id1: u8 = 0;
-        let mut id2: u8 = 0;
-        let mut id3: u8 = 0;
-
-        let mut data: [u8; 1] = [0xda];
-        let mut buf: [u8; 1] = [0; 1];
-        if dsi.dcs_read_write(0, &data, &mut buf).is_err() {
-            return None;
-        }
-        id1 = buf[0];
-
-        data[0] = 0xdb;
-        if dsi.dcs_read_write(0, &data, &mut buf).is_err() {
-            return None;
-        }
-        id2 = buf[0];
-
-        data[0] = 0xdc;
-        if dsi.dcs_read_write(0, &data, &mut buf).is_err() {
-            return None;
-        }
-        id3 = buf[0];
-
-        Some((id1, id2, id3))
     }
 }
 

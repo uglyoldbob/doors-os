@@ -1,6 +1,5 @@
 //! Memory management code
 
-use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use crate::Locked;
@@ -215,7 +214,7 @@ impl HeapManager {
     }
 
     /// Perform an actual deallocation
-    fn run_dealloc(&mut self, ptr: *mut u8, layout: core::alloc::Layout) {
+    fn run_dealloc(&mut self, _ptr: *mut u8, _layout: core::alloc::Layout) {
 
         //TODO merge blocks if possible?
     }

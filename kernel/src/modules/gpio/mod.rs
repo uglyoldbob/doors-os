@@ -26,7 +26,7 @@ pub enum Gpio {
 pub struct DummyGpio {}
 
 impl GpioTrait for DummyGpio {
-    fn get_pin(&self, i: usize) -> Option<GpioPin> {
+    fn get_pin(&self, _i: usize) -> Option<GpioPin> {
         None
     }
 }

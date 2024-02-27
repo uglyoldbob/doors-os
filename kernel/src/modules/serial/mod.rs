@@ -30,11 +30,11 @@ pub enum Serial {
 pub struct DummySerial {}
 
 impl SerialTrait for DummySerial {
-    fn setup(&self, rate: u32) -> Result<(), ()> {
+    fn setup(&self, _rate: u32) -> Result<(), ()> {
         Err(())
     }
 
-    fn sync_transmit(&self, data: &[u8]) {}
+    fn sync_transmit(&self, _data: &[u8]) {}
 
-    fn sync_transmit_str(&self, data: &str) {}
+    fn sync_transmit_str(&self, _data: &str) {}
 }

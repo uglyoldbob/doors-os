@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use super::ClockRefTrait;
-use crate::{modules::reset::ResetProviderTrait, LockedArc};
+use crate::LockedArc;
 
 #[derive(Clone)]
 /// This mux selects the input for the main pll and the i2s pll of the stm32f769
@@ -580,22 +580,16 @@ impl ClockTree {
 }
 
 impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
-    fn run_closure(&self, i: u8, c: &dyn Fn(&mut super::Pll)) {
+    fn run_closure<T>(&self, i: u8, c: &dyn Fn(&mut super::Pll) -> T) -> Option<T> {
         let mut s = self.lock();
-        match i {
-            0 => {
-                c(&mut s.pllmain);
-            }
-            1 => {
-                c(&mut s.pll2);
-            }
-            2 => {
-                c(&mut s.pll3);
-            }
+        Some(match i {
+            0 => c(&mut s.pllmain),
+            1 => c(&mut s.pll2),
+            2 => c(&mut s.pll3),
             _ => {
                 panic!("Invalid pll");
             }
-        }
+        })
     }
 
     fn get_pll_reference(&self, i: u8) -> Option<super::Pll> {
@@ -708,7 +702,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
         let d = i / 32;
         let dr = i % 32;
         let usart =
-            |rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>, id, apb| {
+            |rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>, id, _apb| {
                 let rcc = rcc.lock();
                 let smux = rcc.get_usart_mux(id);
                 drop(rcc);
@@ -720,7 +714,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
                     _ => unreachable!(),
                 }
             };
-        let timer = |index, sysclk: Option<u64>, mux, prescaler| {
+        let timer = |_index, sysclk: Option<u64>, mux, prescaler| {
             if mux {
                 match prescaler {
                     1 | 2 | 4 => self.clock_frequency(2),   //HCLK

@@ -55,11 +55,6 @@ impl TimerGroup {
         unsafe { core::ptr::read_volatile(&self.regs.regs[10]) }
     }
 
-    /// Returns the status register
-    fn status(&self) -> u32 {
-        unsafe { core::ptr::read_volatile(&self.regs.regs[4]) }
-    }
-
     /// Returns the count of the timer
     fn counter(&self) -> u32 {
         let v = unsafe { core::ptr::read_volatile(&self.regs.regs[9]) };

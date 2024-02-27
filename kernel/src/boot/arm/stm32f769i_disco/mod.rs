@@ -371,13 +371,22 @@ pub extern "C" fn _start() -> ! {
     c.mux1_select(1); //select the external oscillator
     c.divider1_set(25); //divide down to a 1 mhz clock
     drop(c);
-    crate::modules::clock::PllProviderTrait::run_closure(&ctree_pll, 0, &|pll| {
-        pll.set_input_divider(1);
-        pll.set_vco_frequency(432_000_000);
-        pll.set_post_divider(0, 2);
-        pll.enable_clock(0);
-        while !pll.clock_is_ready(0) {}
-    });
+    let pllsetup = crate::modules::clock::PllProviderTrait::run_closure(&ctree_pll, 0, &|pll| {
+        if pll.set_input_divider(1).is_ok()
+            && pll.set_vco_frequency(432_000_000).is_ok()
+            && pll.set_post_divider(0, 2).is_ok()
+        {
+            pll.enable_clock(0);
+            while !pll.clock_is_ready(0) {}
+            Ok(())
+        } else {
+            Err(())
+        }
+    })
+    .unwrap();
+    if pllsetup.is_err() {
+        todo!("Figure out what to do here\r\n");
+    }
 
     fic.set_wait_states(6);
 
@@ -446,7 +455,7 @@ pub extern "C" fn _start() -> ! {
         let mut gpio = crate::kernel::GPIO.lock();
         let mg = gpio.module(0);
         drop(gpio);
-        let mut gpioa = mg.lock();
+        let gpioa = mg.lock();
         let uart_tx = gpioa.get_pin(9);
         let uart_rx = gpioa.get_pin(10);
         drop(gpioa);
