@@ -18,6 +18,15 @@ pub struct SimpleRamFramebuffer {
     buffer: Vec<u8>,
 }
 
+impl SimpleRamFramebuffer {
+    ///Make a ram framebuffer of the specified size
+    pub fn new(size: usize) -> Self {
+        Self {
+            buffer: alloc::vec![0; size],
+        }
+    }
+}
+
 impl FramebufferTrait for SimpleRamFramebuffer {
     unsafe fn address(&self) -> usize {
         self.buffer.as_ptr() as usize

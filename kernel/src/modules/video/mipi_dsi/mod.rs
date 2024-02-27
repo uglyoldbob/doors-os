@@ -365,8 +365,11 @@ pub enum DsiEnableError {
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiTrait {
     /// Enable the hardware
-    fn enable(&self, config: &MipiDsiConfig, panel: Option<DsiPanel>)
-        -> Result<(), DsiEnableError>;
+    fn enable(
+        &self,
+        config: &MipiDsiConfig,
+        panel: Option<DsiPanel>,
+    ) -> Result<super::Display, DsiEnableError>;
     /// Disable the hardware
     fn disable(&self);
 }
@@ -391,8 +394,8 @@ impl MipiDsiTrait for DummyMipiCsi {
         &self,
         _config: &MipiDsiConfig,
         _panel: Option<DsiPanel>,
-    ) -> Result<(), DsiEnableError> {
-        Ok(())
+    ) -> Result<super::Display, DsiEnableError> {
+        Err(DsiEnableError::Unknown)
     }
 }
 

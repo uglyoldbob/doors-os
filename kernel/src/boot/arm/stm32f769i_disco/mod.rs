@@ -2,7 +2,7 @@
 
 use crate::modules::video::mipi_dsi::MipiDsiTrait;
 use crate::modules::video::TextDisplay;
-use crate::LockedArc;
+use crate::{kernel, LockedArc};
 
 pub mod memory;
 
@@ -570,52 +570,61 @@ pub extern "C" fn _start() -> ! {
     fmc.setup_sdram();
     //todo something with the buffer returned by the sdram setup
 
-    let dsi_byte_clock = ctree_pll.get_pll_reference(0).unwrap().get_ref(2);
-    let dsi_clock1 =
-        crate::modules::clock::ClockRef::Mux(ctree_pll.get_clock_mux(0).unwrap().clone());
+    let ltdc_clock = ctree_pll.get_pll_reference(2).unwrap();
 
-    let mut ltdc_clock = ctree_pll.get_pll_reference(2).unwrap();
+    if ltdc_clock.set_vco_frequency(195_000_000).is_ok()
+        && ltdc_clock.set_post_divider(2, 3).is_ok()
+    {
+        ltdc_clock.enable_clock(2);
 
-    ltdc_clock.set_vco_frequency(195_000_000);
-    ltdc_clock.set_post_divider(2, 3);
-    ltdc_clock.enable_clock(2);
+        let mut gpio = crate::kernel::GPIO.lock();
+        let mj = gpio.module(9);
+        let mi = gpio.module(8);
+        drop(gpio);
+        let gpioi = mi.lock();
+        let gpioj = mj.lock();
 
-    let dsi = unsafe {
-        crate::modules::video::mipi_dsi::stm32f769::Module::new(
-            &ctree_provider,
-            [&dsi_byte_clock, &dsi_clock1],
-            None,
-            0x4001_6c00,
-        )
-    };
+        let lcd_backlight = gpioi.get_pin(14).unwrap();
+        let lcd_reset = gpioj.get_pin(15);
 
-    let mut gpio = crate::kernel::GPIO.lock();
-    let mj = gpio.module(9);
-    let mi = gpio.module(8);
-    drop(gpio);
-    let gpioi = mi.lock();
-    let gpioj = mj.lock();
+        drop(gpioi);
+        drop(gpioj);
+        drop(mi);
+        drop(mj);
 
-    let lcd_backlight = gpioi.get_pin(14).unwrap();
-    let lcd_reset = gpioj.get_pin(15);
+        let panel = Some(
+            crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(LockedArc::new(
+                crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(
+                    lcd_reset,
+                    Some(lcd_backlight),
+                ),
+            )),
+        );
 
-    drop(gpioi);
-    drop(gpioj);
-    drop(mi);
-    drop(mj);
+        let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
+            link_speed: 500_000_000,
+            num_lanes: 2,
+            vcid: 0,
+        };
 
-    let dsi_config = crate::modules::video::mipi_dsi::MipiDsiConfig {
-        link_speed: 500_000_000,
-        num_lanes: 2,
-        vcid: 0,
-    };
+        let dsi_byte_clock = ctree_pll.get_pll_reference(0).unwrap().get_ref(2);
+        let dsi_clock1 =
+            crate::modules::clock::ClockRef::Mux(ctree_pll.get_clock_mux(0).unwrap().clone());
 
-    let panel = Some(
-        crate::modules::video::mipi_dsi::DsiPanel::OrisetechOtm8009a(LockedArc::new(
-            crate::modules::video::mipi_dsi::OrisetechOtm8009a::new(lcd_reset, Some(lcd_backlight)),
-        )),
-    );
-    dsi.enable(&dsi_config, panel);
+        let dsi = unsafe {
+            crate::modules::video::mipi_dsi::stm32f769::Module::new(
+                &ctree_provider,
+                [&dsi_byte_clock, &dsi_clock1],
+                None,
+                0x4001_6c00,
+            )
+        };
+
+        if let Ok(display) = dsi.enable(&dsi_config, panel) {
+            let mut displays = kernel::DISPLAYS.lock();
+            displays.register_display(display);
+        }
+    }
 
     crate::main()
 }

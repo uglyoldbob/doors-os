@@ -283,7 +283,7 @@ impl super::MipiDsiTrait for Module {
         &self,
         config: &super::MipiDsiConfig,
         panel: Option<super::DsiPanel>,
-    ) -> Result<(), super::DsiEnableError> {
+    ) -> Result<super::super::Display, super::DsiEnableError> {
         if let Some(reset) = &self.reset_gpio {
             let mut reset = reset.lock();
             reset.set_output();
@@ -494,7 +494,10 @@ impl super::MipiDsiTrait for Module {
         internals.write(1, 1);
 
         drop(internals);
-        Ok(())
+        //todo: put in correct framebuffer size
+        Ok(super::super::Display::Framebuffer(
+            super::super::Framebuffer::SimpleRam(super::super::SimpleRamFramebuffer::new(8)),
+        ))
     }
 
     fn disable(&self) {
