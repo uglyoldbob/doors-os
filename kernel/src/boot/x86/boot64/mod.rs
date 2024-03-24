@@ -8,6 +8,7 @@ use core::ptr::NonNull;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
+use crate::modules::video::TextDisplayTrait;
 
 pub mod memory;
 
@@ -247,10 +248,8 @@ pub extern "C" fn start64() -> ! {
     PAGING_MANAGER.lock().init();
 
     let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
-    let b: alloc::boxed::Box<dyn doors_kernel_api::video::TextDisplay> =
-        alloc::boxed::Box::new(vga);
     let mut v = crate::VGA.lock();
-    v.replace(b);
+    v.replace(crate::modules::video::TextDisplay::X86VgaTextMode(vga));
     drop(v);
 
     if true {

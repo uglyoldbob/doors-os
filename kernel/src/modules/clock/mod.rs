@@ -25,6 +25,7 @@ pub trait ClockProviderTrait {
 #[enum_dispatch::enum_dispatch(ClockProviderTrait)]
 pub enum ClockProvider {
     /// The main clock provider for the stm32f769
+    #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769Provider(LockedArc<stm32f769::ClockTree>),
     /// The main pll for the stm32f769 processor
     #[cfg(kernel_machine = "stm32f769i-disco")]
@@ -187,6 +188,7 @@ pub enum ClockMux {
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769Mux1(stm32f769::Mux1),
     /// The mux for the sysclk on the stm32f769
+    #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769SysClkMux(stm32f769::MuxSysClk),
 }
 
@@ -279,6 +281,7 @@ pub enum Pll {
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769ThirdPll(stm32f769::PllThree),
     /// The dsi pll for the stm32f769
+    #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769DsiPll(crate::modules::video::mipi_dsi::stm32f769::Module),
     /// A dummy pll provider
     Dummy(DummyClock),

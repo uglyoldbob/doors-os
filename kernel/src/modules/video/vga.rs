@@ -1,8 +1,8 @@
 //! Kernel module for x86 vga text using video mode
 
 use crate::VGA;
-use doors_kernel_api::video::TextDisplay;
-use doors_kernel_api::FixedString;
+use crate::modules::video::TextDisplayTrait;
+use crate::FixedString;
 
 use crate::boot::x86::IoPortArray;
 use crate::boot::x86::IoPortRef;
@@ -77,6 +77,6 @@ impl<'a> X86VgaMode<'a> {
     }
 }
 
-impl<'a> TextDisplay for X86VgaMode<'a> {
+impl<'a> super::TextDisplayTrait for X86VgaMode<'a> {
     fn print_char(&mut self, d: char) {}
 }

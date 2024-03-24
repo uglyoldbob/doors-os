@@ -79,6 +79,8 @@ pub trait TextDisplayTrait: Sync + Send {
 pub enum TextDisplay {
     /// A serial port used for displaying text
     SerialDisplay(VideoOverSerial),
+    /// X86 vga hardware operated in text mode
+    X86VgaTextMode(text::X86VgaTextMode),
 }
 
 /// Enables sending video text over a serial port

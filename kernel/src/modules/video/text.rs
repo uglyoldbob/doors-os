@@ -9,16 +9,16 @@ pub struct X86VgaTextHardware {
 }
 
 /// Structure for the vga mode of standard computers
-pub struct X86VgaTextMode<'a> {
+pub struct X86VgaTextMode {
     /// The column where the next character will be placed
     column: u8,
     /// The row where the next character will be placed
     row: u8,
     /// A mutable reference to the hardware memory
-    hw: &'a mut X86VgaTextHardware,
+    hw: &'static mut X86VgaTextHardware,
 }
 
-impl<'a> X86VgaTextMode<'a> {
+impl X86VgaTextMode {
     /// Gets an instance of the X86Vga. This should be protected by a singleton type pattern to prevent multiple instances from being handed out to the kernel.
     pub unsafe fn get(adr: usize) -> Self {
         Self {
@@ -29,7 +29,7 @@ impl<'a> X86VgaTextMode<'a> {
     }
 }
 
-impl<'a> crate::modules::video::TextDisplayTrait for X86VgaTextMode<'a> {
+impl crate::modules::video::TextDisplayTrait for X86VgaTextMode {
     fn print_char(&mut self, d: char) {
         let p = if d.is_ascii() { d as u8 } else { b'?' };
         match d {
