@@ -3,8 +3,8 @@
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use crate::Locked;
 use crate::modules::video::TextDisplayTrait;
+use crate::Locked;
 
 use super::boot::memory::{BumpAllocator, Page, PagingTableManager};
 

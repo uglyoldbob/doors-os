@@ -163,66 +163,8 @@ impl ColorCycler {
 
 fn main() -> ! {
     {
-        use crate::modules::gpio::GpioTrait;
-
-        let mut gpio = crate::kernel::GPIO.lock();
-        let mg = gpio.module(0);
-
-        let mj = gpio.module(9);
-        drop(gpio);
-        let gpioa = mg.lock();
-        let j = mj.lock();
-
-        let mut mco_pin = gpioa.get_pin(8).unwrap();
-        mco_pin.set_alternate(0);
-        mco_pin.set_speed(3);
-
-        let mut count = 0;
-
-        let mut led1 = gpioa.get_pin(12).unwrap();
-        let mut led2 = j.get_pin(5).unwrap();
-        let mut led3 = j.get_pin(13).unwrap();
-
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
 
-        let mut timers = crate::kernel::TIMERS.lock();
-        let tp = timers.module(0);
-        drop(timers);
-        let mut tpl = tp.lock();
-        let timer = tpl.get_timer(0);
-        drop(tpl);
-
-        led1.set_output();
-        led2.set_output();
-        led3.set_output();
-
-        let testing2 =
-            unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u16, 800 * 480) };
-
-        let mut color = ColorCycler::new();
-        let mut led = false;
-
-        loop {
-            led1.write_output(led);
-            led2.write_output(led);
-            led3.write_output(led);
-
-            count += 1;
-            if count > 10 {
-                count = 0;
-            }
-            for e in testing2.iter_mut() {
-                *e = color.get_color();
-            }
-            for i in 0..800 {
-                testing2[i * 480 + 32] = 0;
-            }
-            color.advance();
-            led = !led;
-
-            if let Ok(timer) = &timer {
-                crate::modules::timer::TimerInstanceTrait::delay_ms(timer, 250);
-            }
-        }
+        loop {}
     }
 }

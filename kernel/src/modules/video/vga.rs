@@ -1,8 +1,8 @@
 //! Kernel module for x86 vga text using video mode
 
-use crate::VGA;
 use crate::modules::video::TextDisplayTrait;
 use crate::FixedString;
+use crate::VGA;
 
 use crate::boot::x86::IoPortArray;
 use crate::boot::x86::IoPortRef;

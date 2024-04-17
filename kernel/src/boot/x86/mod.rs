@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 
 use crate::modules::video::text::X86VgaTextMode;
-use crate::Locked;
 use crate::modules::video::TextDisplayTrait;
+use crate::Locked;
 use lazy_static::lazy_static;
 
 #[cfg(target_arch = "x86_64")]

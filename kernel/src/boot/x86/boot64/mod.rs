@@ -1,5 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use crate::modules::video::TextDisplayTrait;
 use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
@@ -8,7 +9,6 @@ use core::ptr::NonNull;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
-use crate::modules::video::TextDisplayTrait;
 
 pub mod memory;
 
@@ -32,11 +32,10 @@ pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
 
 /// This function is responsible for building a gdt that can be built at compile time.
 const fn make_gdt_table() -> GlobalDescriptorTable {
-    let (gdt, _segs) = GlobalDescriptorTable::from_descriptors([
-        Descriptor::kernel_code_segment(),
-        Descriptor::kernel_data_segment(),
-    ]);
-    gdt
+    let mut gdtb = GlobalDescriptorTable::new();
+    gdtb.append(Descriptor::kernel_code_segment());
+    gdtb.append(Descriptor::kernel_data_segment());
+    gdtb
 }
 
 /// A struct for creating a global descriptor table pointer, suitable for loading with lidtr
@@ -59,7 +58,7 @@ pub struct GdtPointerHolder<'a> {
 #[no_mangle]
 pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
     _d: GdtPointer {
-        size: (GDT_TABLE.len() * 8 - 1) as u16,
+        size: GDT_TABLE.limit(),
         address: &GDT_TABLE,
     },
 };

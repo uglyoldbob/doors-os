@@ -27,5 +27,5 @@ multiboot2 = "0.18.1"
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 acpi = "4.1.1"
 raw-cpuid = "11.0.1"
-x86_64 = {git = "https://github.com/uglyoldbob/x86_64.git", version = "0.14.10", default-features=false, features = ["instructions"] }
+x86_64 = {git = "https://github.com/rust-osdev/x86_64.git", version = "0.15.1", default-features=false, features = ["instructions", "const_fn"] }
 multiboot2 = "0.18.1"
