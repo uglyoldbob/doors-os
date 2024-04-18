@@ -144,6 +144,24 @@ pub struct IoPortManager {
 }
 
 impl Locked<IoPortManager> {
+    /// Try to get a single port from the system
+    pub fn get_port<T>(&self, base: u16) -> Option<IoPortRef<T>> {
+        let mut manager = self.lock();
+        let p = base;
+        let index = p / core::mem::size_of::<usize>() as u16;
+        let shift = p % core::mem::size_of::<usize>() as u16;
+        let d = manager.ports[index as usize] & 1 << shift;
+        if d != 0 {
+            None
+        } else {
+            manager.ports[index as usize] |= 1 << shift;
+            Some(IoPortRef {
+                r: base,
+                _marker: PhantomData,
+            })
+        }
+    }
+
     /// Try to get some io ports from the system.
     pub fn get_ports(&self, base: u16, quantity: u16) -> Option<IoPortArray> {
         let mut manager = self.lock();

@@ -31,6 +31,7 @@ use x86_64::structures::{
     gdt::{Descriptor, GlobalDescriptorTable},
     idt::InterruptDescriptorTable,
 };
+
 #[no_mangle]
 /// The global descriptor table for initial entry into long mode
 pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
@@ -73,7 +74,6 @@ extern "C" {
 }
 
 lazy_static! {
-    static ref IDT: InterruptDescriptorTable = build_idt();
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
 }
 
@@ -107,35 +107,23 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-/// Used to build an interrupt descriptor table at runtime.
-fn build_idt() -> InterruptDescriptorTable {
-    let mut idt = InterruptDescriptorTable::new();
-    unsafe {
-        idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
-            divide_by_zero_asm as *const (),
-        ));
-        let mut entry = x86_64::structures::idt::Entry::missing();
-        entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
-            segment_not_present_asm as *const (),
-        ));
-        idt.segment_not_present = entry;
-    }
-    idt
-}
-
 core::arch::global_asm!(include_str!("boot.s"));
 
 /// The virtual memory allocator. Deleted space from this may not be reclaimable.
-pub static VIRTUAL_MEMORY_ALLOCATOR: crate::Locked<memory::BumpAllocator> =
-    crate::Locked::new(memory::BumpAllocator::new(0x1000));
+pub static VIRTUAL_MEMORY_ALLOCATOR: Locked<memory::BumpAllocator> =
+    Locked::new(memory::BumpAllocator::new(0x1000));
 
 /// The physical memory manager for the system
-pub static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
-    crate::Locked::new(memory::SimpleMemoryManager::new(&VIRTUAL_MEMORY_ALLOCATOR));
+pub static PAGE_ALLOCATOR: Locked<memory::SimpleMemoryManager> =
+    Locked::new(memory::SimpleMemoryManager::new(&VIRTUAL_MEMORY_ALLOCATOR));
 
 /// The paging manager, which controls the memory management unit. Responsible for mapping virtual memory addresses to physical addresses.
-pub static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
-    crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
+pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
+    Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
+
+/// The interrupt descriptor table for the system
+pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<x86_64::structures::idt::InterruptDescriptorTable> =
+    Locked::new(x86_64::structures::idt::InterruptDescriptorTable::new());
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
@@ -149,9 +137,9 @@ struct Big {
 /// A structure for mapping and unmapping acpi memory
 struct Acpi<'a> {
     /// The page manager for mapping and unmapping virtual memory
-    pageman: &'a crate::Locked<memory::PagingTableManager<'a>>,
+    pageman: &'a Locked<memory::PagingTableManager<'a>>,
     /// The virtual memory manager for getting virtual memory
-    vmm: &'a crate::Locked<memory::BumpAllocator>,
+    vmm: &'a Locked<memory::BumpAllocator>,
 }
 
 impl<'a> acpi::AcpiHandler for Acpi<'a> {
@@ -178,7 +166,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 presize
             };
 
-            let mut b: Vec<u8, &crate::Locked<memory::BumpAllocator>> =
+            let mut b: Vec<u8, &Locked<memory::BumpAllocator>> =
                 Vec::with_capacity_in(realsize, self.vmm);
             let mut p = self.pageman.lock();
 
@@ -334,6 +322,64 @@ fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHa
     }
 }
 
+struct Pic {
+    pic1: super::IoPortArray<'static>,
+    pic2: super::IoPortArray<'static>,
+}
+
+impl Pic {
+    /// Get a pic object.
+    pub fn new() -> Option<Self> {
+        Some(Self {
+            pic1: super::IOPORTS.get_ports(0x20, 2)?,
+            pic2: super::IOPORTS.get_ports(0xa0, 2)?,
+        })
+    }
+
+    /// Disable all interrupts for both pics
+    pub fn disable(&mut self) {
+        use super::IoReadWrite;
+        self.pic1.port(1).port_write(0xff as u8);
+        self.pic2.port(1).port_write(0xff as u8);
+    }
+
+    /// Perform a remap of the pic interrupts
+    /// # Arguments
+    /// * offset1 - The amount to offset pic1 vectors by
+    /// * offset2 - The amount to offset pic2 vectors by
+    pub fn remap(&mut self, offset1: u8, offset2: u8) {
+        use super::IoReadWrite;
+        let mut delay: super::IoPortRef<u8> = super::IOPORTS.get_port(0x80).unwrap();
+
+        let mut pic1_cmd: super::IoPortRef<u8> = self.pic1.port(0);
+        let mut pic1_data: super::IoPortRef<u8> = self.pic1.port(1);
+        let mut pic2_cmd: super::IoPortRef<u8> = self.pic2.port(0);
+        let mut pic2_data: super::IoPortRef<u8> = self.pic2.port(1);
+
+        let mask1 = pic1_data.port_read();
+        let mask2 = pic2_data.port_read();
+        pic1_cmd.port_write(0x11);
+        delay.port_write(0);
+        pic2_cmd.port_write(0x11);
+        delay.port_write(0);
+        pic1_data.port_write(offset1);
+        delay.port_write(0);
+        pic2_data.port_write(offset2);
+        delay.port_write(0);
+        pic1_data.port_write(4);
+        delay.port_write(0);
+        pic2_data.port_write(2);
+        delay.port_write(0);
+        pic1_data.port_write(1);
+        delay.port_write(0);
+        pic2_data.port_write(1);
+        delay.port_write(0);
+
+        pic1_data.port_write(mask1);
+        pic2_data.port_write(mask2);
+    }
+}
+
 #[repr(align(16))]
 struct LocalApicRegister {
     regs: [u64; 128],
@@ -378,9 +424,8 @@ pub extern "C" fn start64() -> ! {
 
     VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x3fffff);
 
-    let vend = VIRTUAL_MEMORY_ALLOCATOR.end();
-    let acpi: Box<core::mem::MaybeUninit<LocalApicRegister>, &Locked<memory::BumpAllocator>> =
-        Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR);
+    let apic: Box<LocalApicRegister, &Locked<memory::BumpAllocator>> =
+        unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
 
     PAGING_MANAGER.lock().init();
 
@@ -389,18 +434,27 @@ pub extern "C" fn start64() -> ! {
     v.replace(crate::modules::video::TextDisplay::X86VgaTextMode(vga));
     drop(v);
 
-    doors_macros2::kernel_print!("VEND IS {:X}\r\n", vend);
-    doors_macros2::kernel_print!("ACPI RESERVED AT {:x?}\r\n", crate::address(acpi.as_ref()));
-    doors_macros2::kernel_print!("Need to map physical addresses 0xfee00000\r\n");
+    let apic_msr = x86_64::registers::model_specific::Msr::new(0x1b);
+    let apic_msr_value = unsafe { apic_msr.read() };
+    let apic_address = apic_msr_value & 0xFFFFF000;
+
+    PAGING_MANAGER
+        .lock()
+        .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
+        .unwrap();
+    doors_macros2::kernel_print!("APIC MSR IS {:x}\r\n", apic_msr_value);
+    doors_macros2::kernel_print!("APIC RESERVED AT {:x?}\r\n", crate::address(apic.as_ref()));
+    doors_macros2::kernel_print!("APIC ID IS {:x}\r\n", apic.regs[0x20 / 8]);
+    doors_macros2::kernel_print!("APIC VERSION IS {:x}\r\n", apic.regs[0x30 / 8]);
 
     if true {
-        let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
+        let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
         doors_macros2::kernel_print!("test is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
 
     if true {
-        let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
+        let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
         doors_macros2::kernel_print!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
@@ -416,11 +470,30 @@ pub extern "C" fn start64() -> ! {
 
     doors_macros2::kernel_print!("About to open acpi stuff\r\n");
 
-    //handle_acpi(boot_info, acpi_handler);
+    handle_acpi(boot_info, acpi_handler);
+
+    let mut pic = Pic::new().unwrap();
+    pic.disable();
+    pic.remap(0x20, 0x28);
+
+    {
+        let mut idt = INTERRUPT_DESCRIPTOR_TABLE.lock();
+        unsafe {
+            idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                divide_by_zero_asm as *const (),
+            ));
+            let mut entry = x86_64::structures::idt::Entry::missing();
+            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                segment_not_present_asm as *const (),
+            ));
+            idt.segment_not_present = entry;
+        }
+    }
 
     unsafe {
-        IDT.load_unsafe();
-        //x86_64::instructions::interrupts::enable();
+        INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
+        x86_64::instructions::interrupts::enable();
     }
+
     super::main_boot();
 }

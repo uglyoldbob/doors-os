@@ -8,6 +8,7 @@
 #![feature(strict_provenance)]
 #![feature(const_mut_refs)]
 #![feature(alloc_error_handler)]
+#![feature(new_uninit)]
 
 extern crate alloc;
 

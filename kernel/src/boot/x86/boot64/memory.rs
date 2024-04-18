@@ -72,14 +72,6 @@ impl BumpAllocator {
     }
 }
 
-impl Locked<BumpAllocator> {
-    /// Retrieve the current end of the allocator
-    pub fn end(&self) -> usize {
-        let alloc = self.lock();
-        alloc.end
-    }
-}
-
 unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
     fn allocate(
         &self,
@@ -543,6 +535,36 @@ impl<'a> PagingTableManager<'a> {
             }
         };
         unsafe { &mut *self.pt1.as_mut_ptr() }.update(pt1);
+    }
+
+    /// Map the specified range of physical addresses to the specified virtual addresses as read/write. size is in bytes.
+    pub fn map_addresses_read_write(
+        &mut self,
+        virtual_address: usize,
+        physical_address: usize,
+        size: usize,
+    ) -> Result<(), ()> {
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64() as usize;
+
+        for i in (0..size).step_by(core::mem::size_of::<Page>()) {
+            let vaddr = virtual_address + i;
+            let paddr = physical_address + i;
+            self.setup_cache(cr3, vaddr);
+            let pt1_index = ((vaddr >> 12) & 0x1FF) as usize;
+
+            if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
+                unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] =
+                    paddr as u64 | 0x3;
+                x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
+            } else {
+                return Err(());
+            }
+            if size > 0x5000 && i > 63000 * core::mem::size_of::<Page>() as usize {
+                loop {}
+            }
+        }
+        Ok(())
     }
 
     /// Map the specified range of physical addresses to the specified virtual addresses. size corresponds to bytes
