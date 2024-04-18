@@ -19,9 +19,6 @@ use alloc::sync::Arc;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
-use crate::modules::gpio::GpioPinTrait;
-use crate::modules::timer::TimerTrait;
-
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 

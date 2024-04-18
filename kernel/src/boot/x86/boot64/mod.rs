@@ -1,6 +1,10 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::modules::video::TextDisplayTrait;
+use acpi::fadt::Fadt;
+use acpi::hpet::HpetTable;
+use acpi::madt::Madt;
+use acpi::sdt::SdtHeader;
 use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
@@ -206,6 +210,124 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
     }
 }
 
+#[inline(never)]
+fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHandler) {
+    let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
+        doors_macros2::kernel_print!(
+            "rsdpv2 at {:X} {:x} revision {}\r\n",
+            rsdp2 as *const multiboot2::RsdpV2Tag as usize,
+            rsdp2.xsdt_address(),
+            rsdp2.revision()
+        );
+        Some(
+            unsafe {
+                acpi::AcpiTables::from_rsdp(
+                    acpi_handler.clone(),
+                    rsdp2 as *const multiboot2::RsdpV2Tag as usize + 8,
+                )
+            }
+            .unwrap(),
+        )
+    } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
+        doors_macros2::kernel_print!(
+            "rsdpv1 at {:X} {:x}\r\n",
+            rsdp1 as *const multiboot2::RsdpV1Tag as usize,
+            rsdp1.rsdt_address()
+        );
+        let t = unsafe {
+            acpi::AcpiTables::from_rsdp(
+                acpi_handler.clone(),
+                rsdp1 as *const multiboot2::RsdpV1Tag as usize + 8,
+            )
+        };
+        if let Err(e) = &t {
+            doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
+        }
+        Some(t.unwrap())
+    } else {
+        None
+    };
+
+    if acpi.is_none() {
+        doors_macros2::kernel_print!("No ACPI table found\r\n");
+    }
+    let acpi = acpi.unwrap();
+    doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision());
+
+    for v in acpi.ssdts() {
+        doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
+    }
+
+    if let Ok(v) = acpi.dsdt() {
+        doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+    }
+
+    doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
+
+    for header in acpi.headers() {
+        doors_macros2::kernel_print!(
+            "sdt {:X} {} {} {}\r\n",
+            &header as *const SdtHeader as usize,
+            header.signature.as_str(),
+            header.length as usize,
+            header.revision
+        );
+        match header.signature {
+            acpi::sdt::Signature::WAET => {
+                doors_macros2::kernel_print!("TODO Parse the Waet table\r\n");
+            }
+            acpi::sdt::Signature::HPET => {
+                let _hpet = acpi.find_table::<HpetTable>().unwrap();
+                doors_macros2::kernel_print!("TODO Parse the Hpet table\r\n");
+            }
+            acpi::sdt::Signature::FADT => {
+                let _fadt = acpi.find_table::<Fadt>().unwrap();
+                doors_macros2::kernel_print!("TODO Parse the Fadt\r\n");
+            }
+            acpi::sdt::Signature::MADT => {
+                let madt = acpi.find_table::<Madt>().unwrap();
+                for e in madt.entries() {
+                    match e {
+                        acpi::madt::MadtEntry::LocalApic(lapic) => {
+                            doors_macros2::kernel_print!("madt lapic entry\r\n");
+                        }
+                        acpi::madt::MadtEntry::IoApic(ioapic) => {
+                            doors_macros2::kernel_print!("madt ioapic entry\r\n");
+                        }
+                        acpi::madt::MadtEntry::InterruptSourceOverride(i) => {
+                            doors_macros2::kernel_print!("madt int source override\r\n");
+                        }
+                        acpi::madt::MadtEntry::NmiSource(_) => todo!(),
+                        acpi::madt::MadtEntry::LocalApicNmi(_) => {
+                            doors_macros2::kernel_print!("madt lapic nmi entry\r\n");
+                        }
+                        acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
+                        acpi::madt::MadtEntry::IoSapic(_) => todo!(),
+                        acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
+                        acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
+                        acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
+                        acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
+                        acpi::madt::MadtEntry::Gicc(_) => todo!(),
+                        acpi::madt::MadtEntry::Gicd(_) => todo!(),
+                        acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
+                        acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
+                        acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
+                        acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    doors_macros2::kernel_print!("acpi: is {:p}\r\n", &acpi);
+
+    let pi = PlatformInfo::new(&acpi);
+    if let Ok(pi) = pi {
+        doors_macros2::kernel_print!("pi: is {:p}\r\n", &pi);
+    }
+}
+
 /// The entry point for the 64 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
@@ -274,108 +396,7 @@ pub extern "C" fn start64() -> ! {
 
     doors_macros2::kernel_print!("About to open acpi stuff\r\n");
 
-    let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        doors_macros2::kernel_print!(
-            "rsdpv2 at {:x} revision {}\r\n",
-            rsdp2.xsdt_address() as *const u8 as usize,
-            rsdp2.revision()
-        );
-        Some(
-            unsafe {
-                acpi::AcpiTables::from_rsdt(
-                    acpi_handler.clone(),
-                    rsdp2.revision(),
-                    rsdp2.xsdt_address() as *const u8 as usize,
-                )
-            }
-            .unwrap(),
-        )
-    } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        doors_macros2::kernel_print!(
-            "rsdpv1 at {:x}\r\n",
-            rsdp1.rsdt_address() as *const u8 as usize
-        );
-        let t = unsafe {
-            acpi::AcpiTables::from_rsdt(
-                acpi_handler.clone(),
-                0,
-                rsdp1.rsdt_address() as *const u8 as usize,
-            )
-        };
-        if let Err(e) = &t {
-            doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
-        }
-        Some(t.unwrap())
-    } else {
-        None
-    };
-
-    if acpi.is_none() {
-        doors_macros2::kernel_print!("No ACPI table found\r\n");
-    }
-    let acpi = acpi.unwrap();
-    doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision);
-
-    for v in &acpi.ssdts {
-        doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
-    }
-
-    if let Some(v) = &acpi.dsdt {
-        doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
-    }
-
-    for (s, t) in &acpi.sdts {
-        if let acpi::sdt::Signature::MADT = *s {
-            doors_macros2::kernel_print!("MADT: ");
-            let madt = unsafe {
-                acpi_handler
-                    .map_physical_region::<acpi::madt::Madt>(t.physical_address, t.length as usize)
-            };
-            for e in madt.entries() {
-                match e {
-                    acpi::madt::MadtEntry::LocalApic(lapic) => {
-                        doors_macros2::kernel_print!("madt lapic entry\r\n");
-                    }
-                    acpi::madt::MadtEntry::IoApic(ioapic) => {
-                        doors_macros2::kernel_print!("madt ioapic entry\r\n");
-                    }
-                    acpi::madt::MadtEntry::InterruptSourceOverride(i) => {
-                        doors_macros2::kernel_print!("madt int source override\r\n");
-                    }
-                    acpi::madt::MadtEntry::NmiSource(_) => todo!(),
-                    acpi::madt::MadtEntry::LocalApicNmi(_) => {
-                        doors_macros2::kernel_print!("madt lapic nmi entry\r\n");
-                    }
-                    acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
-                    acpi::madt::MadtEntry::IoSapic(_) => todo!(),
-                    acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
-                    acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
-                    acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
-                    acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
-                    acpi::madt::MadtEntry::Gicc(_) => todo!(),
-                    acpi::madt::MadtEntry::Gicd(_) => todo!(),
-                    acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
-                    acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
-                    acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
-                    acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
-                }
-            }
-        }
-        doors_macros2::kernel_print!(
-            "sdt {} {:x} {:x} {}\r\n",
-            s.as_str(),
-            t.physical_address,
-            t.length,
-            t.validated
-        );
-    }
-
-    doors_macros2::kernel_print!("acpi: is {:p}\r\n", &acpi);
-
-    let pi = PlatformInfo::new(&acpi);
-    if let Ok(pi) = pi {
-        doors_macros2::kernel_print!("pi: is {:p}\r\n", &pi);
-    }
+    handle_acpi(boot_info, acpi_handler);
 
     unsafe {
         IDT.load_unsafe();

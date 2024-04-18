@@ -152,3 +152,31 @@ impl core::ops::DerefMut for VgaChar {
         self
     }
 }
+
+/// prints out a user friendly hex dump of the specified data
+pub fn hex_dump(data: &[u8]) {
+    let len = data.len();
+    let mut addr_len = 1;
+    let mut len_calc = len;
+    loop {
+        if len_calc > 15 {
+            addr_len += 1;
+            len_calc /= 16;
+        } else {
+            break;
+        }
+    }
+    for (i, b) in data.chunks(16).enumerate() {
+        doors_macros2::kernel_print!("{:0>addr_len$x}: ", i * 16);
+        for d in b {
+            doors_macros2::kernel_print!("{:02x} ", d);
+        }
+        for _ in b.len()..16 {
+            doors_macros2::kernel_print!("   ");
+        }
+        for d in b {
+            doors_macros2::kernel_print!("{}", *d as char);
+        }
+        doors_macros2::kernel_print!("\r\n");
+    }
+}

@@ -39,7 +39,7 @@ kernel32:
 	cargo build --release --target i386-unknown-none.json --bin kernel
 	cp -u target/i386-unknown-none/release/kernel ./build/kernel32
 
-.PHONY: kernel
+.PHONY: kernel32 kernel64
 
 build/cd64.img: kernel64
 	mkdir -p build/iso/boot/grub
