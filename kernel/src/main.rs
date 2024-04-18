@@ -22,6 +22,11 @@ use modules::video::TextDisplayTrait;
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
+/// Get the address of the specified variable
+pub fn address<T>(v: &T) -> usize {
+    v as *const T as usize
+}
+
 /// A wrapper around box that allows for traits to be implemented on a Box
 pub struct Box<T> {
     /// The contained object

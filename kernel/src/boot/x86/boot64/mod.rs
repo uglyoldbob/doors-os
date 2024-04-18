@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::modules::video::TextDisplayTrait;
+use crate::Locked;
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
 use acpi::madt::Madt;
@@ -289,7 +290,12 @@ fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHa
                 for e in madt.entries() {
                     match e {
                         acpi::madt::MadtEntry::LocalApic(lapic) => {
-                            doors_macros2::kernel_print!("madt lapic entry\r\n");
+                            doors_macros2::kernel_print!(
+                                "madt lapic entry {:x} {:x} {:x}\r\n",
+                                lapic.processor_id,
+                                lapic.apic_id,
+                                lapic.flags as u32
+                            );
                         }
                         acpi::madt::MadtEntry::IoApic(ioapic) => {
                             doors_macros2::kernel_print!("madt ioapic entry\r\n");
@@ -326,6 +332,11 @@ fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHa
     if let Ok(pi) = pi {
         doors_macros2::kernel_print!("pi: is {:p}\r\n", &pi);
     }
+}
+
+#[repr(align(16))]
+struct LocalApicRegister {
+    regs: [u64; 128],
 }
 
 /// The entry point for the 64 bit x86 kernel
@@ -366,12 +377,21 @@ pub extern "C" fn start64() -> ! {
     };
 
     VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x3fffff);
+
+    let vend = VIRTUAL_MEMORY_ALLOCATOR.end();
+    let acpi: Box<core::mem::MaybeUninit<LocalApicRegister>, &Locked<memory::BumpAllocator>> =
+        Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR);
+
     PAGING_MANAGER.lock().init();
 
     let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
     let mut v = crate::VGA.lock();
     v.replace(crate::modules::video::TextDisplay::X86VgaTextMode(vga));
     drop(v);
+
+    doors_macros2::kernel_print!("VEND IS {:X}\r\n", vend);
+    doors_macros2::kernel_print!("ACPI RESERVED AT {:x?}\r\n", crate::address(acpi.as_ref()));
+    doors_macros2::kernel_print!("Need to map physical addresses 0xfee00000\r\n");
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &crate::Locked<memory::SimpleMemoryManager>> =
@@ -396,7 +416,7 @@ pub extern "C" fn start64() -> ! {
 
     doors_macros2::kernel_print!("About to open acpi stuff\r\n");
 
-    handle_acpi(boot_info, acpi_handler);
+    //handle_acpi(boot_info, acpi_handler);
 
     unsafe {
         IDT.load_unsafe();

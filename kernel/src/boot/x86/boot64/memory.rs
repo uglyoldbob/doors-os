@@ -72,6 +72,14 @@ impl BumpAllocator {
     }
 }
 
+impl Locked<BumpAllocator> {
+    /// Retrieve the current end of the allocator
+    pub fn end(&self) -> usize {
+        let alloc = self.lock();
+        alloc.end
+    }
+}
+
 unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
     fn allocate(
         &self,
