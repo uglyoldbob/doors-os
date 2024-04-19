@@ -31,12 +31,16 @@ gdb32: build/cd32.img
 
 kernel64:
 	mkdir -p ./build
-	cargo build --release --target x86_64-unknown-none --bin kernel
+	cargo build --release --target x86_64-unknown-none
+	cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64.debug
+	cargo strip --release
 	cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64
 
 kernel32:
 	mkdir -p ./build
-	cargo build --release --target i386-unknown-none.json --bin kernel
+	cargo build --release --target i386-unknown-none.json
+	cp -u target/i386-unknown-none/release/kernel ./build/kernel32.debug
+	cargo strip
 	cp -u target/i386-unknown-none/release/kernel ./build/kernel32
 
 .PHONY: kernel32 kernel64

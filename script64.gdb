@@ -1,4 +1,4 @@
-add-symbol-file build/kernel64
+add-symbol-file build/kernel64.debug
 break start64
 break segment_not_present_asm
 disp /i $pc

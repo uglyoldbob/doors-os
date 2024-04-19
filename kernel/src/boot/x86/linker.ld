@@ -1,6 +1,7 @@
 MEMORY
 {
   ram (!rx) : org = 0x100000, l = 3M
+  debug (r) : org = 0x40000000, l = 1024M
 }
 
 SECTIONS
@@ -37,6 +38,9 @@ SECTIONS
   .end_kernel : {
     END_OF_KERNEL = .;
   } > ram
+  .debug (NOLOAD) : {
+    KEEP(*(.debug));
+  } > debug
   /DISCARD/ :
   {
     *(.dynamic);
@@ -44,6 +48,5 @@ SECTIONS
     *(.gnu.hash);
     *(.comment);
     *(.hash);
-    *(.debug*);
   }
 }

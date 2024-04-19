@@ -1,4 +1,4 @@
-add-symbol-file build/kernel32
+add-symbol-file build/kernel32.debug
 break start32
 break segment_not_present_asm
 disp /i $pc
