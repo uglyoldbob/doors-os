@@ -91,6 +91,34 @@ pub extern "C" fn segment_not_present(arg: u32) {
     loop {}
 }
 
+extern "x86-interrupt" fn double_fault_handler(
+    sf: x86_64::structures::idt::InterruptStackFrame,
+    error_code: u64,
+) -> ! {
+    doors_macros2::kernel_print!(
+        "Double fault {:x} @ 0x{:X}\r\n",
+        error_code,
+        sf.instruction_pointer
+    );
+    loop {}
+}
+
+extern "x86-interrupt" fn page_fault_handler(
+    sf: x86_64::structures::idt::InterruptStackFrame,
+    error_code: x86_64::structures::idt::PageFaultErrorCode,
+) {
+    doors_macros2::kernel_print!(
+        "Page fault {:x} @ 0x{:X}\r\n",
+        error_code,
+        sf.instruction_pointer
+    );
+    doors_macros2::kernel_print!(
+        "Fault address 0x{:X}\r\n",
+        x86_64::registers::control::Cr2::read().unwrap()
+    );
+    loop {}
+}
+
 /// The panic handler for the 64-bit kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -382,7 +410,115 @@ impl Pic {
 
 #[repr(align(16))]
 struct LocalApicRegister {
-    regs: [u64; 128],
+    regs: [u32; 256],
+}
+
+struct AmlHandler {}
+
+impl aml::Handler for AmlHandler {
+    fn read_u8(&self, address: usize) -> u8 {
+        todo!()
+    }
+
+    fn read_u16(&self, address: usize) -> u16 {
+        todo!()
+    }
+
+    fn read_u32(&self, address: usize) -> u32 {
+        todo!()
+    }
+
+    fn read_u64(&self, address: usize) -> u64 {
+        todo!()
+    }
+
+    fn write_u8(&mut self, address: usize, value: u8) {
+        todo!()
+    }
+
+    fn write_u16(&mut self, address: usize, value: u16) {
+        todo!()
+    }
+
+    fn write_u32(&mut self, address: usize, value: u32) {
+        todo!()
+    }
+
+    fn write_u64(&mut self, address: usize, value: u64) {
+        todo!()
+    }
+
+    fn read_io_u8(&self, port: u16) -> u8 {
+        todo!()
+    }
+
+    fn read_io_u16(&self, port: u16) -> u16 {
+        todo!()
+    }
+
+    fn read_io_u32(&self, port: u16) -> u32 {
+        todo!()
+    }
+
+    fn write_io_u8(&self, port: u16, value: u8) {
+        todo!()
+    }
+
+    fn write_io_u16(&self, port: u16, value: u16) {
+        todo!()
+    }
+
+    fn write_io_u32(&self, port: u16, value: u32) {
+        todo!()
+    }
+
+    fn read_pci_u8(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u8 {
+        todo!()
+    }
+
+    fn read_pci_u16(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u16 {
+        todo!()
+    }
+
+    fn read_pci_u32(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u32 {
+        todo!()
+    }
+
+    fn write_pci_u8(
+        &self,
+        segment: u16,
+        bus: u8,
+        device: u8,
+        function: u8,
+        offset: u16,
+        value: u8,
+    ) {
+        todo!()
+    }
+
+    fn write_pci_u16(
+        &self,
+        segment: u16,
+        bus: u8,
+        device: u8,
+        function: u8,
+        offset: u16,
+        value: u16,
+    ) {
+        todo!()
+    }
+
+    fn write_pci_u32(
+        &self,
+        segment: u16,
+        bus: u8,
+        device: u8,
+        function: u8,
+        offset: u16,
+        value: u32,
+    ) {
+        todo!()
+    }
 }
 
 /// The entry point for the 64 bit x86 kernel
@@ -444,8 +580,10 @@ pub extern "C" fn start64() -> ! {
         .unwrap();
     doors_macros2::kernel_print!("APIC MSR IS {:x}\r\n", apic_msr_value);
     doors_macros2::kernel_print!("APIC RESERVED AT {:x?}\r\n", crate::address(apic.as_ref()));
-    doors_macros2::kernel_print!("APIC ID IS {:x}\r\n", apic.regs[0x20 / 8]);
-    doors_macros2::kernel_print!("APIC VERSION IS {:x}\r\n", apic.regs[0x30 / 8]);
+    let apic_id = apic.regs[0x20 / 4];
+    doors_macros2::kernel_print!("APIC ID IS {:x}\r\n", apic_id);
+    let apic_version = apic.regs[0x30 / 4];
+    doors_macros2::kernel_print!("APIC VERSION IS {:x}\r\n", apic_version);
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
@@ -470,8 +608,6 @@ pub extern "C" fn start64() -> ! {
 
     doors_macros2::kernel_print!("About to open acpi stuff\r\n");
 
-    handle_acpi(boot_info, acpi_handler);
-
     let mut pic = Pic::new().unwrap();
     pic.disable();
     pic.remap(0x20, 0x28);
@@ -487,6 +623,18 @@ pub extern "C" fn start64() -> ! {
                 segment_not_present_asm as *const (),
             ));
             idt.segment_not_present = entry;
+
+            let mut entry = x86_64::structures::idt::Entry::missing();
+            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                double_fault_handler as *const (),
+            ));
+            idt.double_fault = entry;
+
+            let mut entry = x86_64::structures::idt::Entry::missing();
+            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                page_fault_handler as *const (),
+            ));
+            idt.page_fault = entry;
         }
     }
 
@@ -494,6 +642,12 @@ pub extern "C" fn start64() -> ! {
         INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
         x86_64::instructions::interrupts::enable();
     }
+
+    handle_acpi(boot_info, acpi_handler);
+
+    let aml_handler = Box::new(AmlHandler {});
+    let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
+    aml.initialize_objects().unwrap();
 
     super::main_boot();
 }

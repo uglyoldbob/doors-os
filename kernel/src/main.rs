@@ -9,6 +9,7 @@
 #![feature(const_mut_refs)]
 #![feature(alloc_error_handler)]
 #![feature(new_uninit)]
+#![feature(abi_x86_interrupt)]
 
 extern crate alloc;
 

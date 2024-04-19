@@ -1,15 +1,15 @@
 all: qemucd
 
 qemu32: build/floppy32.img
-	qemu-system-i386 -fda build/floppy32.img -m 4 -d int,cpu_reset
+	qemu-system-i386 -fda build/floppy32.img -m 8 -d int,cpu_reset
 qemu64: build/floppy64.img
-	qemu-system-x86_64 -fda build/floppy64.img -m 4 -d int,cpu_reset
+	qemu-system-x86_64 -fda build/floppy64.img -m 8 -d int,cpu_reset
 
 qemucd32: build/cd32.img
-	qemu-system-i386 -cdrom build/cd32.img -m 4 -d int,cpu_reset
+	qemu-system-i386 -cdrom build/cd32.img -m 8 -d int,cpu_reset
 
 qemucd64: build/cd64.img
-	qemu-system-x86_64 -cdrom build/cd64.img -m 4 -d int,cpu_reset
+	qemu-system-x86_64 -cdrom build/cd64.img -m 8 -d int,cpu_reset
 
 bochs64: build/cd64.img
 	bochs -f bochsrc64.txt -q
