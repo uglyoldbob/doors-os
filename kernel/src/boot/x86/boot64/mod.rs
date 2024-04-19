@@ -567,9 +567,9 @@ pub extern "C" fn start64() -> ! {
 
     PAGING_MANAGER.lock().init();
 
-    let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
+    let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
     let mut v = crate::VGA.lock();
-    v.replace(crate::modules::video::TextDisplay::X86VgaTextMode(vga));
+    v.replace(crate::modules::video::TextDisplay::X86VgaVideoMode(vga));
     drop(v);
 
     let apic_msr = x86_64::registers::model_specific::Msr::new(0x1b);

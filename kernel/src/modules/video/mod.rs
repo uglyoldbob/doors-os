@@ -81,6 +81,8 @@ pub enum TextDisplay {
     SerialDisplay(VideoOverSerial),
     /// X86 vga hardware operated in text mode
     X86VgaTextMode(text::X86VgaTextMode),
+    /// X86 vga hardware operated in video mode
+    X86VgaVideoMode(vga::X86VgaMode),
 }
 
 /// Enables sending video text over a serial port

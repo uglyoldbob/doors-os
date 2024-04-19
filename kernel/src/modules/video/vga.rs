@@ -1,8 +1,6 @@
 //! Kernel module for x86 vga text using video mode
 
 use crate::modules::video::TextDisplayTrait;
-use crate::FixedString;
-use crate::VGA;
 
 use crate::boot::x86::IoPortArray;
 use crate::boot::x86::IoPortRef;
@@ -12,46 +10,154 @@ use crate::boot::x86::IOPORTS;
 /// The memory portion of the x86 hardware
 pub struct X86VgaHardware {
     /// The actual memory
-    buf: [u8; 0x40000],
+    buf: [u8; 0x20000],
 }
 
-/// The structure for vga hardware operated in plain text mode.
-pub struct X86VgaMode<'a> {
+/// The structure for vga hardware. This driver assumes color mode only.
+pub struct X86VgaMode {
     /// The column where the next character will be placed
     column: u8,
     /// The row where the next character will be placed
     row: u8,
     /// A mutable reference to the hardware memory
-    hw: &'a mut X86VgaHardware,
+    hw: &'static mut X86VgaHardware,
     /// The io ports for the vga hardware
-    ports: IoPortArray<'a>,
+    ports: IoPortArray<'static>,
 }
 
-impl<'a> X86VgaMode<'a> {
+/*
+See https://github.com/rust-osdev/vga for information on this block comment
+let mode = Graphics640x480x16::new();
+    nothing interesting
+mode.set_mode();
+    let mut vga = VGA.lock();
+        Vga::new()
+    vga.set_video_mode(VideoMode::Mode320x240x256);
+        vga.set_video_mode_320x240x256()
+            self.set_registers(&MODE_320X240X256_CONFIGURATION);
+                let emulation_mode = self.get_emulation_mode();
+                self.general_registers.write_msr(configuration.miscellaneous_output);
+                for (index, value) in configuration.sequencer_registers {
+                    self.sequencer_registers.write(*index, *value);
+                }
+                self.unlock_crtc_registers(emulation_mode);
+                for (index, value) in configuration.crtc_controller_registers {
+                    self.crtc_controller_registers
+                        .write(emulation_mode, *index, *value);
+                }
+                for (index, value) in configuration.graphics_controller_registers {
+                    self.graphics_controller_registers.write(*index, *value);
+                }
+                self.attribute_controller_registers.blank_screen(emulation_mode);
+                for (index, value) in configuration.attribute_controller_registers {
+                    self.attribute_controller_registers
+                        .write(emulation_mode, *index, *value);
+                }
+                self.attribute_controller_registers.unblank_screen(emulation_mode);
+            self.most_recent_video_mode = Some(VideoMode::Mode320x240x256);
+    // Some bios mess up the palette when switching modes,
+    // so explicitly set it.
+    vga.color_palette_registers.load_palette(&DEFAULT_PALETTE);
+mode.clear_screen(Color16::Black);
+    let frame_buffer = self.get_frame_buffer();
+        usize::from(VGA.lock().get_frame_buffer()) as *mut u8
+            based on bits 2-4 of the miscellaneous of the graphics control registers
+    VGA.lock().sequencer_registers.set_plane_mask(PlaneMask::ALL_PLANES);
+        let original_value = self.read(SequencerIndex::PlaneMask) & 0xF0;
+        self.write(SequencerIndex::PlaneMask, original_value | u8::from(plane_mask),);
+            self.set_index(index);
+            unsafe { self.srx_data.write(value); }
+    unsafe { frame_buffer.write_bytes(color, Self::SIZE); }
+mode.draw_line((80, 60), (80, 420), Color16::White);
+mode.draw_line((80, 60), (540, 60), Color16::White);
+mode.draw_line((80, 420), (540, 420), Color16::White);
+mode.draw_line((540, 420), (540, 60), Color16::White);
+mode.draw_line((80, 90), (540, 90), Color16::White);
+for (offset, character) in "Hello World!".chars().enumerate() {
+    mode.draw_character(270 + offset * 8, 72, character, Color16::White)
+}
+
+*/
+
+impl X86VgaMode {
     /// Gets an instance of the X86Vga. This should be protected by a singleton type pattern to prevent multiple instances from being handed out to the kernel.
-    pub unsafe fn get(adr: usize, base: u16) -> Option<Self> {
-        let ports = IOPORTS.get_ports(base, 16).unwrap();
+    pub unsafe fn get(adr: usize) -> Option<Self> {
+        let ports = IOPORTS.get_ports(0x3c0, 32).unwrap();
         let mut check = Self {
             hw: &mut *(adr as *mut X86VgaHardware),
             column: 0,
             row: 0,
             ports,
         };
-        let mut pr: IoPortRef<u8> = check.ports.port(0xc);
-        let pv: u8 = pr.port_read();
-        let mut pw: IoPortRef<u8> = check.ports.port(2);
-        pw.port_write(pv | 2);
-
-        let mut pw: IoPortRef<u8> = check.ports.port(6);
-        doors_macros2::kernel_print!("mm of VGA is {:x}\r\n", pw.port_read());
-        pw.port_write(0);
-
-        let mut pw: IoPortRef<u8> = check.ports.port(4);
-        doors_macros2::kernel_print!("extmem of VGA is {:x}\r\n", pw.port_read());
-        let p = pw.port_read();
-        pw.port_write(p | 2);
+        let val = 1;
+        check.write_graphics_register(6, val);
+        check.write_crt_controller_register(0, 40 - 5); //320 / 8
+        check.write_crt_controller_register(1, 40 - 1); //320 / 8
+        check.write_crt_controller_register(2, 40); //320 / 8
+        check.write_crt_controller_register(3, 40 + 1); //320 / 8
+        check.write_crt_controller_register(4, 40 + 2);
+        check.write_crt_controller_register(5, 40 + 3);
+        check.write_crt_controller_register(6, 240);
+        check.write_crt_controller_register(0x12, 241);
+        check.write_crt_controller_register(0x15, 242);
+        check.write_crt_controller_register(0x16, 243);
+        check.write_crt_controller_register(0x17, 244);
 
         Some(check)
+    }
+
+    fn read_misc_output_register(&self) -> u8 {
+        self.ports.port(0xc).port_read()
+    }
+
+    fn write_misc_output_register(&self, v: u8) {
+        self.ports.port(0x2).port_write(v);
+    }
+
+    fn read_feature_control_register(&self) -> u8 {
+        self.ports.port(0xA).port_read()
+    }
+
+    fn write_feature_control_register(&mut self, v: u8) {
+        self.ports.port(0x1a).port_write(v);
+    }
+
+    fn read_status0_register(&self) -> u8 {
+        self.ports.port(2).port_read()
+    }
+
+    fn read_status1_register(&self) -> u8 {
+        self.ports.port(0x1a).port_read()
+    }
+
+    fn read_graphics_register(&mut self, i: u8) -> u8 {
+        self.ports.port(0xe).port_write(i);
+        self.ports.port(0xf).port_read()
+    }
+
+    fn write_graphics_register(&mut self, i: u8, val: u8) {
+        self.ports.port(0xe).port_write(i);
+        self.ports.port(0xf).port_write(val);
+    }
+
+    fn read_sequencer_register(&mut self, i: u8) -> u8 {
+        self.ports.port(0x4).port_write(i);
+        self.ports.port(0x5).port_read()
+    }
+
+    fn read_attribute_color_register(&mut self, i: u8) -> u8 {
+        self.ports.port(0x0).port_write(i);
+        self.ports.port(0x1).port_read()
+    }
+
+    fn read_crt_controller_register(&mut self, i: u8) -> u8 {
+        self.ports.port(0x14).port_write(i);
+        self.ports.port(0x15).port_read()
+    }
+
+    fn write_crt_controller_register(&mut self, i: u8, val: u8) {
+        self.ports.port(0x14).port_write(i);
+        self.ports.port(0x15).port_write(val);
     }
 
     /// Detect how much memory is present on the graphics card
@@ -77,6 +183,6 @@ impl<'a> X86VgaMode<'a> {
     }
 }
 
-impl<'a> super::TextDisplayTrait for X86VgaMode<'a> {
+impl super::TextDisplayTrait for X86VgaMode {
     fn print_char(&mut self, d: char) {}
 }
