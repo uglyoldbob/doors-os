@@ -200,26 +200,12 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 Vec::with_capacity_in(realsize, self.vmm);
             let mut p = self.pageman.lock();
 
-            doors_macros2::kernel_print!("Bump allocator gives 0x{:X}\r\n", b.as_ptr() as usize);
-
             let e =
                 p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
             }
-            doors_macros2::kernel_print!(
-                "vstart = {:X} + {:X}\r\n",
-                b.as_mut_ptr() as usize,
-                size_before_allocation
-            );
             let vstart = b.as_mut_ptr() as usize + size_before_allocation;
-
-            doors_macros2::kernel_print!(
-                "ACPI MAP VIRTUAL 0x{:X} 0x{:X} realsize 0x{:X}\r\n",
-                physical_address,
-                vstart,
-                realsize
-            );
 
             let r = acpi::PhysicalMapping::new(
                 start as usize,
