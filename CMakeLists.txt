@@ -36,7 +36,7 @@ add_custom_target(
     image_cd64
     DEPENDS kernel64
     BYPRODUCTS cd64.iso
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./build/kernel
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./build/kernel64
 )
 endif (WIN32)
 
