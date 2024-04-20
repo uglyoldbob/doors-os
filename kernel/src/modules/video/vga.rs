@@ -89,19 +89,35 @@ impl X86VgaMode {
             row: 0,
             ports,
         };
-        let val = 1;
-        check.write_graphics_register(6, val);
-        check.write_crt_controller_register(0, 40 - 5); //320 / 8
-        check.write_crt_controller_register(1, 40 - 1); //320 / 8
-        check.write_crt_controller_register(2, 40); //320 / 8
-        check.write_crt_controller_register(3, 40 + 1); //320 / 8
-        check.write_crt_controller_register(4, 40 + 2);
-        check.write_crt_controller_register(5, 40 + 3);
-        check.write_crt_controller_register(6, 240);
-        check.write_crt_controller_register(0x12, 241);
-        check.write_crt_controller_register(0x15, 242);
-        check.write_crt_controller_register(0x16, 243);
-        check.write_crt_controller_register(0x17, 244);
+        let emulation_mode = check.read_misc_output_register() & 1;
+        check.write_misc_output_register(0x63);
+        check.write_sequencer_register(0, 3);
+        check.write_sequencer_register(1, 1);
+        check.write_sequencer_register(2, 0xf);
+        check.write_sequencer_register(3, 0);
+        check.write_sequencer_register(4, 6);
+        check.unlock_crtc_registers(emulation_mode);
+        for (i, val) in [
+            0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0x0d, 0x3e, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xea, 0xac, 0xdf, 0x28, 0x00, 0xe7, 0x06, 0xe3, 0xff,
+        ]
+        .iter()
+        .enumerate()
+        {
+            check.write_crt_controller_register(i as u8, *val);
+        }
+
+        for (i, val) in [0, 0, 0, 0, 0, 0x40, 0x05, 0x0f, 0xff].iter().enumerate() {
+            check.write_graphics_register(i as u8, *val);
+        }
+
+        check.blank_screen();
+
+        for (i, val) in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x41, 0, 0x0f, 0x00, 0x00].iter().enumerate() {
+            check.write_attribute_color_register(i as u8, *val);
+        }
+
+        check.unblank_screen();
 
         Some(check)
     }
@@ -145,9 +161,21 @@ impl X86VgaMode {
         self.ports.port(0x5).port_read()
     }
 
+    fn write_sequencer_register(&mut self, i: u8, val: u8) {
+        self.ports.port(0x4).port_write(i);
+        self.ports.port(0x5).port_write(val);
+    }
+
     fn read_attribute_color_register(&mut self, i: u8) -> u8 {
+        let _ : u8 = self.ports.port(0x1a).port_read();
         self.ports.port(0x0).port_write(i);
         self.ports.port(0x1).port_read()
+    }
+
+    fn write_attribute_color_register(&mut self, i: u8, val: u8) {
+        let _ : u8 = self.ports.port(0x1a).port_read();
+        self.ports.port(0x0).port_write(i);
+        self.ports.port(0x1).port_write(val);
     }
 
     fn read_crt_controller_register(&mut self, i: u8) -> u8 {
@@ -158,6 +186,26 @@ impl X86VgaMode {
     fn write_crt_controller_register(&mut self, i: u8, val: u8) {
         self.ports.port(0x14).port_write(i);
         self.ports.port(0x15).port_write(val);
+    }
+
+    fn blank_screen(&mut self) {
+        let _ : u8 = self.ports.port(0x1a).port_read();
+        let v : u8 = self.ports.port(0).port_read();
+        self.ports.port(0).port_write(v&0xdf);
+    }
+
+    fn unblank_screen(&mut self) {
+        let _ : u8 = self.ports.port(0x1a).port_read();
+        let v : u8 = self.ports.port(0).port_read();
+        self.ports.port(0).port_write(v|0x20);
+    }
+
+    fn unlock_crtc_registers(&mut self, mode: u8) {
+        let hblank_end = self.read_crt_controller_register(3);
+        self.write_crt_controller_register(3, hblank_end | 0x80);
+
+        let vblank_end = self.read_crt_controller_register(11);
+        self.write_crt_controller_register(11, vblank_end & 0x7f);
     }
 
     /// Detect how much memory is present on the graphics card
