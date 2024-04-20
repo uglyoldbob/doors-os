@@ -96,8 +96,8 @@ impl X86VgaMode {
         check.write_sequencer_register(4, 6);
         check.unlock_crtc_registers(emulation_mode);
         for (i, val) in [
-            0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0x0d, 0x3e, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0xea, 0xac, 0xdf, 0x28, 0x00, 0xe7, 0x06, 0xe3, 0xff,
+            0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0x0d, 0x3e, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xea, 0xac, 0xdf, 0x28, 0x00, 0xe7, 0x06, 0xe3, 0xff,
         ]
         .iter()
         .enumerate()
@@ -111,7 +111,13 @@ impl X86VgaMode {
 
         check.blank_screen();
 
-        for (i, val) in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x41, 0, 0x0f, 0x00, 0x00].iter().enumerate() {
+        for (i, val) in [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x41, 0, 0x0f, 0x00,
+            0x00,
+        ]
+        .iter()
+        .enumerate()
+        {
             check.write_attribute_color_register(i as u8, *val);
         }
 
@@ -177,18 +183,18 @@ impl X86VgaMode {
     }
 
     fn set_plane_mask(&mut self, mask: u8) {
-        let val : u8 = self.read_sequencer_register(2) & 0xF0;
+        let val: u8 = self.read_sequencer_register(2) & 0xF0;
         self.write_sequencer_register(2, val | (mask & 0xF));
     }
 
     fn read_attribute_color_register(&mut self, i: u8) -> u8 {
-        let _ : u8 = self.ports.port(0x1a).port_read();
+        let _: u8 = self.ports.port(0x1a).port_read();
         self.ports.port(0x0).port_write(i);
         self.ports.port(0x1).port_read()
     }
 
     fn write_attribute_color_register(&mut self, i: u8, val: u8) {
-        let _ : u8 = self.ports.port(0x1a).port_read();
+        let _: u8 = self.ports.port(0x1a).port_read();
         self.ports.port(0x0).port_write(i);
         self.ports.port(0x0).port_write(val);
     }
@@ -204,15 +210,15 @@ impl X86VgaMode {
     }
 
     fn blank_screen(&mut self) {
-        let _ : u8 = self.ports.port(0x1a).port_read();
-        let v : u8 = self.ports.port(0).port_read();
-        self.ports.port(0).port_write(v&0xdf);
+        let _: u8 = self.ports.port(0x1a).port_read();
+        let v: u8 = self.ports.port(0).port_read();
+        self.ports.port(0).port_write(v & 0xdf);
     }
 
     fn unblank_screen(&mut self) {
-        let _ : u8 = self.ports.port(0x1a).port_read();
-        let v : u8 = self.ports.port(0).port_read();
-        self.ports.port(0).port_write(v|0x20);
+        let _: u8 = self.ports.port(0x1a).port_read();
+        let v: u8 = self.ports.port(0).port_read();
+        self.ports.port(0).port_write(v | 0x20);
     }
 
     fn unlock_crtc_registers(&mut self, _mode: u8) {
