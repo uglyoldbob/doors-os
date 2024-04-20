@@ -11,16 +11,11 @@ add_custom_target(
     COMMAND strip ./kernel64
 )
 
-add_custom_target(
-    qemucd64
-    DEPENDS kernel64
-    COMMAND qemu-system-x86_64 -cdrom build/cd64.iso -m 8 -d int,cpu_reset
-)
-
 if (WIN32)
     set(VIRTUALBOX "C:\\Program Files\\Oracle\\VirtualBox\\VirtualBoxVM.exe")
     set(VIRTUALBOX_MANAGE "C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe")
     set(VIRTUALBOX_IMAGE "C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe")
+    set(QEMU_X64 "C:\\Program Files\\qemu\\qemu-system-x86_64.exe")
 endif (WIN32)
 
 add_custom_command(
@@ -45,7 +40,10 @@ add_custom_target(
     COMMAND rm -f ./build/grubiso/boot/grub/grub.cfg
     COMMAND cp grub2.lst ./build/grubiso/boot/grub/grub.cfg
     COMMAND cp ./build/kernel64 ./build/grubiso/boot/kernel
-    COMMAND ${VIRTUALBOX_IMAGE} createiso -o cd64.iso --name-setup=iso9660 ./boot=build/grubiso/boot ./system=build/grubiso/system ./boot.catalog=build/grubiso/boot.catalog ./efi.img=build/grubiso/efi.img
+    COMMAND cp -f ./build/grubiso/efi.img build/grubiso/[boot]/efi.img
+    COMMAND rm -f ./build/grubiso/efi.img
+    COMMAND ${VIRTUALBOX_IMAGE} createiso -o cd64.iso --name-setup=iso9660 ./boot=build/grubiso/boot ./system=build/grubiso/system ./boot.catalog=build/grubiso/boot.catalog --eltorito-add-image=./build/grubiso/[boot]/efi.img --no-emulation-boot
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub.iso -o cd65.iso --name-setup=iso9660 ./boot/grub/menu.lst=./grub2.lst
 )
 endif (WIN32)
 
@@ -66,11 +64,17 @@ add_custom_command(
     DEPENDS image_cd64
     COMMAND ${VIRTUALBOX_MANAGE} createvm --name doors-os-64 --ostype "Doors" --register --basefolder `pwd`
     COMMAND ${VIRTUALBOX_MANAGE} storagectl doors-os-64 --name "IDE Controller" --add ide --controller PIIX4
-    COMMAND ${VIRTUALBOX_MANAGE} storageattach doors-os-64 --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ./build/cd64.iso
+    COMMAND ${VIRTUALBOX_MANAGE} storageattach doors-os-64 --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ./cd64.iso
 )
 
 add_custom_target(
     virtualbox64
     DEPENDS doors-os-64/doors-os-64.vbox
     COMMAND ${VIRTUALBOX} --startvm doors-os-64 --dbg --debug
+)
+
+add_custom_target(
+    qemucd64
+    DEPENDS image_cd64
+    COMMAND ${QEMU_X64} -cdrom cd64.iso -m 8 
 )
