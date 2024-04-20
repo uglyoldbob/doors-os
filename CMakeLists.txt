@@ -16,12 +16,14 @@ if (WIN32)
     set(VIRTUALBOX_MANAGE "C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe")
     set(VIRTUALBOX_IMAGE "C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe")
     set(QEMU_X64 "C:\\Program Files\\qemu\\qemu-system-x86_64.exe")
+    set(BOCHS "C:\\Program Files\\Bochs-2.8\\bochs.exe")
 endif (WIN32)
 if (UNIX)
     set(VIRTUALBOX "VirtualBoxVM")
     set(VIRTUALBOX_MANAGE "VBoxManage")
     set(VIRTUALBOX_IMAGE "vbox-img")
     set(QEMU_X64 "qemu-system-x86_64")
+    set(BOCHS "bochs")
 endif (UNIX)
 
 add_custom_command(
@@ -38,6 +40,12 @@ add_custom_target(
     BYPRODUCTS cd64.iso
     COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./build/kernel64
 )
+
+add_custom_target(
+    bochs64
+    DEPENDS image_cd64
+    COMMAND ${BOCHS} -f bochsrc64_windows.txt -q
+)
 endif (WIN32)
 
 if (UNIX)
@@ -49,9 +57,7 @@ add_custom_target(
     COMMAND grub-mkrescue -o ./grub-skeleton.iso build/iso
     COMMAND rm -rf ./build/iso
 )
-endif (UNIX)
 
-if (UNIX)
 add_custom_target(
     image_cd64
     DEPENDS kernel64
@@ -61,6 +67,12 @@ add_custom_target(
     COMMAND cp ./build/kernel64 ./build/iso/boot/kernel
     COMMAND grub-mkrescue -o ./cd64.iso build/iso
     COMMAND rm -rf ./build/iso
+)
+
+add_custom_target(
+    bochs64
+    DEPENDS image_cd64
+    COMMAND ${BOCHS} -f bochsrc64.txt -q
 )
 endif (UNIX)
 
