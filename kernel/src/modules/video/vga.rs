@@ -179,7 +179,7 @@ impl X86VgaMode {
     fn write_attribute_color_register(&mut self, i: u8, val: u8) {
         let _ : u8 = self.ports.port(0x1a).port_read();
         self.ports.port(0x0).port_write(i);
-        self.ports.port(0x1).port_write(val);
+        self.ports.port(0x0).port_write(val);
     }
 
     fn read_crt_controller_register(&mut self, i: u8) -> u8 {
