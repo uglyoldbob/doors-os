@@ -3,12 +3,12 @@ project(doors-os)
 
 add_custom_target(
     kernel64
-    BYPRODUCTS ./build/kernel64.debug ./build/kernel64 ./target
+    BYPRODUCTS ./kernel64.debug ./kernel64 ./target
     COMMAND cargo build --release --target x86_64-unknown-none
     COMMAND mkdir -p ./build
-    COMMAND cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64.debug
-    COMMAND cp -u target/x86_64-unknown-none/release/kernel ./build/kernel64
-    COMMAND strip ./build/kernel64
+    COMMAND cp -u target/x86_64-unknown-none/release/kernel ./kernel64.debug
+    COMMAND cp -u target/x86_64-unknown-none/release/kernel ./kernel64
+    COMMAND strip ./kernel64
 )
 
 add_custom_target(
@@ -23,15 +23,28 @@ if (WIN32)
     set(VIRTUALBOX_IMAGE "C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe")
 endif (WIN32)
 
+add_custom_command(
+    OUTPUT grub.img
+    COMMAND wget https://q4.github.io/bootgrub.gz
+    COMMAND gzip -d bootgrub.gz
+    COMMAND mv bootgrub grub.img
+)
+
+add_custom_command(
+    OUTPUT grub.iso
+    COMMAND wget -O grub.iso https://downloads.sourceforge.net/project/supergrub2/2.04s1/super_grub2_disk_2.04s1/super_grub2_disk_hybrid_2.04s1.iso?ts=gAAAAABmIxykQIvf8AFH3CE0bEUQUBNP4PpQW1BRHmyAOCVACxNxztzuD62gDfz6xgQgXmK35mcPwtHUNc8NRCFpndsMPuNcjw%3D%3D&r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fsupergrub2%2Ffiles%2F2.04s1%2Fsuper_grub2_disk_2.04s1%2Fsuper_grub2_disk_hybrid_2.04s1.iso%2Fdownload
+)
+
 if (WIN32)
 add_custom_target(
     image_cd64
     DEPENDS kernel64
-    BYPRODUCTS ./build/image_cd64.iso
+    DEPENDS grub.iso
+    BYPRODUCTS cd64.iso
     COMMAND mkdir -p build/iso/boot/grub
     COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
     COMMAND cp ./build/kernel64 ./build/iso/boot/kernel
-    COMMAND ${VIRTUALBOX_IMAGE} createiso -o `pwd`/build/cd64.iso --name-setup=iso9660 /=./build/iso
+    COMMAND ${VIRTUALBOX_IMAGE} createiso -o cd64.iso --name-setup=iso9660 /=./build/iso
     COMMAND rm -rf ./build/iso
 )
 endif (WIN32)
