@@ -18,6 +18,9 @@ if (WIN32)
     set(QEMU_X64 "C:\\Program Files\\qemu\\qemu-system-x86_64.exe")
 endif (WIN32)
 if (UNIX)
+    set(VIRTUALBOX "VirtualBoxVM")
+    set(VIRTUALBOX_MANAGE "VBoxManage")
+    set(VIRTUALBOX_IMAGE "vbox-img")
     set(QEMU_X64 "qemu-system-x86_64")
 endif (UNIX)
 
@@ -28,27 +31,25 @@ add_custom_command(
     COMMAND mv bootgrub grub.img
 )
 
-add_custom_command(
-    OUTPUT grub.iso
-    COMMAND wget -O grub.iso https://downloads.sourceforge.net/project/supergrub2/2.04s1/super_grub2_disk_2.04s1/super_grub2_disk_hybrid_2.04s1.iso?ts=gAAAAABmIxykQIvf8AFH3CE0bEUQUBNP4PpQW1BRHmyAOCVACxNxztzuD62gDfz6xgQgXmK35mcPwtHUNc8NRCFpndsMPuNcjw%3D%3D&r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fsupergrub2%2Ffiles%2F2.04s1%2Fsuper_grub2_disk_2.04s1%2Fsuper_grub2_disk_hybrid_2.04s1.iso%2Fdownload
-)
-
 if (WIN32)
 add_custom_target(
     image_cd64
     DEPENDS kernel64
-    DEPENDS grub.iso
     BYPRODUCTS cd64.iso
-    COMMAND "C:\\Program Files\\7-Zip\\7z.exe" x -y -o./build/grubiso grub.iso
-    COMMAND rm -f ./build/grubiso/boot/grub/grub.cfg
-    COMMAND cp grub2.lst ./build/grubiso/boot/grub/grub.cfg
-    COMMAND cp ./build/kernel64 ./build/grubiso/boot/kernel
-    COMMAND cp -f ./build/grubiso/efi.img build/grubiso/[boot]/efi.img
-    COMMAND rm -f ./build/grubiso/efi.img
-    COMMAND ${VIRTUALBOX_IMAGE} createiso -o cd64.iso --name-setup=iso9660 ./boot=build/grubiso/boot ./system=build/grubiso/system ./boot.catalog=build/grubiso/boot.catalog --eltorito-add-image=./build/grubiso/[boot]/efi.img --no-emulation-boot
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub.iso -o cd65.iso --name-setup=iso9660 ./boot/grub/menu.lst=./grub2.lst
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./build/kernel
 )
 endif (WIN32)
+
+if (UNIX)
+add_custom_target(
+    grub-skeleton
+    BYPRODUCTS grub-skeleton.iso
+    COMMAND mkdir -p build/iso/boot/grub
+    COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
+    COMMAND grub-mkrescue -o ./grub-skeleton.iso build/iso
+    COMMAND rm -rf ./build/iso
+)
+endif (UNIX)
 
 if (UNIX)
 add_custom_target(
