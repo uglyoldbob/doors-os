@@ -117,6 +117,10 @@ impl X86VgaMode {
             check.write_attribute_color_register(i as u8, *val);
         }
 
+        for i in check.hw.buf.iter_mut() {
+            *i = 42;
+        }
+
         check.unblank_screen();
 
         Some(check)

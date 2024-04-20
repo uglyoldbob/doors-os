@@ -38,7 +38,7 @@ add_custom_target(
     image_cd64
     DEPENDS kernel64
     BYPRODUCTS cd64.iso
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./build/kernel64
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel64
 )
 
 add_custom_target(
@@ -64,7 +64,7 @@ add_custom_target(
     BYPRODUCTS cd64.iso
     COMMAND mkdir -p build/iso/boot/grub
     COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
-    COMMAND cp ./build/kernel64 ./build/iso/boot/kernel
+    COMMAND cp ./kernel64 ./build/iso/boot/kernel
     COMMAND grub-mkrescue -o ./cd64.iso build/iso
     COMMAND rm -rf ./build/iso
 )
@@ -73,6 +73,12 @@ add_custom_target(
     bochs64
     DEPENDS image_cd64
     COMMAND ${BOCHS} -f bochsrc64.txt -q
+)
+
+add_custom_target(
+    gdb64
+    DEPENDS image_cd64
+    COMMAND gdb -x script64.gdb
 )
 endif (UNIX)
 
