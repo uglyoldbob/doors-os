@@ -2,3 +2,12 @@ target
 build
 test
 kernel/config.toml
+*.vcxproj
+*.vcxproj.*
+*.cmake
+CMakeCache.txt
+*.sln
+.vs
+CMakeFiles
+doors-os-64
+Win32
