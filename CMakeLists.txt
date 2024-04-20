@@ -41,11 +41,11 @@ add_custom_target(
     DEPENDS kernel64
     DEPENDS grub.iso
     BYPRODUCTS cd64.iso
-    COMMAND mkdir -p build/iso/boot/grub
-    COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
-    COMMAND cp ./build/kernel64 ./build/iso/boot/kernel
-    COMMAND ${VIRTUALBOX_IMAGE} createiso -o cd64.iso --name-setup=iso9660 /=./build/iso
-    COMMAND rm -rf ./build/iso
+    COMMAND "C:\\Program Files\\7-Zip\\7z.exe" x -y -o./build/grubiso grub.iso
+    COMMAND rm -f ./build/grubiso/boot/grub/grub.cfg
+    COMMAND cp grub2.lst ./build/grubiso/boot/grub/grub.cfg
+    COMMAND cp ./build/kernel64 ./build/grubiso/boot/kernel
+    COMMAND ${VIRTUALBOX_IMAGE} createiso -o cd64.iso --name-setup=iso9660 ./boot=build/grubiso/boot ./system=build/grubiso/system ./boot.catalog=build/grubiso/boot.catalog ./efi.img=build/grubiso/efi.img
 )
 endif (WIN32)
 
