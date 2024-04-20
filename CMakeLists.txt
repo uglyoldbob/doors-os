@@ -17,6 +17,9 @@ if (WIN32)
     set(VIRTUALBOX_IMAGE "C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe")
     set(QEMU_X64 "C:\\Program Files\\qemu\\qemu-system-x86_64.exe")
 endif (WIN32)
+if (UNIX)
+    set(QEMU_X64 "qemu-system-x86_64")
+endif (UNIX)
 
 add_custom_command(
     OUTPUT grub.img
@@ -51,10 +54,11 @@ if (UNIX)
 add_custom_target(
     image_cd64
     DEPENDS kernel64
+    BYPRODUCTS cd64.iso
     COMMAND mkdir -p build/iso/boot/grub
     COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
     COMMAND cp ./build/kernel64 ./build/iso/boot/kernel
-    COMMAND grub-mkrescue -o ./build/cd64.iso build/iso
+    COMMAND grub-mkrescue -o ./cd64.iso build/iso
     COMMAND rm -rf ./build/iso
 )
 endif (UNIX)
