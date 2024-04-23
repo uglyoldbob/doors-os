@@ -575,7 +575,7 @@ pub extern "C" fn start64() -> ! {
         );
     crate::modules::video::FramebufferTrait::write_pixel(&mut vga, 10, 10, pixel);
     let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
-    let fb = crate::modules::video::FramebufferTextMode::new(fb);
+    let fb = crate::modules::video::FramebufferTextMode::new(fb, None);
     let mut v = crate::VGA.lock();
     v.replace(crate::modules::video::TextDisplay::FramebufferText(fb));
     drop(v);

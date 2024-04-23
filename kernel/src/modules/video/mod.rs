@@ -6,6 +6,7 @@ use crate::LockedArc;
 
 use super::serial::SerialTrait;
 
+pub mod fonts;
 pub mod pixels;
 
 pub mod text;
@@ -97,6 +98,22 @@ pub enum Display {
     Framebuffer(Framebuffer),
 }
 
+/// The trait to get a tiny framebuffer for each font character
+#[enum_dispatch::enum_dispatch]
+pub trait FontTrait<P>: Sync + Send {
+    /// Perform a lookup to get the graphics for a given character
+    fn lookup_symbol(&self, c: char) -> OpaqueFrameBuffer<P>;
+    /// The height of the font in pixels
+    fn height(&self) -> u16;
+}
+
+/// The fonts that can exist
+#[enum_dispatch::enum_dispatch(FontTrait)]
+pub enum Font<P> {
+    /// A fixed width font
+    FixedWidth(fonts::FixedWidthFont<P>),
+}
+
 /// This trait is used for text only video output hardware
 #[enum_dispatch::enum_dispatch]
 pub trait TextDisplayTrait: Sync + Send {
@@ -119,24 +136,36 @@ pub trait TextDisplayTrait: Sync + Send {
 }
 
 /// Draws text onto a framebuffer
-pub struct FramebufferTextMode {
+pub struct FramebufferTextMode<P> {
     fb: Framebuffer,
+    font: Font<P>,
     cursor_x: u8,
     cursor_y: u8,
 }
 
-impl FramebufferTextMode {
+impl<P> FramebufferTextMode<P>
+where
+    P: Sync + Send,
+{
     ///Construct a new Self
-    pub fn new(fb: Framebuffer) -> Self {
+    pub fn new(fb: Framebuffer, font: Option<Font<P>>) -> Self {
+        let font = match font {
+            Some(f) => f,
+            None => todo!(),
+        };
         Self {
             fb,
+            font,
             cursor_x: 0,
             cursor_y: 0,
         }
     }
 }
 
-impl TextDisplayTrait for FramebufferTextMode {
+impl<P> TextDisplayTrait for FramebufferTextMode<P>
+where
+    P: Sync + Send,
+{
     fn print_char(&mut self, d: char) {
         todo!()
     }
@@ -150,7 +179,7 @@ pub enum TextDisplay {
     /// X86 vga hardware operated in text mode
     X86VgaTextMode(text::X86VgaTextMode),
     /// X86 vga hardware operated in video mode
-    FramebufferText(FramebufferTextMode),
+    FramebufferText(FramebufferTextMode<pixels::Palette<u8>>),
 }
 
 /// Enables sending video text over a serial port

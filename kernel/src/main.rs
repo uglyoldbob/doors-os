@@ -168,7 +168,6 @@ impl ColorCycler {
 fn main() -> ! {
     {
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
-
         loop {}
     }
 }
