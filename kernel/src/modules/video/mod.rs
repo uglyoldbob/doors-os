@@ -6,11 +6,28 @@ use crate::LockedArc;
 
 use super::serial::SerialTrait;
 
+pub mod pixels;
+
 pub mod text;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod vga;
 
 pub mod mipi_dsi;
+
+/// Represents a flat representation of a frame buffer
+pub struct OpaqueFrameBuffer<'a, P> {
+    buffer: &'a [u8],
+    width: u16,
+    height: u16,
+    pixel: core::marker::PhantomData<P>,
+}
+
+/// Represents a rectangular frame buffer
+pub struct PlainFrameBuffer<'a, P> {
+    buffer: &'a [P],
+    width: u16,
+    height: u16,
+}
 
 /// A simple memory based framebuffer
 pub struct SimpleRamFramebuffer {
@@ -27,17 +44,41 @@ impl SimpleRamFramebuffer {
     }
 }
 
-impl FramebufferTrait for SimpleRamFramebuffer {
-    unsafe fn address(&self) -> usize {
-        self.buffer.as_ptr() as usize
+impl<P> FramebufferTrait<P> for SimpleRamFramebuffer {
+    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, P>) {
+        todo!()
+    }
+
+    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, P>) {
+        todo!()
+    }
+
+    fn write_pixel(&mut self, x: u16, y: u16, p: P) {
+        todo!()
     }
 }
 
 /// The trait for all framebuffer devices
 #[enum_dispatch::enum_dispatch]
-pub trait FramebufferTrait {
-    /// Return the address of the framebuffer
-    unsafe fn address(&self) -> usize;
+pub trait FramebufferTrait<P> {
+    /// Write a plain frame buffer to the device
+    /// #Arguments
+    /// * x - The x coordinate of the top left corner to draw
+    /// * y - The y coordinate of the top left corner to draw
+    /// * fb - The framebuffer to write to the device
+    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, P>);
+    /// Write an opaque frame buffer to the device
+    /// #Arguments
+    /// * x - The x coordinate of the top left corner to draw
+    /// * y - The y coordinate of the top left corner to draw
+    /// * fb - The framebuffer to write to the device
+    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, P>);
+    /// Write a single pixel to the device
+    /// #Arguments
+    /// * x - The x coordinate to draw
+    /// * y - The y coordinate to draw
+    /// * p - The pixel to draw
+    fn write_pixel(&mut self, x: u16, y: u16, p: P);
 }
 
 /// A framebuffer for the kernel
@@ -45,6 +86,9 @@ pub trait FramebufferTrait {
 pub enum Framebuffer {
     /// A framebuffer that lives in plain memory
     SimpleRam(SimpleRamFramebuffer),
+    #[cfg(kernel_machine = "pc64")]
+    /// x86 vga hardware
+    VgaHardware(vga::X86VgaMode),
 }
 
 /// The various types of graphics displays that can exist
@@ -74,6 +118,30 @@ pub trait TextDisplayTrait: Sync + Send {
     }
 }
 
+/// Draws text onto a framebuffer
+pub struct FramebufferTextMode {
+    fb: Framebuffer,
+    cursor_x: u8,
+    cursor_y: u8,
+}
+
+impl FramebufferTextMode {
+    ///Construct a new Self
+    pub fn new(fb: Framebuffer) -> Self {
+        Self {
+            fb,
+            cursor_x: 0,
+            cursor_y: 0,
+        }
+    }
+}
+
+impl TextDisplayTrait for FramebufferTextMode {
+    fn print_char(&mut self, d: char) {
+        todo!()
+    }
+}
+
 /// An enumeration of all the types of text display options
 #[enum_dispatch::enum_dispatch(TextDisplayTrait)]
 pub enum TextDisplay {
@@ -82,7 +150,7 @@ pub enum TextDisplay {
     /// X86 vga hardware operated in text mode
     X86VgaTextMode(text::X86VgaTextMode),
     /// X86 vga hardware operated in video mode
-    X86VgaVideoMode(vga::X86VgaMode),
+    FramebufferText(FramebufferTextMode),
 }
 
 /// Enables sending video text over a serial port

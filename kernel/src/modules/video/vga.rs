@@ -247,3 +247,22 @@ impl X86VgaMode {
 impl super::TextDisplayTrait for X86VgaMode {
     fn print_char(&mut self, d: char) {}
 }
+
+use crate::modules::video::pixels::Palette;
+
+impl super::FramebufferTrait<Palette<u8>> for X86VgaMode {
+    fn write_plain(&mut self, x: u16, y: u16, fb: super::PlainFrameBuffer<'_, Palette<u8>>) {
+        todo!()
+    }
+
+    fn write_opaque(&mut self, x: u16, y: u16, ob: super::OpaqueFrameBuffer<'_, Palette<u8>>) {
+        todo!()
+    }
+
+    fn write_pixel(&mut self, x: u16, y: u16, p: Palette<u8>) {
+        let index = 320 * y + x;
+        let plane = 1 << (x & 3);
+        self.set_plane_mask(plane);
+        self.hw.buf[index as usize] = p.pixel();
+    }
+}
