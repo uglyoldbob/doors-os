@@ -29,8 +29,8 @@ pub struct RngLfsr {
 impl RngLfsr {
     fn advance(&mut self) -> u32 {
         let v = self.next;
-        let calc = (self.next >> 31) | (self.next >> 21) | (self.next>>1) | (self.next & 1);
-        self.next = (self.next << 1) | calc;
+        let calc = !((self.next >> 31) ^ (self.next >> 21) ^ (self.next>>1) ^ (self.next & 1));
+        self.next = (self.next << 1) | (calc & 1);
         v
     }
 
@@ -58,7 +58,6 @@ impl RngTrait for LockedArc<RngLfsr> {
 
     fn generate_iter(&self, i: core::slice::IterMut<u8>) {
         let mut s = self.lock();
-        doors_macros2::kernel_print!("Writing {} bytes to framebuffer\r\n", i.len());
         for a in i {
             *a = (s.advance() & 0xFF) as u8;
         }

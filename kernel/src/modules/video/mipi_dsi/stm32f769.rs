@@ -484,15 +484,17 @@ impl super::MipiDsiTrait for Module {
         drop(internals);
 
         let num = if let Some(resolution) = &resolution {
-            resolution.width as usize * resolution.height as usize
+            doors_macros2::kernel_print!("Reserving {}x{} bytes for framebuffer\r\n", resolution.width, resolution.height);
+            4 * resolution.width as usize * resolution.height as usize
         }
         else {
             8
         };
-        
-        Ok(super::super::Display::Framebuffer(
+        let fb = super::super::Display::Framebuffer(
             super::super::Framebuffer::SimpleRam(super::super::SimpleRamFramebuffer::new(num)),
-        ))
+        );
+        fb.print_address();
+        Ok(fb)
     }
 
     fn disable(&self) {

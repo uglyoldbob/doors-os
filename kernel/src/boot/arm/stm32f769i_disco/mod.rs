@@ -576,9 +576,14 @@ pub extern "C" fn _start() -> ! {
     let fmc_clock = ctree.get_ref(3 * 32);
     let mut fmc =
         unsafe { crate::modules::memory::stm32f769::SdramController::new(0xa000_0000, fmc_clock) };
-    fmc.setup_sdram();
+    let sdram = fmc.setup_sdram();
     //todo something with the buffer returned by the sdram setup
-
+    {
+        let mut hm = super::HEAP_MANAGER.lock();
+        hm.init(1, sdram.as_ptr() as usize, sdram.len());
+        hm.print();
+    }
+    
     let ltdc_clock = ctree_pll.get_pll_reference(2).unwrap();
 
     if ltdc_clock.set_vco_frequency(195_000_000).is_ok()

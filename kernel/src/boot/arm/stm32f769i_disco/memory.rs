@@ -95,10 +95,14 @@ impl HeapManager {
     /// Initialize the specified heap with an address and size
     pub fn init(&mut self, i: usize, addr: usize, size: usize) {
         if self.head[i].is_none() {
+            doors_macros2::kernel_print!("Initing with {:x} bytes memory\r\n", size);
             let mut nn = unsafe { NonNull::new_unchecked(&mut *(addr as *mut HeapNode)) };
             unsafe { nn.as_mut() }.next = None;
             unsafe { nn.as_mut() }.size = size;
             self.head[i] = Some(nn);
+        }
+        else {
+            doors_macros2::kernel_print!("NOT Initing with {:x} bytes memory\r\n", size);
         }
     }
 
@@ -109,8 +113,8 @@ impl HeapManager {
                 doors_macros2::kernel_print!("head: {:p}\r\n", r);
                 loop {
                     doors_macros2::kernel_print!(
-                        "heap node is {:?} {:x}\r\n",
-                        r.as_ptr(),
+                        "heap node is size {:x} {:x}\r\n",
+                        unsafe { &*r.as_ptr() }.size,
                         unsafe { &*r.as_ptr() }.next_address() - 1
                     );
 

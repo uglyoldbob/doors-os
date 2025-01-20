@@ -147,7 +147,9 @@ fn main() -> ! {
                 let mut rng = kernel::RNGS.lock();
                 let rngm = rng.module(0);
                 let rng = rngm.lock();
-                rng.generate_iter(fb.iter_bytes());
+                loop {
+                    rng.generate_iter(fb.iter_bytes());
+                }
             }
         }
         loop {}

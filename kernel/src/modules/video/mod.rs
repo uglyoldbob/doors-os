@@ -103,6 +103,17 @@ impl Framebuffer {
             VgaHardware(vga) => todo!(),
         }
     }
+
+    /// Debug print an important address for the display
+    pub fn print_address(&self) {
+        match self {
+            Framebuffer::SimpleRam(fb) => {
+                doors_macros2::kernel_print!("FB IS AT {:p}\r\n", &fb.buffer[0])
+            }
+            #[cfg(kernel_machine = "pc64")]
+            VgaHardware(vga) => todo!(),
+        }
+    }
 }
 
 /// The various types of graphics displays that can exist
@@ -118,6 +129,18 @@ impl Display {
         match self {
             Display::Framebuffer(framebuffer) => {
                 Some(framebuffer)
+            }
+            _ => {
+                todo!();
+            }
+        }
+    }
+
+    /// Debug print an important address for the display
+    fn print_address(&self) {
+        match self {
+            Display::Framebuffer(fb) => {
+                fb.print_address();
             }
             _ => {
                 todo!();
