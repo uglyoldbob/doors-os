@@ -5,6 +5,7 @@ pub mod gpio;
 pub mod memory;
 pub mod power;
 pub mod reset;
+pub mod rng;
 pub mod serial;
 pub mod timer;
 pub mod video;

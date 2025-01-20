@@ -482,9 +482,16 @@ impl super::MipiDsiTrait for Module {
         internals.write(1, 1);
 
         drop(internals);
-        //todo: put in correct framebuffer size
+
+        let num = if let Some(resolution) = &resolution {
+            resolution.width as usize * resolution.height as usize
+        }
+        else {
+            8
+        };
+        
         Ok(super::super::Display::Framebuffer(
-            super::super::Framebuffer::SimpleRam(super::super::SimpleRamFramebuffer::new(8)),
+            super::super::Framebuffer::SimpleRam(super::super::SimpleRamFramebuffer::new(num)),
         ))
     }
 

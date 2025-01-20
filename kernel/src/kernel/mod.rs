@@ -98,6 +98,29 @@ impl DisplayHandler {
     }
 }
 
+/// Tracks all rng devices in the kernel
+pub struct RngHandler {
+    /// The timer providers
+    rng: Vec<LockedArc<crate::modules::rng::Rng>>,
+}
+
+impl RngHandler {
+    /// Create a new empty set of serial modules
+    fn new() -> Self {
+        Self { rng: Vec::new() }
+    }
+
+    /// Add a serial module to the system
+    pub fn register_rng(&mut self, m: crate::modules::rng::Rng) {
+        self.rng.push(LockedArc::new(m));
+    }
+
+    /// Get a rng module
+    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::rng::Rng> {
+        self.rng[i].clone()
+    }
+}
+
 lazy_static! {
     /// The entire list of gpios for the kernel
     pub static ref GPIO: Locked<GpioHandler> =
@@ -111,4 +134,7 @@ lazy_static! {
     /// The list of the displays for the kernel
     pub static ref DISPLAYS : Locked<DisplayHandler> =
         Locked::new(DisplayHandler::new());
+    /// The list of rng devices for the kernel
+    pub static ref RNGS : Locked<RngHandler> =
+        Locked::new(RngHandler::new());
 }

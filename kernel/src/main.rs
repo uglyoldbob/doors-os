@@ -5,10 +5,7 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![feature(allocator_api)]
-#![feature(strict_provenance)]
-#![feature(const_mut_refs)]
 #![feature(alloc_error_handler)]
-#![feature(new_uninit)]
 #![feature(abi_x86_interrupt)]
 
 extern crate alloc;
@@ -18,6 +15,9 @@ pub mod kernel;
 pub mod modules;
 
 use alloc::sync::Arc;
+use modules::rng;
+use modules::rng::RngTrait;
+use modules::video::Framebuffer;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
@@ -128,46 +128,28 @@ static VGA: spin::Mutex<Option<TextDisplay>> = spin::Mutex::new(None);
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
-struct ColorCycler {
-    color: u16,
-    num_bits: u8,
-    shift: u8,
-}
-
-impl ColorCycler {
-    fn new() -> Self {
-        Self {
-            color: 1,
-            num_bits: 1,
-            shift: 0,
-        }
-    }
-
-    fn get_color(&self) -> u16 {
-        self.color
-    }
-
-    fn advance(&mut self) {
-        if (self.num_bits + self.shift) < 15 {
-            self.shift += 1;
-        } else {
-            self.shift = 0;
-            if self.num_bits < 14 {
-                self.num_bits += 1;
-            } else {
-                self.num_bits = 1;
-            }
-        }
-
-        let ones = 0xffff >> (16 - self.num_bits);
-        let val = ones << self.shift;
-        self.color = val;
-    }
-}
-
 fn main() -> ! {
     {
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
+
+        {
+            doors_macros2::kernel_print!("Registering LFSR rng\r\n");
+            let rng = rng::RngLfsr::new();
+            kernel::RNGS.lock().register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
+        }
+
+        {
+            let mut d = kernel::DISPLAYS.lock();
+            let e = d.module(0);
+            let mut f = e.lock();
+            if let Some(fb) = f.try_get_pixel_buffer() {
+                doors_macros2::kernel_print!("Writing random data to framebuffer\r\n");
+                let mut rng = kernel::RNGS.lock();
+                let rngm = rng.module(0);
+                let rng = rngm.lock();
+                rng.generate_iter(fb.iter_bytes());
+            }
+        }
         loop {}
     }
 }

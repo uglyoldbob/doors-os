@@ -92,10 +92,38 @@ pub enum Framebuffer {
     VgaHardware(vga::X86VgaMode),
 }
 
+impl Framebuffer {
+    /// Get an iterator over every byte in the framebuffer
+    pub fn iter_bytes(&mut self) -> core::slice::IterMut<u8> {
+        match self {
+            Framebuffer::SimpleRam(simple_ram_framebuffer) => {
+                simple_ram_framebuffer.buffer.iter_mut()
+            }
+            #[cfg(kernel_machine = "pc64")]
+            VgaHardware(vga) => todo!(),
+        }
+    }
+}
+
 /// The various types of graphics displays that can exist
 pub enum Display {
     /// A framebuffer based display
     Framebuffer(Framebuffer),
+}
+
+impl Display {
+    /// Try to get a framebuffer, if applicable for the display
+    pub fn try_get_pixel_buffer(&mut self) -> Option<&mut Framebuffer>
+    {
+        match self {
+            Display::Framebuffer(framebuffer) => {
+                Some(framebuffer)
+            }
+            _ => {
+                todo!();
+            }
+        }
+    }
 }
 
 /// The trait to get a tiny framebuffer for each font character
