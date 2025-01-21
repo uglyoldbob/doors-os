@@ -15,8 +15,18 @@ pub mod vga;
 
 pub mod mipi_dsi;
 
-include!(concat!(env!("OUT_DIR"), "/fontmap.rs"));
+use lazy_static::lazy_static;
 
+/// The data required to render a single font character
+pub struct FontData {
+    width: u8,
+    height: u8,
+    left: i8,
+    top: i8,
+    data: &'static [u8],
+}
+
+include!(concat!(env!("OUT_DIR"), "/fontmap.rs"));
 
 /// Represents a flat representation of a frame buffer
 pub struct OpaqueFrameBuffer<'a, P> {
@@ -127,12 +137,9 @@ pub enum Display {
 
 impl Display {
     /// Try to get a framebuffer, if applicable for the display
-    pub fn try_get_pixel_buffer(&mut self) -> Option<&mut Framebuffer>
-    {
+    pub fn try_get_pixel_buffer(&mut self) -> Option<&mut Framebuffer> {
         match self {
-            Display::Framebuffer(framebuffer) => {
-                Some(framebuffer)
-            }
+            Display::Framebuffer(framebuffer) => Some(framebuffer),
             _ => {
                 todo!();
             }

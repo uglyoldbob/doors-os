@@ -1,118 +1,66 @@
 use std::io::Read;
 
-use ttf_parser::{colr::Painter, OutlineBuilder, RgbaColor};
+use fontdue::FontSettings;
 
 use crate::config::KernelConfig;
 
 mod config;
 
-struct BitmapPainter {}
-
-impl BitmapPainter {
-    fn new() -> Self {
-        Self {}
-    }
+struct FontData {
+    c: char,
+    width: u8,
+    height: u8,
+    left: i8,
+    top: i8,
+    data: Vec<u8>,
 }
 
-impl OutlineBuilder for BitmapPainter {
-    fn move_to(&mut self, x: f32, y: f32) {
-        todo!()
-    }
-
-    fn line_to(&mut self, x: f32, y: f32) {
-        todo!()
-    }
-
-    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        todo!()
-    }
-
-    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        todo!()
-    }
-
-    fn close(&mut self) {
-        todo!()
-    }
-}
-
-impl<'a> Painter<'a> for BitmapPainter {
-    fn outline_glyph(&mut self, glyph_id: ttf_parser::GlyphId) {
-        todo!();
-    }
-
-    fn paint(&mut self, paint: ttf_parser::colr::Paint<'a>) {
-        todo!();
-    }
-
-    fn push_clip(&mut self) {
-        todo!();
-    }
-
-    fn push_clip_box(&mut self, clipbox: ttf_parser::colr::ClipBox) {
-        todo!();
-    }
-
-    fn pop_clip(&mut self) {
-        todo!();
-    }
-
-    fn push_layer(&mut self, mode: ttf_parser::colr::CompositeMode) {
-        todo!();
-    }
-
-    fn pop_layer(&mut self) {
-        todo!();
-    }
-
-    fn push_transform(&mut self, transform: ttf_parser::Transform) {
-        todo!();
-    }
-
-    fn pop_transform(&mut self) {
-        todo!();
-    }
-}
-
-fn generate_font_table(font: &[u8]) -> Vec<i32> {
-    let font = ttf_parser::Face::parse(font, 0).unwrap();
-    if font.is_variable() {
-        panic!("Not a fixed width font");
-    }
+fn generate_font_table(font: &[u8]) -> Vec<FontData> {
+    let font = fontdue::Font::from_bytes(
+        font,
+        FontSettings {
+            collection_index: 0,
+            scale: 40.0,
+            load_substitutions: false,
+        },
+    )
+    .unwrap();
     let mut font_bitmap = Vec::new();
-    let mut painter = BitmapPainter::new();
-    let color = RgbaColor::new(255, 255, 255, 255);
-    for i in 0..=255 {
-        let c = i as u8 as char;
-        if let Some(glyph) = font.glyph_index(c) {
-            if font.is_color_glyph(glyph) {
-                if font.paint_color_glyph(glyph, 0, color, &mut painter).is_none() {
-                    panic!("Failed to paint color glyph {} {:?}", i, glyph);
-                }
-                font_bitmap.push(1);
-            }
-            else {
-                font.outline_glyph(glyph, &mut painter).unwrap();
-                font_bitmap.push(2);
-            }
-        } else {
-            font_bitmap.push(0);
-        }
+    for (c, _d) in font.chars() {
+        let (a, b) = font.rasterize(*c, 10.0);
+        let fd = FontData {
+            c: *c,
+            width: a.width as u8,
+            height: a.height as u8,
+            left: a.ymin as i8,
+            top: a.xmin as i8,
+            data: b.clone(),
+        };
+        font_bitmap.push(fd);
     }
     font_bitmap
 }
 
-fn write_font_source(name: String, table: Vec<i32>) {
+fn write_font_source(name: String, table: Vec<FontData>) {
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
     let dest_path = std::path::Path::new(&out_dir).join(&name);
     let mut contents = String::new();
 
+    contents.push_str("lazy_static! {\n");
     contents.push_str("/// The generated fontmap\n");
-    contents.push_str("pub static FONTMAP: &[u32] = &[");
+    contents.push_str("pub static ref FONTMAP: alloc::collections::BTreeMap<char, FontData> = alloc::collections::BTreeMap::from([");
 
-    let mtable: Vec<String> = table.iter().map(|a| format!("0x{:x}", a)).collect();
-    contents.push_str(&mtable.join(","));
-    contents.push_str("];\n");
+    let mtable: Vec<String> = table
+        .iter()
+        .map(|a| {
+            let d : Vec<String> = a.data.iter().map(|n| format!("{}", n)).collect();
+            format!("({:?}, FontData {{ width: {}, height: {}, left: {}, top: {}, data: &[{}],}})", 
+            a.c, a.width, a.height, a.left, a.top, d.join(", "))
+        })
+        .collect();
+    contents.push_str(&mtable.join(",\n"));
+    contents.push_str("]);\n");
+    contents.push_str("}\n");
 
     std::fs::write(dest_path, contents).unwrap();
 }

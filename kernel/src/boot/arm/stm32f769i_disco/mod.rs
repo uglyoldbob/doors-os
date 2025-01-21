@@ -581,7 +581,7 @@ pub extern "C" fn _start() -> ! {
         let mut hm = super::HEAP_MANAGER.lock();
         hm.init(1, sdram.as_ptr() as usize, sdram.len());
     }
-    
+
     let ltdc_clock = ctree_pll.get_pll_reference(2).unwrap();
 
     if ltdc_clock.set_vco_frequency(195_000_000).is_ok()

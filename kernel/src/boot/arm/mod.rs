@@ -20,14 +20,13 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         let f = t.file();
         let maxlen = f.len();
         for i in (0..maxlen).step_by(70) {
-            let tmax = if i + 70 < maxlen { i + 70} else { maxlen};
+            let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
             doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
         }
         doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
     }
     doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
-    loop {
-    }
+    loop {}
 }
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.

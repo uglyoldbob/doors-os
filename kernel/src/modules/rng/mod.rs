@@ -1,7 +1,7 @@
 //! Random number generation code
 
-use crate::LockedArc;
 use crate::modules::video::TextDisplayTrait;
+use crate::LockedArc;
 
 /// The standard trait for serial ports
 #[enum_dispatch::enum_dispatch]
@@ -29,21 +29,19 @@ pub struct RngLfsr {
 impl RngLfsr {
     fn advance(&mut self) -> u32 {
         let v = self.next;
-        let calc = !((self.next >> 31) ^ (self.next >> 21) ^ (self.next>>1) ^ (self.next & 1));
+        let calc = !((self.next >> 31) ^ (self.next >> 21) ^ (self.next >> 1) ^ (self.next & 1));
         self.next = (self.next << 1) | (calc & 1);
         v
     }
 
     /// Build a new LFSR object
     pub fn new() -> Self {
-        Self {
-            next: 1,
-        }
+        Self { next: 1 }
     }
 }
 
 impl RngTrait for LockedArc<RngLfsr> {
-    fn setup(&self) -> Result<(),()> {
+    fn setup(&self) -> Result<(), ()> {
         let mut s = self.lock();
         s.next = 1;
         Ok(())

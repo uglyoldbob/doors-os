@@ -100,8 +100,7 @@ impl HeapManager {
             unsafe { nn.as_mut() }.next = None;
             unsafe { nn.as_mut() }.size = size;
             self.head[i] = Some(nn);
-        }
-        else {
+        } else {
             doors_macros2::kernel_print!("NOT Initing with {:x} bytes memory\r\n", size);
         }
     }

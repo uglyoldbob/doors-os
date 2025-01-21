@@ -134,7 +134,9 @@ fn main() -> ! {
         {
             doors_macros2::kernel_print!("Registering LFSR rng\r\n");
             let rng = rng::RngLfsr::new();
-            kernel::RNGS.lock().register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
+            kernel::RNGS
+                .lock()
+                .register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
         }
 
         {
