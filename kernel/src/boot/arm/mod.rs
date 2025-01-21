@@ -16,14 +16,6 @@ pub fn get_panic_message(panic: &dyn core::any::Any) -> Option<&str> {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
-
-    let payload = info.payload();
-    let message = get_panic_message(payload);
-    if let Some(m) = message {
-        doors_macros2::kernel_print!("MESSAGE:\r\n");
-        doors_macros2::kernel_print!("MESSAGE: {:?}\r\n", m);
-    }
-
     if let Some(t) = info.location() {
         let f = t.file();
         let maxlen = f.len();

@@ -17,7 +17,6 @@ pub mod modules;
 use alloc::sync::Arc;
 use modules::rng;
 use modules::rng::RngTrait;
-use modules::video::Framebuffer;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 

@@ -15,6 +15,9 @@ pub mod vga;
 
 pub mod mipi_dsi;
 
+include!(concat!(env!("OUT_DIR"), "/fontmap.rs"));
+
+
 /// Represents a flat representation of a frame buffer
 pub struct OpaqueFrameBuffer<'a, P> {
     buffer: &'a [u8],
