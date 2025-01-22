@@ -28,9 +28,9 @@ pub struct X86VgaWithFont<P: 'static> {
     /// The font lookup reference
     font: &'static super::Font<P>,
     /// The column where the next character will be placed
-    column: u8,
+    column: u16,
     /// The row where the next character will be placed
-    row: u8,
+    row: u16,
 }
 
 impl X86VgaWithFont<super::pixels::Palette<u8>> {
@@ -50,17 +50,17 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
         if let Some(a) = self.font.lookup_symbol(d) {
             for x in 0..a.width {
                 for y in 0..a.height {
-                    let val = a.data[y as usize *a.width as usize + x as usize];
+                    let val = if a.data[y as usize *a.width as usize + x as usize] != 0 { 0} else { 0x32};
                     let pixel = Palette::<u8>::new(val, &DEFAULT_PALETTE);
-                    super::FramebufferTrait::write_pixel(&mut self.vga, self.column as u16 * 5 + x as u16, self.row as u16 * 5 + y as u16, pixel);
+                    super::FramebufferTrait::write_pixel(&mut self.vga, self.column + x as u16, self.row + y as u16, pixel);
                 }
             }
-            if self.column < 40 {
-                self.column += 1;
+            if (self.column + a.width as u16) < 320 {
+                self.column += a.width as u16;
             }
             else {
                 self.column = 0;
-                self.row += 1;
+                self.row += a.height as u16;
             }
         }
     }

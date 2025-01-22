@@ -27,7 +27,7 @@ fn generate_font_table(font: &[u8]) -> Vec<FontData> {
     .unwrap();
     let mut font_bitmap = Vec::new();
     for (c, _d) in font.chars() {
-        let (a, b) = font.rasterize(*c, 10.0);
+        let (a, b) = font.rasterize(*c, 20.0);
         let fd = FontData {
             c: *c,
             width: a.width as u8,
@@ -98,7 +98,7 @@ fn main() {
         );
     }
 
-    let mut linker_script = None;
+    let linker_script;
 
     println!("cargo::rustc-check-cfg=cfg(kernel_machine, values(\"pc64\", \"stm32f769i-disco\"))");
     println!("cargo:rustc-cfg=kernel_machine=\"{}\"", config.machine_name);

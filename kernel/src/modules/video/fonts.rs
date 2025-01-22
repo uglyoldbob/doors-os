@@ -18,6 +18,10 @@ where
     fn height(&self) -> u16 {
         todo!()
     }
+
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<char,super::FontData> {
+        todo!()
+    }
 }
 
 /// A fixed width font
@@ -51,5 +55,9 @@ where
 
     fn height(&self) -> u16 {
         todo!()
+    }
+
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<char, super::FontData> {
+        self.fdata.iter()
     }
 }

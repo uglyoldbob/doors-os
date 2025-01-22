@@ -571,9 +571,14 @@ pub extern "C" fn start64() -> ! {
     let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
     {
         let mut a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
-        for d in "A".chars() {
+        for d in "ABCDEFGHIJKLMNOPQRSTUVWYZabcdefghijklmnopqrstuvwxyz1234567890".chars() {
             a.print_char(d);
         }
+        /*
+        for (c, fd) in crate::modules::video::FontTrait::symbols(&*crate::modules::video::MAIN_FONT_PALETTE) {
+            a.print_char(*c);
+        }
+        */
     }
     /*let mut fb = crate::modules::video::FramebufferTextMode::new(fb, None);
     fb.print_char('x');

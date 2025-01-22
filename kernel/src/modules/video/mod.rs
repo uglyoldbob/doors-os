@@ -297,6 +297,8 @@ pub trait FontTrait<P>: Sync + Send {
     fn lookup_symbol(&self, c: char) -> Option<&FontData>;
     /// The height of the font in pixels
     fn height(&self) -> u16;
+    /// All valid symbols for the font
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<char, FontData>;
 }
 
 /// The fonts that can exist
@@ -319,6 +321,13 @@ impl<P: Send + Sync> FontTrait<P> for Font<P> {
         match self {
             Font::FixedWidth(f) => f.height(),
             Font::VariableWidth(f) => f.height(),
+        }
+    }
+
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<char, FontData> {
+        match self {
+            Font::FixedWidth(f) => f.symbols(),
+            Font::VariableWidth(f) => f.symbols(),
         }
     }
 }
