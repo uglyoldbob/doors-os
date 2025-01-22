@@ -141,15 +141,17 @@ fn main() -> ! {
 
         {
             let mut d = kernel::DISPLAYS.lock();
-            let e = d.module(0);
-            let mut f = e.lock();
-            if let Some(fb) = f.try_get_pixel_buffer() {
-                doors_macros2::kernel_print!("Writing random data to framebuffer\r\n");
-                let mut rng = kernel::RNGS.lock();
-                let rngm = rng.module(0);
-                let rng = rngm.lock();
-                loop {
-                    rng.generate_iter(fb.iter_bytes());
+            if d.exists(0) {
+                let e = d.module(0);
+                let mut f = e.lock();
+                if let Some(fb) = f.try_get_pixel_buffer() {
+                    doors_macros2::kernel_print!("Writing random data to framebuffer\r\n");
+                    let mut rng = kernel::RNGS.lock();
+                    let rngm = rng.module(0);
+                    let rng = rngm.lock();
+                    loop {
+                        rng.generate_iter(fb.iter_bytes());
+                    }
                 }
             }
         }

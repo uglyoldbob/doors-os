@@ -1,5 +1,18 @@
 //! Defines the types of pixels that can exist
 
+/// Represents a full color capable pixel, based on the size of P
+pub struct FullColor<P> {
+    /// The actual full color pixel
+    pub pixel: P,
+}
+
+impl<P> FullColor<P> {
+    /// Make a new pixel
+    pub fn new(p: P) -> Self {
+        Self { pixel: p }
+    }
+}
+
 /// Represents a paletted pixel
 pub struct Palette<P> {
     pixel: P,

@@ -633,8 +633,10 @@ pub extern "C" fn _start() -> ! {
         };
 
         if let Ok(display) = dsi.enable(&dsi_config, panel) {
-            let mut displays = kernel::DISPLAYS.lock();
-            displays.register_display(display);
+            let mut console = display.make_console();
+            crate::modules::video::TextDisplayTrait::print_char(&mut console, 'X');
+            //let mut displays = kernel::DISPLAYS.lock();
+            //displays.register_display(display);
         }
     }
 

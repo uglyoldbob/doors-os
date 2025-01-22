@@ -15,14 +15,55 @@ pub struct X86VgaHardware {
 
 /// The structure for vga hardware. This driver assumes color mode only.
 pub struct X86VgaMode {
-    /// The column where the next character will be placed
-    column: u8,
-    /// The row where the next character will be placed
-    row: u8,
     /// A mutable reference to the hardware memory
     hw: &'static mut X86VgaHardware,
     /// The io ports for the vga hardware
     ports: IoPortArray<'static>,
+}
+
+/// The structure that adds a font to the x86 vga mode
+pub struct X86VgaWithFont<P: 'static> {
+    /// The vga hardware
+    vga: X86VgaMode,
+    /// The font lookup reference
+    font: &'static super::Font<P>,
+    /// The column where the next character will be placed
+    column: u8,
+    /// The row where the next character will be placed
+    row: u8,
+}
+
+impl X86VgaWithFont<super::pixels::Palette<u8>> {
+    /// Create a new instance
+    pub fn new(vga: X86VgaMode, font: &'static super::Font<super::pixels::Palette<u8>>) -> Self {
+        Self {
+            vga,
+            font,
+            column: 0,
+            row: 0,
+        }
+    }
+}
+
+impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
+    fn print_char(&mut self, d:char) {
+        if let Some(a) = self.font.lookup_symbol(d) {
+            for x in 0..a.width {
+                for y in 0..a.height {
+                    let val = a.data[y as usize *a.width as usize + x as usize];
+                    let pixel = Palette::<u8>::new(val, &DEFAULT_PALETTE);
+                    super::FramebufferTrait::write_pixel(&mut self.vga, self.column as u16 * 5 + x as u16, self.row as u16 * 5 + y as u16, pixel);
+                }
+            }
+            if self.column < 40 {
+                self.column += 1;
+            }
+            else {
+                self.column = 0;
+                self.row += 1;
+            }
+        }
+    }
 }
 
 /// The default palette for vga operations
@@ -83,8 +124,6 @@ impl X86VgaMode {
         let ports = IOPORTS.get_ports(0x3c0, 32).unwrap();
         let mut check = Self {
             hw: &mut *(adr as *mut X86VgaHardware),
-            column: 0,
-            row: 0,
             ports,
         };
         let emulation_mode = check.read_misc_output_register() & 1;
@@ -129,11 +168,6 @@ impl X86VgaMode {
         }
 
         check.unblank_screen();
-
-        check.set_plane_mask(0x1);
-        for i in check.hw.buf.iter_mut().skip(960).take(1) {
-            *i = 0x01;
-        }
 
         Some(check)
     }
@@ -244,11 +278,9 @@ impl X86VgaMode {
     }
 }
 
-impl super::TextDisplayTrait for X86VgaMode {
-    fn print_char(&mut self, d: char) {}
-}
-
 use crate::modules::video::pixels::Palette;
+
+use super::FontTrait;
 
 impl super::FramebufferTrait<Palette<u8>> for X86VgaMode {
     fn write_plain(&mut self, x: u16, y: u16, fb: super::PlainFrameBuffer<'_, Palette<u8>>) {
@@ -263,6 +295,6 @@ impl super::FramebufferTrait<Palette<u8>> for X86VgaMode {
         let index = 320 * y + x;
         let plane = 1 << (x & 3);
         self.set_plane_mask(plane);
-        self.hw.buf[index as usize] = p.pixel();
+        self.hw.buf[index as usize / 4] = p.pixel();
     }
 }

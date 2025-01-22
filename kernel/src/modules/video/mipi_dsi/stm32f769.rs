@@ -104,7 +104,7 @@ impl Ltdc {
 
         self.write(40, 0x405);
         self.write(45, resolution.height as u32);
-        self.write(43, 0xc000_0000);
+        self.write(43, 0xc000_0000); //TODO use correct address instead of assuming the address of the framebuffer
 
         self.write(33, 1);
 
@@ -483,19 +483,21 @@ impl super::MipiDsiTrait for Module {
 
         drop(internals);
 
-        let num = if let Some(resolution) = &resolution {
+        let fb = if let Some(resolution) = &resolution {
             doors_macros2::kernel_print!(
                 "Reserving {}x{} bytes for framebuffer\r\n",
                 resolution.width,
                 resolution.height
             );
-            4 * resolution.width as usize * resolution.height as usize
+            let num = 4 * resolution.width as usize * resolution.height as usize;
+            super::super::Display::Framebuffer(super::super::Framebuffer::SimpleRam(
+                super::super::SimpleRamFramebuffer::new(resolution.width, resolution.height, num),
+            ))
         } else {
-            8
+            super::super::Display::Framebuffer(super::super::Framebuffer::SimpleRam(
+                super::super::SimpleRamFramebuffer::new(2, 4, 8),
+            ))
         };
-        let fb = super::super::Display::Framebuffer(super::super::Framebuffer::SimpleRam(
-            super::super::SimpleRamFramebuffer::new(num),
-        ));
         fb.print_address();
         Ok(fb)
     }

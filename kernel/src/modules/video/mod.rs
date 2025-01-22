@@ -1,6 +1,9 @@
 //! Video related kernel modules
 
 use alloc::vec::Vec;
+use fonts::{FixedWidthFont, VariableWidthFont};
+use pixels::FullColor;
+use vga::DEFAULT_PALETTE;
 
 use crate::LockedArc;
 
@@ -28,6 +31,13 @@ pub struct FontData {
 
 include!(concat!(env!("OUT_DIR"), "/fontmap.rs"));
 
+lazy_static! {
+    /// The general font to use for terminals
+    pub static ref MAIN_FONT: Font<pixels::FullColor<u32>> = Font::VariableWidth(VariableWidthFont::new(&FONTMAP));
+    /// The general palette font for terminals
+    pub static ref MAIN_FONT_PALETTE: Font<pixels::Palette<u8>> = Font::VariableWidth(VariableWidthFont::new(&FONTMAP));
+}
+
 /// Represents a flat representation of a frame buffer
 pub struct OpaqueFrameBuffer<'a, P> {
     buffer: &'a [u8],
@@ -47,28 +57,65 @@ pub struct PlainFrameBuffer<'a, P> {
 pub struct SimpleRamFramebuffer {
     /// The actual contents of the framebuffer
     buffer: Vec<u8>,
+    /// The width fo the framebuffer in pixels
+    width: u16,
+    /// The height of the framebuffer in pixels
+    height: u16,
 }
 
 impl SimpleRamFramebuffer {
     ///Make a ram framebuffer of the specified size
-    pub fn new(size: usize) -> Self {
-        Self {
+    pub fn new(h: u16, w: u16, size: usize) -> Self {
+        let mut s = Self {
             buffer: alloc::vec![0; size],
+            width: w,
+            height: h,
+        };
+        for a in &mut s.buffer {
+            *a = 0;
         }
+        s
     }
 }
 
-impl<P> FramebufferTrait<P> for SimpleRamFramebuffer {
-    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, P>) {
+impl FramebufferTrait<pixels::Palette<u8>> for SimpleRamFramebuffer {
+    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::Palette<u8>>) {
         todo!()
     }
 
-    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, P>) {
+    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::Palette<u8>>) {
         todo!()
     }
 
-    fn write_pixel(&mut self, x: u16, y: u16, p: P) {
+    fn write_pixel(&mut self, x: u16, y: u16, p: pixels::Palette<u8>) {
         todo!()
+    }
+}
+
+impl FramebufferTrait<pixels::FullColor<u32>> for SimpleRamFramebuffer {
+    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::FullColor<u32>>) {
+        todo!()
+    }
+
+    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::FullColor<u32>>) {
+        todo!()
+    }
+
+    fn write_pixel(&mut self, x: u16, y: u16, p: pixels::FullColor<u32>) {
+        doors_macros2::kernel_print!(
+            "Pixel offset {}\r\n",
+            (self.height as usize * x as usize + y as usize)
+        );
+        doors_macros2::kernel_print!(
+            "Pixel offset {}\r\n",
+            (2 * (self.height as usize * x as usize + y as usize)) + 1
+        );
+        //doors_macros2::kernel_print!("Pixel offset {}\r\n", (2 * (self.height as usize * x as usize + y as usize))+2);
+        self.buffer[(self.height as usize * x as usize + y as usize)] = (p.pixel & 0xff) as u8;
+        self.buffer[(2 * (self.height as usize * x as usize + y as usize)) + 1] =
+            (p.pixel >> 8 & 0xff) as u8;
+        //self.buffer[(3 * (self.height as usize * x as usize + y as usize))+2] = (p.pixel>>16 & 0xff) as u8;
+        //self.buffer[(3 * (self.width as usize * x as usize + y as usize))+3] = (p.pixel>>24 & 0xff) as u8;
     }
 }
 
@@ -96,13 +143,60 @@ pub trait FramebufferTrait<P> {
 }
 
 /// A framebuffer for the kernel
-#[enum_dispatch::enum_dispatch(FramebufferTrait)]
 pub enum Framebuffer {
     /// A framebuffer that lives in plain memory
     SimpleRam(SimpleRamFramebuffer),
     #[cfg(kernel_machine = "pc64")]
     /// x86 vga hardware
     VgaHardware(vga::X86VgaMode),
+}
+
+impl FramebufferTrait<pixels::Palette<u8>> for Framebuffer {
+    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::Palette<u8>>) {
+        match self {
+            Framebuffer::SimpleRam(f) => f.write_plain(x, y, fb),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(f) => f.write_plain(x, y, fb),
+        }
+    }
+
+    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::Palette<u8>>) {
+        todo!()
+    }
+
+    fn write_pixel(&mut self, x: u16, y: u16, p: pixels::Palette<u8>) {
+        match self {
+            Framebuffer::SimpleRam(f) => f.write_pixel(x, y, p),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(f) => f.write_pixel(x, y, p),
+        }
+    }
+}
+
+impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
+    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::FullColor<u32>>) {
+        match self {
+            Framebuffer::SimpleRam(f) => f.write_plain(x, y, fb),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(f) => todo!(),
+        }
+    }
+
+    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::FullColor<u32>>) {
+        match self {
+            Framebuffer::SimpleRam(f) => f.write_opaque(x, y, ob),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(f) => todo!(),
+        }
+    }
+
+    fn write_pixel(&mut self, x: u16, y: u16, p: pixels::FullColor<u32>) {
+        match self {
+            Framebuffer::SimpleRam(f) => f.write_pixel(x, y, p),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(f) => todo!(),
+        }
+    }
 }
 
 impl Framebuffer {
@@ -113,7 +207,7 @@ impl Framebuffer {
                 simple_ram_framebuffer.buffer.iter_mut()
             }
             #[cfg(kernel_machine = "pc64")]
-            VgaHardware(vga) => todo!(),
+            Framebuffer::VgaHardware(vga) => todo!(),
         }
     }
 
@@ -124,7 +218,31 @@ impl Framebuffer {
                 doors_macros2::kernel_print!("FB IS AT {:p}\r\n", &fb.buffer[0])
             }
             #[cfg(kernel_machine = "pc64")]
-            VgaHardware(vga) => todo!(),
+            Framebuffer::VgaHardware(vga) => todo!(),
+        }
+    }
+
+    /// Create a text console with the framebuffer
+    pub fn make_console(self, font: &'static Font<pixels::FullColor<u32>>) -> TextDisplay {
+        match self {
+            Framebuffer::SimpleRam(fb) => TextDisplay::FramebufferTextFull(
+                FramebufferTextMode::new(Framebuffer::SimpleRam(fb), Some(font)),
+            ),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(_vga) => todo!(),
+        }
+    }
+
+    /// Create a paletted text console with the framebuffer
+    pub fn make_console_palette(self, font: &'static Font<pixels::Palette<u8>>) -> TextDisplay {
+        match self {
+            Framebuffer::SimpleRam(fb) => TextDisplay::FramebufferTextPalette(
+                FramebufferTextMode::new(Framebuffer::SimpleRam(fb), Some(font)),
+            ),
+            #[cfg(kernel_machine = "pc64")]
+            Framebuffer::VgaHardware(vga) => {
+                TextDisplay::X86VgaGraphicsMode(vga::X86VgaWithFont::new(vga, font))
+            }
         }
     }
 }
@@ -157,22 +275,52 @@ impl Display {
             }
         }
     }
+
+    /// Make a console out of the display
+    pub fn make_console(self) -> TextDisplay {
+        match self {
+            Display::Framebuffer(fb) => {
+                let f = &*MAIN_FONT;
+                fb.make_console(f)
+            }
+            _ => {
+                todo!();
+            }
+        }
+    }
 }
 
 /// The trait to get a tiny framebuffer for each font character
 #[enum_dispatch::enum_dispatch]
 pub trait FontTrait<P>: Sync + Send {
     /// Perform a lookup to get the graphics for a given character
-    fn lookup_symbol(&self, c: char) -> OpaqueFrameBuffer<P>;
+    fn lookup_symbol(&self, c: char) -> Option<&FontData>;
     /// The height of the font in pixels
     fn height(&self) -> u16;
 }
 
 /// The fonts that can exist
-#[enum_dispatch::enum_dispatch(FontTrait)]
 pub enum Font<P> {
     /// A fixed width font
     FixedWidth(fonts::FixedWidthFont<P>),
+    /// A variable width font
+    VariableWidth(fonts::VariableWidthFont<P>),
+}
+
+impl<P: Send + Sync> FontTrait<P> for Font<P> {
+    fn lookup_symbol(&self, c: char) -> Option<&FontData> {
+        match self {
+            Font::FixedWidth(f) => f.lookup_symbol(c),
+            Font::VariableWidth(f) => f.lookup_symbol(c),
+        }
+    }
+
+    fn height(&self) -> u16 {
+        match self {
+            Font::FixedWidth(f) => f.height(),
+            Font::VariableWidth(f) => f.height(),
+        }
+    }
 }
 
 /// This trait is used for text only video output hardware
@@ -197,9 +345,9 @@ pub trait TextDisplayTrait: Sync + Send {
 }
 
 /// Draws text onto a framebuffer
-pub struct FramebufferTextMode<P> {
+pub struct FramebufferTextMode<P: 'static> {
     fb: Framebuffer,
-    font: Font<P>,
+    font: &'static Font<P>,
     cursor_x: u8,
     cursor_y: u8,
 }
@@ -209,7 +357,7 @@ where
     P: Sync + Send,
 {
     ///Construct a new Self
-    pub fn new(fb: Framebuffer, font: Option<Font<P>>) -> Self {
+    pub fn new(fb: Framebuffer, font: Option<&'static Font<P>>) -> Self {
         let font = match font {
             Some(f) => f,
             None => todo!(),
@@ -223,12 +371,45 @@ where
     }
 }
 
-impl<P> TextDisplayTrait for FramebufferTextMode<P>
+impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>>
+{
+    fn print_char(&mut self, d: char) {
+        for x in 0..50 {
+            for y in 0..10 {
+                let pixel: crate::modules::video::pixels::Palette<u8> =
+                crate::modules::video::pixels::Palette::new(
+                    0x11,
+                    &crate::modules::video::vga::DEFAULT_PALETTE,
+                );
+                self.fb.write_pixel(x, y, pixel);
+            }
+        }
+    }
+}
+
+impl<P> TextDisplayTrait for FramebufferTextMode<pixels::FullColor<P>>
 where
     P: Sync + Send,
 {
     fn print_char(&mut self, d: char) {
-        todo!()
+        let a = FontTrait::lookup_symbol(self.font, d);
+        if let Some(a) = a {
+            for i in 0..10 {
+                for j in 0..10 {
+                    let p = 0xffffffff;
+                    let p = FullColor::<u32>::new(p);
+                    doors_macros2::kernel_print!(
+                        "Print pixel {} {}\r\n",
+                        self.cursor_x as u16 + i,
+                        self.cursor_y as u16 + j
+                    );
+                    self.fb
+                        .write_pixel(self.cursor_x as u16 + i, self.cursor_y as u16 + j, p);
+                }
+            }
+            doors_macros2::kernel_print!("Done printing char\r\n");
+            self.cursor_x += 5;
+        }
     }
 }
 
@@ -239,8 +420,12 @@ pub enum TextDisplay {
     SerialDisplay(VideoOverSerial),
     /// X86 vga hardware operated in text mode
     X86VgaTextMode(text::X86VgaTextMode),
-    /// X86 vga hardware operated in video mode
-    FramebufferText(FramebufferTextMode<pixels::Palette<u8>>),
+    /// X86 vga hardware operated in graphics mode
+    X86VgaGraphicsMode(vga::X86VgaWithFont<pixels::Palette<u8>>),
+    /// Paletted framebuffer
+    FramebufferTextPalette(FramebufferTextMode<pixels::Palette<u8>>),
+    /// Full color framebuffer
+    FramebufferTextFull(FramebufferTextMode<pixels::FullColor<u32>>),
 }
 
 /// Enables sending video text over a serial port

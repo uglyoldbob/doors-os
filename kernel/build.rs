@@ -53,9 +53,16 @@ fn write_font_source(name: String, table: Vec<FontData>) {
     let mtable: Vec<String> = table
         .iter()
         .map(|a| {
-            let d : Vec<String> = a.data.iter().map(|n| format!("{}", n)).collect();
-            format!("({:?}, FontData {{ width: {}, height: {}, left: {}, top: {}, data: &[{}],}})", 
-            a.c, a.width, a.height, a.left, a.top, d.join(", "))
+            let d: Vec<String> = a.data.iter().map(|n| format!("{}", n)).collect();
+            format!(
+                "({:?}, FontData {{ width: {}, height: {}, left: {}, top: {}, data: &[{}],}})",
+                a.c,
+                a.width,
+                a.height,
+                a.left,
+                a.top,
+                d.join(", ")
+            )
         })
         .collect();
     contents.push_str(&mtable.join(",\n"));

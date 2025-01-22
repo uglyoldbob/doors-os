@@ -92,6 +92,11 @@ impl DisplayHandler {
         self.displays.push(LockedArc::new(d));
     }
 
+    /// Does the module index exist?
+    pub fn exists(&self, i: usize) -> bool {
+        i < self.displays.len()
+    }
+
     /// Get a display module
     pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::video::Display> {
         self.displays[i].clone()

@@ -567,18 +567,19 @@ pub extern "C" fn start64() -> ! {
 
     PAGING_MANAGER.lock().init();
 
-    let mut vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
-    let pixel: crate::modules::video::pixels::Palette<u8> =
-        crate::modules::video::pixels::Palette::new(
-            0x10,
-            &crate::modules::video::vga::DEFAULT_PALETTE,
-        );
-    crate::modules::video::FramebufferTrait::write_pixel(&mut vga, 10, 10, pixel);
+    let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
     let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
-    let fb = crate::modules::video::FramebufferTextMode::new(fb, None);
+    {
+        let mut a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
+        for d in "A".chars() {
+            a.print_char(d);
+        }
+    }
+    /*let mut fb = crate::modules::video::FramebufferTextMode::new(fb, None);
+    fb.print_char('x');
     let mut v = crate::VGA.lock();
-    v.replace(crate::modules::video::TextDisplay::FramebufferText(fb));
-    drop(v);
+    v.replace(crate::modules::video::TextDisplay::FramebufferTextPalette(fb));
+    drop(v);*/
 
     let apic_msr = x86_64::registers::model_specific::Msr::new(0x1b);
     let apic_msr_value = unsafe { apic_msr.read() };
