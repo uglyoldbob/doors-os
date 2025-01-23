@@ -4,10 +4,11 @@ version = 4
 
 [[package]]
 name = "acpi"
-version = "5.0.0"
-source = "git+https://github.com/rust-osdev/acpi.git#4390f0477a9f63d3734705bb3a687b12180fc47b"
+version = "5.1.0"
+source = "git+https://github.com/rust-osdev/acpi.git#97cf8d85b27fdb0798227406214ddc5acd752268"
 dependencies = [
  "bit_field",
+ "bitflags 2.5.0",
  "log",
 ]
 

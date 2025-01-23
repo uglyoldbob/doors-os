@@ -171,7 +171,7 @@ struct Acpi<'a> {
     vmm: &'a Locked<memory::BumpAllocator>,
 }
 
-impl<'a> acpi::AcpiHandler for Acpi<'a> {
+impl<'a> acpi::AcpiHandler for &Acpi<'a> {
     unsafe fn map_physical_region<T>(
         &self,
         physical_address: usize,
@@ -183,7 +183,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 NonNull::new(physical_address as *mut T).unwrap(),
                 size,
                 size,
-                self.clone(),
+                *self,
             )
         } else {
             let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
@@ -213,7 +213,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 NonNull::new(vstart as *mut T).unwrap(),
                 size,
                 realsize,
-                self.clone(),
+                *self,
             );
             b.leak();
             r
@@ -231,7 +231,7 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
 }
 
 #[inline(never)]
-fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHandler) {
+fn handle_acpi(boot_info: &multiboot2::BootInformation, acpi_handler: impl AcpiHandler) {
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
         doors_macros2::kernel_print!(
             "rsdpv2 at {:X} {:x} revision {}\r\n",
@@ -418,6 +418,34 @@ struct LocalApicRegister {
 }
 
 struct AmlHandler {}
+
+/// The system boot structure
+pub struct X86System<'a> {
+    boot_info: multiboot2::BootInformation<'a>,
+    acpi_handler: Acpi<'a>,
+}
+
+impl<'a> crate::kernel::SystemTrait for X86System<'a> {
+    fn enable_interrupts(&self) {
+        unsafe {
+            INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
+            x86_64::instructions::interrupts::enable();
+        }
+    }
+
+    fn init(&mut self) {
+        handle_acpi(&self.boot_info, &self.acpi_handler);
+
+        let aml_handler = Box::new(AmlHandler {});
+        let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
+        doors_macros2::kernel_print!("HERE\r\n");
+        if true {
+            if aml.initialize_objects().is_ok() {
+                doors_macros2::kernel_print!("AML READY\r\n");
+            }
+        }
+    }
+}
 
 impl aml::Handler for AmlHandler {
     fn read_u8(&self, address: usize) -> u8 {
@@ -673,21 +701,8 @@ pub extern "C" fn start64() -> ! {
         }
     }
 
-    unsafe {
-        INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
-        x86_64::instructions::interrupts::enable();
-    }
-
-    handle_acpi(boot_info, acpi_handler);
-
-    let aml_handler = Box::new(AmlHandler {});
-    let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-    doors_macros2::kernel_print!("HERE\r\n");
-    if false {
-        if aml.initialize_objects().is_ok() {
-            doors_macros2::kernel_print!("AML READY\r\n");
-        }
-    }
-
-    super::main_boot();
+    super::main_boot(crate::kernel::System::X86_64(X86System {
+        boot_info,
+        acpi_handler,
+    }));
 }

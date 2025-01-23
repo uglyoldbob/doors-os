@@ -148,3 +148,20 @@ lazy_static! {
     pub static ref RNGS : Locked<RngHandler> =
         Locked::new(RngHandler::new());
 }
+
+/// This trait defines system specific elements
+#[enum_dispatch::enum_dispatch]
+pub trait SystemTrait {
+    /// Enable interrupts for the system
+    fn enable_interrupts(&self);
+    /// System required init code
+    fn init(&mut self);
+}
+
+/// This struct implements the SystemTrait
+#[enum_dispatch::enum_dispatch(SystemTrait)]
+pub enum System<'a> {
+    #[cfg(kernel_machine = "pc64")]
+    /// The x86 64 system code
+    X86_64(crate::boot::x86::boot64::X86System<'a>),
+}

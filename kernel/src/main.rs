@@ -15,6 +15,7 @@ pub mod kernel;
 pub mod modules;
 
 use alloc::sync::Arc;
+use kernel::SystemTrait;
 use modules::rng;
 use modules::rng::RngTrait;
 use modules::video::TextDisplay;
@@ -127,8 +128,10 @@ static VGA: spin::Mutex<Option<TextDisplay>> = spin::Mutex::new(None);
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
-fn main() -> ! {
+fn main(mut system: kernel::System) -> ! {
     {
+        system.enable_interrupts();
+        system.init();
         doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
 
         {

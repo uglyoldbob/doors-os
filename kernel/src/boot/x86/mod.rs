@@ -2,6 +2,7 @@
 
 use core::marker::PhantomData;
 
+use crate::kernel::SystemTrait;
 use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
 use crate::LockedArc;
@@ -218,7 +219,7 @@ extern "C" {
 }
 
 /// This function is called by the entrance module for the kernel.
-fn main_boot() -> ! {
+fn main_boot(system: crate::kernel::System) -> ! {
     {
         let mut serials = crate::kernel::SERIAL.lock();
         for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
@@ -243,5 +244,5 @@ fn main_boot() -> ! {
     }
 
     doors_macros2::kernel_print!("This is a test\r\n");
-    super::super::main();
+    super::super::main(system);
 }
