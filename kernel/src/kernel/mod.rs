@@ -44,6 +44,11 @@ impl SerialHandler {
         self.devs.push(LockedArc::new(m));
     }
 
+    /// Does the module index exist?
+    pub fn exists(&self, i: usize) -> bool {
+        i < self.devs.len()
+    }
+
     /// Get a serial module
     pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::serial::Serial> {
         self.devs[i].clone()

@@ -220,6 +220,7 @@ extern "C" {
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
     {
+        let mut serials = crate::kernel::SERIAL.lock();
         for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
             if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base) {
                 doors_macros2::kernel_print!("Registered serial port {:x}\r\n", base);
@@ -228,9 +229,16 @@ fn main_boot() -> ! {
                     &com,
                     "Serial port test\r\n",
                 );
-                let mut serials = crate::kernel::SERIAL.lock();
                 serials.register_serial(com);
             }
+        }
+
+        if serials.exists(0) {
+            let s = serials.module(0);
+            let sd = s.make_text_display();
+            let mut v = crate::VGA.lock();
+            v.replace(sd);
+            drop(v);
         }
     }
 

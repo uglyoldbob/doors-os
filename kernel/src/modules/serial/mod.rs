@@ -32,6 +32,14 @@ pub enum Serial {
     Dummy(DummySerial),
 }
 
+impl LockedArc<Serial> {
+    /// Create a text display
+    pub fn make_text_display(&self) -> super::video::TextDisplay {
+        let sd = super::video::VideoOverSerial::new(self.clone());
+        super::video::TextDisplay::SerialDisplay(sd)
+    }
+}
+
 /// A dummy serial port that does nothing
 pub struct DummySerial {}
 
