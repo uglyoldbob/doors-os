@@ -2,4 +2,5 @@ romimage: file="/usr/share/seabios/bios-256k.bin"
 vgaromimage: file ="/usr/share/seabios/vgabios-bochs-display.bin"
 display_library: sdl2
 ata0-slave: type=cdrom, path=build/cd32.img, status=inserted
+com1: enabled=1, mode=file, dev=serial.log
 boot: cdrom

@@ -2,4 +2,5 @@
 #vgaromimage: file ="/usr/share/seabios/vgabios-bochs-display.bin"
 #display_library: sdl2
 ata0-slave: type=cdrom, path=cd64.iso, status=inserted
+com1: enabled=1, mode=file, dev=serial.log
 boot: cdrom

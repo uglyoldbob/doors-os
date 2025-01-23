@@ -86,14 +86,21 @@ add_custom_command(
     OUTPUT doors-os-64/doors-os-64.vbox
     DEPENDS image_cd64
     COMMAND ${VIRTUALBOX_MANAGE} createvm --name doors-os-64 --ostype "Doors" --register --basefolder `pwd`
+    COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --uart1 0x3f8 4 --uartmode1 file serial.log
     COMMAND ${VIRTUALBOX_MANAGE} storagectl doors-os-64 --name "IDE Controller" --add ide --controller PIIX4
     COMMAND ${VIRTUALBOX_MANAGE} storageattach doors-os-64 --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ./cd64.iso
 )
 
 add_custom_target(
-    virtualbox64
+    virtualbox64debug
     DEPENDS doors-os-64/doors-os-64.vbox
     COMMAND ${VIRTUALBOX} --startvm doors-os-64 --dbg --debug
+)
+
+add_custom_target(
+    virtualbox64
+    DEPENDS doors-os-64/doors-os-64.vbox
+    COMMAND ${VIRTUALBOX} --startvm doors-os-64
 )
 
 add_custom_target(

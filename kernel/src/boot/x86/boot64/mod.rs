@@ -567,7 +567,7 @@ pub extern "C" fn start64() -> ! {
 
     PAGING_MANAGER.lock().init();
 
-    if false {
+    if true {
         let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
         let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
         {
