@@ -99,5 +99,5 @@ add_custom_target(
 add_custom_target(
     qemucd64
     DEPENDS image_cd64
-    COMMAND ${QEMU_X64} -cdrom cd64.iso -m 8 
+    COMMAND ${QEMU_X64} -cdrom cd64.iso -m 8 -serial file:serial.log
 )

@@ -567,24 +567,21 @@ pub extern "C" fn start64() -> ! {
 
     PAGING_MANAGER.lock().init();
 
-    let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
-    let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
-    {
-        let mut a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
-        for d in "ABCDEFGHIJKLMNOPQRSTUVWYZabcdefghijklmnopqrstuvwxyz1234567890".chars() {
-            a.print_char(d);
+    if false {
+        let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
+        let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
+        {
+            let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
+            let mut v = crate::VGA.lock();
+            v.replace(a);
         }
-        /*
-        for (c, fd) in crate::modules::video::FontTrait::symbols(&*crate::modules::video::MAIN_FONT_PALETTE) {
-            a.print_char(*c);
-        }
-        */
+    } else {
+        let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
+        let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
+        let mut v = crate::VGA.lock();
+        v.replace(b);
+        drop(v);
     }
-    /*let mut fb = crate::modules::video::FramebufferTextMode::new(fb, None);
-    fb.print_char('x');
-    let mut v = crate::VGA.lock();
-    v.replace(crate::modules::video::TextDisplay::FramebufferTextPalette(fb));
-    drop(v);*/
 
     let apic_msr = x86_64::registers::model_specific::Msr::new(0x1b);
     let apic_msr_value = unsafe { apic_msr.read() };

@@ -43,24 +43,47 @@ impl X86VgaWithFont<super::pixels::Palette<u8>> {
             row: 0,
         }
     }
+
+    /// Clear the screen
+    fn clear_screen(&mut self) {
+        for x in 0..320 {
+            for y in 0..200 {
+                let pixel = Palette::<u8>::new(0x32, &DEFAULT_PALETTE);
+                super::FramebufferTrait::write_pixel(&mut self.vga, x, y, pixel);
+            }
+        }
+    }
 }
 
 impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
-    fn print_char(&mut self, d:char) {
+    fn print_char(&mut self, d: char) {
         if let Some(a) = self.font.lookup_symbol(d) {
             for x in 0..a.width {
                 for y in 0..a.height {
-                    let val = if a.data[y as usize *a.width as usize + x as usize] != 0 { 0} else { 0x32};
+                    let val = if a.data[y as usize * a.width as usize + x as usize] != 0 {
+                        0
+                    } else {
+                        0x32
+                    };
                     let pixel = Palette::<u8>::new(val, &DEFAULT_PALETTE);
-                    super::FramebufferTrait::write_pixel(&mut self.vga, self.column + x as u16, self.row + y as u16, pixel);
+                    super::FramebufferTrait::write_pixel(
+                        &mut self.vga,
+                        self.column + x as u16,
+                        self.row + y as u16,
+                        pixel,
+                    );
                 }
             }
             if (self.column + a.width as u16) < 320 {
                 self.column += a.width as u16;
-            }
-            else {
+            } else {
                 self.column = 0;
-                self.row += a.height as u16;
+                if self.row >= 180 {
+                    self.row = 0;
+                    self.clear_screen();
+                } else {
+                    self.row += 20;
+                }
             }
         }
     }

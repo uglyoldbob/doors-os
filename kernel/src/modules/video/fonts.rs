@@ -19,7 +19,7 @@ where
         todo!()
     }
 
-    fn symbols(&self) -> alloc::collections::btree_map::Iter<char,super::FontData> {
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<char, super::FontData> {
         todo!()
     }
 }

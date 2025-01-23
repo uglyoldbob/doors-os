@@ -380,16 +380,15 @@ where
     }
 }
 
-impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>>
-{
+impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
     fn print_char(&mut self, d: char) {
         for x in 0..50 {
             for y in 0..10 {
                 let pixel: crate::modules::video::pixels::Palette<u8> =
-                crate::modules::video::pixels::Palette::new(
-                    0x11,
-                    &crate::modules::video::vga::DEFAULT_PALETTE,
-                );
+                    crate::modules::video::pixels::Palette::new(
+                        0x11,
+                        &crate::modules::video::vga::DEFAULT_PALETTE,
+                    );
                 self.fb.write_pixel(x, y, pixel);
             }
         }
