@@ -58,6 +58,16 @@ impl X86VgaWithFont<super::pixels::Palette<u8>> {
 impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
     fn print_char(&mut self, d: char) {
         if let Some(a) = self.font.lookup_symbol(d) {
+            let width = if a.width != 0 { a.width } else { 10 };
+            if (self.column + width as u16) >= 320 {
+                self.column = 0;
+                if self.row >= 180 {
+                    self.row = 0;
+                    self.clear_screen();
+                } else {
+                    self.row += 20;
+                }
+            }
             for x in 0..a.width {
                 for y in 0..a.height {
                     let val = if a.data[y as usize * a.width as usize + x as usize] != 0 {
@@ -74,8 +84,8 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
                     );
                 }
             }
-            if (self.column + a.width as u16) < 320 {
-                self.column += a.width as u16;
+            if (self.column + width as u16) < 320 {
+                self.column += width as u16;
             } else {
                 self.column = 0;
                 if self.row >= 180 {

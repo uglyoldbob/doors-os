@@ -123,13 +123,14 @@ extern "x86-interrupt" fn page_fault_handler(
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
-    if let Some(m) = info.payload().downcast_ref::<&str>() {
-        doors_macros2::kernel_print!("{}", m);
-    }
-
     if let Some(t) = info.location() {
-        doors_macros2::kernel_print!("{}", t.file());
-        doors_macros2::kernel_print!("LINE {}\r\n", t.line());
+        let f = t.file();
+        let maxlen = f.len();
+        for i in (0..maxlen).step_by(70) {
+            let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
+            doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
+        }
+        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
     }
     doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
@@ -250,7 +251,7 @@ fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHa
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
         doors_macros2::kernel_print!(
             "rsdpv1 at {:X} {:x}\r\n",
-            rsdp1 as *const multiboot2::RsdpV1Tag as usize,
+            rsdp1 as *const multiboot2::RsdpV1Tag as usize + 8,
             rsdp1.rsdt_address()
         );
         let t = unsafe {
@@ -276,9 +277,10 @@ fn handle_acpi(boot_info: multiboot2::BootInformation, acpi_handler: impl AcpiHa
     for v in acpi.ssdts() {
         doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
     }
-
-    if let Ok(v) = acpi.dsdt() {
-        doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+    if false {
+        if let Ok(v) = acpi.dsdt() {
+            doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+        }
     }
 
     doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
@@ -419,70 +421,87 @@ struct AmlHandler {}
 
 impl aml::Handler for AmlHandler {
     fn read_u8(&self, address: usize) -> u8 {
+        doors_macros2::kernel_print!("r1\r\n");
         todo!()
     }
 
     fn read_u16(&self, address: usize) -> u16 {
+        doors_macros2::kernel_print!("r2\r\n");
         todo!()
     }
 
     fn read_u32(&self, address: usize) -> u32 {
+        doors_macros2::kernel_print!("r3\r\n");
         todo!()
     }
 
     fn read_u64(&self, address: usize) -> u64 {
+        doors_macros2::kernel_print!("r4\r\n");
         todo!()
     }
 
     fn write_u8(&mut self, address: usize, value: u8) {
+        doors_macros2::kernel_print!("w1\r\n");
         todo!()
     }
 
     fn write_u16(&mut self, address: usize, value: u16) {
+        doors_macros2::kernel_print!("w2\r\n");
         todo!()
     }
 
     fn write_u32(&mut self, address: usize, value: u32) {
+        doors_macros2::kernel_print!("w3\r\n");
         todo!()
     }
 
     fn write_u64(&mut self, address: usize, value: u64) {
+        doors_macros2::kernel_print!("w4\r\n");
         todo!()
     }
 
     fn read_io_u8(&self, port: u16) -> u8 {
+        doors_macros2::kernel_print!("i1\r\n");
         todo!()
     }
 
     fn read_io_u16(&self, port: u16) -> u16 {
+        doors_macros2::kernel_print!("i2\r\n");
         todo!()
     }
 
     fn read_io_u32(&self, port: u16) -> u32 {
+        doors_macros2::kernel_print!("i3\r\n");
         todo!()
     }
 
     fn write_io_u8(&self, port: u16, value: u8) {
+        doors_macros2::kernel_print!("o1\r\n");
         todo!()
     }
 
     fn write_io_u16(&self, port: u16, value: u16) {
+        doors_macros2::kernel_print!("o2\r\n");
         todo!()
     }
 
     fn write_io_u32(&self, port: u16, value: u32) {
+        doors_macros2::kernel_print!("o3\r\n");
         todo!()
     }
 
     fn read_pci_u8(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u8 {
+        doors_macros2::kernel_print!("pr1\r\n");
         todo!()
     }
 
     fn read_pci_u16(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u16 {
+        doors_macros2::kernel_print!("pr2\r\n");
         todo!()
     }
 
     fn read_pci_u32(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u32 {
+        doors_macros2::kernel_print!("pr3\r\n");
         todo!()
     }
 
@@ -495,6 +514,7 @@ impl aml::Handler for AmlHandler {
         offset: u16,
         value: u8,
     ) {
+        doors_macros2::kernel_print!("pw1\r\n");
         todo!()
     }
 
@@ -507,6 +527,7 @@ impl aml::Handler for AmlHandler {
         offset: u16,
         value: u16,
     ) {
+        doors_macros2::kernel_print!("pw2\r\n");
         todo!()
     }
 
@@ -519,6 +540,7 @@ impl aml::Handler for AmlHandler {
         offset: u16,
         value: u32,
     ) {
+        doors_macros2::kernel_print!("pw3\r\n");
         todo!()
     }
 }
@@ -660,7 +682,12 @@ pub extern "C" fn start64() -> ! {
 
     let aml_handler = Box::new(AmlHandler {});
     let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-    aml.initialize_objects().unwrap();
+    doors_macros2::kernel_print!("HERE\r\n");
+    if false {
+        if aml.initialize_objects().is_ok() {
+            doors_macros2::kernel_print!("AML READY\r\n");
+        }
+    }
 
     super::main_boot();
 }
