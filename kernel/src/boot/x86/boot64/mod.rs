@@ -15,6 +15,7 @@ use core::ptr::NonNull;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
+use raw_cpuid::{CpuId, CpuIdReaderNative};
 
 pub mod memory;
 
@@ -192,7 +193,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
                 core::mem::size_of::<T>()
             } else {
                 if size == 0x24 {
-                    0x34
+                    0xF00
                 } else {
                     size
                 }
@@ -503,6 +504,7 @@ struct AmlHandler {}
 pub struct X86System<'a> {
     boot_info: multiboot2::BootInformation<'a>,
     acpi_handler: Acpi<'a>,
+    cpuid: CpuId<CpuIdReaderNative>,
 }
 
 impl<'a> crate::kernel::SystemTrait for X86System<'a> {
@@ -522,6 +524,12 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
             }
         }
 
+        let cap = self.cpuid.get_processor_capacity_feature_info().unwrap();
+        {
+            let mut p = PAGING_MANAGER.lock();
+            p.set_physical_address_size(cap.physical_address_bits());
+            doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
+        }
         handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
     }
 }
@@ -655,7 +663,7 @@ impl aml::Handler for AmlHandler {
 /// The entry point for the 64 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
-    let _cpuid = raw_cpuid::CpuId::new();
+    let cpuid = raw_cpuid::CpuId::new();
 
     let boot_info = unsafe {
         multiboot2::BootInformation::load(
@@ -783,5 +791,6 @@ pub extern "C" fn start64() -> ! {
     super::main_boot(crate::kernel::System::X86_64(X86System {
         boot_info,
         acpi_handler,
+        cpuid,
     }));
 }

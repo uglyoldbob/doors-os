@@ -417,6 +417,8 @@ pub struct PagingTableManager<'a> {
     pt1: MaybeUninit<PageTableRef>,
     /// The physical memory manager reference, used to allocate and deallocate pages used by the paging system.
     mm: &'a crate::Locked<SimpleMemoryManager<'a>>,
+    /// The mask for physical addresses
+    physical_mask: usize,
 }
 
 impl<'a> PagingTableManager<'a> {
@@ -428,7 +430,13 @@ impl<'a> PagingTableManager<'a> {
             pt2: MaybeUninit::uninit(),
             pt1: MaybeUninit::uninit(),
             mm,
+            physical_mask: !0,
         }
+    }
+
+    /// Set the physical mask according to the number of bits in physical address
+    pub fn set_physical_address_size(&mut self, bits: u8) {
+        self.physical_mask = (1 << bits) - 1;
     }
 
     /// Map the virtual address as a window to the given physical address. Used in the init function.
@@ -569,7 +577,7 @@ impl<'a> PagingTableManager<'a> {
 
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
                 unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] =
-                    paddr as u64 | 0x3;
+                    (paddr as u64 | 0x3) & self.physical_mask as u64;
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
             } else {
                 return Err(());
