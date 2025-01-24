@@ -535,7 +535,7 @@ pub fn hex_dump(data: &[u8]) {
 }
 
 /// prints out a user friendly hex dump of the specified data
-pub fn hex_dump_no_ascii(data: &[u8]) {
+pub fn hex_dump_no_ascii(data: &[u8], print_address: bool) {
     let len = data.len();
     let mut addr_len = 1;
     let mut len_calc = len;
@@ -548,7 +548,9 @@ pub fn hex_dump_no_ascii(data: &[u8]) {
         }
     }
     for (i, b) in data.chunks(16).enumerate() {
-        doors_macros2::kernel_print!("{:0>addr_len$x}: ", i * 16);
+        if print_address {
+            doors_macros2::kernel_print!("{:0>addr_len$x}: ", i * 16);
+        }
         for d in b {
             doors_macros2::kernel_print!("{:02x} ", d);
         }

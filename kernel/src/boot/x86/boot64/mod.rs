@@ -179,7 +179,6 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
-        doors_macros2::kernel_print!("Map region {:x}\r\n", physical_address);
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -219,10 +218,6 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
             }
             let vstart = b.as_mut_ptr() as usize + size_before_allocation;
 
-            if size < core::mem::size_of::<T>() {
-                doors_macros2::kernel_print!("ALLOCATION SIZE IS TOO SMALL?\r\n");
-            }
-
             let r = acpi::PhysicalMapping::new(
                 physical_address,
                 NonNull::new((vstart) as *mut T).unwrap(),
@@ -231,16 +226,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
                 *self,
             );
             let a: usize = r.virtual_start().addr().into();
-            doors_macros2::kernel_print!(
-                "Physical MAP {:x} - {:x} size {} {} {}\r\n",
-                a,
-                r.physical_start(),
-                r.region_length(),
-                r.mapped_length(),
-                core::mem::size_of::<T>()
-            );
             b.leak();
-            hex_dump_no_ascii_generic(&*r, false);
             r
         }
     }
@@ -306,28 +292,6 @@ fn handle_acpi(
     let acpi = acpi.unwrap();
     doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision());
 
-    {
-        acpi.find_table::<acpi::fadt::Fadt>().and_then(|fadt| {
-            let addr: usize = fadt.virtual_start().addr().into();
-            doors_macros2::kernel_print!(
-                "FOUND FADT @ {:x} - {:x}, {:x} \r\n",
-                addr,
-                addr + fadt.mapped_length() - 1,
-                fadt.mapped_length()
-            );
-            let table: &[u8] =
-                unsafe { core::slice::from_raw_parts(addr as *const u8, fadt.mapped_length()) };
-            hex_dump_no_ascii(table);
-            hex_dump_no_ascii_generic(&*fadt, false);
-            PAGING_MANAGER.lock().map_addresses_read_only(
-                fadt.virtual_start().addr().into(),
-                fadt.virtual_start().addr().into(),
-                fadt.mapped_length(),
-            );
-            Ok(42)
-        });
-    }
-
     doors_macros2::kernel_print!("Trying DSDT\r\n");
 
     if true {
@@ -339,13 +303,12 @@ fn handle_acpi(
                 .unwrap();
             let table: &[u8] =
                 unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
-            hex_dump_no_ascii(table);
             if aml.parse_table(table).is_ok() {
                 doors_macros2::kernel_print!("DSDT PARSED OK\r\n");
             }
         }
     }
-    if false {
+    if true {
         for v in acpi.ssdts() {
             doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
             PAGING_MANAGER
@@ -354,7 +317,6 @@ fn handle_acpi(
                 .unwrap();
             let table: &[u8] =
                 unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
-            hex_dump_no_ascii(table);
             match aml.parse_table(table) {
                 Ok(()) => doors_macros2::kernel_print!("SSDT PARSED OK\r\n"),
                 Err(e) => doors_macros2::kernel_print!("SSDT PARSED ERR {:?}\r\n", e),

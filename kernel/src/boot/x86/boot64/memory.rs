@@ -547,10 +547,6 @@ impl<'a> PagingTableManager<'a> {
                         self.mm,
                     );
                 let entry = Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
-                doors_macros2::kernel_print!(
-                    "About to map a page table entry to 0x{:x}\r\n",
-                    crate::address(entry)
-                );
                 unsafe { &mut *self.pt2.as_mut_ptr() }.table.entries[pt2_index] =
                     crate::address(entry) as u64 | 1;
                 crate::address(entry) as u64
@@ -598,12 +594,6 @@ impl<'a> PagingTableManager<'a> {
     ) -> Result<(), ()> {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64() as usize;
-        doors_macros2::kernel_print!(
-            "MAP RO {:x} - {:x} size {}\r\n",
-            virtual_address,
-            physical_address,
-            size
-        );
 
         for i in (0..size).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virtual_address + i;
@@ -611,14 +601,20 @@ impl<'a> PagingTableManager<'a> {
             self.setup_cache(cr3, vaddr);
             let pt1_index = ((vaddr >> 12) & 0x1FF) as usize;
 
+            let newval = paddr as u64 | 0x1;
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
-                unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] =
-                    paddr as u64 | 0x1;
+                unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] = newval;
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
+            } else if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & !0xFFF)
+                == (newval & !0xFFF)
+            {
+                // already mapped to what we want it to be, do nothing
             } else {
                 doors_macros2::kernel_print!(
-                    "ADDRESS {:x} is already mapped?\r\n",
-                    virtual_address
+                    "ADDRESS {:x} is already mapped to {:x} {:x}?\r\n",
+                    virtual_address,
+                    unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index],
+                    newval
                 );
                 return Err(());
             }
