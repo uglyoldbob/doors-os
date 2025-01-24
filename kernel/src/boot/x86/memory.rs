@@ -111,9 +111,10 @@ impl<'a> HeapManager<'a> {
             doors_macros2::kernel_print!("head: {:p}\r\n", r);
             loop {
                 doors_macros2::kernel_print!(
-                    "heap node is {:?} {:x}\r\n",
+                    "heap node is {:?} {:x} {:x}\r\n",
                     r.as_ptr(),
-                    unsafe { &*r.as_ptr() }.next_address() - 1
+                    unsafe { &*r.as_ptr() }.next_address() - 1,
+                    unsafe { &*r.as_ptr() }.size
                 );
 
                 if let Some(nr) = unsafe { r.as_mut() }.next {
@@ -145,16 +146,18 @@ impl<'a> HeapManager<'a> {
         }
         drop(mm);
 
+        let mut node =
+            unsafe { NonNull::<HeapNode>::new_unchecked(new_section.as_ptr() as *mut HeapNode) };
+        unsafe { node.as_mut() }.next = None;
+        unsafe { node.as_mut() }.size = new_section.capacity() * core::mem::size_of::<Page>();
         if self.head.is_none() {
-            let mut node = unsafe {
-                NonNull::<HeapNode>::new_unchecked(new_section.as_ptr() as *mut HeapNode)
-            };
-            unsafe { node.as_mut() }.next = None;
-            unsafe { node.as_mut() }.size = new_section.capacity() * core::mem::size_of::<Page>();
             self.head = Some(node);
         } else {
-            self.print();
-            unimplemented!();
+            let mut elem = self.head.unwrap();
+            while let Some(f) = unsafe { elem.as_ref() }.next {
+                elem = f;
+            }
+            unsafe { elem.as_mut() }.next = Some(node);
         }
         new_section.leak();
         Ok(())
@@ -168,17 +171,29 @@ impl<'a> HeapManager<'a> {
             }
         }
 
-        let mut elem = self.head;
-        let mut prev_elem: Option<NonNull<HeapNode>> = None;
-        let mut best_fit_link: &mut Option<NonNull<HeapNode>> = &mut None;
-        let mut best_fit: Option<NonNull<HeapNode>> = None;
-        let mut best_fit_ha: Option<HeapNodeAlign> = None;
+        let mut times = 0;
+        loop {
+            times += 1;
+            let mut elem = self.head;
+            let mut prev_elem: Option<NonNull<HeapNode>> = None;
+            let mut best_fit_link: &mut Option<NonNull<HeapNode>> = &mut None;
+            let mut best_fit: Option<NonNull<HeapNode>> = None;
+            let mut best_fit_ha: Option<HeapNodeAlign> = None;
 
-        while let Some(mut h) = elem {
-            let ha = unsafe { h.as_mut() }.calc_alignment(layout.size(), layout.align());
-            if ha.size_needed <= unsafe { h.as_ref() }.size {
-                if let Some(b) = best_fit {
-                    if unsafe { h.as_ref() }.size < unsafe { b.as_ref() }.size {
+            while let Some(mut h) = elem {
+                let ha = unsafe { h.as_mut() }.calc_alignment(layout.size(), layout.align());
+                if ha.size_needed <= unsafe { h.as_ref() }.size {
+                    if let Some(b) = best_fit {
+                        if unsafe { h.as_ref() }.size < unsafe { b.as_ref() }.size {
+                            best_fit_link = if let Some(mut pe) = prev_elem {
+                                &mut unsafe { pe.as_mut() }.next
+                            } else {
+                                &mut self.head
+                            };
+                            best_fit = elem;
+                            best_fit_ha = Some(ha);
+                        }
+                    } else {
                         best_fit_link = if let Some(mut pe) = prev_elem {
                             &mut unsafe { pe.as_mut() }.next
                         } else {
@@ -187,57 +202,59 @@ impl<'a> HeapManager<'a> {
                         best_fit = elem;
                         best_fit_ha = Some(ha);
                     }
-                } else {
-                    best_fit_link = if let Some(mut pe) = prev_elem {
-                        &mut unsafe { pe.as_mut() }.next
+                }
+                prev_elem = elem;
+                elem = unsafe { h.as_ref() }.next;
+            }
+
+            if let Some(best) = best_fit {
+                let ha = best_fit_ha.unwrap();
+                let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
+                    if (unsafe { best.as_ref() }.size - ha.size_needed)
+                        < core::mem::size_of::<HeapNode>()
+                    {
+                        //The entire block will be used
+                        *best_fit_link = unsafe { best.as_ref() }.next;
+                        (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                     } else {
-                        &mut self.head
-                    };
-                    best_fit = elem;
-                    best_fit_ha = Some(ha);
+                        let after_node = unsafe { best.as_ref() }.start() + ha.size_needed;
+                        let mut node = unsafe {
+                            NonNull::<HeapNode>::new_unchecked(after_node as *mut HeapNode)
+                        };
+                        unsafe { node.as_mut() }.size =
+                            unsafe { best.as_ref() }.size - ha.size_needed;
+                        unsafe { node.as_mut() }.next =
+                            unsafe { best_fit_link.unwrap().as_ref().next };
+                        *best_fit_link = Some(node);
+                        (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
+                    }
+                } else {
+                    doors_macros2::kernel_print!("A free node will exist before the placement\r\n");
+                    if (unsafe { best.as_ref() }.size - ha.size_needed)
+                        < core::mem::size_of::<HeapNode>()
+                    {
+                        doors_macros2::kernel_print!("The end of the block will be used\r\n");
+                    } else {
+                        doors_macros2::kernel_print!(
+                            "There will be blank space at the end of the block\r\n"
+                        );
+                    }
+                    self.print();
+                    unimplemented!();
+                };
+                return r;
+            }
+            if times == 1 {
+                if let Err(_) = self.expand_with_physical_memory(layout.size() + layout.align()) {
+                    doors_macros2::kernel_print!("OUT OF MEMORY\r\n");
+                    return core::ptr::null_mut();
                 }
             }
-            prev_elem = elem;
-            elem = unsafe { h.as_ref() }.next;
+            if times == 2 {
+                doors_macros2::kernel_print!("OUT OF MEMORY\r\n");
+                return core::ptr::null_mut();
+            }
         }
-
-        let retval = if let Some(best) = best_fit {
-            let ha = best_fit_ha.unwrap();
-            let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
-                if (unsafe { best.as_ref() }.size - ha.size_needed)
-                    < core::mem::size_of::<HeapNode>()
-                {
-                    //The entire block will be used
-                    *best_fit_link = unsafe { best.as_ref() }.next;
-                    (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
-                } else {
-                    let after_node = unsafe { best.as_ref() }.start() + ha.size_needed;
-                    let mut node =
-                        unsafe { NonNull::<HeapNode>::new_unchecked(after_node as *mut HeapNode) };
-                    unsafe { node.as_mut() }.size = unsafe { best.as_ref() }.size - ha.size_needed;
-                    unsafe { node.as_mut() }.next = unsafe { best_fit_link.unwrap().as_ref().next };
-                    *best_fit_link = Some(node);
-                    (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
-                }
-            } else {
-                doors_macros2::kernel_print!("A free node will exist before the placement\r\n");
-                if (unsafe { best.as_ref() }.size - ha.size_needed)
-                    < core::mem::size_of::<HeapNode>()
-                {
-                    doors_macros2::kernel_print!("The end of the block will be used\r\n");
-                } else {
-                    doors_macros2::kernel_print!(
-                        "There will be blank space at the end of the block\r\n"
-                    );
-                }
-                self.print();
-                unimplemented!();
-            };
-            r
-        } else {
-            core::ptr::null_mut()
-        };
-        retval
     }
 
     /// Perform an actual deallocation
