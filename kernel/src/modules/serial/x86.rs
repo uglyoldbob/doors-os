@@ -27,11 +27,14 @@ impl X86SerialPort {
         ports.port(2).port_write(0xc7u8);
         //enable loopback mode for probing
         ports.port(4).port_write(0x13u8);
-        ports.port(0).port_write(0xAAu8);
-        let a: u8 = ports.port(0).port_read();
-        if a == 0xaa {
-            ports.port(4).port_write(0x03u8);
-            Some(Self { base: ports })
+        let testval = 0x55u8;
+        ports.port(0).port_write(testval);
+
+        let mut s = Self { base: ports };
+        let a: u8 = s.receive();
+        if a == testval {
+            s.setup();
+            Some(s)
         } else {
             None
         }
@@ -41,6 +44,22 @@ impl X86SerialPort {
     fn can_send(&mut self) -> bool {
         let a: u8 = self.base.port(5).port_read();
         (a & 0x20) != 0
+    }
+
+    /// Check to see if there is a byte available
+    fn can_receive(&mut self) -> bool {
+        let a: u8 = self.base.port(5).port_read();
+        (a & 0x01) != 0
+    }
+
+    /// Receive a byte
+    fn receive(&mut self) -> u8 {
+        while !self.can_receive() {}
+        self.base.port(0).port_read()
+    }
+
+    fn setup(&mut self) {
+        self.base.port(4).port_write(0x03u8);
     }
 }
 

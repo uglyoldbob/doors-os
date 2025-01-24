@@ -151,8 +151,8 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
     Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
 
 /// The interrupt descriptor table for the system
-pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<x86_64::structures::idt::InterruptDescriptorTable> =
-    Locked::new(x86_64::structures::idt::InterruptDescriptorTable::new());
+pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
+    Locked::new(InterruptDescriptorTable::new());
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
@@ -231,7 +231,11 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
 }
 
 #[inline(never)]
-fn handle_acpi(boot_info: &multiboot2::BootInformation, acpi_handler: impl AcpiHandler) {
+fn handle_acpi(
+    boot_info: &multiboot2::BootInformation,
+    acpi_handler: impl AcpiHandler,
+    aml: &mut aml::AmlContext,
+) {
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
         doors_macros2::kernel_print!(
             "rsdpv2 at {:X} {:x} revision {}\r\n",
@@ -276,10 +280,20 @@ fn handle_acpi(boot_info: &multiboot2::BootInformation, acpi_handler: impl AcpiH
 
     for v in acpi.ssdts() {
         doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
+        let table: &[u8] =
+            unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
+        if aml.parse_table(table).is_ok() {
+            doors_macros2::kernel_print!("SSDT PARSED OK\r\n");
+        }
     }
     if false {
         if let Ok(v) = acpi.dsdt() {
             doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+            let table: &[u8] =
+                unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
+            if aml.parse_table(table).is_ok() {
+                doors_macros2::kernel_print!("DSDT PARSED OK\r\n");
+            }
         }
     }
 
@@ -434,16 +448,15 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
     }
 
     fn init(&mut self) {
-        handle_acpi(&self.boot_info, &self.acpi_handler);
-
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-        doors_macros2::kernel_print!("HERE\r\n");
         if true {
             if aml.initialize_objects().is_ok() {
                 doors_macros2::kernel_print!("AML READY\r\n");
             }
         }
+
+        handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
     }
 }
 
