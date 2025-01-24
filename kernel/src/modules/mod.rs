@@ -3,6 +3,7 @@
 pub mod clock;
 pub mod gpio;
 pub mod memory;
+pub mod pci;
 pub mod power;
 pub mod reset;
 pub mod rng;
