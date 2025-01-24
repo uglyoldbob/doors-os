@@ -533,3 +533,51 @@ pub fn hex_dump(data: &[u8]) {
         doors_macros2::kernel_print!("\r\n");
     }
 }
+
+/// prints out a user friendly hex dump of the specified data
+pub fn hex_dump_no_ascii(data: &[u8]) {
+    let len = data.len();
+    let mut addr_len = 1;
+    let mut len_calc = len;
+    loop {
+        if len_calc > 15 {
+            addr_len += 1;
+            len_calc /= 16;
+        } else {
+            break;
+        }
+    }
+    for (i, b) in data.chunks(16).enumerate() {
+        doors_macros2::kernel_print!("{:0>addr_len$x}: ", i * 16);
+        for d in b {
+            doors_macros2::kernel_print!("{:02x} ", d);
+        }
+        doors_macros2::kernel_print!("\r\n");
+    }
+}
+
+/// prints out a user friendly hex dump of the specified data
+pub fn hex_dump_no_ascii_generic<T>(data: &T, print_address: bool) {
+    let len = core::mem::size_of::<T>();
+    let data = unsafe { core::slice::from_raw_parts((data as *const T) as *const u8, len) };
+    let mut addr_len = 1;
+    let mut len_calc = len;
+    loop {
+        if len_calc > 15 {
+            addr_len += 1;
+            len_calc /= 16;
+        } else {
+            break;
+        }
+    }
+    doors_macros2::kernel_print!("ADDRESS IS {:p}\r\n", data);
+    for (i, b) in data.chunks(16).enumerate() {
+        if print_address {
+            doors_macros2::kernel_print!("{:0>addr_len$x}: ", i * 16);
+        }
+        for d in b {
+            doors_macros2::kernel_print!("{:02x} ", d);
+        }
+        doors_macros2::kernel_print!("\r\n");
+    }
+}

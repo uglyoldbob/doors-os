@@ -31,10 +31,14 @@ impl X86SerialPort {
         ports.port(0).port_write(testval);
 
         let mut s = Self { base: ports };
-        let a: u8 = s.receive();
-        if a == testval {
-            s.setup();
-            Some(s)
+        let a = s.receive();
+        if let Some(a) = a {
+            if a == testval {
+                s.setup();
+                Some(s)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -53,9 +57,15 @@ impl X86SerialPort {
     }
 
     /// Receive a byte
-    fn receive(&mut self) -> u8 {
-        while !self.can_receive() {}
-        self.base.port(0).port_read()
+    fn receive(&mut self) -> Option<u8> {
+        let mut attempts = 0;
+        while !self.can_receive() {
+            attempts += 1;
+            if attempts == 60000 {
+                return None;
+            }
+        }
+        Some(self.base.port(0).port_read())
     }
 
     fn setup(&mut self) {

@@ -8,6 +8,8 @@ use multiboot2::{MemoryAreaType, MemoryMapTag};
 
 use crate::Locked;
 
+use crate::modules::video::TextDisplayTrait;
+
 extern "C" {
     /// A page table for the system to boot with.
     pub static PAGE_DIRECTORY_BOOT1: PageTable;
@@ -531,7 +533,19 @@ impl<'a> PagingTableManager<'a> {
         let pt1 = match pt1 {
             Some(e) => e,
             None => {
-                unimplemented!();
+                let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
+                    Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::new_in(
+                        PageTable::new(),
+                        self.mm,
+                    );
+                let entry = Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
+                doors_macros2::kernel_print!(
+                    "About to map a page table entry to 0x{:x}\r\n",
+                    crate::address(entry)
+                );
+                unsafe { &mut *self.pt2.as_mut_ptr() }.table.entries[pt2_index] =
+                    crate::address(entry) as u64 | 1;
+                crate::address(entry) as u64
             }
         };
         unsafe { &mut *self.pt1.as_mut_ptr() }.update(pt1);
@@ -576,6 +590,12 @@ impl<'a> PagingTableManager<'a> {
     ) -> Result<(), ()> {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64() as usize;
+        doors_macros2::kernel_print!(
+            "MAP RO {:x} - {:x} size {}\r\n",
+            virtual_address,
+            physical_address,
+            size
+        );
 
         for i in (0..size).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virtual_address + i;
@@ -588,6 +608,10 @@ impl<'a> PagingTableManager<'a> {
                     paddr as u64 | 0x1;
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
             } else {
+                doors_macros2::kernel_print!(
+                    "ADDRESS {:x} is already mapped?\r\n",
+                    virtual_address
+                );
                 return Err(());
             }
             if size > 0x5000 && i > 63000 * core::mem::size_of::<Page>() as usize {

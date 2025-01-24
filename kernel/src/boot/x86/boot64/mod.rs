@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::modules::video::TextDisplayTrait;
+use crate::modules::video::{hex_dump_no_ascii, hex_dump_no_ascii_generic};
 use crate::Locked;
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
@@ -177,6 +178,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
+        doors_macros2::kernel_print!("Map region {:x}\r\n", physical_address);
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -186,6 +188,15 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
                 *self,
             )
         } else {
+            let size = if size < core::mem::size_of::<T>() {
+                core::mem::size_of::<T>()
+            } else {
+                if size == 0x24 {
+                    0x34
+                } else {
+                    size
+                }
+            };
             let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
             let end_remainder =
                 (size_before_allocation + size) % core::mem::size_of::<memory::Page>();
@@ -200,7 +211,6 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
             let mut b: Vec<u8, &Locked<memory::BumpAllocator>> =
                 Vec::with_capacity_in(realsize, self.vmm);
             let mut p = self.pageman.lock();
-
             let e =
                 p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
             if e.is_err() {
@@ -208,14 +218,28 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
             }
             let vstart = b.as_mut_ptr() as usize + size_before_allocation;
 
+            if size < core::mem::size_of::<T>() {
+                doors_macros2::kernel_print!("ALLOCATION SIZE IS TOO SMALL?\r\n");
+            }
+
             let r = acpi::PhysicalMapping::new(
-                start as usize,
-                NonNull::new(vstart as *mut T).unwrap(),
-                size,
+                physical_address,
+                NonNull::new((vstart) as *mut T).unwrap(),
                 realsize,
+                size,
                 *self,
             );
+            let a: usize = r.virtual_start().addr().into();
+            doors_macros2::kernel_print!(
+                "Physical MAP {:x} - {:x} size {} {} {}\r\n",
+                a,
+                r.physical_start(),
+                r.region_length(),
+                r.mapped_length(),
+                core::mem::size_of::<T>()
+            );
             b.leak();
+            hex_dump_no_ascii_generic(&*r, false);
             r
         }
     }
@@ -254,18 +278,21 @@ fn handle_acpi(
         )
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
         doors_macros2::kernel_print!(
-            "rsdpv1 at {:X} {:x}\r\n",
-            rsdp1 as *const multiboot2::RsdpV1Tag as usize + 8,
+            "rsdpv1 at {:p} {:x}\r\n",
+            rsdp1.signature().unwrap().as_ptr(),
             rsdp1.rsdt_address()
         );
         let t = unsafe {
             acpi::AcpiTables::from_rsdp(
                 acpi_handler.clone(),
-                rsdp1 as *const multiboot2::RsdpV1Tag as usize + 8,
+                rsdp1.signature().unwrap().as_ptr() as usize,
             )
         };
         if let Err(e) = &t {
             doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
+        }
+        if let Ok(t) = &t {
+            doors_macros2::kernel_print!("ACPI ADDRESS {:p}\r\n", t);
         }
         Some(t.unwrap())
     } else {
@@ -278,21 +305,58 @@ fn handle_acpi(
     let acpi = acpi.unwrap();
     doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision());
 
-    for v in acpi.ssdts() {
-        doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
-        let table: &[u8] =
-            unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
-        if aml.parse_table(table).is_ok() {
-            doors_macros2::kernel_print!("SSDT PARSED OK\r\n");
+    {
+        acpi.find_table::<acpi::fadt::Fadt>().and_then(|fadt| {
+            let addr: usize = fadt.virtual_start().addr().into();
+            doors_macros2::kernel_print!(
+                "FOUND FADT @ {:x} - {:x}, {:x} \r\n",
+                addr,
+                addr + fadt.mapped_length() - 1,
+                fadt.mapped_length()
+            );
+            let table: &[u8] =
+                unsafe { core::slice::from_raw_parts(addr as *const u8, fadt.mapped_length()) };
+            hex_dump_no_ascii(table);
+            hex_dump_no_ascii_generic(&*fadt, false);
+            PAGING_MANAGER.lock().map_addresses_read_only(
+                fadt.virtual_start().addr().into(),
+                fadt.virtual_start().addr().into(),
+                fadt.mapped_length(),
+            );
+            Ok(42)
+        });
+    }
+
+    doors_macros2::kernel_print!("Trying DSDT\r\n");
+
+    if true {
+        if let Ok(v) = acpi.dsdt() {
+            doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+            PAGING_MANAGER
+                .lock()
+                .map_addresses_read_only(v.address, v.address, v.length as usize)
+                .unwrap();
+            let table: &[u8] =
+                unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
+            hex_dump_no_ascii(table);
+            if aml.parse_table(table).is_ok() {
+                doors_macros2::kernel_print!("DSDT PARSED OK\r\n");
+            }
         }
     }
     if false {
-        if let Ok(v) = acpi.dsdt() {
-            doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+        for v in acpi.ssdts() {
+            doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
+            PAGING_MANAGER
+                .lock()
+                .map_addresses_read_only(v.address, v.address, v.length as usize)
+                .unwrap();
             let table: &[u8] =
                 unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
-            if aml.parse_table(table).is_ok() {
-                doors_macros2::kernel_print!("DSDT PARSED OK\r\n");
+            hex_dump_no_ascii(table);
+            match aml.parse_table(table) {
+                Ok(()) => doors_macros2::kernel_print!("SSDT PARSED OK\r\n"),
+                Err(e) => doors_macros2::kernel_print!("SSDT PARSED ERR {:?}\r\n", e),
             }
         }
     }
@@ -311,51 +375,53 @@ fn handle_acpi(
             acpi::sdt::Signature::WAET => {
                 doors_macros2::kernel_print!("TODO Parse the Waet table\r\n");
             }
-            acpi::sdt::Signature::HPET => {
-                let _hpet = acpi.find_table::<HpetTable>().unwrap();
-                doors_macros2::kernel_print!("TODO Parse the Hpet table\r\n");
-            }
-            acpi::sdt::Signature::FADT => {
-                let _fadt = acpi.find_table::<Fadt>().unwrap();
-                doors_macros2::kernel_print!("TODO Parse the Fadt\r\n");
-            }
-            acpi::sdt::Signature::MADT => {
-                let madt = acpi.find_table::<Madt>().unwrap();
-                for e in madt.entries() {
-                    match e {
-                        acpi::madt::MadtEntry::LocalApic(lapic) => {
-                            doors_macros2::kernel_print!(
-                                "madt lapic entry {:x} {:x} {:x}\r\n",
-                                lapic.processor_id,
-                                lapic.apic_id,
-                                lapic.flags as u32
-                            );
+            acpi::sdt::Signature::HPET => match acpi.find_table::<HpetTable>() {
+                Ok(hpet) => doors_macros2::kernel_print!("TODO Parse the Hpet table\r\n"),
+                Err(e) => doors_macros2::kernel_print!("HPET ERROR {:?}\r\n", e),
+            },
+            acpi::sdt::Signature::FADT => match acpi.find_table::<Fadt>() {
+                Ok(fadt) => doors_macros2::kernel_print!("TODO Parse the Fadt\r\n"),
+                Err(e) => doors_macros2::kernel_print!("FADT ERROR {:?}\r\n", e),
+            },
+            acpi::sdt::Signature::MADT => match acpi.find_table::<Madt>() {
+                Err(e) => doors_macros2::kernel_print!("MADT ERROR {:?}\r\n", e),
+                Ok(madt) => {
+                    for e in madt.entries() {
+                        match e {
+                            acpi::madt::MadtEntry::LocalApic(lapic) => {
+                                doors_macros2::kernel_print!(
+                                    "madt lapic entry {:x} {:x} {:x}\r\n",
+                                    lapic.processor_id,
+                                    lapic.apic_id,
+                                    lapic.flags as u32
+                                );
+                            }
+                            acpi::madt::MadtEntry::IoApic(ioapic) => {
+                                doors_macros2::kernel_print!("madt ioapic entry\r\n");
+                            }
+                            acpi::madt::MadtEntry::InterruptSourceOverride(i) => {
+                                doors_macros2::kernel_print!("madt int source override\r\n");
+                            }
+                            acpi::madt::MadtEntry::NmiSource(_) => todo!(),
+                            acpi::madt::MadtEntry::LocalApicNmi(_) => {
+                                doors_macros2::kernel_print!("madt lapic nmi entry\r\n");
+                            }
+                            acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
+                            acpi::madt::MadtEntry::IoSapic(_) => todo!(),
+                            acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
+                            acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
+                            acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
+                            acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
+                            acpi::madt::MadtEntry::Gicc(_) => todo!(),
+                            acpi::madt::MadtEntry::Gicd(_) => todo!(),
+                            acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
+                            acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
+                            acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
+                            acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
                         }
-                        acpi::madt::MadtEntry::IoApic(ioapic) => {
-                            doors_macros2::kernel_print!("madt ioapic entry\r\n");
-                        }
-                        acpi::madt::MadtEntry::InterruptSourceOverride(i) => {
-                            doors_macros2::kernel_print!("madt int source override\r\n");
-                        }
-                        acpi::madt::MadtEntry::NmiSource(_) => todo!(),
-                        acpi::madt::MadtEntry::LocalApicNmi(_) => {
-                            doors_macros2::kernel_print!("madt lapic nmi entry\r\n");
-                        }
-                        acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
-                        acpi::madt::MadtEntry::IoSapic(_) => todo!(),
-                        acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
-                        acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
-                        acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
-                        acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
-                        acpi::madt::MadtEntry::Gicc(_) => todo!(),
-                        acpi::madt::MadtEntry::Gicd(_) => todo!(),
-                        acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
-                        acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
-                        acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
-                        acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
                     }
                 }
-            }
+            },
             _ => {}
         }
     }
