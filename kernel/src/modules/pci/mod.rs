@@ -94,22 +94,31 @@ impl From<[u32; 60]> for ConfigurationSpaceStandard {
 
 impl ConfigurationSpaceStandard {
     /// Dump the configuration data contents
-    pub fn dump(&self) {
+    pub fn dump(&self, linestart: &str) {
         for i in 0..6 {
-            doors_macros2::kernel_print!("BAR {}: {:X}\r\n", i, self.bar[i]);
+            doors_macros2::kernel_print!("{}BAR {}: {:X}\r\n", linestart, i, self.bar[i]);
         }
-        doors_macros2::kernel_print!("Cardbus CIS {:x}\r\n", self.cardbus_cis);
-        doors_macros2::kernel_print!("Subsytem vendor {:x}\r\n", self.subsystem_vendor);
-        doors_macros2::kernel_print!("Subsystem {:x}\r\n", self.subsystem);
-        doors_macros2::kernel_print!("Expansion rom {:x}\r\n", self.expansion_rom_base);
-        doors_macros2::kernel_print!("Capabilites: {:x}\r\n", self.capabilities_ptr);
+        doors_macros2::kernel_print!("{}Cardbus CIS {:x}\r\n", linestart, self.cardbus_cis);
         doors_macros2::kernel_print!(
-            "Interrupt line: {:X} pin {:X} \r\n",
+            "{}Subsytem vendor {:x}\r\n",
+            linestart,
+            self.subsystem_vendor
+        );
+        doors_macros2::kernel_print!("{}Subsystem {:x}\r\n", linestart, self.subsystem);
+        doors_macros2::kernel_print!(
+            "{}Expansion rom {:x}\r\n",
+            linestart,
+            self.expansion_rom_base
+        );
+        doors_macros2::kernel_print!("{}Capabilites: {:x}\r\n", linestart, self.capabilities_ptr);
+        doors_macros2::kernel_print!(
+            "{}Interrupt line: {:X} pin {:X} \r\n",
+            linestart,
             self.interrupt_line,
             self.interrupt_pin
         );
-        doors_macros2::kernel_print!("Min gnt: {} \r\n", self.min_gnt);
-        doors_macros2::kernel_print!("Max latency: {} \r\n", self.max_lat);
+        doors_macros2::kernel_print!("{}Min gnt: {} \r\n", linestart, self.min_gnt);
+        doors_macros2::kernel_print!("{}Max latency: {} \r\n", linestart, self.max_lat);
     }
 }
 
@@ -149,37 +158,55 @@ struct ConfigurationSpaceBridge {
 
 impl ConfigurationSpaceBridge {
     /// Dump the configuration data contents
-    pub fn dump(&self) {
-        doors_macros2::kernel_print!("PCI Bridge\r\n");
-        doors_macros2::kernel_print!("BAR: {:x} {:x}\r\n", self.bar[0], self.bar[1]);
+    pub fn dump(&self, linestart: &str) {
+        doors_macros2::kernel_print!("{}PCI Bridge\r\n", linestart);
+        doors_macros2::kernel_print!("{}BAR: {:x} {:x}\r\n", linestart, self.bar[0], self.bar[1]);
         doors_macros2::kernel_print!(
-            "Bus: {} {} {}\r\n",
+            "{}Bus: {} {} {}\r\n",
+            linestart,
             self.primary_bus,
             self.secondary_bus,
             self.subordinate_bus
         );
-        doors_macros2::kernel_print!("Latency: {}\r\n", self.second_latency);
-        doors_macros2::kernel_print!("IO: {:x} size {:x}\r\n", self.io_base, self.io_limit);
-        doors_macros2::kernel_print!("Status: {:x}\r\n", self.status2);
-        doors_macros2::kernel_print!("Memory: {:X} {:x}\r\n", self.memory_base, self.memory_limit);
+        doors_macros2::kernel_print!("{}Latency: {}\r\n", linestart, self.second_latency);
         doors_macros2::kernel_print!(
-            "Prefetchable: {:x} size {:x}\r\n",
+            "{}IO: {:x} size {:x}\r\n",
+            linestart,
+            self.io_base,
+            self.io_limit
+        );
+        doors_macros2::kernel_print!("{}Status: {:x}\r\n", linestart, self.status2);
+        doors_macros2::kernel_print!(
+            "{}Memory: {:X} {:x}\r\n",
+            linestart,
+            self.memory_base,
+            self.memory_limit
+        );
+        doors_macros2::kernel_print!(
+            "{}Prefetchable: {:x} size {:x}\r\n",
+            linestart,
             (self.prefetchable_base_upper as u64) << 32 | (self.prefetchable_memory_base as u64),
             (self.prefetchable_limit_upper as u64) << 32 | (self.prefetchable_memory_limit as u64),
         );
         doors_macros2::kernel_print!(
-            "IO: {:x} size {:x}\r\n",
+            "{}IO: {:x} size {:x}\r\n",
+            linestart,
             (self.iobase_upper as u64) << 32 | (self.io_base as u64),
             (self.iolimit_upper as u64) << 32 | (self.io_limit as u64),
         );
-        doors_macros2::kernel_print!("Capabilites: {:x}\r\n", self.capabilities_ptr);
-        doors_macros2::kernel_print!("Expansion rom: {:x}\r\n", self.expansion_rom_base);
+        doors_macros2::kernel_print!("{}Capabilites: {:x}\r\n", linestart, self.capabilities_ptr);
         doors_macros2::kernel_print!(
-            "Interrupt line: {:X} pin {:X} \r\n",
+            "{}Expansion rom: {:x}\r\n",
+            linestart,
+            self.expansion_rom_base
+        );
+        doors_macros2::kernel_print!(
+            "{}Interrupt line: {:X} pin {:X} \r\n",
+            linestart,
             self.interrupt_line,
             self.interrupt_pin
         );
-        doors_macros2::kernel_print!("Bridge control: {:X}\r\n", self.bridge_control);
+        doors_macros2::kernel_print!("{}Bridge control: {:X}\r\n", linestart, self.bridge_control);
     }
 }
 
@@ -251,37 +278,51 @@ struct ConfigurationSpaceCardbus {
 
 impl ConfigurationSpaceCardbus {
     /// Dump the configuration data contents
-    pub fn dump(&self) {
-        doors_macros2::kernel_print!("CARDBUS Device\r\n");
-        doors_macros2::kernel_print!("Base: {:X}\r\n", self.cardbus_base);
-        doors_macros2::kernel_print!("Offset: {:X}\r\n", self.capabilities_offset);
-        doors_macros2::kernel_print!("Status2: {:X}\r\n", self.status2);
+    pub fn dump(&self, linestart: &str) {
+        doors_macros2::kernel_print!("{}CARDBUS Device\r\n", linestart);
+        doors_macros2::kernel_print!("{}Base: {:X}\r\n", linestart, self.cardbus_base);
+        doors_macros2::kernel_print!("{}Offset: {:X}\r\n", linestart, self.capabilities_offset);
+        doors_macros2::kernel_print!("{}Status2: {:X}\r\n", linestart, self.status2);
         doors_macros2::kernel_print!(
-            "Pci: {}, cardbus {}, sub {}\r\n",
+            "{}Pci: {}, cardbus {}, sub {}\r\n",
+            linestart,
             self.pci_bus_num,
             self.cardbus_bus_num,
             self.subordinate_bus_num
         );
-        doors_macros2::kernel_print!("Latency: {}\r\n", self.cardbus_latency);
+        doors_macros2::kernel_print!("{}Latency: {}\r\n", linestart, self.cardbus_latency);
         doors_macros2::kernel_print!(
-            "Memory0: {:X} size {:x}\r\n",
+            "{}Memory0: {:X} size {:x}\r\n",
+            linestart,
             self.memory_base0,
             self.memory_limit0
         );
         doors_macros2::kernel_print!(
-            "Memory1: {:X} size {:x}\r\n",
+            "{}Memory1: {:X} size {:x}\r\n",
+            linestart,
             self.memory_base1,
             self.memory_limit1
         );
-        doors_macros2::kernel_print!("IO0: {:X} size {:x}\r\n", self.io_base0, self.io_limit0);
-        doors_macros2::kernel_print!("IO1: {:X} size {:x}\r\n", self.io_base1, self.io_limit1);
         doors_macros2::kernel_print!(
-            "Interrupt line: {:X} pin {:X} \r\n",
+            "{}IO0: {:X} size {:x}\r\n",
+            linestart,
+            self.io_base0,
+            self.io_limit0
+        );
+        doors_macros2::kernel_print!(
+            "{}IO1: {:X} size {:x}\r\n",
+            linestart,
+            self.io_base1,
+            self.io_limit1
+        );
+        doors_macros2::kernel_print!(
+            "{}Interrupt line: {:X} pin {:X} \r\n",
+            linestart,
             self.interrupt_line,
             self.interrupt_pin
         );
-        doors_macros2::kernel_print!("Bridge control: {:X}\r\n", self.bridge_control);
-        doors_macros2::kernel_print!("Legacy base: {:X}\r\n", self.legacy_base_addr);
+        doors_macros2::kernel_print!("{}Bridge control: {:X}\r\n", linestart, self.bridge_control);
+        doors_macros2::kernel_print!("{}Legacy base: {:X}\r\n", linestart, self.legacy_base_addr);
     }
 }
 
@@ -408,29 +449,30 @@ struct ConfigurationSpace {
 
 impl ConfigurationSpace {
     /// Dump the configuration space
-    pub fn dump(&self) {
-        doors_macros2::kernel_print!("Configuration space:\r\n");
-        doors_macros2::kernel_print!("Vendor: {:x}\r\n", self.vendor);
-        doors_macros2::kernel_print!("Device: {:x}\r\n", self.device);
-        doors_macros2::kernel_print!("Command: {:x}\r\n", self.command.0);
-        doors_macros2::kernel_print!("Status: {:x}\r\n", self.status);
-        doors_macros2::kernel_print!("Revision: {:x}\r\n", self.revision);
-        doors_macros2::kernel_print!("ProgIf: {:x}\r\n", self.prog_if);
-        doors_macros2::kernel_print!("Subclass: {:x}\r\n", self.subclass);
-        doors_macros2::kernel_print!("Class: {:x}\r\n", self.class);
-        doors_macros2::kernel_print!("Cache: {:x}\r\n", self.cache_size);
-        doors_macros2::kernel_print!("Latency: {:x}\r\n", self.latency);
-        doors_macros2::kernel_print!("BIST: {:x}\r\n", self.bist);
+    pub fn dump(&self, linestart: &str) {
+        doors_macros2::kernel_print!("{}Configuration space:\r\n", linestart);
+        doors_macros2::kernel_print!("{}Vendor: {:x}\r\n", linestart, self.vendor);
+        doors_macros2::kernel_print!("{}Device: {:x}\r\n", linestart, self.device);
+        doors_macros2::kernel_print!("{}Command: {:x}\r\n", linestart, self.command.0);
+        doors_macros2::kernel_print!("{}Status: {:x}\r\n", linestart, self.status);
+        doors_macros2::kernel_print!("{}Revision: {:x}\r\n", linestart, self.revision);
+        doors_macros2::kernel_print!("{}ProgIf: {:x}\r\n", linestart, self.prog_if);
+        doors_macros2::kernel_print!("{}Subclass: {:x}\r\n", linestart, self.subclass);
+        doors_macros2::kernel_print!("{}Class: {:x}\r\n", linestart, self.class);
+        doors_macros2::kernel_print!("{}Cache: {:x}\r\n", linestart, self.cache_size);
+        doors_macros2::kernel_print!("{}Latency: {:x}\r\n", linestart, self.latency);
+        doors_macros2::kernel_print!("{}HEADER: {:x}\r\n", linestart, self.header);
+        doors_macros2::kernel_print!("{}BIST: {:x}\r\n", linestart, self.bist);
         if let Some(h) = self.get_space() {
             match h {
                 ConfigurationSpaceEnum::Standard(cs) => {
-                    cs.dump();
+                    cs.dump(linestart);
                 }
                 ConfigurationSpaceEnum::Bridge(cs) => {
-                    cs.dump();
+                    cs.dump(linestart);
                 }
                 ConfigurationSpaceEnum::Cardbus(cs) => {
-                    cs.dump();
+                    cs.dump(linestart);
                 }
             }
         }
@@ -467,13 +509,13 @@ impl ConfigurationSpace {
     }
 }
 
-struct PciDevice {}
-
 /// The pci system trait
 #[enum_dispatch::enum_dispatch]
 pub trait PciTrait {
     /// Setup the pci system
     fn setup(&mut self);
+    /// Print all devices on the system
+    fn print_devices(&mut self);
 }
 
 /// a pci bus instance

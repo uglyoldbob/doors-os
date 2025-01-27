@@ -250,6 +250,7 @@ fn main_boot(system: crate::kernel::System) -> ! {
         if let Some(pci) = pci {
             let mut pci = crate::modules::pci::Pci::X86Pci(pci);
             pci.setup();
+            pci.print_devices();
         }
     }
     super::super::main(system);
