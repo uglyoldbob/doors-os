@@ -3,6 +3,7 @@
 use core::marker::PhantomData;
 
 use crate::kernel::SystemTrait;
+use crate::modules::pci::PciTrait;
 use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
 use crate::LockedArc;
@@ -244,5 +245,12 @@ fn main_boot(system: crate::kernel::System) -> ! {
     }
 
     doors_macros2::kernel_print!("This is a test\r\n");
+    {
+        let pci = crate::modules::pci::x86::Pci::new();
+        if let Some(pci) = pci {
+            let mut pci = crate::modules::pci::Pci::X86Pci(pci);
+            pci.setup();
+        }
+    }
     super::super::main(system);
 }

@@ -493,11 +493,6 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
             doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
         }
         handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-
-        match crate::modules::pci::x86::PciBus::new() {
-            Some(p) => doors_macros2::kernel_print!("Detected pci bus\r\n"),
-            None => doors_macros2::kernel_print!("DID NOT DETECT PCI BUS\r\n"),
-        }
     }
 }
 
