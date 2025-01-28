@@ -3,6 +3,7 @@
 use core::marker::PhantomData;
 
 use crate::kernel::SystemTrait;
+use crate::modules::pci::PciFunctionDriver;
 use crate::modules::pci::PciTrait;
 use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
@@ -251,6 +252,8 @@ fn main_boot(system: crate::kernel::System) -> ! {
             let mut pci = crate::modules::pci::Pci::X86Pci(pci);
             pci.setup();
             pci.print_devices();
+            crate::modules::pci::pci_register_drivers();
+            pci.driver_setup();
         }
     }
     super::super::main(system);

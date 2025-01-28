@@ -11,6 +11,17 @@ pub mod serial;
 pub mod timer;
 pub mod video;
 
+/// The trait implemented for all devices
+#[enum_dispatch::enum_dispatch]
+pub trait DeviceTrait {}
+
+/// A generic device in the kernel
+#[enum_dispatch::enum_dispatch(DeviceTrait)]
+pub enum Device {
+    /// A single function of a pci device
+    PciFunction(pci::PciFunction),
+}
+
 #[enum_dispatch::enum_dispatch]
 /// The trait for all module implementations
 pub trait ModuleTrait: Default {
