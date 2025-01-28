@@ -26,16 +26,32 @@ impl PciRegisters {
     }
 }
 
-impl super::PciConfigurationSpaceTrait for PciRegisters {
-    fn read(&mut self, bus: u8, device: u8, function: u8, offset: u8) -> u16 {
+impl PciRegisters {
+    fn set_address(&mut self, bus: u8, device: u8, function: u8, offset: u8) {
         let a: u32 = ((bus as u32) << 16)
             | ((device as u32) << 11)
             | ((function as u32) << 8)
             | ((offset as u32) & 0xFC)
             | 0x8000_0000;
         self.address.port_write(a);
+    }
+}
+
+impl super::PciConfigurationSpaceTrait for PciRegisters {
+    fn read_u16(&mut self, bus: u8, device: u8, function: u8, offset: u8) -> u16 {
+        self.set_address(bus, device, function, offset);
         let b: u32 = self.data.port_read();
         ((b >> ((offset & 2) << 3)) & 0xFFFF) as u16
+    }
+
+    fn read_u32(&mut self, bus: u8, device: u8, function: u8, offset: u8) -> u32 {
+        self.set_address(bus, device, function, offset);
+        self.data.port_read()
+    }
+
+    fn write_u32(&mut self, bus: u8, device: u8, function: u8, offset: u8, val: u32) {
+        self.set_address(bus, device, function, offset);
+        self.data.port_write(val);
     }
 }
 
