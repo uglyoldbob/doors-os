@@ -469,6 +469,26 @@ struct ConfigurationSpace {
     remainder: [u32; 60],
 }
 
+impl Default for ConfigurationSpace {
+    fn default() -> Self {
+        Self {
+            vendor: INVALID_VENDOR,
+            device: 0,
+            command: DeviceControl(0),
+            status: 0,
+            revision: 0,
+            prog_if: 0,
+            subclass: 0,
+            class: 0,
+            cache_size: 0,
+            latency: 0,
+            header: 0,
+            bist: 0,
+            remainder: [0; 60],
+        }
+    }
+}
+
 impl ConfigurationSpace {
     /// Dump the configuration space
     pub fn dump(&self, linestart: &str) {
@@ -560,6 +580,8 @@ pub enum BarSpace {
         size: u32,
         /// The flags for the space
         flags: u8,
+        /// The index for the bar space
+        index: u8,
     },
     /// A memory space, 64 bits wide
     Memory64 {
@@ -569,6 +591,8 @@ pub enum BarSpace {
         size: u64,
         /// The flags for the space
         flags: u8,
+        /// The index for the bar space
+        index: u8,
     },
     /// IO space
     IO {
@@ -576,15 +600,153 @@ pub enum BarSpace {
         base: u32,
         /// The size in bytes
         size: u32,
+        /// The index for the bar space
+        index: u8,
     },
     /// Memory space not configured or is invalid
-    Invalid,
+    Invalid {
+        /// The index for the bar space
+        index: u8,
+    },
 }
 
 impl BarSpace {
+    /// Is the space valid (is the bar size non-zero)?
+    fn is_size_valid(&self) -> bool {
+        if let Self::Invalid { index: _ } = self {
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Returns the bar space index
+    fn get_index(&self) -> u8 {
+        match self {
+            BarSpace::Memory32 {
+                base: _,
+                size: _,
+                flags: _,
+                index,
+            } => *index,
+            BarSpace::Memory64 {
+                base: _,
+                size: _,
+                flags: _,
+                index,
+            } => *index,
+            BarSpace::IO {
+                base: _,
+                size: _,
+                index,
+            } => *index,
+            BarSpace::Invalid { index } => *index,
+        }
+    }
+
+    /// Obtain the memory space specified by the bar, only if it is memory space
+    fn get_memory(&self) -> Option<alloc::boxed::Box<[u8]>> {
+        match self {
+            BarSpace::Memory32 {
+                base,
+                size,
+                flags,
+                index,
+            } => {
+                todo!()
+            }
+            BarSpace::Memory64 {
+                base,
+                size,
+                flags,
+                index,
+            } => {
+                todo!()
+            }
+            BarSpace::IO {
+                base: _,
+                size: _,
+                index: _,
+            } => None,
+            BarSpace::Invalid { index: _ } => None,
+        }
+    }
+
+    /// Write the bar to the pci configuration space
+    fn write_to_pci(
+        &self,
+        pci: &mut PciConfigurationSpace,
+        bus: &PciBus,
+        dev: &PciDevice,
+        function: &PciFunction,
+        config: &ConfigurationSpaceEnum,
+    ) {
+        let bar = config.get_bars();
+        match self {
+            BarSpace::Memory32 {
+                base,
+                size: _,
+                flags,
+                index,
+            } => {
+                pci.write_u32(
+                    bus.num,
+                    dev.dev,
+                    function.function,
+                    bar[*index as usize],
+                    *base | (*flags as u32),
+                );
+            }
+            BarSpace::Memory64 {
+                base,
+                size: _,
+                flags,
+                index,
+            } => {
+                let lv: u32 = (*base & 0xFFFFFFFF) as u32 | (*flags as u32);
+                pci.write_u32(
+                    bus.num,
+                    dev.dev,
+                    function.function,
+                    bar[*index as usize],
+                    lv,
+                );
+                let hv = (*base >> 32) as u32;
+                pci.write_u32(
+                    bus.num,
+                    dev.dev,
+                    function.function,
+                    bar[1 + *index as usize],
+                    hv,
+                );
+            }
+            BarSpace::IO {
+                base,
+                size: _,
+                index,
+            } => {
+                pci.write_u32(
+                    bus.num,
+                    dev.dev,
+                    function.function,
+                    bar[*index as usize],
+                    *base | 1,
+                );
+            }
+            BarSpace::Invalid { index } => {
+                pci.write_u32(bus.num, dev.dev, function.function, bar[*index as usize], 0);
+            }
+        }
+    }
+
     fn print(&self) {
         match self {
-            BarSpace::Memory32 { base, size, flags } => {
+            BarSpace::Memory32 {
+                base,
+                size,
+                flags,
+                index: _,
+            } => {
                 doors_macros2::kernel_print!(
                     "BAR32: {:x} x {:x} flags {:x}\r\n",
                     base,
@@ -592,7 +754,12 @@ impl BarSpace {
                     flags
                 );
             }
-            BarSpace::Memory64 { base, size, flags } => {
+            BarSpace::Memory64 {
+                base,
+                size,
+                flags,
+                index: _,
+            } => {
                 doors_macros2::kernel_print!(
                     "BAR64: {:x} x {:x} flags {:x}\r\n",
                     base,
@@ -600,10 +767,14 @@ impl BarSpace {
                     flags
                 );
             }
-            BarSpace::IO { base, size } => {
+            BarSpace::IO {
+                base,
+                size,
+                index: _,
+            } => {
                 doors_macros2::kernel_print!("BARIO: {:x} x {:x}\r\n", base, size);
             }
-            BarSpace::Invalid => {
+            BarSpace::Invalid { index: _ } => {
                 doors_macros2::kernel_print!("BAR INVALID\r\n");
             }
         }
@@ -614,13 +785,22 @@ impl BarSpace {
 pub struct PciFunction {
     /// The pci function number
     function: u8,
+    /// The configuration data
+    configuration: Option<ConfigurationSpace>,
 }
 
 impl PciFunction {
+    /// Construct a new pci function
+    pub fn new(function: u8) -> Self {
+        Self {
+            function,
+            configuration: None,
+        }
+    }
+
     /// Returns a combination of vendor and device id, to identify a potential driver for the function
     fn get_driver_id(&self, pci: &mut PciConfigurationSpace, bus: &PciBus, dev: &PciDevice) -> u32 {
-        (pci.read_u16(bus.num, dev.dev, self.function, 0) as u32) << 16
-            | pci.read_u16(bus.num, dev.dev, self.function, 2) as u32
+        pci.read_u32(bus.num, dev.dev, self.function, 0)
     }
 
     /// Returns the vendor id by reading the value from pci configuration space
@@ -645,10 +825,7 @@ impl PciFunction {
     ) -> ConfigurationSpace {
         let mut s: [u32; 64] = [0; 64];
         for (i, v) in s.iter_mut().enumerate() {
-            let low = pci.read_u16(bus.num, dev.dev, self.function, i as u8 * 4);
-            let high = pci.read_u16(bus.num, dev.dev, self.function, i as u8 * 4 + 2);
-            let combined: u32 = (low as u32) | (high as u32) << 16;
-            *v = combined;
+            *v = pci.read_u32(bus.num, dev.dev, self.function, i as u8 * 4);
         }
         let a: ConfigurationSpaceC = unsafe { core::ptr::read_unaligned(s.as_ptr() as *const _) };
         a.unpack()
@@ -673,7 +850,7 @@ impl PciFunction {
         bus: &PciBus,
         dev: &PciDevice,
         config: &ConfigurationSpace,
-        mut process: impl FnMut(u8, BarSpace),
+        mut process: impl FnMut(&mut PciConfigurationSpace, BarSpace),
     ) {
         pci.write_u32(
             bus.num,
@@ -711,9 +888,10 @@ impl PciFunction {
                             base: bar64 & 0xFFFFFFFFFFFFFFF0,
                             size,
                             flags: (orig_bar & 0xF) as u8,
+                            index: barnum,
                         }
                     } else {
-                        BarSpace::Invalid
+                        BarSpace::Invalid { index: barnum }
                     }
                 } else {
                     let size: u32 = !(size & 0xFFFFFFF0) + 1;
@@ -722,12 +900,13 @@ impl PciFunction {
                             base: orig_bar & 0xFFFFFFF0,
                             size,
                             flags: (orig_bar & 0xF) as u8,
+                            index: barnum,
                         }
                     } else {
-                        BarSpace::Invalid
+                        BarSpace::Invalid { index: barnum }
                     }
                 };
-                process(barnum, bar);
+                process(pci, bar);
                 if (orig_bar & 4) != 0 {
                     pci.write_u32(
                         bus.num,
@@ -745,14 +924,15 @@ impl PciFunction {
                 let size: u32 = !(size & 0xFFFFFFFC) + 1;
                 if size != 0 {
                     process(
-                        barnum,
+                        pci,
                         BarSpace::IO {
                             base: orig_bar & 0xFFFFFFFC,
                             size,
+                            index: barnum,
                         },
                     );
                 } else {
-                    process(barnum, BarSpace::Invalid);
+                    process(pci, BarSpace::Invalid { index: barnum });
                 }
                 false
             };
@@ -786,11 +966,11 @@ pub struct PciDevice {
 impl PciDevice {
     /// Run a query to find all available functions and populate them for this device
     fn query_functions(mut self, pci: &mut PciConfigurationSpace, bus: &PciBus) -> Option<Self> {
-        let f1 = PciFunction { function: 0 };
+        let f1 = PciFunction::new(0);
         if f1.get_vendor(pci, bus, &self) != INVALID_VENDOR {
             if f1.is_multifunction(pci, bus, &self) {
                 for i in 1..8 {
-                    let f = PciFunction { function: i };
+                    let f = PciFunction::new(i);
                     if f.get_vendor(pci, bus, &self) != INVALID_VENDOR {
                         self.functions.push(f);
                     }
@@ -870,8 +1050,8 @@ impl PciBus {
                 if map.contains_key(&id) {
                     let config = f.get_all_configuration(pci, self, d);
                     let code = map.get(&id).unwrap();
-                    f.parse_bars(pci, self, d, &config, |barnum, bar| {
-                        code.parse_bar(barnum, bar)
+                    f.parse_bars(pci, self, d, &config, |pci, bar| {
+                        code.parse_bar(pci, self, d, f, bar)
                     });
                     code.check(pci, self, d, f);
                 } else {
@@ -935,7 +1115,14 @@ pub trait PciFunctionDriverTrait: Clone + Default {
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
 
     /// Parse a bar register for the device
-    fn parse_bar(&self, barnum: u8, bar: BarSpace);
+    fn parse_bar(
+        &self,
+        cs: &mut PciConfigurationSpace,
+        bus: &PciBus,
+        dev: &PciDevice,
+        f: &PciFunction,
+        bar: BarSpace,
+    );
 }
 
 /// Register all pci drivers with the driver map
@@ -990,7 +1177,14 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
         doors_macros2::kernel_print!("Register dummy pci driver\r\n");
     }
 
-    fn parse_bar(&self, _barnum: u8, _bar: BarSpace) {
+    fn parse_bar(
+        &self,
+        _cs: &mut PciConfigurationSpace,
+        _bus: &PciBus,
+        _dev: &PciDevice,
+        _f: &PciFunction,
+        _bar: BarSpace,
+    ) {
         panic!();
     }
 }
@@ -1014,14 +1208,23 @@ impl PciFunctionDriverTrait for IntelPro1000 {
     }
 
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
-        if !m.contains_key(&0x8086100e) {
+        if !m.contains_key(&0x100e8086) {
             doors_macros2::kernel_print!("Register intel pro/1000 pci driver\r\n");
-            m.insert(0x8086100e, self.clone().into());
+            m.insert(0x100e8086, self.clone().into());
         }
     }
 
-    fn parse_bar(&self, barnum: u8, bar: BarSpace) {
-        doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", barnum);
-        bar.print();
+    fn parse_bar(
+        &self,
+        _cs: &mut PciConfigurationSpace,
+        _bus: &PciBus,
+        _dev: &PciDevice,
+        _f: &PciFunction,
+        bar: BarSpace,
+    ) {
+        if bar.is_size_valid() {
+            doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
+            bar.print();
+        }
     }
 }

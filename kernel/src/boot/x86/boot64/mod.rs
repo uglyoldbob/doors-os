@@ -494,6 +494,12 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
         }
         handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
     }
+
+    fn allocate_nonram_memory(&mut self, size: usize, alignment: usize) -> Option<Box<[u8]>> {
+        let mut p = super::HEAP_MANAGER.lock();
+
+        None
+    }
 }
 
 impl aml::Handler for AmlHandler {
