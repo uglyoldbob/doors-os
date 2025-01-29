@@ -1,9 +1,11 @@
 //! Memory management code that is common to both 32 and 64 bit x86.
+//! The heap is a linked list of memory areas ([HeapNode]).
+//! Memory is organized by blocks that represent free memory.
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use crate::modules::video::TextDisplayTrait;
+use crate::modules::video::{hex_dump_no_ascii, TextDisplayTrait};
 use crate::Locked;
 
 use super::boot::memory::{BumpAllocator, Page, PagingTableManager};
@@ -19,10 +21,23 @@ struct HeapNodeAlign {
     post_align: usize,
 }
 
+/// The various types of nodes that can exist
 #[derive(Debug)]
-/// A node of free memory for the heap
+enum HeapNodeState {
+    /// Free memory backed by physical memory
+    FreePhysicalMemory,
+    /// Used memory backed by physical memory
+    UsedPhysicalMemory,
+    /// A void space in memory
+    Hole,
+    /// Memory not backed by physical memory, such as memory allocated to a pci device
+    NonphysicalMemory,
+}
+
+#[derive(Debug)]
+/// A node of memory for the heap
 struct HeapNode {
-    /// The optional next node of free memory for the heap
+    /// The optional next node of memory for the heap
     next: Option<NonNull<HeapNode>>,
     /// The size of this node, including the size of this header
     size: usize,
@@ -30,7 +45,7 @@ struct HeapNode {
 
 impl HeapNode {
     /// The required alignment for nodes and allocations based on the size of a node
-    const NODEALIGN: usize = core::mem::size_of::<HeapNode>().next_power_of_two();
+    const NODEALIGN: usize = core::mem::size_of::<HeapNode>();
 
     /// Return the address that is immediately after this block of memory
     fn next_address(&self) -> usize {
@@ -40,6 +55,24 @@ impl HeapNode {
     /// Return the start address of this free block
     fn start(&self) -> usize {
         self as *const HeapNode as usize
+    }
+
+    /// Attempt to merge this block with the ones that come after it
+    fn try_merge_with_next(&mut self) {
+        loop {
+            if let Some(n) = self.next {
+                if (crate::address(self) + self.size) == (n.as_ptr() as usize) {
+                    let nn = unsafe { n.as_ref() }.next;
+                    let nsize = unsafe { n.as_ref() }.size;
+                    self.next = nn;
+                    self.size += nsize;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
     }
 
     /// Create a heap node, at the specified location, using the specified layout
@@ -111,10 +144,10 @@ impl<'a> HeapManager<'a> {
             doors_macros2::kernel_print!("head: {:p}\r\n", r);
             loop {
                 doors_macros2::kernel_print!(
-                    "heap node is {:?} {:x} {:x}\r\n",
+                    "heap node is {:?} {:x}, {:?}\r\n",
                     r.as_ptr(),
-                    unsafe { &*r.as_ptr() }.next_address() - 1,
-                    unsafe { &*r.as_ptr() }.size
+                    unsafe { &*r.as_ptr() }.size,
+                    unsafe { &*r.as_ptr() }.next
                 );
 
                 if let Some(nr) = unsafe { r.as_mut() }.next {
@@ -261,9 +294,41 @@ impl<'a> HeapManager<'a> {
     fn run_dealloc(&mut self, ptr: *mut u8, layout: core::alloc::Layout) {
         let mut new_node = unsafe { HeapNode::with_ptr(ptr, layout) };
         let e = self.head.take();
-        unsafe { new_node.as_mut() }.next = e;
-        self.head = Some(new_node);
-
+        if let Some(e) = e {
+            if (e.as_ptr() as usize) > (new_node.as_ptr() as usize) {
+                // new node comes before head, it becomes the new head, and new node points to the old head
+                unsafe { new_node.as_mut() }.next = Some(e);
+                unsafe { new_node.as_mut() }.try_merge_with_next();
+                self.head = Some(new_node);
+            } else {
+                // need to find where in the list the new node fits
+                self.head = Some(e);
+                let mut check = e;
+                loop {
+                    let checknext = unsafe { check.as_ref() }.next;
+                    if let Some(cn) = checknext {
+                        if (cn.as_ptr() as usize) > (new_node.as_ptr() as usize) {
+                            // new node comes before the next element, insert it in between
+                            unsafe { check.as_mut() }.next = Some(new_node);
+                            unsafe { new_node.as_mut() }.next = Some(cn);
+                            unsafe { check.as_mut() }.try_merge_with_next();
+                            break;
+                        } else {
+                            //check further down the list
+                            check = cn;
+                        }
+                    } else {
+                        // This element is the only or last one, so the new node comes after this node
+                        unsafe { check.as_mut() }.next = Some(new_node);
+                        unsafe { check.as_mut() }.try_merge_with_next();
+                        break;
+                    }
+                }
+            }
+        } else {
+            // heap is empty, now the free node is the heap
+            self.head = Some(new_node);
+        }
         //TODO merge blocks if possible?
     }
 }

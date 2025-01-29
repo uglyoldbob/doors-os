@@ -157,7 +157,11 @@ pub trait SystemTrait {
     /// System required init code
     fn init(&mut self);
     /// Allocate some virtual memory not corresponding to physical RAM
-    fn allocate_nonram_memory(&mut self, size: usize, alignment: usize) -> Option<Box<[u8]>>;
+    fn allocate_nonram_memory(
+        &mut self,
+        size: usize,
+        alignment: usize,
+    ) -> Option<alloc::boxed::Box<[u8]>>;
 }
 
 /// This struct implements the SystemTrait

@@ -2,8 +2,6 @@
 
 use core::marker::PhantomData;
 
-use crate::kernel::SystemTrait;
-use crate::modules::pci::PciFunctionDriver;
 use crate::modules::pci::PciTrait;
 use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
@@ -254,6 +252,10 @@ fn main_boot(system: crate::kernel::System) -> ! {
             crate::modules::pci::pci_register_drivers();
             pci.driver_setup();
         }
+    }
+    {
+        let h = HEAP_MANAGER.lock();
+        h.print();
     }
     super::super::main(system);
 }
