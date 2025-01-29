@@ -94,10 +94,11 @@ impl super::PciTrait for Pci {
 
     fn driver_run(
         &mut self,
+        system: &mut crate::kernel::System,
         d: &mut alloc::collections::btree_map::BTreeMap<u32, super::PciFunctionDriver>,
     ) {
         for bus in &self.busses {
-            bus.driver_run(d, &mut self.configuration);
+            bus.driver_run(system, d, &mut self.configuration);
         }
     }
 }

@@ -1,7 +1,7 @@
 //! Code for the pci bus
 
 use crate::modules::video::TextDisplayTrait;
-use crate::LockedArc;
+use crate::{Locked, LockedArc};
 use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
 
@@ -532,11 +532,19 @@ impl ConfigurationSpace {
 
     /// Return an iterator over the bar offsets
     /// The FnMut accepts an index, a bar offset and a second bar offset for 64-bit bars, returns true if the bar was 64-bits
-    fn process_bars(&self, mut f: impl FnMut(u8, u8, Option<u8>) -> bool) {
+    fn process_bars(
+        &self,
+        bars: &mut [Option<BarSpace>],
+        mut f: impl FnMut(u8, u8, Option<u8>) -> BarSpace,
+    ) {
+        for b in bars.iter_mut() {
+            *b = None;
+        }
+        let mut index = 0;
         if let Some(space) = self.get_space() {
-            let bars = space.get_bars();
+            let bars_indexes = space.get_bars();
             let mut skip = false;
-            let mut iter = bars.iter();
+            let mut iter = bars_indexes.iter();
             let first_bar = iter.next();
             if let Some(fbar) = first_bar {
                 let mut prev_bar = *fbar;
@@ -546,14 +554,19 @@ impl ConfigurationSpace {
                     let i = i + 1;
                     last_bar = *bar;
                     if !skip {
-                        skip = f(prev_index as u8, prev_bar, Some(*bar));
+                        let newbar = f(prev_index as u8, prev_bar, Some(*bar));
+                        bars[index] = Some(newbar);
+                        index += 1;
+                        skip = newbar.is64();
                     } else {
                         skip = false;
                     }
                     prev_index = i;
                     prev_bar = *bar;
                 }
-                f(prev_index as u8, last_bar, None);
+                let newbar = f(prev_index as u8, last_bar, None);
+                bars[index] = Some(newbar);
+                index += 1;
             }
         }
     }
@@ -567,10 +580,15 @@ pub trait PciTrait {
     /// Print all devices on the system
     fn print_devices(&mut self);
     /// Run all drivers that can be associated with pci functions
-    fn driver_run(&mut self, d: &mut BTreeMap<u32, PciFunctionDriver>);
+    fn driver_run(
+        &mut self,
+        system: &mut crate::kernel::System,
+        d: &mut BTreeMap<u32, PciFunctionDriver>,
+    );
 }
 
 /// A BAR space
+#[derive(Clone, Copy)]
 pub enum BarSpace {
     /// A memory space, 32 bits wide
     Memory32 {
@@ -610,7 +628,28 @@ pub enum BarSpace {
     },
 }
 
+impl Default for BarSpace {
+    fn default() -> Self {
+        Self::Invalid { index: 0 }
+    }
+}
+
 impl BarSpace {
+    /// Is the space a 64-bit space?
+    pub fn is64(&self) -> bool {
+        if let Self::Memory64 {
+            base: _,
+            size: _,
+            flags: _,
+            index: _,
+        } = self
+        {
+            true
+        } else {
+            false
+        }
+    }
+
     /// Is the space valid (is the bar size non-zero)?
     fn is_size_valid(&self) -> bool {
         if let Self::Invalid { index: _ } = self {
@@ -645,15 +684,37 @@ impl BarSpace {
     }
 
     /// Obtain the memory space specified by the bar, only if it is memory space
-    fn get_memory(&self) -> Option<alloc::boxed::Box<[u8]>> {
+    fn get_memory<'b>(
+        &self,
+        system: &mut crate::kernel::System,
+        pci: &mut PciConfigurationSpace,
+        bus: &PciBus,
+        dev: &PciDevice,
+        function: &PciFunction,
+        config: &ConfigurationSpaceEnum,
+    ) -> Option<alloc::boxed::Box<[u8], &'b Locked<crate::NonRamAllocator>>> {
         match self {
             BarSpace::Memory32 {
-                base,
+                base: _,
                 size,
                 flags,
                 index,
             } => {
-                todo!()
+                let a = alloc::boxed::Box::new_uninit_slice_in(
+                    *size as usize,
+                    &crate::NON_RAM_ALLOCATOR,
+                );
+                let a = unsafe { a.assume_init() };
+                let addr = a.as_ptr() as u32;
+                let newbar = BarSpace::Memory32 {
+                    base: addr,
+                    size: *size,
+                    flags: *flags,
+                    index: *index,
+                };
+                doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", addr);
+                newbar.write_to_pci(pci, bus, dev, function, config);
+                Some(a)
             }
             BarSpace::Memory64 {
                 base,
@@ -846,11 +907,11 @@ impl PciFunction {
     /// Parse the bar registers for the function
     fn parse_bars(
         &self,
+        bars: &mut [Option<BarSpace>; 6],
         pci: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
         config: &ConfigurationSpace,
-        mut process: impl FnMut(&mut PciConfigurationSpace, BarSpace),
     ) {
         pci.write_u32(
             bus.num,
@@ -859,7 +920,7 @@ impl PciFunction {
             4,
             (config.status as u32) << 16 | config.command.0 as u32 & 0xFFFC,
         );
-        config.process_bars(|barnum, bar, bar64| {
+        config.process_bars(bars, |barnum, bar, bar64| {
             let orig_bar: u32 = pci.read_u32(bus.num, dev.dev, self.function, bar);
             let mut upper_orig_bar: u32 = 0;
 
@@ -876,7 +937,7 @@ impl PciFunction {
                 pci.write_u32(bus.num, dev.dev, self.function, bar64.unwrap(), 0xFFFFFFFF);
             }
             let size = pci.read_u32(bus.num, dev.dev, self.function, bar);
-            let is64 = if size & 1 == 0 {
+            let barspace = if size & 1 == 0 {
                 //memory space
                 let bar = if (orig_bar & 4) != 0 {
                     let usize: u32 = pci.read_u32(bus.num, dev.dev, self.function, bar);
@@ -906,7 +967,6 @@ impl PciFunction {
                         BarSpace::Invalid { index: barnum }
                     }
                 };
-                process(pci, bar);
                 if (orig_bar & 4) != 0 {
                     pci.write_u32(
                         bus.num,
@@ -915,29 +975,20 @@ impl PciFunction {
                         bar64.unwrap(),
                         upper_orig_bar,
                     );
-                    true
-                } else {
-                    false
                 }
+                bar
             } else {
                 //io space
                 let size: u32 = !(size & 0xFFFFFFFC) + 1;
-                if size != 0 {
-                    process(
-                        pci,
-                        BarSpace::IO {
-                            base: orig_bar & 0xFFFFFFFC,
-                            size,
-                            index: barnum,
-                        },
-                    );
-                } else {
-                    process(pci, BarSpace::Invalid { index: barnum });
-                }
-                false
+                let bar = BarSpace::IO {
+                    base: orig_bar & 0xFFFFFFFC,
+                    size,
+                    index: barnum,
+                };
+                bar
             };
             pci.write_u32(bus.num, dev.dev, self.function, bar, orig_bar);
-            is64
+            barspace
         });
         pci.write_u32(
             bus.num,
@@ -1040,6 +1091,7 @@ impl PciBus {
     /// Run drivers that can be associated with pci functions
     fn driver_run(
         &self,
+        system: &mut crate::kernel::System,
         map: &mut alloc::collections::btree_map::BTreeMap<u32, PciFunctionDriver>,
         pci: &mut PciConfigurationSpace,
     ) {
@@ -1049,10 +1101,11 @@ impl PciBus {
                 doors_macros2::kernel_print!("Checking pci device {:x}\r\n", id);
                 if map.contains_key(&id) {
                     let config = f.get_all_configuration(pci, self, d);
-                    let code = map.get(&id).unwrap();
-                    f.parse_bars(pci, self, d, &config, |pci, bar| {
-                        code.parse_bar(pci, self, d, f, bar)
-                    });
+                    let code = map.get_mut(&id).unwrap();
+                    let mut bars: [Option<BarSpace>; 6] = [None; 6];
+                    f.parse_bars(&mut bars, pci, self, d, &config);
+                    code.parse_bars(system, pci, self, d, f, &config.get_space().unwrap(), bars);
+                    doors_macros2::kernel_print!("Running driver check\r\n");
                     code.check(pci, self, d, f);
                 } else {
                     doors_macros2::kernel_print!("Unknown PCI FUNCTION: {:X}\r\n", id);
@@ -1074,9 +1127,9 @@ pub enum Pci {
 
 impl Pci {
     /// Run all drivers for this pci system
-    pub fn driver_setup(&mut self) {
+    pub fn driver_setup(&mut self, system: &mut crate::kernel::System) {
         let mut d = PCI_DRIVERS.lock();
-        self.driver_run(&mut d);
+        self.driver_run(system, &mut d);
     }
 }
 
@@ -1115,13 +1168,15 @@ pub trait PciFunctionDriverTrait: Clone + Default {
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
 
     /// Parse a bar register for the device
-    fn parse_bar(
-        &self,
+    fn parse_bars(
+        &mut self,
+        system: &mut crate::kernel::System,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
         f: &PciFunction,
-        bar: BarSpace,
+        config: &ConfigurationSpaceEnum,
+        bars: [Option<BarSpace>; 6],
     );
 }
 
@@ -1155,7 +1210,7 @@ impl Default for PciFunctionDriver {
 /// Holds the pci drivers so that they can register with the `PCI_DRIVERS` variable
 static PCI_CODE: &[PciFunctionDriver] = &[
     PciFunctionDriver::Dummy(DummyPciFunctionDriver {}),
-    PciFunctionDriver::IntelPro1000(IntelPro1000 {}),
+    PciFunctionDriver::IntelPro1000(IntelPro1000::new()),
 ];
 
 /// A dummy pci driver that does nothing
@@ -1177,13 +1232,15 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
         doors_macros2::kernel_print!("Register dummy pci driver\r\n");
     }
 
-    fn parse_bar(
-        &self,
+    fn parse_bars(
+        &mut self,
+        _system: &mut crate::kernel::System,
         _cs: &mut PciConfigurationSpace,
         _bus: &PciBus,
         _dev: &PciDevice,
         _f: &PciFunction,
-        _bar: BarSpace,
+        _config: &ConfigurationSpaceEnum,
+        _bars: [Option<BarSpace>; 6],
     ) {
         panic!();
     }
@@ -1192,7 +1249,20 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
 /// TODO: move this to crate::modules::network
 #[derive(Clone, Default)]
-pub struct IntelPro1000 {}
+pub struct IntelPro1000 {
+    bars: [Option<BarSpace>; 6],
+    memory: Option<alloc::boxed::Box<[u8], &'static Locked<crate::NonRamAllocator>>>,
+}
+
+impl IntelPro1000 {
+    /// Create a new self, in const form
+    pub const fn new() -> Self {
+        Self {
+            bars: [None; 6],
+            memory: None,
+        }
+    }
+}
 
 impl PciFunctionDriverTrait for IntelPro1000 {
     fn check(
@@ -1214,17 +1284,31 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         }
     }
 
-    fn parse_bar(
-        &self,
-        _cs: &mut PciConfigurationSpace,
-        _bus: &PciBus,
-        _dev: &PciDevice,
-        _f: &PciFunction,
-        bar: BarSpace,
+    fn parse_bars(
+        &mut self,
+        system: &mut crate::kernel::System,
+        cs: &mut PciConfigurationSpace,
+        bus: &PciBus,
+        dev: &PciDevice,
+        f: &PciFunction,
+        config: &ConfigurationSpaceEnum,
+        bars: [Option<BarSpace>; 6],
     ) {
-        if bar.is_size_valid() {
-            doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
-            bar.print();
+        self.bars = bars;
+        for bar in &self.bars {
+            if let Some(bar) = bar {
+                if bar.is_size_valid() {
+                    doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
+                    bar.print();
+                    if self.memory.is_none() {
+                        let d = bar.get_memory(system, cs, bus, dev, f, config);
+                        if let Some(d) = d {
+                            doors_macros2::kernel_print!("Got memory at {:p}\r\n", d.as_ref());
+                            self.memory = Some(d);
+                        }
+                    }
+                }
+            }
         }
     }
 }

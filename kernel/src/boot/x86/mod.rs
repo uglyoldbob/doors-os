@@ -21,7 +21,11 @@ pub mod boot32;
 #[cfg(target_arch = "x86")]
 pub use boot32 as boot;
 
+pub use boot::VIRTUAL_MEMORY_ALLOCATOR as NON_RAM_ALLOCATOR;
+
 pub mod memory;
+
+pub use memory::Allocator;
 
 lazy_static! {
     /// The entire list of io ports for an x86 machine
@@ -219,7 +223,7 @@ extern "C" {
 }
 
 /// This function is called by the entrance module for the kernel.
-fn main_boot(system: crate::kernel::System) -> ! {
+fn main_boot(mut system: crate::kernel::System) -> ! {
     {
         let mut serials = crate::kernel::SERIAL.lock();
         for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
@@ -250,7 +254,7 @@ fn main_boot(system: crate::kernel::System) -> ! {
             let mut pci = crate::modules::pci::Pci::X86Pci(pci);
             pci.setup();
             crate::modules::pci::pci_register_drivers();
-            pci.driver_setup();
+            pci.driver_setup(&mut system);
         }
     }
     {

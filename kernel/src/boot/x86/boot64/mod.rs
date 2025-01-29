@@ -2,7 +2,7 @@
 
 use crate::modules::video::TextDisplayTrait;
 use crate::modules::video::{hex_dump_no_ascii, hex_dump_no_ascii_generic};
-use crate::Locked;
+use crate::{Locked, LockedArc};
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
 use acpi::madt::Madt;
@@ -493,12 +493,6 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
             doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
         }
         handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-    }
-
-    fn allocate_nonram_memory(&mut self, size: usize, alignment: usize) -> Option<Box<[u8]>> {
-        let mut p = super::HEAP_MANAGER.lock();
-
-        None
     }
 }
 

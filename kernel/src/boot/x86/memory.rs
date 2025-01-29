@@ -5,10 +5,12 @@
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use crate::modules::video::{hex_dump_no_ascii, TextDisplayTrait};
+use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
 
-use super::boot::memory::{BumpAllocator, Page, PagingTableManager};
+use super::boot::memory::{Page, PagingTableManager};
+
+pub use super::boot::memory::BumpAllocator as Allocator;
 
 /// A container structure for a heap node
 /// Stores some calculations about how the node can allocate a chunk of memory
@@ -118,7 +120,7 @@ pub struct HeapManager<'a> {
     /// The paging table manager, used to map additional memory into the heap as required.
     mm: &'a crate::Locked<PagingTableManager<'a>>,
     /// The allocator for getting more virtual memory
-    vmm: &'a crate::Locked<BumpAllocator>,
+    vmm: &'a crate::Locked<Allocator>,
 }
 
 unsafe impl<'a> Send for HeapManager<'a> {}
@@ -127,7 +129,7 @@ impl<'a> HeapManager<'a> {
     /// Create a heap manager.
     pub const fn new(
         mm: &'a crate::Locked<PagingTableManager<'a>>,
-        vmm: &'a crate::Locked<BumpAllocator>,
+        vmm: &'a crate::Locked<Allocator>,
     ) -> Self {
         Self {
             head: None,
@@ -170,7 +172,7 @@ impl<'a> HeapManager<'a> {
         );
         let a = if r != 0 { a + 1 } else { a };
 
-        let new_section = Vec::<Page, &Locked<BumpAllocator>>::with_capacity_in(a, self.vmm);
+        let new_section = Vec::<Page, &Locked<Allocator>>::with_capacity_in(a, self.vmm);
 
         let sa = new_section.as_ptr() as *const Page as usize;
         let mut mm = self.mm.lock();
@@ -292,6 +294,7 @@ impl<'a> HeapManager<'a> {
 
     /// Perform an actual deallocation
     fn run_dealloc(&mut self, ptr: *mut u8, layout: core::alloc::Layout) {
+        doors_macros2::kernel_print!("HeapManager DEALLOCATING {:p}\r\n", ptr);
         let mut new_node = unsafe { HeapNode::with_ptr(ptr, layout) };
         let e = self.head.take();
         if let Some(e) = e {

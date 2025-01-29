@@ -7,12 +7,16 @@
 #![feature(allocator_api)]
 #![feature(alloc_error_handler)]
 #![feature(abi_x86_interrupt)]
+#![feature(box_vec_non_null)]
 
 extern crate alloc;
 
 pub mod boot;
 pub mod kernel;
 pub mod modules;
+
+pub use boot::Allocator as NonRamAllocator;
+pub use boot::NON_RAM_ALLOCATOR;
 
 use alloc::sync::Arc;
 use kernel::SystemTrait;

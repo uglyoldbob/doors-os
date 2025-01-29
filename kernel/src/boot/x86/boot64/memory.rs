@@ -37,6 +37,45 @@ pub struct BumpAllocator {
     allocate_pages: Option<&'static mut PageTable>,
 }
 
+impl Locked<BumpAllocator> {
+    /// Allocate some memory not backed by ram, normally used for allocating memory for memory mapped devices like pci bar space
+    pub fn allocate_nonram_memory(
+        &self,
+        size: usize,
+        alignment: usize,
+    ) -> Option<alloc::boxed::Box<[u8], &Locked<BumpAllocator>>> {
+        doors_macros2::kernel_print!(
+            "Need to allocate {:x} bytes, aligned {:x}\r\n",
+            size,
+            alignment
+        );
+        let a = {
+            let mut vmm = self.lock();
+            let p = vmm.peek() + 1;
+            doors_macros2::kernel_print!("Pending address is {:x}\r\n", p);
+            let start = (alignment - 1) & p;
+            let waste = if start != 0 { alignment - start } else { 0 };
+            doors_macros2::kernel_print!(
+                "Pending start error is {:x}, need to waste {:x}\r\n",
+                start,
+                waste
+            );
+            if waste != 0 {
+                vmm.waste_space(waste);
+            }
+            let q = vmm.peek() + 1;
+            doors_macros2::kernel_print!("Pending address is {:x}\r\n", q);
+            let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+            vmm.run_allocation(layout).ok()?
+        };
+        doors_macros2::kernel_print!("Boxing some stuff @ {:p}\r\n", a.as_ptr());
+        let b: alloc::boxed::Box<[u8], &Locked<BumpAllocator>> =
+            unsafe { alloc::boxed::Box::from_non_null_in(a, self) };
+        doors_macros2::kernel_print!("Done boxing\r\n");
+        Some(b)
+    }
+}
+
 impl BumpAllocator {
     /// Create a new bump allocator, starting at the specified address
     pub const fn new(addr: usize) -> Self {
@@ -46,6 +85,11 @@ impl BumpAllocator {
             last: [None; 5],
             allocate_pages: None,
         }
+    }
+
+    /// Peek at what the next issued address will start at
+    pub fn peek(&mut self) -> usize {
+        self.end
     }
 
     /// Relocate the bump allocator to a new address, but only if no addresses are currently out
@@ -72,23 +116,48 @@ impl BumpAllocator {
             self.end = base + mask;
         }
     }
-}
 
-unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
-    fn allocate(
-        &self,
+    fn add_bump_allocation(&mut self, ba: BumpAllocation) -> (usize, usize) {
+        for i in 1..5 {
+            self.last[i] = self.last[i - 1];
+        }
+        self.last[0] = Some(ba);
+        let old_end = self.end;
+        self.end += ba.bumpsize;
+        let new_end = self.end;
+        (old_end, new_end)
+    }
+
+    /// A fake allocation that just wastes space
+    pub fn waste_space(&mut self, size: usize) {
+        let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+        let a = BumpAllocation {
+            bumpsize: layout.size(),
+            addr: self.end + 1,
+        };
+        self.add_bump_allocation(a);
+        self.last[0] = None;
+    }
+
+    /// Run an allocation
+    pub fn run_allocation(
+        &mut self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let mut alloc = self.lock();
+        doors_macros2::kernel_print!(
+            "Running alloc size {:x} @ {:x}\r\n",
+            layout.size(),
+            self.end + 1
+        );
         let align_mask = layout.align() - 1;
-        let align_error = (alloc.end + 1) & align_mask;
+        let align_error = (self.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
             layout.align() - align_error
         } else {
             0
         };
         let bumpsize = layout.size() + align_pad;
-        let allocstart = alloc.end + 1 + align_pad;
+        let allocstart = self.end + 1 + align_pad;
 
         let ptr = unsafe {
             core::ptr::NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(
@@ -101,14 +170,8 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
             bumpsize,
             addr: allocstart,
         };
-        for i in 1..5 {
-            alloc.last[i] = alloc.last[i - 1];
-        }
-        alloc.last[0] = Some(a);
-        let old_end = alloc.end;
-        alloc.end += bumpsize;
-        let new_end = alloc.end;
-        if let Some(pa) = &mut alloc.allocate_pages {
+        let (old_end, new_end) = self.add_bump_allocation(a);
+        if let Some(pa) = &mut self.allocate_pages {
             let mut oldpage = old_end & !0x1fffff;
             let newpage = new_end & !0x1fffff;
             while oldpage != newpage {
@@ -123,17 +186,34 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
         Ok(ptr)
     }
 
-    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
-        if let Some(a) = alloc.last[0] {
+    fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
+        doors_macros2::kernel_print!("BUMP ALLOCATOR DEALLOCATING {:p}\r\n", unsafe {
+            ptr.as_ref()
+        });
+        if let Some(a) = self.last[0] {
             if a.addr == ptr.addr().into() {
-                alloc.end -= a.bumpsize;
+                self.end -= a.bumpsize;
                 for i in 1..5 {
-                    alloc.last[i - 1] = alloc.last[i];
+                    self.last[i - 1] = self.last[i];
                 }
-                alloc.last[4] = None;
+                self.last[4] = None;
             }
         }
+    }
+}
+
+unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let mut alloc = self.lock();
+        alloc.run_allocation(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let mut alloc = self.lock();
+        alloc.run_deallocation(ptr, layout);
     }
 }
 
