@@ -21,11 +21,11 @@ pub mod boot32;
 #[cfg(target_arch = "x86")]
 pub use boot32 as boot;
 
-pub use boot::VIRTUAL_MEMORY_ALLOCATOR as NON_RAM_ALLOCATOR;
+pub use boot::PCI_MEMORY_ALLOCATOR;
 
 pub mod memory;
 
-pub use memory::Allocator;
+pub use boot::PciMemoryAllocator;
 
 lazy_static! {
     /// The entire list of io ports for an x86 machine

@@ -15,8 +15,8 @@ pub mod boot;
 pub mod kernel;
 pub mod modules;
 
-pub use boot::Allocator as NonRamAllocator;
-pub use boot::NON_RAM_ALLOCATOR;
+pub use boot::PciMemoryAllocator;
+pub use boot::PCI_MEMORY_ALLOCATOR;
 
 use alloc::sync::Arc;
 use kernel::SystemTrait;

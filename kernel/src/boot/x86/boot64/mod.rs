@@ -19,6 +19,8 @@ use raw_cpuid::{CpuId, CpuIdReaderNative};
 
 pub mod memory;
 
+pub use memory::PciMemoryAllocator;
+
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
 
@@ -155,6 +157,10 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
 /// The interrupt descriptor table for the system
 pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
+
+/// The memory allocator for pci style memory, where the size and alignment are the same
+pub static PCI_MEMORY_ALLOCATOR: Locked<memory::PciMemoryAllocator> =
+    Locked::new(memory::PciMemoryAllocator::new(&VIRTUAL_MEMORY_ALLOCATOR));
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]

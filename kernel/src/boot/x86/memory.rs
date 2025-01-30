@@ -294,7 +294,6 @@ impl<'a> HeapManager<'a> {
 
     /// Perform an actual deallocation
     fn run_dealloc(&mut self, ptr: *mut u8, layout: core::alloc::Layout) {
-        doors_macros2::kernel_print!("HeapManager DEALLOCATING {:p}\r\n", ptr);
         let mut new_node = unsafe { HeapNode::with_ptr(ptr, layout) };
         let e = self.head.take();
         if let Some(e) = e {

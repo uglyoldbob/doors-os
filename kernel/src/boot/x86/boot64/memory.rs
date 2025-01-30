@@ -43,36 +43,23 @@ impl Locked<BumpAllocator> {
         &self,
         size: usize,
         alignment: usize,
-    ) -> Option<alloc::boxed::Box<[u8], &Locked<BumpAllocator>>> {
-        doors_macros2::kernel_print!(
-            "Need to allocate {:x} bytes, aligned {:x}\r\n",
-            size,
-            alignment
-        );
-        let a = {
-            let mut vmm = self.lock();
-            let p = vmm.peek() + 1;
-            doors_macros2::kernel_print!("Pending address is {:x}\r\n", p);
-            let start = (alignment - 1) & p;
-            let waste = if start != 0 { alignment - start } else { 0 };
-            doors_macros2::kernel_print!(
-                "Pending start error is {:x}, need to waste {:x}\r\n",
-                start,
-                waste
-            );
-            if waste != 0 {
-                vmm.waste_space(waste);
-            }
-            let q = vmm.peek() + 1;
-            doors_macros2::kernel_print!("Pending address is {:x}\r\n", q);
-            let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
-            vmm.run_allocation(layout).ok()?
-        };
-        doors_macros2::kernel_print!("Boxing some stuff @ {:p}\r\n", a.as_ptr());
-        let b: alloc::boxed::Box<[u8], &Locked<BumpAllocator>> =
-            unsafe { alloc::boxed::Box::from_non_null_in(a, self) };
-        doors_macros2::kernel_print!("Done boxing\r\n");
-        Some(b)
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let mut vmm = self.lock();
+        let p = vmm.peek() + 1;
+        let start = (alignment - 1) & p;
+        let waste = if start != 0 { alignment - start } else { 0 };
+        if waste != 0 {
+            vmm.waste_space(waste);
+        }
+        let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+        vmm.run_allocation(layout)
+    }
+
+    /// Deallocate memory allocated with [allocate_nonram_memory]
+    fn deallocate_nonram_memory(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let layout2 = layout.align_to(layout.size()).unwrap();
+        let mut s = self.lock();
+        s.run_deallocation(ptr, layout2);
     }
 }
 
@@ -187,9 +174,6 @@ impl BumpAllocator {
     }
 
     fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
-        doors_macros2::kernel_print!("BUMP ALLOCATOR DEALLOCATING {:p}\r\n", unsafe {
-            ptr.as_ref()
-        });
         if let Some(a) = self.last[0] {
             if a.addr == ptr.addr().into() {
                 self.end -= a.bumpsize;
@@ -422,6 +406,35 @@ unsafe impl<'a> core::alloc::Allocator for Locked<SimpleMemoryManager<'a>> {
                 }
             }
         }
+    }
+}
+
+/// A struct for allocating pci memory, where the alignment and size are the same
+pub struct PciMemoryAllocator {
+    /// The allocator behind the scenes
+    allocator: &'static Locked<BumpAllocator>,
+}
+
+impl PciMemoryAllocator {
+    /// Construct a new self
+    pub const fn new(allocator: &'static Locked<BumpAllocator>) -> Self {
+        Self { allocator }
+    }
+}
+
+unsafe impl core::alloc::Allocator for Locked<PciMemoryAllocator> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let s = self.lock();
+        s.allocator
+            .allocate_nonram_memory(layout.size(), layout.size())
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let s = self.lock();
+        s.allocator.deallocate_nonram_memory(ptr, layout);
     }
 }
 

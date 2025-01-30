@@ -692,7 +692,7 @@ impl BarSpace {
         dev: &PciDevice,
         function: &PciFunction,
         config: &ConfigurationSpaceEnum,
-    ) -> Option<alloc::boxed::Box<[u8], &'b Locked<crate::NonRamAllocator>>> {
+    ) -> Option<alloc::boxed::Box<[u8], &'b Locked<crate::PciMemoryAllocator>>> {
         match self {
             BarSpace::Memory32 {
                 base: _,
@@ -702,7 +702,7 @@ impl BarSpace {
             } => {
                 let a = alloc::boxed::Box::new_uninit_slice_in(
                     *size as usize,
-                    &crate::NON_RAM_ALLOCATOR,
+                    &crate::PCI_MEMORY_ALLOCATOR,
                 );
                 let a = unsafe { a.assume_init() };
                 let addr = a.as_ptr() as u32;
@@ -1251,7 +1251,7 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 #[derive(Clone, Default)]
 pub struct IntelPro1000 {
     bars: [Option<BarSpace>; 6],
-    memory: Option<alloc::boxed::Box<[u8], &'static Locked<crate::NonRamAllocator>>>,
+    memory: Option<alloc::boxed::Box<[u8], &'static Locked<crate::PciMemoryAllocator>>>,
 }
 
 impl IntelPro1000 {
@@ -1304,7 +1304,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         let d = bar.get_memory(system, cs, bus, dev, f, config);
                         if let Some(d) = d {
                             doors_macros2::kernel_print!("Got memory at {:p}\r\n", d.as_ref());
-                            self.memory = Some(d);
+                            //self.memory = Some(d);
                         }
                     }
                 }
