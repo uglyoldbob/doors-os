@@ -224,6 +224,18 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
+fn setup_pci(system: &mut impl crate::kernel::SystemTrait) {
+    let pci = crate::modules::pci::x86::Pci::new();
+    if let Some(pci) = pci {
+        let mut pci = crate::modules::pci::Pci::X86Pci(pci);
+        pci.setup();
+        crate::modules::pci::pci_register_drivers();
+        pci.driver_setup(system);
+    }
+    let h = HEAP_MANAGER.lock();
+    h.print();
+}
+
 /// This function is called by the entrance module for the kernel.
 fn main_boot(mut system: crate::kernel::System) -> ! {
     {
@@ -250,18 +262,5 @@ fn main_boot(mut system: crate::kernel::System) -> ! {
     }
 
     doors_macros2::kernel_print!("This is a test\r\n");
-    {
-        let pci = crate::modules::pci::x86::Pci::new();
-        if let Some(pci) = pci {
-            let mut pci = crate::modules::pci::Pci::X86Pci(pci);
-            pci.setup();
-            crate::modules::pci::pci_register_drivers();
-            pci.driver_setup(&mut system);
-        }
-    }
-    {
-        let h = HEAP_MANAGER.lock();
-        h.print();
-    }
     super::super::main(system);
 }

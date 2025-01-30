@@ -1,5 +1,6 @@
 //! Code for the pci bus
 
+use crate::boot::x86::IoReadWrite;
 use crate::modules::video::TextDisplayTrait;
 use crate::{Locked, LockedArc};
 use alloc::collections::BTreeMap;
@@ -44,7 +45,7 @@ bitfield::bitfield! {
 }
 
 /// Represents the configuration space for a single device
-struct ConfigurationSpaceStandard {
+pub struct ConfigurationSpaceStandard {
     /// The base address registers for the device
     bar: [u32; 6],
     /// Used for devices that do cardbus and pci (see pcmcia 2.0 for cis info)
@@ -132,7 +133,7 @@ impl ConfigurationSpaceStandard {
 }
 
 /// Represents the configuration space for a single device
-struct ConfigurationSpaceBridge {
+pub struct ConfigurationSpaceBridge {
     /// The base address registers for the device
     bar: [u32; 2],
     primary_bus: u8,
@@ -258,7 +259,7 @@ impl From<[u32; 60]> for ConfigurationSpaceBridge {
 }
 
 /// Represents the configuration space for a single device
-struct ConfigurationSpaceCardbus {
+pub struct ConfigurationSpaceCardbus {
     cardbus_base: u32,
     capabilities_offset: u8,
     _reserved: u8,
@@ -367,10 +368,14 @@ impl From<[u32; 60]> for ConfigurationSpaceCardbus {
     }
 }
 
+/// The configuration space data that changes on a function by function basis
 #[repr(C)]
-enum ConfigurationSpaceEnum {
+pub enum ConfigurationSpaceEnum {
+    /// configuration for a standard function
     Standard(ConfigurationSpaceStandard),
+    /// configuration for a pci bridge
     Bridge(ConfigurationSpaceBridge),
+    /// configuration for a cardbus device
     Cardbus(ConfigurationSpaceCardbus),
 }
 
@@ -582,7 +587,7 @@ pub trait PciTrait {
     /// Run all drivers that can be associated with pci functions
     fn driver_run(
         &mut self,
-        system: &mut crate::kernel::System,
+        system: &mut impl crate::kernel::SystemTrait,
         d: &mut BTreeMap<u32, PciFunctionDriver>,
     );
 }
@@ -685,8 +690,8 @@ impl BarSpace {
 
     /// Obtain the io space specified by the bar, only if it is io space and an io manager exists
     fn get_io(
-        &self,
-        system: &mut crate::kernel::System,
+        &mut self,
+        system: &mut impl crate::kernel::SystemTrait,
         pci: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -709,6 +714,7 @@ impl BarSpace {
                         };
                         doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", addr);
                         newbar.write_to_pci(pci, bus, dev, function, config);
+                        *self = newbar;
                     }
                     Some(p)
                 } else {
@@ -724,8 +730,8 @@ impl BarSpace {
 
     /// Obtain the memory space specified by the bar, only if it is memory space
     fn get_memory<'b>(
-        &self,
-        system: &mut crate::kernel::System,
+        &mut self,
+        system: &mut impl crate::kernel::SystemTrait,
         pci: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -753,13 +759,14 @@ impl BarSpace {
                 };
                 doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", addr);
                 newbar.write_to_pci(pci, bus, dev, function, config);
+                *self = newbar;
                 Some(a)
             }
             BarSpace::Memory64 {
-                base,
-                size,
-                flags,
-                index,
+                base: _,
+                size: _,
+                flags: _,
+                index: _,
             } => {
                 todo!()
             }
@@ -1130,7 +1137,7 @@ impl PciBus {
     /// Run drivers that can be associated with pci functions
     fn driver_run(
         &self,
-        system: &mut crate::kernel::System,
+        system: &mut impl crate::kernel::SystemTrait,
         map: &mut alloc::collections::btree_map::BTreeMap<u32, PciFunctionDriver>,
         pci: &mut PciConfigurationSpace,
     ) {
@@ -1164,7 +1171,7 @@ pub enum Pci {
 
 impl Pci {
     /// Run all drivers for this pci system
-    pub fn driver_setup(&mut self, system: &mut crate::kernel::System) {
+    pub fn driver_setup(&mut self, system: &mut impl crate::kernel::SystemTrait) {
         let mut d = PCI_DRIVERS.lock();
         self.driver_run(system, &mut d);
     }
@@ -1198,7 +1205,7 @@ pub trait PciFunctionDriverTrait: Clone + Default {
     /// Parse a bar register for the device
     fn parse_bars(
         &mut self,
-        system: &mut crate::kernel::System,
+        system: &mut impl crate::kernel::SystemTrait,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -1252,7 +1259,7 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 
     fn parse_bars(
         &mut self,
-        _system: &mut crate::kernel::System,
+        _system: &mut impl crate::kernel::SystemTrait,
         _cs: &mut PciConfigurationSpace,
         _bus: &PciBus,
         _dev: &PciDevice,
@@ -1264,6 +1271,52 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
     }
 }
 
+/// Holds either memory or io space
+enum MemoryOrIo {
+    Memory(alloc::boxed::Box<[u8], &'static Locked<crate::PciMemoryAllocator>>),
+    Io(crate::IoPortArray<'static>),
+}
+
+impl MemoryOrIo {
+    fn read(&mut self, address: u16) -> u32 {
+        match self {
+            MemoryOrIo::Memory(mem) => {
+                let a: &mut u8 = &mut mem[address as usize];
+                doors_macros2::kernel_print!("Need to do a read at {:x}\r\n", a);
+                todo!();
+            }
+            MemoryOrIo::Io(io) => {
+                let mut iop: crate::IoPortRef<u32> = io.port(address);
+                iop.port_read()
+            }
+        }
+    }
+
+    fn write(&mut self, address: u16, val: u32) {
+        match self {
+            MemoryOrIo::Memory(mem) => {
+                doors_macros2::kernel_print!("Need to do a write at {:x}\r\n", address);
+                let a: &mut u8 = &mut mem[address as usize];
+                doors_macros2::kernel_print!("Need to do a write at {:p}\r\n", a);
+                let b: *mut u8 = a as *mut u8;
+                let c: &mut u32 = unsafe { &mut *(b as *mut u32) };
+                doors_macros2::kernel_print!("Need to do a write at {:p}\r\n", c);
+                *c = val;
+            }
+            MemoryOrIo::Io(io) => {
+                let mut iop: crate::IoPortRef<u32> = io.port(address);
+                iop.port_write(val);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[repr(u16)]
+enum IntelPro1000Registers {
+    Eeprom = 0x14,
+}
+
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
 /// TODO: move this to crate::modules::network
 #[derive(Clone, Default)]
@@ -1272,10 +1325,23 @@ pub struct IntelPro1000 {}
 struct IntelPro1000Device {
     /// The base address registers
     bars: [Option<BarSpace>; 6],
-    /// The memory allocated for the device
-    memory: alloc::boxed::Box<[u8], &'static Locked<crate::PciMemoryAllocator>>,
+    /// The memory allocated by bar0
+    bar0: MemoryOrIo,
     /// the io space allocated for the device
     io: crate::IoPortArray<'static>,
+}
+
+impl IntelPro1000Device {
+    fn detect_eeprom(&mut self) -> bool {
+        self.bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
+        for _i in 0..1000 {
+            let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+            if (val & 0x10) != 0 {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl IntelPro1000 {
@@ -1295,24 +1361,26 @@ impl PciFunctionDriverTrait for IntelPro1000 {
 
     fn parse_bars(
         &mut self,
-        system: &mut crate::kernel::System,
+        system: &mut impl crate::kernel::SystemTrait,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
         f: &PciFunction,
         config: &ConfigurationSpaceEnum,
-        bars: [Option<BarSpace>; 6],
+        mut bars: [Option<BarSpace>; 6],
     ) {
-        let mem = {
-            if let Some(bar) = bars[0] {
+        let bar0 = {
+            if let Some(bar) = &mut bars[0] {
                 if bar.is_size_valid() {
                     doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
                     bar.print();
                     let d = bar.get_memory(system, cs, bus, dev, f, config);
-                    if let Some(d) = &d {
+                    if let Some(d) = d {
                         doors_macros2::kernel_print!("Got memory at {:p}\r\n", d.as_ref());
+                        Some(MemoryOrIo::Memory(d))
+                    } else {
+                        todo!();
                     }
-                    d
                 } else {
                     None
                 }
@@ -1321,7 +1389,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
             }
         };
         let io = {
-            if let Some(bar) = bars[1] {
+            if let Some(bar) = &mut bars[1] {
                 if bar.is_size_valid() {
                     doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
                     bar.print();
@@ -1340,18 +1408,19 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         };
         let configspace = f.get_all_configuration(cs, bus, dev);
         configspace.dump("\t");
-        if let Some(m) = mem {
+        if let Some(m) = bar0 {
             if let Some(i) = io {
                 for b in &bars {
                     if let Some(b) = b {
                         b.print();
                     }
                 }
-                let d = IntelPro1000Device {
+                let mut d = IntelPro1000Device {
                     bars,
-                    memory: m,
+                    bar0: m,
                     io: i,
                 };
+                doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
             }
         }
     }
