@@ -15,8 +15,21 @@ pub mod boot;
 pub mod kernel;
 pub mod modules;
 
+pub use boot::IoPortArray;
+pub use boot::IoPortManager;
+pub use boot::IoPortRef;
 pub use boot::PciMemoryAllocator;
 pub use boot::PCI_MEMORY_ALLOCATOR;
+
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "arm")] {
+        /// The io port manager
+        pub static IO_PORT_MANAGER: Option<&Locked<IoPortManager>> = None;
+    } else if #[cfg(any(target_arch = "x86_64", target_arch = "x86"))] {
+        /// The io port manager
+        pub static IO_PORT_MANAGER: Option<&Locked<IoPortManager>> = Some(&boot::IOPORTS);
+    }
+}
 
 use alloc::sync::Arc;
 use kernel::SystemTrait;

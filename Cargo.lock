@@ -229,6 +229,7 @@ dependencies = [
  "arraystring",
  "bitfield",
  "bitflags 2.5.0",
+ "cfg-if",
  "doors_macros",
  "doors_macros2",
  "enum_dispatch",

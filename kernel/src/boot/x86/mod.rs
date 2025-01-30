@@ -27,11 +27,8 @@ pub mod memory;
 
 pub use boot::PciMemoryAllocator;
 
-lazy_static! {
-    /// The entire list of io ports for an x86 machine
-    pub static ref IOPORTS: Locked<IoPortManager> =
-        Locked::new(unsafe { IoPortManager::new() });
-}
+/// The entire list of io ports for an x86 machine
+pub static IOPORTS: Locked<IoPortManager> = Locked::new(IoPortManager::new());
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
@@ -141,6 +138,11 @@ impl<'a> IoPortArray<'a> {
             _marker: PhantomData,
         }
     }
+
+    /// Get the base address of the io address array
+    pub fn get_base(&self) -> u16 {
+        self.base
+    }
 }
 
 /// Keeps track of all io ports on the system.
@@ -208,7 +210,7 @@ impl Locked<IoPortManager> {
 
 impl IoPortManager {
     /// Create a new io port manager. All ports are assumed to be unused initially.
-    pub unsafe fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             ports: [0; 65536 / core::mem::size_of::<usize>()],
         }

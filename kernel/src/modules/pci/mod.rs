@@ -683,6 +683,45 @@ impl BarSpace {
         }
     }
 
+    /// Obtain the io space specified by the bar, only if it is io space and an io manager exists
+    fn get_io(
+        &self,
+        system: &mut crate::kernel::System,
+        pci: &mut PciConfigurationSpace,
+        bus: &PciBus,
+        dev: &PciDevice,
+        function: &PciFunction,
+        config: &ConfigurationSpaceEnum,
+    ) -> Option<crate::IoPortArray<'static>> {
+        if let Self::IO { base, size, index } = self {
+            if let Some(iom) = crate::IO_PORT_MANAGER {
+                if *base == 0 {
+                    panic!("Unable to assign io port ranges yet");
+                }
+                let ports = iom.get_ports(*base as u16, *size as u16);
+                if let Some(p) = ports {
+                    if *base == 0 {
+                        let addr = p.get_base() as u32;
+                        let newbar = BarSpace::IO {
+                            base: addr,
+                            size: *size,
+                            index: *index,
+                        };
+                        doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", addr);
+                        newbar.write_to_pci(pci, bus, dev, function, config);
+                    }
+                    Some(p)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     /// Obtain the memory space specified by the bar, only if it is memory space
     fn get_memory<'b>(
         &self,
@@ -1105,8 +1144,6 @@ impl PciBus {
                     let mut bars: [Option<BarSpace>; 6] = [None; 6];
                     f.parse_bars(&mut bars, pci, self, d, &config);
                     code.parse_bars(system, pci, self, d, f, &config.get_space().unwrap(), bars);
-                    doors_macros2::kernel_print!("Running driver check\r\n");
-                    code.check(pci, self, d, f);
                 } else {
                     doors_macros2::kernel_print!("Unknown PCI FUNCTION: {:X}\r\n", id);
                     let config = f.get_all_configuration(pci, self, d);
@@ -1155,15 +1192,6 @@ pub enum PciConfigurationSpace {
 /// The trait that pci function drivers must implement
 #[enum_dispatch::enum_dispatch]
 pub trait PciFunctionDriverTrait: Clone + Default {
-    /// Check to see if a pci device is present and able to be operated
-    fn check(
-        &self,
-        cs: &mut PciConfigurationSpace,
-        bus: &PciBus,
-        dev: &PciDevice,
-        function: &PciFunction,
-    );
-
     /// Register the driver in the given map, must check to see if the driver is already registered
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
 
@@ -1218,16 +1246,6 @@ static PCI_CODE: &[PciFunctionDriver] = &[
 pub struct DummyPciFunctionDriver {}
 
 impl PciFunctionDriverTrait for DummyPciFunctionDriver {
-    fn check(
-        &self,
-        _cs: &mut PciConfigurationSpace,
-        _bus: &PciBus,
-        _dev: &PciDevice,
-        _function: &PciFunction,
-    ) {
-        panic!("This should not happen");
-    }
-
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
         doors_macros2::kernel_print!("Register dummy pci driver\r\n");
     }
@@ -1249,34 +1267,25 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
 /// TODO: move this to crate::modules::network
 #[derive(Clone, Default)]
-pub struct IntelPro1000 {
+pub struct IntelPro1000 {}
+
+struct IntelPro1000Device {
+    /// The base address registers
     bars: [Option<BarSpace>; 6],
-    memory: Option<alloc::boxed::Box<[u8], &'static Locked<crate::PciMemoryAllocator>>>,
+    /// The memory allocated for the device
+    memory: alloc::boxed::Box<[u8], &'static Locked<crate::PciMemoryAllocator>>,
+    /// the io space allocated for the device
+    io: crate::IoPortArray<'static>,
 }
 
 impl IntelPro1000 {
     /// Create a new self, in const form
     pub const fn new() -> Self {
-        Self {
-            bars: [None; 6],
-            memory: None,
-        }
+        Self {}
     }
 }
 
 impl PciFunctionDriverTrait for IntelPro1000 {
-    fn check(
-        &self,
-        cs: &mut PciConfigurationSpace,
-        bus: &PciBus,
-        dev: &PciDevice,
-        function: &PciFunction,
-    ) {
-        doors_macros2::kernel_print!("Intel pro/1000 check function called\r\n");
-        let config = function.get_all_configuration(cs, bus, dev);
-        config.dump("\t");
-    }
-
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
         if !m.contains_key(&0x100e8086) {
             doors_macros2::kernel_print!("Register intel pro/1000 pci driver\r\n");
@@ -1294,20 +1303,55 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         config: &ConfigurationSpaceEnum,
         bars: [Option<BarSpace>; 6],
     ) {
-        self.bars = bars;
-        for bar in &self.bars {
-            if let Some(bar) = bar {
+        let mem = {
+            if let Some(bar) = bars[0] {
                 if bar.is_size_valid() {
                     doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
                     bar.print();
-                    if self.memory.is_none() {
-                        let d = bar.get_memory(system, cs, bus, dev, f, config);
-                        if let Some(d) = d {
-                            doors_macros2::kernel_print!("Got memory at {:p}\r\n", d.as_ref());
-                            //self.memory = Some(d);
-                        }
+                    let d = bar.get_memory(system, cs, bus, dev, f, config);
+                    if let Some(d) = &d {
+                        doors_macros2::kernel_print!("Got memory at {:p}\r\n", d.as_ref());
+                    }
+                    d
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        let io = {
+            if let Some(bar) = bars[1] {
+                if bar.is_size_valid() {
+                    doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
+                    bar.print();
+                    let d = bar.get_io(system, cs, bus, dev, f, config);
+                    if let Some(d) = &d {
+                        doors_macros2::kernel_print!("Got io at {:x}\r\n", d.get_base());
+                        //self.memory = Some(d);
+                    }
+                    d
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        let configspace = f.get_all_configuration(cs, bus, dev);
+        configspace.dump("\t");
+        if let Some(m) = mem {
+            if let Some(i) = io {
+                for b in &bars {
+                    if let Some(b) = b {
+                        b.print();
                     }
                 }
+                let d = IntelPro1000Device {
+                    bars,
+                    memory: m,
+                    io: i,
+                };
             }
         }
     }
