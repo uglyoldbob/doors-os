@@ -1329,12 +1329,63 @@ impl MemoryOrIo {
 #[repr(u16)]
 enum IntelPro1000Registers {
     Eeprom = 0x14,
+    Rctrl = 0x100,
+    RxDescLow = 0x2800,
+    RxDescHigh = 0x2804,
+    RxDescLen = 0x2808,
+    RxDescHead = 0x2810,
+    RxDescTail = 0x2818,
+    TxDescLow = 0x3800,
+    TxDescHigh = 0x3804,
+    TxDescLen = 0x3808,
+    TxDescHead = 0x3810,
+    TxDescTail = 0x3818,
 }
 
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
 /// TODO: move this to crate::modules::network
 #[derive(Clone, Default)]
 pub struct IntelPro1000 {}
+
+struct MacAddress {
+    address: [u8; 6],
+}
+
+#[repr(C, packed)]
+struct RxBuffer {
+    address: u64,
+    length: u16,
+    checksum: u16,
+    status: u8,
+    errors: u8,
+    special: u16,
+}
+
+impl RxBuffer {
+    fn new() -> Self {
+        let buf: alloc::boxed::Box<[u8; 8192]> = alloc::boxed::Box::new([0; 8192]);
+        let buf2 = alloc::boxed::Box::leak(buf);
+        Self {
+            address: crate::slice_address(buf2) as u64,
+            length: 0,
+            checksum: 0,
+            status: 0,
+            errors: 0,
+            special: 0,
+        }
+    }
+}
+
+#[repr(C, packed)]
+struct TxBuffer {
+    address: u64,
+    length: u16,
+    cso: u8,
+    cmd: u8,
+    status: u8,
+    css: u8,
+    special: u16,
+}
 
 struct IntelPro1000Device {
     /// The base address registers
@@ -1345,7 +1396,23 @@ struct IntelPro1000Device {
     io: crate::IoPortArray<'static>,
     /// Is the eeprom present?
     eeprom_present: Option<bool>,
+    /// The rx buffers
+    rxbufs: Option<&'static [RxBuffer]>,
+    /// The current rx buffer
+    rxbufindex: Option<u8>,
+    /// The tx buffers
+    txbufs: Option<&'static [TxBuffer]>,
 }
+
+const RCTRL_EN: u32 = 1 << 1;
+const RCTRL_SBP: u32 = 1 << 2;
+const RCTRL_UPE: u32 = 1 << 3;
+const RCTRL_MPE: u32 = 1 << 4;
+const RCTRL_LBM_NONE: u32 = 0;
+const RCTRL_RDMTS_HALF: u32 = 0;
+const RCTRL_BAM: u32 = 1 << 15;
+const RCTRL_SECRC: u32 = 1 << 26;
+const RCTRL_BSIZE_8192: u32 = 2 << 16 | 1 << 25;
 
 impl IntelPro1000Device {
     fn detect_eeprom(&mut self) -> bool {
@@ -1363,6 +1430,71 @@ impl IntelPro1000Device {
             }
         }
         self.eeprom_present.unwrap()
+    }
+
+    fn init_rx(&mut self) {
+        if self.rxbufs.is_none() {
+            let mut rx: alloc::vec::Vec<RxBuffer> = alloc::vec::Vec::new();
+            for i in 0..32 {
+                rx.push(RxBuffer::new());
+            }
+            let rx = rx.leak();
+
+            self.rxbufs = Some(rx);
+            let rxaddr = crate::slice_address(rx) as u64;
+            self.bar0.write(
+                IntelPro1000Registers::RxDescLow as u16,
+                (rxaddr >> 32) as u32,
+            );
+            self.bar0.write(
+                IntelPro1000Registers::RxDescHigh as u16,
+                (rxaddr & 0xFFFFFFFF) as u32,
+            );
+            self.bar0.write(
+                IntelPro1000Registers::RxDescLen as u16,
+                core::mem::size_of::<RxBuffer>() as u32 * rx.len() as u32,
+            );
+            self.bar0.write(IntelPro1000Registers::RxDescHead as u16, 0);
+            self.bar0.write(
+                IntelPro1000Registers::RxDescTail as u16,
+                rx.len() as u32 - 1,
+            );
+            self.bar0.write(
+                IntelPro1000Registers::Rctrl as u16,
+                RCTRL_EN
+                    | RCTRL_SBP
+                    | RCTRL_UPE
+                    | RCTRL_MPE
+                    | RCTRL_LBM_NONE
+                    | RCTRL_RDMTS_HALF
+                    | RCTRL_BAM
+                    | RCTRL_SECRC
+                    | RCTRL_BSIZE_8192,
+            );
+            self.rxbufindex = Some(0);
+            doors_macros2::kernel_print!("RX BUFFER ARRAY IS AT {:x}\r\n", rxaddr);
+            for r in rx.iter() {
+                doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
+                    core::ptr::read_unaligned(&raw const r.address)
+                });
+            }
+        }
+    }
+
+    fn get_mac_address(&mut self) -> MacAddress {
+        if self.detect_eeprom() {
+            let v = self.read_from_eeprom(0);
+            let v2 = self.read_from_eeprom(1);
+            let v3 = self.read_from_eeprom(2);
+            let v = v.to_le_bytes();
+            let v2 = v2.to_le_bytes();
+            let v3 = v3.to_le_bytes();
+            MacAddress {
+                address: [v[0], v[1], v2[0], v2[1], v3[0], v3[1]],
+            }
+        } else {
+            todo!();
+        }
     }
 
     fn read_from_eeprom(&mut self, addr: u8) -> u16 {
@@ -1461,6 +1593,9 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     bar0: m,
                     io: i,
                     eeprom_present: None,
+                    rxbufs: None,
+                    rxbufindex: None,
+                    txbufs: None,
                 };
                 d.bar0.hex_dump();
                 doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
@@ -1469,6 +1604,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     *data = d.read_from_eeprom(i as u8);
                 }
                 hex_dump_generic(&data, true, false);
+                hex_dump(&d.get_mac_address().address, false, false);
+                d.init_rx();
             }
         }
     }

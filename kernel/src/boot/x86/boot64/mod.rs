@@ -549,8 +549,8 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
             p.set_physical_address_size(cap.physical_address_bits());
             doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
         }
-        handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-        doors_macros2::kernel_print!("Done with acpi handling\r\n");
+        //handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
+        //doors_macros2::kernel_print!("Done with acpi handling\r\n");
         super::setup_pci(self);
     }
 }
