@@ -1330,6 +1330,7 @@ impl MemoryOrIo {
 enum IntelPro1000Registers {
     Eeprom = 0x14,
     Rctrl = 0x100,
+    Tctrl = 0x400,
     RxDescLow = 0x2800,
     RxDescHigh = 0x2804,
     RxDescLen = 0x2808,
@@ -1387,6 +1388,22 @@ struct TxBuffer {
     special: u16,
 }
 
+impl TxBuffer {
+    fn new() -> Self {
+        let buf: alloc::boxed::Box<[u8; 8192]> = alloc::boxed::Box::new([0; 8192]);
+        let buf2 = alloc::boxed::Box::leak(buf);
+        Self {
+            address: crate::slice_address(buf2) as u64,
+            length: 0,
+            cso: 0,
+            cmd: 0,
+            status: 0,
+            css: 1,
+            special: 0,
+        }
+    }
+}
+
 struct IntelPro1000Device {
     /// The base address registers
     bars: [Option<BarSpace>; 6],
@@ -1402,6 +1419,8 @@ struct IntelPro1000Device {
     rxbufindex: Option<u8>,
     /// The tx buffers
     txbufs: Option<&'static [TxBuffer]>,
+    /// The current tx buffer
+    txbufindex: Option<u8>,
 }
 
 const RCTRL_EN: u32 = 1 << 1;
@@ -1413,6 +1432,12 @@ const RCTRL_RDMTS_HALF: u32 = 0;
 const RCTRL_BAM: u32 = 1 << 15;
 const RCTRL_SECRC: u32 = 1 << 26;
 const RCTRL_BSIZE_8192: u32 = 2 << 16 | 1 << 25;
+
+const TCTRL_EN: u32 = 1 << 1;
+const TCTRL_PSP: u32 = 1 << 3;
+const TCTRL_CT_SHIFT: u8 = 4;
+const TCTRL_COLD_SHIFT: u8 = 12u8;
+const TCTRL_RTLC: u32 = 1 << 24;
 
 impl IntelPro1000Device {
     fn detect_eeprom(&mut self) -> bool {
@@ -1476,6 +1501,48 @@ impl IntelPro1000Device {
             for r in rx.iter() {
                 doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
                     core::ptr::read_unaligned(&raw const r.address)
+                });
+            }
+        }
+    }
+
+    fn init_tx(&mut self) {
+        if self.txbufs.is_none() {
+            let mut tx: alloc::vec::Vec<TxBuffer> = alloc::vec::Vec::new();
+            for i in 0..8 {
+                tx.push(TxBuffer::new());
+            }
+            let tx = tx.leak();
+
+            self.txbufs = Some(tx);
+            let txaddr = crate::slice_address(tx) as u64;
+            self.bar0.write(
+                IntelPro1000Registers::TxDescLow as u16,
+                (txaddr >> 32) as u32,
+            );
+            self.bar0.write(
+                IntelPro1000Registers::TxDescHigh as u16,
+                (txaddr & 0xFFFFFFFF) as u32,
+            );
+            self.bar0.write(
+                IntelPro1000Registers::TxDescLen as u16,
+                core::mem::size_of::<TxBuffer>() as u32 * tx.len() as u32,
+            );
+            self.bar0.write(IntelPro1000Registers::TxDescHead as u16, 0);
+            self.bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
+            self.bar0.write(
+                IntelPro1000Registers::Tctrl as u16,
+                TCTRL_EN
+                    | TCTRL_PSP
+                    | (15 << TCTRL_CT_SHIFT)
+                    | (64 << TCTRL_COLD_SHIFT)
+                    | TCTRL_RTLC,
+            );
+            self.txbufindex = Some(0);
+            doors_macros2::kernel_print!("TX BUFFER ARRAY IS AT {:x}\r\n", txaddr);
+            for t in tx.iter() {
+                doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
+                    core::ptr::read_unaligned(&raw const t.address)
                 });
             }
         }
@@ -1596,6 +1663,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     rxbufs: None,
                     rxbufindex: None,
                     txbufs: None,
+                    txbufindex: None,
                 };
                 d.bar0.hex_dump();
                 doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
@@ -1606,6 +1674,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 hex_dump_generic(&data, true, false);
                 hex_dump(&d.get_mac_address().address, false, false);
                 d.init_rx();
+                d.init_tx();
             }
         }
     }
