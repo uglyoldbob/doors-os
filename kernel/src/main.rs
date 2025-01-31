@@ -145,7 +145,7 @@ impl<A> Locked<A> {
 static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot::new();
 
 /// The VGA instance used for x86 kernel printing
-static VGA: spin::Mutex<Option<TextDisplay>> = spin::Mutex::new(None);
+static VGA: Locked<Option<TextDisplay>> = Locked::new(None);
 
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);

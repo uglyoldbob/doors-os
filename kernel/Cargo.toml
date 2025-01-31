@@ -12,6 +12,7 @@ doors_macros = { path = "../doors_macros", version = "0.1.0" }
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
 enum_dispatch = "0.3.13"
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
+log = "0.4.20"
 spin = "0.9.8"
 volatile = "0.4.6"
 

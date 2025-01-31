@@ -189,6 +189,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
         if physical_address == 0 {
+            log::error!("Received a null pointer request size {:x}", size);
             loop {}
         }
         if physical_address < (1 << 22) {
@@ -227,12 +228,6 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
 
             let mut p = self.pageman.lock();
             let e = p.map_addresses_read_only(bufaddr, start, realsize);
-            doors_macros2::kernel_print!(
-                "Dumping full mapped structure {:x}, size {:x}\r\n",
-                size_before_allocation,
-                buf.len()
-            );
-            hex_dump(&buf.as_ref()[size_before_allocation..], false, false);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
             }
@@ -355,7 +350,7 @@ fn handle_acpi(
 
     doors_macros2::kernel_print!("Trying DSDT\r\n");
 
-    if false {
+    if true {
         if let Ok(v) = acpi.dsdt() {
             doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
             PAGING_MANAGER
@@ -369,7 +364,7 @@ fn handle_acpi(
             }
         }
     }
-    if false {
+    if true {
         doors_macros2::kernel_print!("About to iterate ssdts\r\n");
         for v in acpi.ssdts() {
             doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
@@ -386,7 +381,7 @@ fn handle_acpi(
         }
     }
 
-    //doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
+    doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
 
     for header in acpi.headers() {
         doors_macros2::kernel_print!(
@@ -554,8 +549,8 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
             p.set_physical_address_size(cap.physical_address_bits());
             doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
         }
-        //handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-        //doors_macros2::kernel_print!("Done with acpi handling\r\n");
+        handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
+        doors_macros2::kernel_print!("Done with acpi handling\r\n");
         super::setup_pci(self);
     }
 }

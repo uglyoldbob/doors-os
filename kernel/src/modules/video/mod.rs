@@ -1,6 +1,6 @@
 //! Video related kernel modules
 
-use alloc::vec::Vec;
+use alloc::{string::ToString, vec::Vec};
 use fonts::{FixedWidthFont, VariableWidthFont};
 use pixels::FullColor;
 use vga::DEFAULT_PALETTE;
@@ -434,6 +434,33 @@ pub enum TextDisplay {
     FramebufferTextPalette(FramebufferTextMode<pixels::Palette<u8>>),
     /// Full color framebuffer
     FramebufferTextFull(FramebufferTextMode<pixels::FullColor<u32>>),
+}
+
+impl log::Log for crate::Locked<Option<TextDisplay>> {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record) {
+        let mut s = self.lock();
+        if let Some(s) = s.as_mut() {
+            s.print_str("LOG RECORD\r\n");
+            s.print_str(&record.level().to_string());
+            s.print_str(": ");
+            let target = if !record.target().is_empty() {
+                record.target()
+            } else {
+                record.module_path().unwrap_or_default()
+            };
+            s.print_str(target);
+            s.print_str(&alloc::format!("{}", record.args()));
+            s.print_str("\r\n");
+        } else {
+            panic!();
+        }
+    }
+
+    fn flush(&self) {}
 }
 
 /// Enables sending video text over a serial port

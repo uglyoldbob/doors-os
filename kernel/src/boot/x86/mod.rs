@@ -252,6 +252,12 @@ fn setup_serial() {
         let mut v = crate::VGA.lock();
         v.replace(sd);
         drop(v);
+        match log::set_logger(&crate::VGA) {
+            Ok(a) => doors_macros2::kernel_print!("logger set\r\n"),
+            Err(e) => doors_macros2::kernel_print!("Logger failed to set {:?}\r\n", e),
+        }
+        log::set_max_level(log::LevelFilter::Trace);
+        log::error!("This is a test of the log system");
     }
 }
 
