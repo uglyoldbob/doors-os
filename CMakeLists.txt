@@ -87,6 +87,8 @@ add_custom_command(
     DEPENDS image_cd64
     COMMAND ${VIRTUALBOX_MANAGE} createvm --name doors-os-64 --ostype "Doors" --register --basefolder `pwd`
     COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --uart1 0x3f8 4 --uartmode1 file serial.log
+    COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --nic1 nat
+    COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --nictype1 82540EM
     COMMAND ${VIRTUALBOX_MANAGE} storagectl doors-os-64 --name "IDE Controller" --add ide --controller PIIX4
     COMMAND ${VIRTUALBOX_MANAGE} storageattach doors-os-64 --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ./cd64.iso
 )

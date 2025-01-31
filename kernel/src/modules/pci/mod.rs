@@ -1,7 +1,7 @@
 //! Code for the pci bus
 
 use crate::boot::x86::IoReadWrite;
-use crate::modules::video::{hex_dump, TextDisplayTrait};
+use crate::modules::video::{hex_dump, hex_dump_generic, TextDisplayTrait};
 use crate::{Locked, LockedArc};
 use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
@@ -1282,23 +1282,25 @@ enum MemoryOrIo {
 
 impl MemoryOrIo {
     fn hex_dump(&self) {
-        let len = 256;
         match self {
             MemoryOrIo::Memory(m) => {
-                let buf = &m[0..len];
-                hex_dump(buf, true, false);
+                let mut buffer = [0u32; 32];
+                for (i, b) in buffer.iter_mut().enumerate() {
+                    *b = self.read(i as u16);
+                }
+                hex_dump_generic(&buffer, true, false);
             }
             MemoryOrIo::Io(io_port_array) => todo!(),
         }
     }
 
-    fn read(&mut self, address: u16) -> u32 {
+    fn read(&self, address: u16) -> u32 {
         match self {
             MemoryOrIo::Memory(mem) => {
-                let a: &mut u8 = &mut mem[address as usize];
+                let a: &u8 = &mem[address as usize];
                 let b: *const u8 = a as *const u8;
                 let c: &u32 = unsafe { &*(b as *const u32) };
-                *c
+                unsafe { core::ptr::read_volatile(c) }
             }
             MemoryOrIo::Io(io) => {
                 let mut iop: crate::IoPortRef<u32> = io.port(address);
@@ -1313,7 +1315,7 @@ impl MemoryOrIo {
                 let a: &mut u8 = &mut mem[address as usize];
                 let b: *mut u8 = a as *mut u8;
                 let c: &mut u32 = unsafe { &mut *(b as *mut u32) };
-                *c = val;
+                unsafe { core::ptr::write_volatile(c, val) };
             }
             MemoryOrIo::Io(io) => {
                 let mut iop: crate::IoPortRef<u32> = io.port(address);
@@ -1341,19 +1343,26 @@ struct IntelPro1000Device {
     bar0: MemoryOrIo,
     /// the io space allocated for the device
     io: crate::IoPortArray<'static>,
+    /// Is the eeprom present?
+    eeprom_present: Option<bool>,
 }
 
 impl IntelPro1000Device {
     fn detect_eeprom(&mut self) -> bool {
-        self.bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
-        for _i in 0..1000 {
-            let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
-            doors_macros2::kernel_print!("EEPROM READ AS {:x}\r\n", val);
-            if (val & 0x10) != 0 {
-                return true;
+        if self.eeprom_present.is_none() {
+            self.bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
+            self.eeprom_present = Some(false);
+            for _i in 0..10000 {
+                let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+                let val2 = val & 0x10;
+                doors_macros2::kernel_print!("EEPROM DETECT: {:x} {:x}\r\n", val, val2);
+                if (val2) != 0 {
+                    self.eeprom_present = Some(true);
+                    break;
+                }
             }
         }
-        false
+        self.eeprom_present.unwrap()
     }
 
     fn read_from_eeprom(&mut self, addr: u8) -> u16 {
@@ -1366,6 +1375,8 @@ impl IntelPro1000Device {
                 let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
                 if (a & (0x10)) != 0 {
                     return (a >> 16) as u16;
+                } else {
+                    //doors_macros2::kernel_print!("VAL1: {:x}\r\n", a);
                 }
             }
         } else {
@@ -1377,6 +1388,8 @@ impl IntelPro1000Device {
                 let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
                 if (a & (0x2)) != 0 {
                     return (a >> 16) as u16;
+                } else {
+                    //doors_macros2::kernel_print!("VAL2: {:x}\r\n", a);
                 }
             }
         }
@@ -1427,24 +1440,13 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 None
             }
         };
-        let io = {
-            if let Some(bar) = &mut bars[1] {
-                if bar.is_size_valid() {
-                    doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
-                    bar.print();
-                    let d = bar.get_io(system, cs, bus, dev, f, config);
-                    if let Some(d) = &d {
-                        doors_macros2::kernel_print!("Got io at {:x}\r\n", d.get_base());
-                        //self.memory = Some(d);
-                    }
-                    d
-                } else {
-                    None
-                }
+        let io = bars.iter_mut().find_map(|a| {
+            if let Some(a) = a {
+                a.get_io(system, cs, bus, dev, f, config)
             } else {
                 None
             }
-        };
+        });
         let configspace = f.get_all_configuration(cs, bus, dev);
         configspace.dump("\t");
         if let Some(m) = bar0 {
@@ -1458,9 +1460,15 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     bars,
                     bar0: m,
                     io: i,
+                    eeprom_present: None,
                 };
-                doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
                 d.bar0.hex_dump();
+                doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
+                let mut data = [0u16; 256];
+                for (i, data) in data.iter_mut().enumerate() {
+                    *data = d.read_from_eeprom(i as u8);
+                }
+                hex_dump_generic(&data, true, false);
             }
         }
     }
