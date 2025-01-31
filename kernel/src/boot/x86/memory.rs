@@ -281,12 +281,12 @@ impl<'a> HeapManager<'a> {
             }
             if times == 1 {
                 if let Err(_) = self.expand_with_physical_memory(layout.size() + layout.align()) {
-                    doors_macros2::kernel_print!("OUT OF MEMORY\r\n");
+                    doors_macros2::kernel_print!("OUT OF MEMORY 1\r\n");
                     return core::ptr::null_mut();
                 }
             }
             if times == 2 {
-                doors_macros2::kernel_print!("OUT OF MEMORY\r\n");
+                doors_macros2::kernel_print!("OUT OF MEMORY 2\r\n");
                 return core::ptr::null_mut();
             }
         }

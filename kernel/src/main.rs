@@ -46,6 +46,11 @@ pub fn address<T>(v: &T) -> usize {
     v as *const T as usize
 }
 
+/// The the address of a slice variable
+pub fn slice_address<T>(v: &[T]) -> usize {
+    v as *const [T] as *const T as usize
+}
+
 /// A wrapper around box that allows for traits to be implemented on a Box
 pub struct Box<T> {
     /// The contained object

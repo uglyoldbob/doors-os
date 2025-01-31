@@ -1,8 +1,9 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use crate::modules::video::hex_dump;
+use crate::modules::video::hex_dump_generic;
 use crate::modules::video::TextDisplayTrait;
-use crate::modules::video::{hex_dump_no_ascii, hex_dump_no_ascii_generic};
-use crate::{Locked, LockedArc};
+use crate::Locked;
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
 use acpi::madt::Madt;
@@ -11,6 +12,7 @@ use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::alloc::Allocator;
 use core::ptr::NonNull;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
@@ -159,15 +161,16 @@ pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
 
 /// The memory allocator for pci style memory, where the size and alignment are the same
-pub static PCI_MEMORY_ALLOCATOR: Locked<memory::PciMemoryAllocator> =
-    Locked::new(memory::PciMemoryAllocator::new(&VIRTUAL_MEMORY_ALLOCATOR));
+pub static PCI_MEMORY_ALLOCATOR: Locked<memory::PciMemoryAllocator> = Locked::new(
+    memory::PciMemoryAllocator::new(&PAGE_ALLOCATOR, &VIRTUAL_MEMORY_ALLOCATOR, &PAGING_MANAGER),
+);
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
 /// A structure for testing
 struct Big {
     /// Some data to take up space
-    data: u128,
+    _data: u128,
 }
 
 #[derive(Clone)]
@@ -185,6 +188,9 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
+        if physical_address == 0 {
+            loop {}
+        }
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -194,15 +200,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
                 *self,
             )
         } else {
-            let size = if size < core::mem::size_of::<T>() {
-                core::mem::size_of::<T>()
-            } else {
-                if size == 0x24 {
-                    0xF00
-                } else {
-                    size
-                }
-            };
+            doors_macros2::kernel_print!("ACPI MAP {:x} size {:x}\r\n", physical_address, size);
             let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
             let end_remainder =
                 (size_before_allocation + size) % core::mem::size_of::<memory::Page>();
@@ -214,15 +212,31 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
             let start = physical_address - size_before_allocation;
             let realsize = size_before_allocation + size + size_after_allocation;
 
-            let mut b: Vec<u8, &Locked<memory::BumpAllocator>> =
-                Vec::with_capacity_in(realsize, self.vmm);
+            let layout = core::alloc::Layout::from_size_align(
+                realsize,
+                core::mem::size_of::<memory::Page>(),
+            )
+            .unwrap();
+            let buf = self.vmm.allocate(layout).unwrap();
+            let bufaddr = crate::slice_address(buf.as_ref());
+            doors_macros2::kernel_print!(
+                "Got a virtual addres {:x}, size {:x}\r\n",
+                bufaddr,
+                buf.len()
+            );
+
             let mut p = self.pageman.lock();
-            let e =
-                p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
+            let e = p.map_addresses_read_only(bufaddr, start, realsize);
+            doors_macros2::kernel_print!(
+                "Dumping full mapped structure {:x}, size {:x}\r\n",
+                size_before_allocation,
+                buf.len()
+            );
+            hex_dump(&buf.as_ref()[size_before_allocation..], false, false);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
             }
-            let vstart = b.as_mut_ptr() as usize + size_before_allocation;
+            let vstart = bufaddr + size_before_allocation;
 
             let r = acpi::PhysicalMapping::new(
                 physical_address,
@@ -231,18 +245,42 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
                 size,
                 *self,
             );
-            let a: usize = r.virtual_start().addr().into();
-            b.leak();
+            doors_macros2::kernel_print!("Dumping mapped structure\r\n");
+            hex_dump_generic(r.virtual_start().as_ref(), false, false);
+            let _a: usize = r.virtual_start().addr().into();
+            doors_macros2::kernel_print!(
+                "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
+                r.virtual_start().as_ptr() as usize,
+                r.physical_start(),
+                r.region_length(),
+                r.mapped_length()
+            );
+            doors_macros2::kernel_print!("sizeof T is {:x}\r\n", core::mem::size_of::<T>());
             r
         }
     }
 
     fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
         if region.physical_start() >= (1 << 22) {
+            let acpi = acpi::PhysicalMapping::handler(region);
             let mut p = region.handler().pageman.lock();
             let s = region.virtual_start().as_ptr() as usize;
             let s = s - s % core::mem::size_of::<memory::Page>() as usize;
-            p.unmap_mapped_pages(s, region.mapped_length() as usize);
+            let length = region.region_length();
+            doors_macros2::kernel_print!(
+                "ACPI UNMAP virtual {:x} physical {:x} size {:x} {:x}\r\n",
+                region.virtual_start().as_ptr() as usize,
+                region.physical_start(),
+                length,
+                region.mapped_length()
+            );
+            doors_macros2::kernel_print!("sizeof T is {:x}\r\n", core::mem::size_of::<T>());
+            p.unmap_mapped_pages(s, length);
+            let ptr = s as *mut u8;
+            let layout =
+                core::alloc::Layout::from_size_align(length, core::mem::size_of::<memory::Page>())
+                    .unwrap();
+            unsafe { acpi.vmm.deallocate(NonNull::new_unchecked(ptr), layout) };
         }
     }
 }
@@ -253,6 +291,23 @@ fn handle_acpi(
     acpi_handler: impl AcpiHandler,
     aml: &mut aml::AmlContext,
 ) {
+    doors_macros2::kernel_print!(
+        "Size of acpi::fadt::Fadt is {:x}\r\n",
+        core::mem::size_of::<acpi::fadt::Fadt>()
+    );
+    doors_macros2::kernel_print!(
+        "Size of acpi::hpet::HpetTable is {:x}\r\n",
+        core::mem::size_of::<acpi::hpet::HpetTable>()
+    );
+    doors_macros2::kernel_print!(
+        "Size of acpi::madt::Madt is {:x}\r\n",
+        core::mem::size_of::<acpi::madt::Madt>()
+    );
+    doors_macros2::kernel_print!(
+        "Size of acpi::rsdp::Rsdp is {:x}\r\n",
+        core::mem::size_of::<acpi::rsdp::Rsdp>()
+    );
+
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
         doors_macros2::kernel_print!(
             "rsdpv2 at {:X} {:x} revision {}\r\n",
@@ -300,7 +355,7 @@ fn handle_acpi(
 
     doors_macros2::kernel_print!("Trying DSDT\r\n");
 
-    if true {
+    if false {
         if let Ok(v) = acpi.dsdt() {
             doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
             PAGING_MANAGER
@@ -314,7 +369,8 @@ fn handle_acpi(
             }
         }
     }
-    if true {
+    if false {
+        doors_macros2::kernel_print!("About to iterate ssdts\r\n");
         for v in acpi.ssdts() {
             doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
             PAGING_MANAGER
@@ -330,7 +386,7 @@ fn handle_acpi(
         }
     }
 
-    doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
+    //doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
 
     for header in acpi.headers() {
         doors_macros2::kernel_print!(
@@ -345,11 +401,11 @@ fn handle_acpi(
                 doors_macros2::kernel_print!("TODO Parse the Waet table\r\n");
             }
             acpi::sdt::Signature::HPET => match acpi.find_table::<HpetTable>() {
-                Ok(hpet) => doors_macros2::kernel_print!("TODO Parse the Hpet table\r\n"),
+                Ok(_hpet) => doors_macros2::kernel_print!("TODO Parse the Hpet table\r\n"),
                 Err(e) => doors_macros2::kernel_print!("HPET ERROR {:?}\r\n", e),
             },
             acpi::sdt::Signature::FADT => match acpi.find_table::<Fadt>() {
-                Ok(fadt) => doors_macros2::kernel_print!("TODO Parse the Fadt\r\n"),
+                Ok(_fadt) => doors_macros2::kernel_print!("TODO Parse the Fadt\r\n"),
                 Err(e) => doors_macros2::kernel_print!("FADT ERROR {:?}\r\n", e),
             },
             acpi::sdt::Signature::MADT => match acpi.find_table::<Madt>() {
@@ -365,10 +421,10 @@ fn handle_acpi(
                                     lapic.flags as u32
                                 );
                             }
-                            acpi::madt::MadtEntry::IoApic(ioapic) => {
+                            acpi::madt::MadtEntry::IoApic(_ioapic) => {
                                 doors_macros2::kernel_print!("madt ioapic entry\r\n");
                             }
-                            acpi::madt::MadtEntry::InterruptSourceOverride(i) => {
+                            acpi::madt::MadtEntry::InterruptSourceOverride(_i) => {
                                 doors_macros2::kernel_print!("madt int source override\r\n");
                             }
                             acpi::madt::MadtEntry::NmiSource(_) => todo!(),
@@ -498,106 +554,120 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
             p.set_physical_address_size(cap.physical_address_bits());
             doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
         }
-        handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-
+        //handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
+        //doors_macros2::kernel_print!("Done with acpi handling\r\n");
         super::setup_pci(self);
     }
 }
 
 impl aml::Handler for AmlHandler {
-    fn read_u8(&self, address: usize) -> u8 {
+    fn read_u8(&self, _address: usize) -> u8 {
         doors_macros2::kernel_print!("r1\r\n");
         todo!()
     }
 
-    fn read_u16(&self, address: usize) -> u16 {
+    fn read_u16(&self, _address: usize) -> u16 {
         doors_macros2::kernel_print!("r2\r\n");
         todo!()
     }
 
-    fn read_u32(&self, address: usize) -> u32 {
+    fn read_u32(&self, _address: usize) -> u32 {
         doors_macros2::kernel_print!("r3\r\n");
         todo!()
     }
 
-    fn read_u64(&self, address: usize) -> u64 {
+    fn read_u64(&self, _address: usize) -> u64 {
         doors_macros2::kernel_print!("r4\r\n");
         todo!()
     }
 
-    fn write_u8(&mut self, address: usize, value: u8) {
+    fn write_u8(&mut self, _address: usize, _value: u8) {
         doors_macros2::kernel_print!("w1\r\n");
         todo!()
     }
 
-    fn write_u16(&mut self, address: usize, value: u16) {
+    fn write_u16(&mut self, _address: usize, _value: u16) {
         doors_macros2::kernel_print!("w2\r\n");
         todo!()
     }
 
-    fn write_u32(&mut self, address: usize, value: u32) {
+    fn write_u32(&mut self, _address: usize, _value: u32) {
         doors_macros2::kernel_print!("w3\r\n");
         todo!()
     }
 
-    fn write_u64(&mut self, address: usize, value: u64) {
+    fn write_u64(&mut self, _address: usize, _value: u64) {
         doors_macros2::kernel_print!("w4\r\n");
         todo!()
     }
 
-    fn read_io_u8(&self, port: u16) -> u8 {
+    fn read_io_u8(&self, _port: u16) -> u8 {
         doors_macros2::kernel_print!("i1\r\n");
         todo!()
     }
 
-    fn read_io_u16(&self, port: u16) -> u16 {
+    fn read_io_u16(&self, _port: u16) -> u16 {
         doors_macros2::kernel_print!("i2\r\n");
         todo!()
     }
 
-    fn read_io_u32(&self, port: u16) -> u32 {
+    fn read_io_u32(&self, _port: u16) -> u32 {
         doors_macros2::kernel_print!("i3\r\n");
         todo!()
     }
 
-    fn write_io_u8(&self, port: u16, value: u8) {
+    fn write_io_u8(&self, _port: u16, _value: u8) {
         doors_macros2::kernel_print!("o1\r\n");
         todo!()
     }
 
-    fn write_io_u16(&self, port: u16, value: u16) {
+    fn write_io_u16(&self, _port: u16, _value: u16) {
         doors_macros2::kernel_print!("o2\r\n");
         todo!()
     }
 
-    fn write_io_u32(&self, port: u16, value: u32) {
+    fn write_io_u32(&self, _port: u16, _value: u32) {
         doors_macros2::kernel_print!("o3\r\n");
         todo!()
     }
 
-    fn read_pci_u8(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u8 {
+    fn read_pci_u8(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16) -> u8 {
         doors_macros2::kernel_print!("pr1\r\n");
         todo!()
     }
 
-    fn read_pci_u16(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u16 {
+    fn read_pci_u16(
+        &self,
+        _segment: u16,
+        _bus: u8,
+        _device: u8,
+        _function: u8,
+        _offset: u16,
+    ) -> u16 {
         doors_macros2::kernel_print!("pr2\r\n");
         todo!()
     }
 
-    fn read_pci_u32(&self, segment: u16, bus: u8, device: u8, function: u8, offset: u16) -> u32 {
+    fn read_pci_u32(
+        &self,
+        _segment: u16,
+        _bus: u8,
+        _device: u8,
+        _function: u8,
+        _offset: u16,
+    ) -> u32 {
         doors_macros2::kernel_print!("pr3\r\n");
         todo!()
     }
 
     fn write_pci_u8(
         &self,
-        segment: u16,
-        bus: u8,
-        device: u8,
-        function: u8,
-        offset: u16,
-        value: u8,
+        _segment: u16,
+        _bus: u8,
+        _device: u8,
+        _function: u8,
+        _offset: u16,
+        _value: u8,
     ) {
         doors_macros2::kernel_print!("pw1\r\n");
         todo!()
@@ -605,12 +675,12 @@ impl aml::Handler for AmlHandler {
 
     fn write_pci_u16(
         &self,
-        segment: u16,
-        bus: u8,
-        device: u8,
-        function: u8,
-        offset: u16,
-        value: u16,
+        _segment: u16,
+        _bus: u8,
+        _device: u8,
+        _function: u8,
+        _offset: u16,
+        _value: u16,
     ) {
         doors_macros2::kernel_print!("pw2\r\n");
         todo!()
@@ -618,12 +688,12 @@ impl aml::Handler for AmlHandler {
 
     fn write_pci_u32(
         &self,
-        segment: u16,
-        bus: u8,
-        device: u8,
-        function: u8,
-        offset: u16,
-        value: u32,
+        _segment: u16,
+        _bus: u8,
+        _device: u8,
+        _function: u8,
+        _offset: u16,
+        _value: u32,
     ) {
         doors_macros2::kernel_print!("pw3\r\n");
         todo!()
@@ -663,6 +733,7 @@ pub extern "C" fn start64() -> ! {
             pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
+        pal.done_adding_memory_areas();
     } else {
         panic!("Physical memory manager unavailable\r\n");
     };
@@ -674,20 +745,24 @@ pub extern "C" fn start64() -> ! {
 
     PAGING_MANAGER.lock().init();
 
-    if true {
-        let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
-        let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
-        {
-            let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
+    super::setup_serial();
+
+    if false {
+        if true {
+            let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
+            let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
+            {
+                let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
+                let mut v = crate::VGA.lock();
+                v.replace(a);
+            }
+        } else {
+            let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
+            let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
             let mut v = crate::VGA.lock();
-            v.replace(a);
+            v.replace(b);
+            drop(v);
         }
-    } else {
-        let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
-        let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
-        let mut v = crate::VGA.lock();
-        v.replace(b);
-        drop(v);
     }
 
     let apic_msr = x86_64::registers::model_specific::Msr::new(0x1b);
@@ -717,7 +792,7 @@ pub extern "C" fn start64() -> ! {
         doors_macros2::kernel_print!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize);
     }
 
-    let test: Box<[Big]> = Box::new([Big { data: 5 }; 32]);
+    let test: Box<[Big]> = Box::new([Big { _data: 5 }; 32]);
     doors_macros2::kernel_print!("test var is {:p}\r\n", test.as_ptr());
     drop(test);
 

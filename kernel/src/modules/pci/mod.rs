@@ -1,7 +1,7 @@
 //! Code for the pci bus
 
 use crate::boot::x86::IoReadWrite;
-use crate::modules::video::TextDisplayTrait;
+use crate::modules::video::{hex_dump, TextDisplayTrait};
 use crate::{Locked, LockedArc};
 use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
@@ -750,9 +750,12 @@ impl BarSpace {
                     &crate::PCI_MEMORY_ALLOCATOR,
                 );
                 let a = unsafe { a.assume_init() };
-                let addr = a.as_ptr() as u32;
+                doors_macros2::kernel_print!("PCI MEMORY IS AT {:p}\r\n", a.as_ref());
+                let addr = crate::PCI_MEMORY_ALLOCATOR
+                    .lookup_allocation(a.as_ref())
+                    .unwrap();
                 let newbar = BarSpace::Memory32 {
-                    base: addr,
+                    base: addr as u32,
                     size: *size,
                     flags: *flags,
                     index: *index,
@@ -1278,12 +1281,24 @@ enum MemoryOrIo {
 }
 
 impl MemoryOrIo {
+    fn hex_dump(&self) {
+        let len = 256;
+        match self {
+            MemoryOrIo::Memory(m) => {
+                let buf = &m[0..len];
+                hex_dump(buf, true, false);
+            }
+            MemoryOrIo::Io(io_port_array) => todo!(),
+        }
+    }
+
     fn read(&mut self, address: u16) -> u32 {
         match self {
             MemoryOrIo::Memory(mem) => {
                 let a: &mut u8 = &mut mem[address as usize];
-                doors_macros2::kernel_print!("Need to do a read at {:x}\r\n", a);
-                todo!();
+                let b: *const u8 = a as *const u8;
+                let c: &u32 = unsafe { &*(b as *const u32) };
+                *c
             }
             MemoryOrIo::Io(io) => {
                 let mut iop: crate::IoPortRef<u32> = io.port(address);
@@ -1295,12 +1310,9 @@ impl MemoryOrIo {
     fn write(&mut self, address: u16, val: u32) {
         match self {
             MemoryOrIo::Memory(mem) => {
-                doors_macros2::kernel_print!("Need to do a write at {:x}\r\n", address);
                 let a: &mut u8 = &mut mem[address as usize];
-                doors_macros2::kernel_print!("Need to do a write at {:p}\r\n", a);
                 let b: *mut u8 = a as *mut u8;
                 let c: &mut u32 = unsafe { &mut *(b as *mut u32) };
-                doors_macros2::kernel_print!("Need to do a write at {:p}\r\n", c);
                 *c = val;
             }
             MemoryOrIo::Io(io) => {
@@ -1336,11 +1348,38 @@ impl IntelPro1000Device {
         self.bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
         for _i in 0..1000 {
             let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+            doors_macros2::kernel_print!("EEPROM READ AS {:x}\r\n", val);
             if (val & 0x10) != 0 {
                 return true;
             }
         }
         false
+    }
+
+    fn read_from_eeprom(&mut self, addr: u8) -> u16 {
+        if self.detect_eeprom() {
+            self.bar0.write(
+                IntelPro1000Registers::Eeprom as u16,
+                1 | ((addr as u32) << 8),
+            );
+            loop {
+                let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+                if (a & (0x10)) != 0 {
+                    return (a >> 16) as u16;
+                }
+            }
+        } else {
+            self.bar0.write(
+                IntelPro1000Registers::Eeprom as u16,
+                1 | ((addr as u32) << 2),
+            );
+            loop {
+                let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+                if (a & (0x2)) != 0 {
+                    return (a >> 16) as u16;
+                }
+            }
+        }
     }
 }
 
@@ -1421,6 +1460,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     io: i,
                 };
                 doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
+                d.bar0.hex_dump();
             }
         }
     }

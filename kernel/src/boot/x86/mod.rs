@@ -6,7 +6,6 @@ use crate::modules::pci::PciTrait;
 use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
 use crate::LockedArc;
-use lazy_static::lazy_static;
 
 #[cfg(target_arch = "x86_64")]
 pub mod boot64;
@@ -236,31 +235,28 @@ fn setup_pci(system: &mut impl crate::kernel::SystemTrait) {
     h.print();
 }
 
-/// This function is called by the entrance module for the kernel.
-fn main_boot(mut system: crate::kernel::System) -> ! {
-    {
-        let mut serials = crate::kernel::SERIAL.lock();
-        for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
-            if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base) {
-                doors_macros2::kernel_print!("Registered serial port {:x}\r\n", base);
-                let com = crate::modules::serial::Serial::PcComPort(LockedArc::new(com));
-                crate::modules::serial::SerialTrait::sync_transmit_str(
-                    &com,
-                    "Serial port test\r\n",
-                );
-                serials.register_serial(com);
-            }
-        }
-
-        if serials.exists(0) {
-            let s = serials.module(0);
-            let sd = s.make_text_display();
-            let mut v = crate::VGA.lock();
-            v.replace(sd);
-            drop(v);
+fn setup_serial() {
+    let mut serials = crate::kernel::SERIAL.lock();
+    for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
+        if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base) {
+            doors_macros2::kernel_print!("Registered serial port {:x}\r\n", base);
+            let com = crate::modules::serial::Serial::PcComPort(LockedArc::new(com));
+            crate::modules::serial::SerialTrait::sync_transmit_str(&com, "Serial port test\r\n");
+            serials.register_serial(com);
         }
     }
 
+    if serials.exists(0) {
+        let s = serials.module(0);
+        let sd = s.make_text_display();
+        let mut v = crate::VGA.lock();
+        v.replace(sd);
+        drop(v);
+    }
+}
+
+/// This function is called by the entrance module for the kernel.
+fn main_boot(system: crate::kernel::System) -> ! {
     doors_macros2::kernel_print!("This is a test\r\n");
     super::super::main(system);
 }

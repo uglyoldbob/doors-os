@@ -8,7 +8,7 @@ use multiboot2::{MemoryAreaType, MemoryMapTag};
 
 use crate::Locked;
 
-use crate::modules::video::TextDisplayTrait;
+use crate::modules::video::{hex_dump_generic, TextDisplayTrait};
 
 extern "C" {
     /// A page table for the system to boot with.
@@ -37,32 +37,6 @@ pub struct BumpAllocator {
     allocate_pages: Option<&'static mut PageTable>,
 }
 
-impl Locked<BumpAllocator> {
-    /// Allocate some memory not backed by ram, normally used for allocating memory for memory mapped devices like pci bar space
-    pub fn allocate_nonram_memory(
-        &self,
-        size: usize,
-        alignment: usize,
-    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let mut vmm = self.lock();
-        let p = vmm.peek() + 1;
-        let start = (alignment - 1) & p;
-        let waste = if start != 0 { alignment - start } else { 0 };
-        if waste != 0 {
-            vmm.waste_space(waste);
-        }
-        let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
-        vmm.run_allocation(layout)
-    }
-
-    /// Deallocate memory allocated with [allocate_nonram_memory]
-    fn deallocate_nonram_memory(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
-        let layout2 = layout.align_to(layout.size()).unwrap();
-        let mut s = self.lock();
-        s.run_deallocation(ptr, layout2);
-    }
-}
-
 impl BumpAllocator {
     /// Create a new bump allocator, starting at the specified address
     pub const fn new(addr: usize) -> Self {
@@ -74,9 +48,35 @@ impl BumpAllocator {
         }
     }
 
+    /// Allocate some memory not backed by ram, normally used for allocating memory for memory mapped devices like pci bar space
+    pub fn allocate_nonram_memory(
+        &mut self,
+        size: usize,
+        alignment: usize,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let p = self.peek();
+        let start = (alignment - 1) & p;
+        let waste = if start != 0 { alignment - start } else { 0 };
+        if waste != 0 {
+            self.waste_space(waste);
+        }
+        let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+        self.run_allocation(layout)
+    }
+
+    /// Deallocate memory allocated with [allocate_nonram_memory]
+    fn deallocate_nonram_memory(
+        &mut self,
+        ptr: core::ptr::NonNull<u8>,
+        layout: core::alloc::Layout,
+    ) {
+        let layout2 = layout.align_to(layout.size()).unwrap();
+        self.run_deallocation(ptr, layout2);
+    }
+
     /// Peek at what the next issued address will start at
     pub fn peek(&mut self) -> usize {
-        self.end
+        self.end + 1
     }
 
     /// Relocate the bump allocator to a new address, but only if no addresses are currently out
@@ -131,11 +131,6 @@ impl BumpAllocator {
         &mut self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        doors_macros2::kernel_print!(
-            "Running alloc size {:x} @ {:x}\r\n",
-            layout.size(),
-            self.end + 1
-        );
         let align_mask = layout.align() - 1;
         let align_error = (self.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
@@ -169,11 +164,10 @@ impl BumpAllocator {
                 oldpage += 0x200000;
             }
         }
-
         Ok(ptr)
     }
 
-    fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
+    fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
         if let Some(a) = self.last[0] {
             if a.addr == ptr.addr().into() {
                 self.end -= a.bumpsize;
@@ -314,12 +308,18 @@ pub struct SimpleMemoryManager<'a> {
     pub bitmaps: Option<Vec<Bitmap<'a, Page>, &'a Locked<BumpAllocator>>>,
     /// The memory manager to get virtual memory, used to allocate space for the bitmaps
     mm: &'a crate::Locked<BumpAllocator>,
+    /// The bump allocator for any additional memory for the system
+    extra_mem: BumpAllocator,
 }
 
 impl<'a> SimpleMemoryManager<'a> {
     /// Create a new instance of the physical memory manager.
     pub const fn new(mm: &'a crate::Locked<BumpAllocator>) -> Self {
-        Self { bitmaps: None, mm }
+        Self {
+            bitmaps: None,
+            mm,
+            extra_mem: BumpAllocator::new(0x100000),
+        }
     }
 
     /// Assumes memory currently allocated by the bump allocator, as ram currently in use and marks it appropriately
@@ -353,6 +353,23 @@ impl<'a> SimpleMemoryManager<'a> {
         }
     }
 
+    /// Indicate that there are no more memory areas to add to the memory manager
+    pub fn done_adding_memory_areas(&mut self) {
+        let mut highest_address: usize = 0;
+        for i in self.bitmaps.as_ref().unwrap() {
+            let addr: usize = i.start + i.num_blocks * core::mem::size_of::<Page>();
+            if addr > highest_address {
+                highest_address = addr;
+            }
+        }
+        self.extra_mem.relocate(highest_address, highest_address);
+    }
+
+    /// Peek at the next available memory address
+    pub fn peek(&mut self) -> usize {
+        self.extra_mem.peek()
+    }
+
     /// Initialize an instance of a physical memory manager
     pub fn init(&mut self, d: &MemoryMapTag) {
         let avail = d
@@ -365,7 +382,7 @@ impl<'a> SimpleMemoryManager<'a> {
         self.bitmaps = Some(bitmaps);
     }
 
-    /// Maps a new page, returning the address of that page. It wil be l3eaked from the system,
+    /// Maps a new page, returning the address of that page. It wil be leaked from the system,
     pub fn get_complete_virtual_page(&mut self) -> usize {
         let a: Box<MaybeUninit<PageTable>, &'a Locked<BumpAllocator>> = Box::new_uninit_in(self.mm);
         Box::<MaybeUninit<PageTable>, &'a Locked<BumpAllocator>>::leak(a)
@@ -411,14 +428,35 @@ unsafe impl<'a> core::alloc::Allocator for Locked<SimpleMemoryManager<'a>> {
 
 /// A struct for allocating pci memory, where the alignment and size are the same
 pub struct PciMemoryAllocator {
-    /// The allocator behind the scenes
-    allocator: &'static Locked<BumpAllocator>,
+    /// The allocator behind the scenes for physical memory
+    physical_allocator: &'static Locked<SimpleMemoryManager<'static>>,
+    /// The allocator behind the scenes for virtual memory
+    virtual_allocator: &'static Locked<BumpAllocator>,
+    /// The paging table manager, used to map additional memory into the heap as required.
+    mm: &'static crate::Locked<PagingTableManager<'static>>,
 }
 
 impl PciMemoryAllocator {
     /// Construct a new self
-    pub const fn new(allocator: &'static Locked<BumpAllocator>) -> Self {
-        Self { allocator }
+    pub const fn new(
+        physical_allocator: &'static Locked<SimpleMemoryManager<'static>>,
+        virtual_allocator: &'static Locked<BumpAllocator>,
+        mm: &'static crate::Locked<PagingTableManager<'static>>,
+    ) -> Self {
+        Self {
+            physical_allocator,
+            virtual_allocator,
+            mm,
+        }
+    }
+}
+
+impl Locked<PciMemoryAllocator> {
+    /// Lookup the physical address for an allocation previously made
+    pub fn lookup_allocation<T>(&self, ptr: &[T]) -> Option<usize> {
+        let s = self.lock();
+        let mut mm = s.mm.lock();
+        mm.lookup_physical_address(crate::slice_address(ptr))
     }
 }
 
@@ -428,13 +466,29 @@ unsafe impl core::alloc::Allocator for Locked<PciMemoryAllocator> {
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
         let s = self.lock();
-        s.allocator
-            .allocate_nonram_memory(layout.size(), layout.size())
+        let mut t = s.physical_allocator.lock();
+        let phys = t
+            .extra_mem
+            .allocate_nonram_memory(layout.size(), layout.size())?;
+        let virt = s.virtual_allocator.allocate(layout)?;
+        let mut mm = s.mm.lock();
+        let va = unsafe { virt.as_ref() }.as_ptr() as usize;
+        let pa = unsafe { phys.as_ref() }.as_ptr() as usize;
+        doors_macros2::kernel_print!("PCI: virtual {:x} physical {:x}\r\n", va, pa);
+        match mm.map_addresses_read_write(va, pa, layout.size()) {
+            Ok(()) => Ok(virt),
+            Err(()) => Err(core::alloc::AllocError),
+        }
     }
 
     unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
         let s = self.lock();
-        s.allocator.deallocate_nonram_memory(ptr, layout);
+        let mut t = s.physical_allocator.lock();
+        t.extra_mem.deallocate_nonram_memory(ptr, layout);
+        s.virtual_allocator.deallocate(ptr, layout);
+        let mut mm = s.mm.lock();
+        let va = ptr.as_ptr();
+        mm.unmap_mapped_pages(va as usize, layout.size());
     }
 }
 
@@ -453,7 +507,7 @@ impl PageTable {
     }
 
     /// Returns an address if the entry is marked present
-    fn get_entry(&mut self, index: usize) -> Option<u64> {
+    fn get_entry(&self, index: usize) -> Option<u64> {
         let d = self.entries[index];
         if (d & 1) != 0 {
             Some(d & !0xFFF)
@@ -525,6 +579,17 @@ impl<'a> PagingTableManager<'a> {
             mm,
             physical_mask: !0,
         }
+    }
+
+    /// Lookup the physical address corresponding to the specified address
+    pub fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64() as usize;
+        self.setup_cache(cr3, addr);
+        let table = unsafe { self.pt1.assume_init_ref() };
+        let offset = (addr >> 12) & 0x1FF;
+        let a = table.table.get_entry(offset);
+        a.map(|a| a as usize)
     }
 
     /// Set the physical mask according to the number of bits in physical address
@@ -662,11 +727,11 @@ impl<'a> PagingTableManager<'a> {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
             self.setup_cache(cr3, vaddr);
-            let pt1_index = ((vaddr >> 12) & 0x1FF) as usize;
+            let pt1_index = ((vaddr >> 12) & 0x3FF) as usize;
 
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
-                unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] =
-                    (paddr as u64 | 0x3) & self.physical_mask as u64;
+                let table = unsafe { &mut *self.pt1.as_mut_ptr() };
+                table.table.entries[pt1_index] = (paddr as u64 | 0x3) & self.physical_mask as u64;
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
             } else {
                 return Err(());
@@ -723,7 +788,7 @@ impl<'a> PagingTableManager<'a> {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64() as usize;
 
-        for i in (0..size).step_by(core::mem::size_of::<Page>()) {
+        for i in (0..size).step_by(core::mem::size_of::<Page>()).rev() {
             let vaddr = virtual_address + i;
             self.setup_cache(cr3, vaddr);
             let pt1_index = ((vaddr >> 12) & 0x1FF) as usize;
@@ -766,8 +831,9 @@ impl<'a> PagingTableManager<'a> {
         self.setup_cache(cr3, address);
 
         let pt1_index = ((address >> 12) & 0x1FF) as usize;
-
-        if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
+        doors_macros2::kernel_print!("Attempting to get a new page for {:x}\r\n", address);
+        let value = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index];
+        if (value & 1) == 0 {
             let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
                 Box::new_in(PageTable::new(), self.mm);
             let entry: &mut PageTable =
@@ -775,8 +841,10 @@ impl<'a> PagingTableManager<'a> {
             let addr = entry as *const PageTable as usize;
             unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] = addr as u64 | 0x3;
             x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(address as u64));
+            doors_macros2::kernel_print!("Got a page\r\n");
             Ok(())
         } else {
+            doors_macros2::kernel_print!("ERROR {:x}\r\n", value);
             Err(())
         }
     }
