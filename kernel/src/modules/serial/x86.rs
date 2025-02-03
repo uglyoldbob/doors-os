@@ -1,9 +1,9 @@
 //! Serial port code for x86 serial ports
 
-use crate::boot::x86::IoPortArray;
-use crate::boot::x86::IoReadWrite;
-use crate::boot::x86::IOPORTS;
+use crate::IoPortArray;
+use crate::IoReadWrite;
 use crate::LockedArc;
+use crate::IO_PORT_MANAGER;
 
 /// A serial port (COM) for x86
 pub struct X86SerialPort {
@@ -14,7 +14,11 @@ pub struct X86SerialPort {
 impl X86SerialPort {
     /// Attempt to build a new serial port, probing it as needed
     pub fn new(base: u16) -> Option<Self> {
-        let ports = IOPORTS.get_ports(base, 8).unwrap();
+        let ports = IO_PORT_MANAGER
+            .as_ref()
+            .unwrap()
+            .get_ports(base, 8)
+            .unwrap();
         //disable interrupts
         ports.port(1).port_write(0u8);
         //baud set to 115200

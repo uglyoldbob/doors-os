@@ -485,7 +485,7 @@ impl Pic {
 
     /// Disable all interrupts for both pics
     pub fn disable(&mut self) {
-        use super::IoReadWrite;
+        use crate::IoReadWrite;
         self.pic1.port(1).port_write(0xff as u8);
         self.pic2.port(1).port_write(0xff as u8);
     }
@@ -495,7 +495,7 @@ impl Pic {
     /// * offset1 - The amount to offset pic1 vectors by
     /// * offset2 - The amount to offset pic2 vectors by
     pub fn remap(&mut self, offset1: u8, offset2: u8) {
-        use super::IoReadWrite;
+        use crate::IoReadWrite;
         let mut delay: super::IoPortRef<u8> = super::IOPORTS.get_port(0x80).unwrap();
 
         let mut pic1_cmd: super::IoPortRef<u8> = self.pic1.port(0);

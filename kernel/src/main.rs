@@ -19,6 +19,14 @@ pub use boot::IoPortArray;
 pub use boot::IoPortManager;
 pub use boot::IoPortRef;
 
+/// The trait that allows reading and writing to and from io ports
+pub trait IoReadWrite<T> {
+    /// Read data from the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
+    fn port_read(&mut self) -> T;
+    /// Write data to the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
+    fn port_write(&mut self, val: T);
+}
+
 /// A struct that manages allocation and deallocation of pci memory
 pub struct PciMemory {
     /// The starting address for virtual memory address space

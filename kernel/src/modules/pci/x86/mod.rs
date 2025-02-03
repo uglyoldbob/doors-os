@@ -1,6 +1,7 @@
 //! X86 pci bus code
 
-use crate::boot::x86::{IoPortRef, IoReadWrite, IOPORTS};
+use crate::boot::x86::{IoPortRef, IOPORTS};
+use crate::IoReadWrite;
 
 use crate::modules::video::TextDisplayTrait;
 

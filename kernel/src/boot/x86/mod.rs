@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 
 use crate::modules::pci::PciTrait;
 use crate::modules::video::TextDisplayTrait;
+use crate::IoReadWrite;
 use crate::Locked;
 use crate::LockedArc;
 
@@ -38,14 +39,6 @@ pub struct IoPortRef<T> {
     r: u16,
     /// Phantom data that the port contains
     _marker: PhantomData<T>,
-}
-
-/// The trait that allows reading and writing to and from io ports
-pub trait IoReadWrite<T> {
-    /// Read data from the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
-    fn port_read(&mut self) -> T;
-    /// Write data to the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
-    fn port_write(&mut self, val: T);
 }
 
 impl IoReadWrite<u8> for IoPortRef<u8> {
