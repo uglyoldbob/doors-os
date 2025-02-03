@@ -2,7 +2,7 @@
 
 use alloc::collections::btree_map::BTreeMap;
 
-use crate::modules::network::intel::IntelNetworkAdapter;
+use crate::modules::network::{MacAddress, NetworkAdapterTrait};
 use crate::modules::video::TextDisplayTrait;
 use crate::modules::{
     pci::{
@@ -78,10 +78,6 @@ enum IntelPro1000Registers {
 /// TODO: move this to crate::modules::network
 #[derive(Clone, Default)]
 pub struct IntelPro1000 {}
-
-struct MacAddress {
-    address: [u8; 6],
-}
 
 #[repr(C, packed)]
 struct RxBuffer {
@@ -211,6 +207,24 @@ const TCTRL_CT_SHIFT: u8 = 4;
 const TCTRL_COLD_SHIFT: u8 = 12u8;
 const TCTRL_RTLC: u32 = 1 << 24;
 
+impl super::super::NetworkAdapterTrait for IntelPro1000Device {
+    fn get_mac_address(&mut self) -> MacAddress {
+        if self.detect_eeprom() {
+            let v = self.read_from_eeprom(0);
+            let v2 = self.read_from_eeprom(1);
+            let v3 = self.read_from_eeprom(2);
+            let v = v.to_le_bytes();
+            let v2 = v2.to_le_bytes();
+            let v3 = v3.to_le_bytes();
+            MacAddress {
+                address: [v[0], v[1], v2[0], v2[1], v3[0], v3[1]],
+            }
+        } else {
+            todo!();
+        }
+    }
+}
+
 impl IntelPro1000Device {
     fn detect_eeprom(&mut self) -> bool {
         if self.eeprom_present.is_none() {
@@ -311,22 +325,6 @@ impl IntelPro1000Device {
             self.txbufs = Some(txbuf);
         }
         Ok(())
-    }
-
-    fn get_mac_address(&mut self) -> MacAddress {
-        if self.detect_eeprom() {
-            let v = self.read_from_eeprom(0);
-            let v2 = self.read_from_eeprom(1);
-            let v3 = self.read_from_eeprom(2);
-            let v = v.to_le_bytes();
-            let v2 = v2.to_le_bytes();
-            let v3 = v3.to_le_bytes();
-            MacAddress {
-                address: [v[0], v[1], v2[0], v2[1], v3[0], v3[1]],
-            }
-        } else {
-            todo!();
-        }
     }
 
     fn read_from_eeprom(&mut self, addr: u8) -> u16 {
@@ -444,8 +442,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 if let Err(e) = d.init_tx() {
                     doors_macros2::kernel_print!("TX buffer allocation error {:?}\r\n", e);
                 }
-                super::super::register_network_adapter(super::super::NetworkAdapter::Intel(
-                    IntelNetworkAdapter::Pro1000(d),
+                super::super::register_network_adapter(super::super::NetworkAdapter::IntelPro1000(
+                    d,
                 ));
             }
         }

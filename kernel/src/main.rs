@@ -119,8 +119,11 @@ cfg_if::cfg_if! {
 
 use alloc::sync::Arc;
 use kernel::SystemTrait;
+use modules::network::NetworkAdapterTrait;
 use modules::rng;
 use modules::rng::RngTrait;
+use modules::video::hex_dump;
+use modules::video::hex_dump_generic;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;
 
@@ -264,6 +267,14 @@ fn main(mut system: kernel::System) -> ! {
                         rng.generate_iter(fb.iter_bytes());
                     }
                 }
+            }
+        }
+        {
+            if let Some(na) = crate::modules::network::get_network_adapter("net0") {
+                let mut na = na.lock();
+                doors_macros2::kernel_print!("About to do some stuff with a network card\r\n");
+                let ma = na.get_mac_address();
+                hex_dump_generic(&ma, false, false);
             }
         }
         doors_macros2::kernel_print!("Entering idle loop\r\n");
