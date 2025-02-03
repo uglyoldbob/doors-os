@@ -20,11 +20,7 @@ pub mod boot32;
 #[cfg(target_arch = "x86")]
 pub use boot32 as boot;
 
-pub use boot::PCI_MEMORY_ALLOCATOR;
-
 pub mod memory;
-
-pub use boot::PciMemoryAllocator;
 
 /// The entire list of io ports for an x86 machine
 pub static IOPORTS: Locked<IoPortManager> = Locked::new(IoPortManager::new());

@@ -18,8 +18,36 @@ pub mod modules;
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
 pub use boot::IoPortRef;
-pub use boot::PciMemoryAllocator;
-pub use boot::PCI_MEMORY_ALLOCATOR;
+
+/// A struct that manages allocation and deallocation of pci memory
+pub struct PciMemory {
+    /// The starting address for virtual memory address space
+    virt: usize,
+    /// The starting address for physical memory address space
+    phys: usize,
+    /// The size in bytes
+    size: usize,
+}
+
+impl PciMemory {
+    /// Read a u32 at the specified index (byte based index)
+    pub fn read_u32(&self, address: usize) -> u32 {
+        let mem = unsafe { core::slice::from_raw_parts(self.virt as *const u8, self.size) };
+        let a: &u8 = &mem[address];
+        let b: *const u8 = a as *const u8;
+        let c: &u32 = unsafe { &*(b as *const u32) };
+        unsafe { core::ptr::read_volatile(c) }
+    }
+
+    /// Write a u32 at the specified index (byte based index), with the specified value
+    pub fn write_u32(&mut self, address: usize, val: u32) {
+        let mem = unsafe { core::slice::from_raw_parts_mut(self.virt as *mut u8, self.size) };
+        let a: &mut u8 = &mut mem[address as usize];
+        let b: *mut u8 = a as *mut u8;
+        let c: &mut u32 = unsafe { &mut *(b as *mut u32) };
+        unsafe { core::ptr::write_volatile(c, val) };
+    }
+}
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "arm")] {

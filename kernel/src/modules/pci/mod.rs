@@ -737,7 +737,7 @@ impl BarSpace {
         dev: &PciDevice,
         function: &PciFunction,
         config: &ConfigurationSpaceEnum,
-    ) -> Option<alloc::boxed::Box<[u8], &'b Locked<crate::PciMemoryAllocator>>> {
+    ) -> Option<crate::PciMemory> {
         match self {
             BarSpace::Memory32 {
                 base: _,
@@ -745,25 +745,19 @@ impl BarSpace {
                 flags,
                 index,
             } => {
-                let a = alloc::boxed::Box::new_uninit_slice_in(
-                    *size as usize,
-                    &crate::PCI_MEMORY_ALLOCATOR,
-                );
-                let a = unsafe { a.assume_init() };
-                doors_macros2::kernel_print!("PCI MEMORY IS AT {:p}\r\n", a.as_ref());
-                let addr = crate::PCI_MEMORY_ALLOCATOR
-                    .lookup_allocation(a.as_ref())
-                    .unwrap();
-                let newbar = BarSpace::Memory32 {
-                    base: addr as u32,
-                    size: *size,
-                    flags: *flags,
-                    index: *index,
-                };
-                doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", addr);
-                newbar.write_to_pci(pci, bus, dev, function, config);
-                *self = newbar;
-                Some(a)
+                let pcim = crate::PciMemory::new(*size as usize);
+                if let Ok(pcim) = &pcim {
+                    let newbar = BarSpace::Memory32 {
+                        base: pcim.phys as u32,
+                        size: pcim.size as u32,
+                        flags: *flags,
+                        index: *index,
+                    };
+                    doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", pcim.phys);
+                    newbar.write_to_pci(pci, bus, dev, function, config);
+                    *self = newbar;
+                }
+                pcim.ok()
             }
             BarSpace::Memory64 {
                 base: _,
@@ -1276,7 +1270,7 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 
 /// Holds either memory or io space
 enum MemoryOrIo {
-    Memory(alloc::boxed::Box<[u8], &'static Locked<crate::PciMemoryAllocator>>),
+    Memory(crate::PciMemory),
     Io(crate::IoPortArray<'static>),
 }
 
@@ -1296,12 +1290,7 @@ impl MemoryOrIo {
 
     fn read(&self, address: u16) -> u32 {
         match self {
-            MemoryOrIo::Memory(mem) => {
-                let a: &u8 = &mem[address as usize];
-                let b: *const u8 = a as *const u8;
-                let c: &u32 = unsafe { &*(b as *const u32) };
-                unsafe { core::ptr::read_volatile(c) }
-            }
+            MemoryOrIo::Memory(mem) => mem.read_u32(address as usize),
             MemoryOrIo::Io(io) => {
                 let mut iop: crate::IoPortRef<u32> = io.port(address);
                 iop.port_read()
@@ -1312,10 +1301,7 @@ impl MemoryOrIo {
     fn write(&mut self, address: u16, val: u32) {
         match self {
             MemoryOrIo::Memory(mem) => {
-                let a: &mut u8 = &mut mem[address as usize];
-                let b: *mut u8 = a as *mut u8;
-                let c: &mut u32 = unsafe { &mut *(b as *mut u32) };
-                unsafe { core::ptr::write_volatile(c, val) };
+                mem.write_u32(address as usize, val);
             }
             MemoryOrIo::Io(io) => {
                 let mut iop: crate::IoPortRef<u32> = io.port(address);
@@ -1627,7 +1613,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     bar.print();
                     let d = bar.get_memory(system, cs, bus, dev, f, config);
                     if let Some(d) = d {
-                        doors_macros2::kernel_print!("Got memory at {:p}\r\n", d.as_ref());
+                        doors_macros2::kernel_print!("Got memory at {:x}\r\n", d.virt);
                         Some(MemoryOrIo::Memory(d))
                     } else {
                         todo!();

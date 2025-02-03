@@ -1,5 +1,6 @@
 //! This module exists to cover memory management for x64 processors.
 
+use core::alloc::Allocator;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
@@ -460,35 +461,46 @@ impl Locked<PciMemoryAllocator> {
     }
 }
 
-unsafe impl core::alloc::Allocator for Locked<PciMemoryAllocator> {
-    fn allocate(
-        &self,
-        layout: core::alloc::Layout,
-    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let s = self.lock();
-        let mut t = s.physical_allocator.lock();
-        let phys = t
-            .extra_mem
-            .allocate_nonram_memory(layout.size(), layout.size())?;
-        let virt = s.virtual_allocator.allocate(layout)?;
-        let mut mm = s.mm.lock();
+impl crate::PciMemory {
+    /// Allocate some pci memory with the given size. TODO implement a 32-bit restricted version of this function.
+    pub fn new(size: usize) -> Result<Self, core::alloc::AllocError> {
+        let mut t = super::PAGE_ALLOCATOR.lock();
+        let phys = t.extra_mem.allocate_nonram_memory(size, size)?;
+        let layout =
+            core::alloc::Layout::from_size_align(size, core::mem::size_of::<Page>()).unwrap();
+        let virt = super::VIRTUAL_MEMORY_ALLOCATOR.allocate(layout)?;
+        let mut mm = super::PAGING_MANAGER.lock();
         let va = unsafe { virt.as_ref() }.as_ptr() as usize;
         let pa = unsafe { phys.as_ref() }.as_ptr() as usize;
         doors_macros2::kernel_print!("PCI: virtual {:x} physical {:x}\r\n", va, pa);
         match mm.map_addresses_read_write(va, pa, layout.size()) {
-            Ok(()) => Ok(virt),
+            Ok(()) => Ok(Self {
+                virt: va,
+                phys: pa,
+                size,
+            }),
             Err(()) => Err(core::alloc::AllocError),
         }
     }
-
-    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
-        let s = self.lock();
-        let mut t = s.physical_allocator.lock();
-        t.extra_mem.deallocate_nonram_memory(ptr, layout);
-        s.virtual_allocator.deallocate(ptr, layout);
-        let mut mm = s.mm.lock();
-        let va = ptr.as_ptr();
-        mm.unmap_mapped_pages(va as usize, layout.size());
+}
+impl Drop for crate::PciMemory {
+    fn drop(&mut self) {
+        let mut t = super::PAGE_ALLOCATOR.lock();
+        let layout = core::alloc::Layout::from_size_align(self.size, self.size).unwrap();
+        t.extra_mem.deallocate_nonram_memory(
+            unsafe { core::ptr::NonNull::new_unchecked(self.phys as *mut u8) },
+            layout,
+        );
+        let layout =
+            core::alloc::Layout::from_size_align(self.size, core::mem::size_of::<Page>()).unwrap();
+        unsafe {
+            super::VIRTUAL_MEMORY_ALLOCATOR.deallocate(
+                core::ptr::NonNull::new_unchecked(self.virt as *mut u8),
+                layout,
+            )
+        };
+        let mut mm = super::PAGING_MANAGER.lock();
+        mm.unmap_mapped_pages(self.virt, self.size);
     }
 }
 
@@ -582,7 +594,7 @@ impl<'a> PagingTableManager<'a> {
     }
 
     /// Lookup the physical address corresponding to the specified address
-    pub fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
+    fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64() as usize;
         self.setup_cache(cr3, addr);
