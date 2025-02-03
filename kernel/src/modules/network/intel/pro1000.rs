@@ -19,6 +19,67 @@ enum MemoryOrIo {
     Io(crate::IoPortArray<'static>),
 }
 
+#[derive(Debug)]
+enum Model {
+    Model82540EP_A_Desktop,
+    Model82540EP_A_Mobile,
+    Model82540EM_A_Desktop,
+    Model82540EM_A_Mobile,
+    Model82541EI_A0_or_Model82541EI_B0_Copper,
+    Model82541EI_B0_Mobile,
+    Model82541GI_B1_Copper_or_Model82541PI_C0,
+    Model82541GI_B1_Mobile,
+    Model82541PI_C0,
+    Model82544EI_A4,
+    Model82544GC_A4,
+    Model82545EM_A_Copper,
+    Model82545EM_A_Fiber,
+    Model82545GM_B_Copper,
+    Model82545GM_B_Fiber,
+    Model82545GM_B_SerDes,
+    Model82546EB_A1_CopperDual,
+    Model82546EB_A1_Fiber,
+    Model82546EB_A1_CopperQuad,
+    Model82546GB_B0_Copper,
+    Model82546GB_B0_Fiber,
+    Model82546GB_B0_SerDes,
+    Model82547EI_A0_or_Model82547EI_A1_or_Model82547EI_B0_Copper_or_Model82547GI_B0,
+    Model82547EI_B0_Mobile,
+}
+
+impl TryFrom<u16> for Model {
+    type Error = ();
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0x100e => Ok(Self::Model82540EM_A_Desktop),
+            0x100f => Ok(Self::Model82545EM_A_Copper),
+            0x1011 => Ok(Self::Model82545EM_A_Fiber),
+            0x1015 => Ok(Self::Model82540EM_A_Mobile),
+            0x1019 => Ok(Self::Model82547EI_A0_or_Model82547EI_A1_or_Model82547EI_B0_Copper_or_Model82547GI_B0),
+            0x101a => Ok(Self::Model82547EI_B0_Mobile),
+            0x1010 => Ok(Self::Model82546EB_A1_CopperDual),
+            0x1012 => Ok(Self::Model82546EB_A1_Fiber),
+            0x1013 => Ok(Self::Model82541EI_A0_or_Model82541EI_B0_Copper),
+            0x1016 => Ok(Self::Model82540EP_A_Mobile),
+            0x1017 => Ok(Self::Model82540EP_A_Desktop),
+            0x1018 => Ok(Self::Model82541EI_B0_Mobile),
+            0x101d => Ok(Self::Model82546EB_A1_CopperQuad),
+            0x1026 => Ok(Self::Model82545GM_B_Copper),
+            0x1027 => Ok(Self::Model82545GM_B_Fiber),
+            0x1028 => Ok(Self::Model82545GM_B_SerDes),
+            0x1076 => Ok(Self::Model82541GI_B1_Copper_or_Model82541PI_C0),
+            0x1077 => Ok(Self::Model82541GI_B1_Mobile),
+            0x1078 => Ok(Self::Model82541PI_C0),
+            0x1079 => Ok(Self::Model82546GB_B0_Copper),
+            0x107a => Ok(Self::Model82546GB_B0_Fiber),
+            0x107b => Ok(Self::Model82546GB_B0_SerDes),
+            0x1107 => Ok(Self::Model82544EI_A4),
+            0x1112 => Ok(Self::Model82544GC_A4),
+            _ => Err(()),
+        }
+    }
+}
+
 impl MemoryOrIo {
     fn hex_dump(&self) {
         match self {
@@ -189,6 +250,8 @@ pub struct IntelPro1000Device {
     txbufs: Option<TxBuffers>,
     /// The current tx buffer
     txbufindex: Option<u8>,
+    /// The specific model of the device
+    model: Model,
 }
 
 const RCTRL_EN: u32 = 1 << 1;
@@ -367,9 +430,17 @@ impl IntelPro1000 {
 
 impl PciFunctionDriverTrait for IntelPro1000 {
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
-        if !m.contains_key(&0x100e8086) {
-            doors_macros2::kernel_print!("Register intel pro/1000 pci driver\r\n");
-            m.insert(0x100e8086, self.clone().into());
+        doors_macros2::kernel_print!("Register intel pro/1000 pci driver\r\n");
+        for dev in [
+            0x100e, 0x100f, 0x1011, 0x1015, 0x1019, 0x101a, 0x1010, 0x1012, 0x1013, 0x1016, 0x1017,
+            0x1018, 0x101d, 0x1026, 0x1027, 0x1028, 0x1076, 0x1077, 0x1078, 0x1079, 0x107a, 0x107b,
+            0x1107, 0x1112,
+        ] {
+            let dev = dev as u16;
+            let vendor_combo = (dev as u32) << 16 | 0x8086;
+            if !m.contains_key(&vendor_combo) {
+                m.insert(vendor_combo, self.clone().into());
+            }
         }
     }
 
@@ -421,6 +492,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         b.print();
                     }
                 }
+                let model = Model::try_from(configspace.get_device_id()).unwrap();
                 let mut d = IntelPro1000Device {
                     _bars: bars,
                     bar0: m,
@@ -430,8 +502,10 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     rxbufindex: None,
                     txbufs: None,
                     txbufindex: None,
+                    model,
                 };
                 d.bar0.hex_dump();
+                doors_macros2::kernel_print!("Detected model as {:?}\r\n", d.model);
                 doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
                 let mut data = [0u16; 256];
                 for (i, data) in data.iter_mut().enumerate() {

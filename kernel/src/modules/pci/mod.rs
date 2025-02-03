@@ -495,6 +495,11 @@ impl Default for ConfigurationSpace {
 }
 
 impl ConfigurationSpace {
+    /// Retrieve the device id for the function
+    pub fn get_device_id(&self) -> u16 {
+        self.device
+    }
+
     /// Dump the configuration space
     pub fn dump(&self, linestart: &str) {
         doors_macros2::kernel_print!("{}Configuration space:\r\n", linestart);
