@@ -49,6 +49,56 @@ impl PciMemory {
     }
 }
 
+/// A structure that generically maps dma memory over a type.
+pub struct DmaMemory<T> {
+    /// The starting address for virtual memory address space
+    virt: usize,
+    /// The starting address for physical memory address space
+    phys: usize,
+    /// The size in bytes
+    size: usize,
+    /// The data (in virtual memory space)
+    data: alloc::boxed::Box<T>,
+}
+
+impl<T> core::ops::Deref for DmaMemory<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<T> core::ops::DerefMut for DmaMemory<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+/// Used to store an array of items for dma
+pub struct DmaMemorySlice<T> {
+    /// The starting address for virtual memory address space
+    virt: usize,
+    /// The starting address for physical memory address space
+    phys: usize,
+    /// The size in bytes
+    size: usize,
+    /// The data (in virtual memory space)
+    data: alloc::vec::Vec<T>,
+}
+
+impl<T> core::ops::Deref for DmaMemorySlice<T> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<T> core::ops::DerefMut for DmaMemorySlice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "arm")] {
         /// The io port manager

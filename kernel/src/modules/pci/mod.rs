@@ -1390,6 +1390,46 @@ impl TxBuffer {
     }
 }
 
+/// Holds all information required for the multiple rx buffers required for the network card
+struct RxBuffers {
+    /// The structures used by the network card
+    bufs: crate::DmaMemorySlice<RxBuffer>,
+    /// The structures used to manage the buffers
+    dmas: alloc::vec::Vec<crate::DmaMemorySlice<u8>>,
+}
+
+impl RxBuffers {
+    fn new(quantity: u8, size: usize) -> Result<Self, core::alloc::AllocError> {
+        let m: crate::DmaMemorySlice<RxBuffer> =
+            crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(RxBuffer::new()))?;
+        let mut dmas = alloc::vec::Vec::with_capacity(quantity as usize);
+        for i in 0..quantity {
+            dmas.push(crate::DmaMemorySlice::new(size)?);
+        }
+        Ok(Self { bufs: m, dmas })
+    }
+}
+
+/// Holds all information required for the multiple tx buffers required for the network card
+struct TxBuffers {
+    /// The structures used by the network card
+    bufs: crate::DmaMemorySlice<TxBuffer>,
+    /// The structures used to manage the buffers
+    dmas: alloc::vec::Vec<crate::DmaMemorySlice<u8>>,
+}
+
+impl TxBuffers {
+    fn new(quantity: u8, size: usize) -> Result<Self, core::alloc::AllocError> {
+        let m: crate::DmaMemorySlice<TxBuffer> =
+            crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(TxBuffer::new()))?;
+        let mut dmas = alloc::vec::Vec::with_capacity(quantity as usize);
+        for i in 0..quantity {
+            dmas.push(crate::DmaMemorySlice::new(size)?);
+        }
+        Ok(Self { bufs: m, dmas })
+    }
+}
+
 struct IntelPro1000Device {
     /// The base address registers
     bars: [Option<BarSpace>; 6],
@@ -1400,11 +1440,11 @@ struct IntelPro1000Device {
     /// Is the eeprom present?
     eeprom_present: Option<bool>,
     /// The rx buffers
-    rxbufs: Option<&'static [RxBuffer]>,
+    rxbufs: Option<RxBuffers>,
     /// The current rx buffer
     rxbufindex: Option<u8>,
     /// The tx buffers
-    txbufs: Option<&'static [TxBuffer]>,
+    txbufs: Option<TxBuffers>,
     /// The current tx buffer
     txbufindex: Option<u8>,
 }
@@ -1443,16 +1483,13 @@ impl IntelPro1000Device {
         self.eeprom_present.unwrap()
     }
 
-    fn init_rx(&mut self) {
+    fn init_rx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
-            let mut rx: alloc::vec::Vec<RxBuffer> = alloc::vec::Vec::new();
-            for i in 0..32 {
-                rx.push(RxBuffer::new());
-            }
-            let rx = rx.leak();
-
-            self.rxbufs = Some(rx);
-            let rxaddr = crate::slice_address(rx) as u64;
+            doors_macros2::kernel_print!("A\r\n");
+            let rxbuf = RxBuffers::new(32, 8192)?;
+            doors_macros2::kernel_print!("B\r\n");
+            let rxaddr = rxbuf.bufs.phys;
+            doors_macros2::kernel_print!("Writing RX stuff to network card\r\n");
             self.bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
                 (rxaddr >> 32) as u32,
@@ -1463,12 +1500,12 @@ impl IntelPro1000Device {
             );
             self.bar0.write(
                 IntelPro1000Registers::RxDescLen as u16,
-                core::mem::size_of::<RxBuffer>() as u32 * rx.len() as u32,
+                core::mem::size_of::<RxBuffer>() as u32 * rxbuf.bufs.len() as u32,
             );
             self.bar0.write(IntelPro1000Registers::RxDescHead as u16, 0);
             self.bar0.write(
                 IntelPro1000Registers::RxDescTail as u16,
-                rx.len() as u32 - 1,
+                rxbuf.bufs.len() as u32 - 1,
             );
             self.bar0.write(
                 IntelPro1000Registers::Rctrl as u16,
@@ -1483,25 +1520,22 @@ impl IntelPro1000Device {
                     | RCTRL_BSIZE_8192,
             );
             self.rxbufindex = Some(0);
+            doors_macros2::kernel_print!("C\r\n");
             doors_macros2::kernel_print!("RX BUFFER ARRAY IS AT {:x}\r\n", rxaddr);
-            for r in rx.iter() {
+            for r in rxbuf.bufs.iter() {
                 doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
                     core::ptr::read_unaligned(&raw const r.address)
                 });
             }
+            self.rxbufs = Some(rxbuf);
         }
+        Ok(())
     }
 
-    fn init_tx(&mut self) {
+    fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
-            let mut tx: alloc::vec::Vec<TxBuffer> = alloc::vec::Vec::new();
-            for i in 0..8 {
-                tx.push(TxBuffer::new());
-            }
-            let tx = tx.leak();
-
-            self.txbufs = Some(tx);
-            let txaddr = crate::slice_address(tx) as u64;
+            let txbuf = TxBuffers::new(8, 8192)?;
+            let txaddr = txbuf.bufs.phys;
             self.bar0.write(
                 IntelPro1000Registers::TxDescLow as u16,
                 (txaddr >> 32) as u32,
@@ -1512,7 +1546,7 @@ impl IntelPro1000Device {
             );
             self.bar0.write(
                 IntelPro1000Registers::TxDescLen as u16,
-                core::mem::size_of::<TxBuffer>() as u32 * tx.len() as u32,
+                core::mem::size_of::<TxBuffer>() as u32 * txbuf.bufs.len() as u32,
             );
             self.bar0.write(IntelPro1000Registers::TxDescHead as u16, 0);
             self.bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
@@ -1526,12 +1560,14 @@ impl IntelPro1000Device {
             );
             self.txbufindex = Some(0);
             doors_macros2::kernel_print!("TX BUFFER ARRAY IS AT {:x}\r\n", txaddr);
-            for t in tx.iter() {
+            for t in txbuf.bufs.iter() {
                 doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
                     core::ptr::read_unaligned(&raw const t.address)
                 });
             }
+            self.txbufs = Some(txbuf);
         }
+        Ok(())
     }
 
     fn get_mac_address(&mut self) -> MacAddress {
@@ -1659,8 +1695,12 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 }
                 hex_dump_generic(&data, true, false);
                 hex_dump(&d.get_mac_address().address, false, false);
-                d.init_rx();
-                d.init_tx();
+                if let Err(e) = d.init_rx() {
+                    doors_macros2::kernel_print!("RX buffer allocation error {:?}\r\n", e);
+                }
+                if let Err(e) = d.init_tx() {
+                    doors_macros2::kernel_print!("TX buffer allocation error {:?}\r\n", e);
+                }
             }
         }
     }

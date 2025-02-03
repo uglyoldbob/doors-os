@@ -4,8 +4,10 @@
     .extern GDT_TABLE_PTR
     .extern start64
     .extern MULTIBOOT2_DATA
+    .extern INITIAL_STACK
     .align 8
     MULTIBOOT2_DATA: .quad 0
+    INITIAL_STACK: .quad 0
     .align 4096
     PAGE_TABLE_PML4_BOOT:
         .quad PAGE_TABLE_PDP_BOOT + 0x3
@@ -66,6 +68,7 @@
     .code64
     prestart64:
         mov [MULTIBOOT2_DATA], rbx
+        mov [INITIAL_STACK], rsp
         jmp start64
     .loop:
         hlt

@@ -18,10 +18,9 @@ use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
+use x86_64::structures::idt::InterruptStackFrame;
 
 pub mod memory;
-
-pub use memory::PciMemoryAllocator;
 
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
@@ -77,6 +76,7 @@ pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
 
 extern "C" {
     static MULTIBOOT2_DATA: *const usize;
+    static INITIAL_STACK: *const usize;
 }
 
 lazy_static! {
@@ -125,6 +125,26 @@ extern "x86-interrupt" fn page_fault_handler(
     loop {}
 }
 
+extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
+    doors_macros2::kernel_print!("Invalid opcode {:p}\r\n", &sf);
+    doors_macros2::kernel_print!("Invalid opcode {:x}\r\n", sf.instruction_pointer.as_u64());
+    loop {}
+}
+
+/// A test interrupt handler
+#[interrupt_arg_64]
+pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
+    doors_macros2::kernel_print!("Invalid opcode {:x}\r\n", sf.instruction_pointer.as_u64());
+    loop {}
+}
+
+/// A test interrupt handler
+#[interrupt_64]
+pub extern "C" fn unknown_interrupt() {
+    doors_macros2::kernel_print!("Unknown interrupt fired\r\n");
+    loop {}
+}
+
 /// The panic handler for the 64-bit kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -159,11 +179,6 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
 /// The interrupt descriptor table for the system
 pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
-
-/// The memory allocator for pci style memory, where the size and alignment are the same
-pub static PCI_MEMORY_ALLOCATOR: Locked<memory::PciMemoryAllocator> = Locked::new(
-    memory::PciMemoryAllocator::new(&PAGE_ALLOCATOR, &VIRTUAL_MEMORY_ALLOCATOR, &PAGING_MANAGER),
-);
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
@@ -775,6 +790,14 @@ pub extern "C" fn start64() -> ! {
     let apic_version = apic.regs[0x30 / 4];
     doors_macros2::kernel_print!("APIC VERSION IS {:x}\r\n", apic_version);
 
+    {
+        let stack_end = unsafe { INITIAL_STACK as usize };
+        let stack_size = 8 * 1024;
+        PAGE_ALLOCATOR
+            .lock()
+            .set_area_used(stack_end - stack_size, stack_size);
+    }
+
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
@@ -795,6 +818,10 @@ pub extern "C" fn start64() -> ! {
         pageman: &PAGING_MANAGER,
         vmm: &VIRTUAL_MEMORY_ALLOCATOR,
     };
+
+    doors_macros2::kernel_print!("INTIAL STACK IS {:x}\r\n", unsafe {
+        INITIAL_STACK as usize
+    });
 
     doors_macros2::kernel_print!("About to open acpi stuff\r\n");
 
@@ -825,6 +852,13 @@ pub extern "C" fn start64() -> ! {
                 page_fault_handler as *const (),
             ));
             idt.page_fault = entry;
+
+            let mut entry = x86_64::structures::idt::Entry::missing();
+            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                invalid_opcode as *const (),
+            ));
+            idt.invalid_opcode = entry;
+            //idt[6].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(unknown_interrupt_asm as *const ()));
         }
     }
 
