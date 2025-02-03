@@ -20,20 +20,7 @@ struct HeapNodeAlign {
     /// The number of bytes of padding that occur between the start of the node and the start of the allocation
     pre_align: usize,
     /// The number of bytes at the end of the allocation to meet alignment for node size
-    post_align: usize,
-}
-
-/// The various types of nodes that can exist
-#[derive(Debug)]
-enum HeapNodeState {
-    /// Free memory backed by physical memory
-    FreePhysicalMemory,
-    /// Used memory backed by physical memory
-    UsedPhysicalMemory,
-    /// A void space in memory
-    Hole,
-    /// Memory not backed by physical memory, such as memory allocated to a pci device
-    NonphysicalMemory,
+    _post_align: usize,
 }
 
 #[derive(Debug)]
@@ -48,11 +35,6 @@ struct HeapNode {
 impl HeapNode {
     /// The required alignment for nodes and allocations based on the size of a node
     const NODEALIGN: usize = core::mem::size_of::<HeapNode>();
-
-    /// Return the address that is immediately after this block of memory
-    fn next_address(&self) -> usize {
-        self as *const HeapNode as usize + self.size
-    }
 
     /// Return the start address of this free block
     fn start(&self) -> usize {
@@ -108,7 +90,7 @@ impl HeapNode {
         HeapNodeAlign {
             size_needed: size_needed + postpad,
             pre_align: align_pad,
-            post_align: posterr,
+            _post_align: posterr,
         }
     }
 }

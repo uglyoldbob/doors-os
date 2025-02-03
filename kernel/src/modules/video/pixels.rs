@@ -16,7 +16,7 @@ impl<P> FullColor<P> {
 /// Represents a paletted pixel
 pub struct Palette<P> {
     pixel: P,
-    palette: &'static [u8],
+    _palette: &'static [u8],
 }
 
 impl<P> Palette<P>
@@ -25,7 +25,10 @@ where
 {
     /// Construct a new pixel
     pub fn new(p: P, palette: &'static [u8]) -> Self {
-        Self { pixel: p, palette }
+        Self {
+            pixel: p,
+            _palette: palette,
+        }
     }
 
     /// Get the pixel value

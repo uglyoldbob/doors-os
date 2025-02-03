@@ -78,8 +78,8 @@ impl X86SerialPort {
 }
 
 impl super::SerialTrait for LockedArc<X86SerialPort> {
-    fn setup(&self, rate: u32) -> Result<(), ()> {
-        Err(())
+    fn setup(&self, _rate: u32) -> Result<(), ()> {
+        todo!();
     }
 
     fn sync_transmit(&self, data: &[u8]) {

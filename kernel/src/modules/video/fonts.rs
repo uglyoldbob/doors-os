@@ -11,7 +11,7 @@ impl<P> super::FontTrait<P> for FixedWidthFont<P>
 where
     P: Sync + Send,
 {
-    fn lookup_symbol(&self, c: char) -> Option<&super::FontData> {
+    fn lookup_symbol(&self, _c: char) -> Option<&super::FontData> {
         todo!()
     }
 

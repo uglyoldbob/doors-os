@@ -122,7 +122,6 @@ use kernel::SystemTrait;
 use modules::network::NetworkAdapterTrait;
 use modules::rng;
 use modules::rng::RngTrait;
-use modules::video::hex_dump;
 use modules::video::hex_dump_generic;
 use modules::video::TextDisplay;
 use modules::video::TextDisplayTrait;

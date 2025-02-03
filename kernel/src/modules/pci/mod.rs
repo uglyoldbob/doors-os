@@ -1,8 +1,7 @@
 //! Code for the pci bus
 
-use crate::modules::video::{hex_dump, hex_dump_generic, TextDisplayTrait};
-use crate::IoReadWrite;
-use crate::{Locked, LockedArc};
+use crate::modules::video::TextDisplayTrait;
+use crate::LockedArc;
 use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
 
@@ -572,7 +571,6 @@ impl ConfigurationSpace {
                 }
                 let newbar = f(prev_index as u8, last_bar, None);
                 bars[index] = Some(newbar);
-                index += 1;
             }
         }
     }
@@ -586,11 +584,7 @@ pub trait PciTrait {
     /// Print all devices on the system
     fn print_devices(&mut self);
     /// Run all drivers that can be associated with pci functions
-    fn driver_run(
-        &mut self,
-        system: &mut impl crate::kernel::SystemTrait,
-        d: &mut BTreeMap<u32, PciFunctionDriver>,
-    );
+    fn driver_run(&mut self, d: &mut BTreeMap<u32, PciFunctionDriver>);
 }
 
 /// A BAR space
@@ -692,7 +686,6 @@ impl BarSpace {
     /// Obtain the io space specified by the bar, only if it is io space and an io manager exists
     pub fn get_io(
         &mut self,
-        system: &mut impl crate::kernel::SystemTrait,
         pci: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -732,7 +725,6 @@ impl BarSpace {
     /// Obtain the memory space specified by the bar, only if it is memory space
     pub fn get_memory<'b>(
         &mut self,
-        system: &mut impl crate::kernel::SystemTrait,
         pci: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -892,7 +884,7 @@ pub struct PciFunction {
     /// The pci function number
     function: u8,
     /// The configuration data
-    configuration: Option<ConfigurationSpace>,
+    _configuration: Option<ConfigurationSpace>,
 }
 
 impl PciFunction {
@@ -900,7 +892,7 @@ impl PciFunction {
     pub fn new(function: u8) -> Self {
         Self {
             function,
-            configuration: None,
+            _configuration: None,
         }
     }
 
@@ -1136,7 +1128,6 @@ impl PciBus {
     /// Run drivers that can be associated with pci functions
     fn driver_run(
         &self,
-        system: &mut impl crate::kernel::SystemTrait,
         map: &mut alloc::collections::btree_map::BTreeMap<u32, PciFunctionDriver>,
         pci: &mut PciConfigurationSpace,
     ) {
@@ -1149,7 +1140,7 @@ impl PciBus {
                     let code = map.get_mut(&id).unwrap();
                     let mut bars: [Option<BarSpace>; 6] = [None; 6];
                     f.parse_bars(&mut bars, pci, self, d, &config);
-                    code.parse_bars(system, pci, self, d, f, &config.get_space().unwrap(), bars);
+                    code.parse_bars(pci, self, d, f, &config.get_space().unwrap(), bars);
                 } else {
                     doors_macros2::kernel_print!("Unknown PCI FUNCTION: {:X}\r\n", id);
                     let config = f.get_all_configuration(pci, self, d);
@@ -1170,9 +1161,9 @@ pub enum Pci {
 
 impl Pci {
     /// Run all drivers for this pci system
-    pub fn driver_setup(&mut self, system: &mut impl crate::kernel::SystemTrait) {
+    pub fn driver_setup(&mut self) {
         let mut d = PCI_DRIVERS.lock();
-        self.driver_run(system, &mut d);
+        self.driver_run(&mut d);
     }
 }
 
@@ -1204,7 +1195,6 @@ pub trait PciFunctionDriverTrait: Clone + Default {
     /// Parse a bar register for the device
     fn parse_bars(
         &mut self,
-        system: &mut impl crate::kernel::SystemTrait,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -1252,13 +1242,12 @@ static PCI_CODE: &[PciFunctionDriver] = &[
 pub struct DummyPciFunctionDriver {}
 
 impl PciFunctionDriverTrait for DummyPciFunctionDriver {
-    fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
+    fn register(&self, _m: &mut BTreeMap<u32, PciFunctionDriver>) {
         doors_macros2::kernel_print!("Register dummy pci driver\r\n");
     }
 
     fn parse_bars(
         &mut self,
-        _system: &mut impl crate::kernel::SystemTrait,
         _cs: &mut PciConfigurationSpace,
         _bus: &PciBus,
         _dev: &PciDevice,

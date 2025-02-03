@@ -1,6 +1,5 @@
 //! Random number generation code
 
-use crate::modules::video::TextDisplayTrait;
 use crate::LockedArc;
 
 /// The standard trait for serial ports

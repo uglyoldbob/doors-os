@@ -9,7 +9,7 @@ use multiboot2::{MemoryAreaType, MemoryMapTag};
 
 use crate::Locked;
 
-use crate::modules::video::{hex_dump_generic, TextDisplayTrait};
+use crate::modules::video::TextDisplayTrait;
 
 extern "C" {
     /// A page table for the system to boot with.
@@ -168,7 +168,7 @@ impl BumpAllocator {
         Ok(ptr)
     }
 
-    fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+    fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
         if let Some(a) = self.last[0] {
             if a.addr == ptr.addr().into() {
                 self.end -= a.bumpsize;
@@ -288,12 +288,6 @@ impl<'a, T> Bitmap<'a, T> {
 pub struct Page {
     /// The data for a single physical memory page
     _data: [u8; 4096],
-}
-impl Page {
-    /// Create a blank page, filled with zeros
-    fn new() -> Self {
-        Self { _data: [0; 4096] }
-    }
 }
 
 #[repr(align(2097152))]

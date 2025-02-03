@@ -212,13 +212,13 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
-fn setup_pci(system: &mut impl crate::kernel::SystemTrait) {
+fn setup_pci() {
     let pci = crate::modules::pci::x86::Pci::new();
     if let Some(pci) = pci {
         let mut pci = crate::modules::pci::Pci::X86Pci(pci);
         pci.setup();
         crate::modules::pci::pci_register_drivers();
-        pci.driver_setup(system);
+        pci.driver_setup();
     }
     let h = HEAP_MANAGER.lock();
     h.print();
@@ -242,7 +242,7 @@ fn setup_serial() {
         v.replace(sd);
         drop(v);
         match log::set_logger(&crate::VGA) {
-            Ok(a) => doors_macros2::kernel_print!("logger set\r\n"),
+            Ok(_a) => doors_macros2::kernel_print!("logger set\r\n"),
             Err(e) => doors_macros2::kernel_print!("Logger failed to set {:?}\r\n", e),
         }
         log::set_max_level(log::LevelFilter::Trace);

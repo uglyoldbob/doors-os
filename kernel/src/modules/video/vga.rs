@@ -209,28 +209,28 @@ impl X86VgaMode {
     fn write_misc_output_register(&self, v: u8) {
         self.ports.port(0x2).port_write(v);
     }
+    /*
+        fn read_feature_control_register(&self) -> u8 {
+            self.ports.port(0xA).port_read()
+        }
 
-    fn read_feature_control_register(&self) -> u8 {
-        self.ports.port(0xA).port_read()
-    }
+        fn write_feature_control_register(&mut self, v: u8) {
+            self.ports.port(0x1a).port_write(v);
+        }
 
-    fn write_feature_control_register(&mut self, v: u8) {
-        self.ports.port(0x1a).port_write(v);
-    }
+        fn read_status0_register(&self) -> u8 {
+            self.ports.port(2).port_read()
+        }
 
-    fn read_status0_register(&self) -> u8 {
-        self.ports.port(2).port_read()
-    }
+        fn read_status1_register(&self) -> u8 {
+            self.ports.port(0x1a).port_read()
+        }
 
-    fn read_status1_register(&self) -> u8 {
-        self.ports.port(0x1a).port_read()
-    }
-
-    fn read_graphics_register(&mut self, i: u8) -> u8 {
-        self.ports.port(0xe).port_write(i);
-        self.ports.port(0xf).port_read()
-    }
-
+        fn read_graphics_register(&mut self, i: u8) -> u8 {
+            self.ports.port(0xe).port_write(i);
+            self.ports.port(0xf).port_read()
+        }
+    */
     fn write_graphics_register(&mut self, i: u8, val: u8) {
         self.ports.port(0xe).port_write(i);
         self.ports.port(0xf).port_write(val);
@@ -250,13 +250,13 @@ impl X86VgaMode {
         let val: u8 = self.read_sequencer_register(2) & 0xF0;
         self.write_sequencer_register(2, val | (mask & 0xF));
     }
-
-    fn read_attribute_color_register(&mut self, i: u8) -> u8 {
-        let _: u8 = self.ports.port(0x1a).port_read();
-        self.ports.port(0x0).port_write(i);
-        self.ports.port(0x1).port_read()
-    }
-
+    /*
+        fn read_attribute_color_register(&mut self, i: u8) -> u8 {
+            let _: u8 = self.ports.port(0x1a).port_read();
+            self.ports.port(0x0).port_write(i);
+            self.ports.port(0x1).port_read()
+        }
+    */
     fn write_attribute_color_register(&mut self, i: u8, val: u8) {
         let _: u8 = self.ports.port(0x1a).port_read();
         self.ports.port(0x0).port_write(i);
@@ -299,13 +299,14 @@ impl X86VgaMode {
             self.ports.port(9).port_write(*val);
         }
     }
-
-    fn read_palette(&mut self, p: &mut [u8]) {
-        self.ports.port(8).port_write(0 as u8);
-        for val in p.iter_mut() {
-            *val = self.ports.port(9).port_read();
+    /*
+        fn read_palette(&mut self, p: &mut [u8]) {
+            self.ports.port(8).port_write(0 as u8);
+            for val in p.iter_mut() {
+                *val = self.ports.port(9).port_read();
+            }
         }
-    }
+    */
 }
 
 use crate::modules::video::pixels::Palette;
@@ -313,11 +314,11 @@ use crate::modules::video::pixels::Palette;
 use super::FontTrait;
 
 impl super::FramebufferTrait<Palette<u8>> for X86VgaMode {
-    fn write_plain(&mut self, x: u16, y: u16, fb: super::PlainFrameBuffer<'_, Palette<u8>>) {
+    fn write_plain(&mut self, _x: u16, _y: u16, _fb: super::PlainFrameBuffer<'_, Palette<u8>>) {
         todo!()
     }
 
-    fn write_opaque(&mut self, x: u16, y: u16, ob: super::OpaqueFrameBuffer<'_, Palette<u8>>) {
+    fn write_opaque(&mut self, _x: u16, _y: u16, _ob: super::OpaqueFrameBuffer<'_, Palette<u8>>) {
         todo!()
     }
 

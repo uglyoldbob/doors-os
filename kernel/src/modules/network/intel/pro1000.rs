@@ -22,14 +22,14 @@ enum MemoryOrIo {
 impl MemoryOrIo {
     fn hex_dump(&self) {
         match self {
-            MemoryOrIo::Memory(m) => {
+            MemoryOrIo::Memory(_m) => {
                 let mut buffer = [0u32; 32];
                 for (i, b) in buffer.iter_mut().enumerate() {
                     *b = self.read(i as u16);
                 }
                 hex_dump_generic(&buffer, true, false);
             }
-            MemoryOrIo::Io(io_port_array) => todo!(),
+            MemoryOrIo::Io(_io_port_array) => todo!(),
         }
     }
 
@@ -144,7 +144,7 @@ impl RxBuffers {
         let m: crate::DmaMemorySlice<RxBuffer> =
             crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(RxBuffer::new()))?;
         let mut dmas = alloc::vec::Vec::with_capacity(quantity as usize);
-        for i in 0..quantity {
+        for _i in 0..quantity {
             dmas.push(crate::DmaMemorySlice::new(size)?);
         }
         Ok(Self { bufs: m, dmas })
@@ -164,7 +164,7 @@ impl TxBuffers {
         let m: crate::DmaMemorySlice<TxBuffer> =
             crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(TxBuffer::new()))?;
         let mut dmas = alloc::vec::Vec::with_capacity(quantity as usize);
-        for i in 0..quantity {
+        for _i in 0..quantity {
             dmas.push(crate::DmaMemorySlice::new(size)?);
         }
         Ok(Self { bufs: m, dmas })
@@ -174,11 +174,11 @@ impl TxBuffers {
 /// The actual intel pro/1000 device
 pub struct IntelPro1000Device {
     /// The base address registers
-    bars: [Option<BarSpace>; 6],
+    _bars: [Option<BarSpace>; 6],
     /// The memory allocated by bar0
     bar0: MemoryOrIo,
     /// the io space allocated for the device
-    io: crate::IoPortArray<'static>,
+    _io: crate::IoPortArray<'static>,
     /// Is the eeprom present?
     eeprom_present: Option<bool>,
     /// The rx buffers
@@ -375,7 +375,6 @@ impl PciFunctionDriverTrait for IntelPro1000 {
 
     fn parse_bars(
         &mut self,
-        system: &mut impl crate::kernel::SystemTrait,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
         dev: &PciDevice,
@@ -388,12 +387,16 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 if bar.is_size_valid() {
                     doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
                     bar.print();
-                    let d = bar.get_memory(system, cs, bus, dev, f, config);
+                    let d = bar.get_memory(cs, bus, dev, f, config);
                     if let Some(d) = d {
                         doors_macros2::kernel_print!("Got memory at {:x}\r\n", d.virt);
                         Some(MemoryOrIo::Memory(d))
                     } else {
-                        todo!();
+                        if let Some(io) = bar.get_io(cs, bus, dev, f, config) {
+                            Some(MemoryOrIo::Io(io))
+                        } else {
+                            None
+                        }
                     }
                 } else {
                     None
@@ -404,7 +407,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         };
         let io = bars.iter_mut().find_map(|a| {
             if let Some(a) = a {
-                a.get_io(system, cs, bus, dev, f, config)
+                a.get_io(cs, bus, dev, f, config)
             } else {
                 None
             }
@@ -419,9 +422,9 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     }
                 }
                 let mut d = IntelPro1000Device {
-                    bars,
+                    _bars: bars,
                     bar0: m,
-                    io: i,
+                    _io: i,
                     eeprom_present: None,
                     rxbufs: None,
                     rxbufindex: None,

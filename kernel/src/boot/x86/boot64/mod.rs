@@ -1,6 +1,5 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
-use crate::modules::video::hex_dump;
 use crate::modules::video::hex_dump_generic;
 use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
@@ -11,7 +10,6 @@ use acpi::sdt::SdtHeader;
 use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::alloc::Allocator;
 use core::ptr::NonNull;
 use doors_macros::interrupt_64;
@@ -536,8 +534,8 @@ struct AmlHandler {}
 
 /// The system boot structure
 pub struct X86System<'a> {
-    boot_info: multiboot2::BootInformation<'a>,
-    acpi_handler: Acpi<'a>,
+    _boot_info: multiboot2::BootInformation<'a>,
+    _acpi_handler: Acpi<'a>,
     cpuid: CpuId<CpuIdReaderNative>,
 }
 
@@ -566,7 +564,7 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
         }
         //handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
         //doors_macros2::kernel_print!("Done with acpi handling\r\n");
-        super::setup_pci(self);
+        super::setup_pci();
     }
 }
 
@@ -863,8 +861,8 @@ pub extern "C" fn start64() -> ! {
     }
 
     super::main_boot(crate::kernel::System::X86_64(X86System {
-        boot_info,
-        acpi_handler,
+        _boot_info: boot_info,
+        _acpi_handler: acpi_handler,
         cpuid,
     }));
 }

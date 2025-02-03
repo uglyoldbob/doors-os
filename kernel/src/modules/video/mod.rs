@@ -1,9 +1,8 @@
 //! Video related kernel modules
 
 use alloc::{string::ToString, vec::Vec};
-use fonts::{FixedWidthFont, VariableWidthFont};
+use fonts::VariableWidthFont;
 use pixels::FullColor;
-use vga::DEFAULT_PALETTE;
 
 use crate::LockedArc;
 
@@ -40,17 +39,17 @@ lazy_static! {
 
 /// Represents a flat representation of a frame buffer
 pub struct OpaqueFrameBuffer<'a, P> {
-    buffer: &'a [u8],
-    width: u16,
-    height: u16,
+    _buffer: &'a [u8],
+    _width: u16,
+    _height: u16,
     pixel: core::marker::PhantomData<P>,
 }
 
 /// Represents a rectangular frame buffer
 pub struct PlainFrameBuffer<'a, P> {
-    buffer: &'a [P],
-    width: u16,
-    height: u16,
+    _buffer: &'a [P],
+    _width: u16,
+    _height: u16,
 }
 
 /// A simple memory based framebuffer
@@ -58,7 +57,7 @@ pub struct SimpleRamFramebuffer {
     /// The actual contents of the framebuffer
     buffer: Vec<u8>,
     /// The width fo the framebuffer in pixels
-    width: u16,
+    _width: u16,
     /// The height of the framebuffer in pixels
     height: u16,
 }
@@ -68,7 +67,7 @@ impl SimpleRamFramebuffer {
     pub fn new(h: u16, w: u16, size: usize) -> Self {
         let mut s = Self {
             buffer: alloc::vec![0; size],
-            width: w,
+            _width: w,
             height: h,
         };
         for a in &mut s.buffer {
@@ -79,25 +78,30 @@ impl SimpleRamFramebuffer {
 }
 
 impl FramebufferTrait<pixels::Palette<u8>> for SimpleRamFramebuffer {
-    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::Palette<u8>>) {
+    fn write_plain(&mut self, _x: u16, _y: u16, _fb: PlainFrameBuffer<'_, pixels::Palette<u8>>) {
         todo!()
     }
 
-    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::Palette<u8>>) {
+    fn write_opaque(&mut self, _x: u16, _y: u16, _ob: OpaqueFrameBuffer<'_, pixels::Palette<u8>>) {
         todo!()
     }
 
-    fn write_pixel(&mut self, x: u16, y: u16, p: pixels::Palette<u8>) {
+    fn write_pixel(&mut self, _x: u16, _y: u16, _p: pixels::Palette<u8>) {
         todo!()
     }
 }
 
 impl FramebufferTrait<pixels::FullColor<u32>> for SimpleRamFramebuffer {
-    fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::FullColor<u32>>) {
+    fn write_plain(&mut self, _x: u16, _y: u16, _fb: PlainFrameBuffer<'_, pixels::FullColor<u32>>) {
         todo!()
     }
 
-    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::FullColor<u32>>) {
+    fn write_opaque(
+        &mut self,
+        _x: u16,
+        _y: u16,
+        _ob: OpaqueFrameBuffer<'_, pixels::FullColor<u32>>,
+    ) {
         todo!()
     }
 
@@ -111,7 +115,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for SimpleRamFramebuffer {
             (2 * (self.height as usize * x as usize + y as usize)) + 1
         );
         //doors_macros2::kernel_print!("Pixel offset {}\r\n", (2 * (self.height as usize * x as usize + y as usize))+2);
-        self.buffer[(self.height as usize * x as usize + y as usize)] = (p.pixel & 0xff) as u8;
+        self.buffer[self.height as usize * x as usize + y as usize] = (p.pixel & 0xff) as u8;
         self.buffer[(2 * (self.height as usize * x as usize + y as usize)) + 1] =
             (p.pixel >> 8 & 0xff) as u8;
         //self.buffer[(3 * (self.height as usize * x as usize + y as usize))+2] = (p.pixel>>16 & 0xff) as u8;
@@ -160,7 +164,7 @@ impl FramebufferTrait<pixels::Palette<u8>> for Framebuffer {
         }
     }
 
-    fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::Palette<u8>>) {
+    fn write_opaque(&mut self, _x: u16, _y: u16, _ob: OpaqueFrameBuffer<'_, pixels::Palette<u8>>) {
         todo!()
     }
 
@@ -178,7 +182,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
         match self {
             Framebuffer::SimpleRam(f) => f.write_plain(x, y, fb),
             #[cfg(kernel_machine = "pc64")]
-            Framebuffer::VgaHardware(f) => todo!(),
+            Framebuffer::VgaHardware(_f) => todo!(),
         }
     }
 
@@ -186,7 +190,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
         match self {
             Framebuffer::SimpleRam(f) => f.write_opaque(x, y, ob),
             #[cfg(kernel_machine = "pc64")]
-            Framebuffer::VgaHardware(f) => todo!(),
+            Framebuffer::VgaHardware(_f) => todo!(),
         }
     }
 
@@ -194,7 +198,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
         match self {
             Framebuffer::SimpleRam(f) => f.write_pixel(x, y, p),
             #[cfg(kernel_machine = "pc64")]
-            Framebuffer::VgaHardware(f) => todo!(),
+            Framebuffer::VgaHardware(_f) => todo!(),
         }
     }
 }
@@ -207,7 +211,7 @@ impl Framebuffer {
                 simple_ram_framebuffer.buffer.iter_mut()
             }
             #[cfg(kernel_machine = "pc64")]
-            Framebuffer::VgaHardware(vga) => todo!(),
+            Framebuffer::VgaHardware(_vga) => todo!(),
         }
     }
 
@@ -218,7 +222,7 @@ impl Framebuffer {
                 doors_macros2::kernel_print!("FB IS AT {:p}\r\n", &fb.buffer[0])
             }
             #[cfg(kernel_machine = "pc64")]
-            Framebuffer::VgaHardware(vga) => todo!(),
+            Framebuffer::VgaHardware(_vga) => todo!(),
         }
     }
 
@@ -258,21 +262,6 @@ impl Display {
     pub fn try_get_pixel_buffer(&mut self) -> Option<&mut Framebuffer> {
         match self {
             Display::Framebuffer(framebuffer) => Some(framebuffer),
-            _ => {
-                todo!();
-            }
-        }
-    }
-
-    /// Debug print an important address for the display
-    fn print_address(&self) {
-        match self {
-            Display::Framebuffer(fb) => {
-                fb.print_address();
-            }
-            _ => {
-                todo!();
-            }
         }
     }
 
@@ -282,9 +271,6 @@ impl Display {
             Display::Framebuffer(fb) => {
                 let f = &*MAIN_FONT;
                 fb.make_console(f)
-            }
-            _ => {
-                todo!();
             }
         }
     }
@@ -381,7 +367,7 @@ where
 }
 
 impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
-    fn print_char(&mut self, d: char) {
+    fn print_char(&mut self, _d: char) {
         for x in 0..50 {
             for y in 0..10 {
                 let pixel: crate::modules::video::pixels::Palette<u8> =
@@ -401,7 +387,7 @@ where
 {
     fn print_char(&mut self, d: char) {
         let a = FontTrait::lookup_symbol(self.font, d);
-        if let Some(a) = a {
+        if let Some(_a) = a {
             for i in 0..10 {
                 for j in 0..10 {
                     let p = 0xffffffff;
@@ -418,6 +404,7 @@ where
             doors_macros2::kernel_print!("Done printing char\r\n");
             self.cursor_x += 5;
         }
+        todo!();
     }
 }
 
@@ -437,7 +424,7 @@ pub enum TextDisplay {
 }
 
 impl log::Log for crate::Locked<Option<TextDisplay>> {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true
     }
 
@@ -561,7 +548,7 @@ pub fn hex_dump(data: &[u8], print_address: bool, print_ascii: bool) {
             for d in b {
                 match char::try_from(*d) {
                     Ok(a) => doors_macros2::kernel_print!("{:?}", a),
-                    Err(a) => doors_macros2::kernel_print!("?"),
+                    Err(_a) => doors_macros2::kernel_print!("?"),
                 }
             }
         }

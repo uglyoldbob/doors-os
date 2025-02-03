@@ -3,6 +3,7 @@
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
+#[cfg(kernel_machine = "stm32f769i-disco")]
 use crate::LockedArc;
 
 /// The trait that all clock providers must implement
