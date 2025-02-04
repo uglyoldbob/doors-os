@@ -746,12 +746,12 @@ impl BarSpace {
                 let pcim = crate::PciMemory::new(*size as usize);
                 if let Ok(pcim) = &pcim {
                     let newbar = BarSpace::Memory32 {
-                        base: pcim.phys as u32,
-                        size: pcim.size as u32,
+                        base: pcim.phys() as u32,
+                        size: pcim.size() as u32,
                         flags: *flags,
                         index: *index,
                     };
-                    doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", pcim.phys);
+                    doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", pcim.phys());
                     newbar.write_to_pci(pci, bus, dev, function, config);
                     *self = newbar;
                 }

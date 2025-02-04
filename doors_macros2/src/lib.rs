@@ -1,7 +1,7 @@
+//! This crate defines various macros used in the Doors kernel.
+
 #![no_std]
 #![deny(missing_docs)]
-
-//! This crate defines various macros used in the Doors kernel.
 
 /// A macro for printing strings from the kernel
 #[macro_export]
@@ -11,14 +11,14 @@ macro_rules! kernel_print {
             let mut a: crate::FixedString = crate::FixedString::new();
             let r = core::fmt::write(
                 &mut a,
-                format_args!($($arg)*),
+                core::format_args!($($arg)*),
             );
             let mut v = crate::VGA.lock();
             let mut vga = v.as_mut();
-            if let Some(vga) = vga {
+            if let core::option::Option::Some(vga) = vga {
                 match r {
-                    Ok(_) => vga.print_str(a.as_str()),
-                    Err(_) => vga.print_str("Error parsing string\r\n"),
+                    core::result::Result::Ok(_) => vga.print_str(a.as_str()),
+                    core::result::Result::Err(_) => vga.print_str("Error parsing string\r\n"),
                 }
             }
         }

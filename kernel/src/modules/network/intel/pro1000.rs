@@ -306,10 +306,25 @@ impl IntelPro1000Device {
         self.eeprom_present.unwrap()
     }
 
+    fn supports_pcix(&self) -> bool {
+        match self.model {
+            Model::Model82541EI_A0_or_Model82541EI_B0_Copper
+            | Model::Model82541EI_B0_Mobile
+            | Model::Model82541GI_B1_Copper_or_Model82541PI_C0
+            | Model::Model82541GI_B1_Mobile
+            | Model::Model82541PI_C0
+            | Model::Model82540EP_A_Desktop
+            | Model::Model82540EP_A_Mobile
+            | Model::Model82540EM_A_Desktop
+            | Model::Model82540EM_A_Mobile => false,
+            _ => true,
+        }
+    }
+
     fn init_rx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
             let rxbuf = RxBuffers::new(32, 8192)?;
-            let rxaddr = rxbuf.bufs.phys;
+            let rxaddr = rxbuf.bufs.phys();
             doors_macros2::kernel_print!("Writing RX stuff to network card\r\n");
             self.bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
@@ -355,7 +370,7 @@ impl IntelPro1000Device {
     fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
             let txbuf = TxBuffers::new(8, 8192)?;
-            let txaddr = txbuf.bufs.phys;
+            let txaddr = txbuf.bufs.phys();
             self.bar0.write(
                 IntelPro1000Registers::TxDescLow as u16,
                 (txaddr >> 32) as u32,
@@ -460,7 +475,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     bar.print();
                     let d = bar.get_memory(cs, bus, dev, f, config);
                     if let Some(d) = d {
-                        doors_macros2::kernel_print!("Got memory at {:x}\r\n", d.virt);
+                        doors_macros2::kernel_print!("Got memory at {:x}\r\n", d.virt());
                         Some(MemoryOrIo::Memory(d))
                     } else {
                         if let Some(io) = bar.get_io(cs, bus, dev, f, config) {

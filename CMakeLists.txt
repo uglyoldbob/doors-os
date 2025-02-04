@@ -3,12 +3,14 @@ project(doors-os)
 
 add_custom_target(
     kernel64
-    BYPRODUCTS ./kernel64.debug ./kernel64 ./target
+    BYPRODUCTS ./kernel64.debug ./kernel64 ./target ./kerneltest64
     COMMAND cargo build --release --target x86_64-unknown-none
     COMMAND mkdir -p ./build
     COMMAND cp -u target/x86_64-unknown-none/release/kernel ./kernel64.debug
     COMMAND cp -u target/x86_64-unknown-none/release/kernel ./kernel64
     COMMAND strip ./kernel64
+    COMMAND cp -u target/x86_64-unknown-none/release/kerneltest ./kerneltest64
+    COMMAND strip ./kerneltest64
 )
 
 if (WIN32)
@@ -37,8 +39,9 @@ if (WIN32)
 add_custom_target(
     image_cd64
     DEPENDS kernel64
-    BYPRODUCTS cd64.iso
+    BYPRODUCTS cd64.iso cd64test.iso
     COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel64
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64test.iso --name-setup=iso9660 ./boot/kernel=./kerneltest64
 )
 
 add_custom_target(
@@ -61,11 +64,13 @@ add_custom_target(
 add_custom_target(
     image_cd64
     DEPENDS kernel64
-    BYPRODUCTS cd64.iso
+    BYPRODUCTS cd64.iso cd64test.iso
     COMMAND mkdir -p build/iso/boot/grub
     COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
     COMMAND cp ./kernel64 ./build/iso/boot/kernel
     COMMAND grub-mkrescue -o ./cd64.iso build/iso
+    COMMAND cp ./kerneltest64 ./build/iso/boot/kernel
+    COMMAND grub-mkrescue -o ./cd64test.iso build/iso
     COMMAND rm -rf ./build/iso
 )
 
@@ -109,4 +114,10 @@ add_custom_target(
     qemucd64
     DEPENDS image_cd64
     COMMAND ${QEMU_X64} -cdrom cd64.iso -m 8 -serial file:serial.log
+)
+
+add_custom_target(
+    qemucd64test
+    DEPENDS image_cd64
+    COMMAND ${QEMU_X64} -cdrom cd64test.iso -m 8 -serial file:test.log
 )

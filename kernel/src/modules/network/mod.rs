@@ -39,6 +39,79 @@ pub struct MacAddress {
     address: [u8; 6],
 }
 
+/// An Ipv4 address
+pub struct IpV4 {
+    /// The 4 parts of the address
+    address: [u8; 4],
+    /// The subnet mask
+    mask: [u8; 4],
+}
+
+impl alloc::fmt::Debug for IpV4 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&alloc::format!(
+            "{}.{}.{}.{} {}.{}.{}.{}",
+            self.address[0],
+            self.address[1],
+            self.address[2],
+            self.address[3],
+            self.mask[0],
+            self.mask[1],
+            self.mask[2],
+            self.mask[3]
+        ))
+    }
+}
+
+/// An Ipv6 address
+pub struct IpV6 {
+    /// The 4 parts of the address
+    address: [u16; 8],
+    /// The prefix length
+    prefix: u8,
+}
+
+impl alloc::fmt::Debug for IpV6 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut zeros: [bool; 6] = [false; 6];
+        for i in 0..6 {
+            zeros[i] = self.address[i] == 0;
+        }
+        let mut num_consecutive_zeros = [0; 6];
+        {
+            for i in 0..6 {
+                if zeros[i] {
+                    let mut j = i;
+                    loop {
+                        if i >= 6 {
+                            break;
+                        }
+                        if !zeros[j] {
+                            break;
+                        }
+                        j += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[doors_macros::doors_test]
+fn ipv6_network_test() -> Result<(), ()> {
+    Err(())
+}
+
+/// A network adapter ip address
+pub enum IpAddress {
+    /// An ipv4 address
+    IpV4(IpV4),
+    /// An ipv6 address
+    IpV6(IpV6),
+}
+
 /// The trait that defines common functionality for network adapters
 #[enum_dispatch::enum_dispatch]
 pub trait NetworkAdapterTrait {

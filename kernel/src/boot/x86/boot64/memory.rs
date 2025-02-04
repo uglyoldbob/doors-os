@@ -466,11 +466,7 @@ impl crate::PciMemory {
         let pa = unsafe { phys.as_ref() }.as_ptr() as usize;
         doors_macros2::kernel_print!("PCI: virtual {:x} physical {:x}\r\n", va, pa);
         match mm.map_addresses_read_write(va, pa, layout.size()) {
-            Ok(()) => Ok(Self {
-                virt: va,
-                phys: pa,
-                size,
-            }),
+            Ok(()) => Ok(unsafe { Self::build_with(va, pa, size) }),
             Err(()) => Err(core::alloc::AllocError),
         }
     }
@@ -479,21 +475,22 @@ impl crate::PciMemory {
 impl Drop for crate::PciMemory {
     fn drop(&mut self) {
         let mut t = super::PAGE_ALLOCATOR.lock();
-        let layout = core::alloc::Layout::from_size_align(self.size, self.size).unwrap();
+        let layout = core::alloc::Layout::from_size_align(self.size(), self.size()).unwrap();
         t.extra_mem.deallocate_nonram_memory(
-            unsafe { core::ptr::NonNull::new_unchecked(self.phys as *mut u8) },
+            unsafe { core::ptr::NonNull::new_unchecked(self.phys() as *mut u8) },
             layout,
         );
         let layout =
-            core::alloc::Layout::from_size_align(self.size, core::mem::size_of::<Page>()).unwrap();
+            core::alloc::Layout::from_size_align(self.size(), core::mem::size_of::<Page>())
+                .unwrap();
         unsafe {
             super::VIRTUAL_MEMORY_ALLOCATOR.deallocate(
-                core::ptr::NonNull::new_unchecked(self.virt as *mut u8),
+                core::ptr::NonNull::new_unchecked(self.virt() as *mut u8),
                 layout,
             )
         };
         let mut mm = super::PAGING_MANAGER.lock();
-        mm.unmap_mapped_pages(self.virt, self.size);
+        mm.unmap_mapped_pages(self.virt(), self.size());
     }
 }
 
@@ -506,12 +503,7 @@ impl<T: Default> crate::DmaMemory<T> {
             .lock()
             .lookup_physical_address(va)
             .ok_or(core::alloc::AllocError)?;
-        let s = Self {
-            phys,
-            virt: va,
-            size: core::mem::size_of::<T>(),
-            data: b,
-        };
+        let s = unsafe { Self::build_with(va, phys, core::mem::size_of::<T>(), b) };
         Ok(s)
     }
 }
@@ -531,12 +523,7 @@ impl<T> crate::DmaMemorySlice<T> {
             .lock()
             .lookup_physical_address(va)
             .ok_or(core::alloc::AllocError)?;
-        let s = Self {
-            phys,
-            virt: va,
-            size: quantity * core::mem::size_of::<T>(),
-            data: b,
-        };
+        let s = unsafe { Self::build_with(va, phys, quantity * core::mem::size_of::<T>(), b) };
         Ok(s)
     }
 }

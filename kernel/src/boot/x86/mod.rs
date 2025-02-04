@@ -253,5 +253,5 @@ fn setup_serial() {
 /// This function is called by the entrance module for the kernel.
 fn main_boot(system: crate::kernel::System) -> ! {
     doors_macros2::kernel_print!("This is a test\r\n");
-    super::super::main(system);
+    crate::main(system)
 }

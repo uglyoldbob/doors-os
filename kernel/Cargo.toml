@@ -35,3 +35,14 @@ aml = "0.16.4"
 raw-cpuid = "11.0.1"
 x86_64 = {git = "https://github.com/rust-osdev/x86_64.git", version = "0.15.1", default-features=false, features = ["abi_x86_interrupt", "instructions", "const_fn"] }
 multiboot2 = "0.19.0"
+
+[[bin]]
+name = "kernel"
+test = false
+bench = false
+
+[[bin]]
+name = "kerneltest"
+path = "src/test.rs"
+test = true
+bench = false
