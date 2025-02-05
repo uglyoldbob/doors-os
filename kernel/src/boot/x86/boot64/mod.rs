@@ -143,23 +143,6 @@ pub extern "C" fn unknown_interrupt() {
     loop {}
 }
 
-/// The panic handler for the 64-bit kernel
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
-    if let Some(t) = info.location() {
-        let f = t.file();
-        let maxlen = f.len();
-        for i in (0..maxlen).step_by(70) {
-            let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
-            doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
-        }
-        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
-    }
-    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
-    loop {}
-}
-
 core::arch::global_asm!(include_str!("boot.s"));
 
 /// The virtual memory allocator. Deleted space from this may not be reclaimable.

@@ -8,7 +8,8 @@ use quote::quote;
 use syn::parse_macro_input;
 
 lazy_static::lazy_static! {
-    static ref TEST_CALLS: Mutex<Option<Vec<String>>> = Mutex::new(Some(Default::default()));
+    /// The number of test functions in the kernel
+    static ref TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
 }
 
 /// Defines the required doors test structure
@@ -35,19 +36,20 @@ pub fn doors_test(
     if fcmp.sig.output != f.sig.output {
         panic!("Function {} must return a Result<(),()>", f.sig.ident);
     }
-    let index;
-    {
-        let mut test_calls = TEST_CALLS.lock().unwrap();
-        if test_calls.is_none() {
-            *test_calls = Some(Vec::new());
+    let index = {
+        let mut test_calls = TEST_CALL_QUANTITY.lock().unwrap();
+        match &mut *test_calls {
+            None => {
+                *test_calls = Some(1);
+                0
+            }
+            Some(t) => {
+                let oldval = *t;
+                *t += 1;
+                oldval
+            }
         }
-        if let Some(t) = &mut *test_calls {
-            index = t.len();
-            t.push(f.sig.ident.to_string());
-        } else {
-            panic!();
-        }
-    }
+    };
     let fcall = f.sig.ident;
     let fcall2 = fcall.to_string();
     let item: proc_macro2::TokenStream = item.into();
@@ -71,10 +73,11 @@ pub fn doors_test(
 /// This creates the function that runs all of the tests
 #[proc_macro]
 pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let mut testa = TEST_CALLS.lock().unwrap();
+    let mut testa = TEST_CALL_QUANTITY.lock().unwrap();
     let testa = testa.take().unwrap();
 
-    let calls = testa.iter().enumerate().map(|(i, _)| {
+    let i = 0..testa;
+    let calls = i.into_iter().map(|i| {
         let ident = quote::format_ident!("test_{}", i);
         quote!(Self::#ident)
     });

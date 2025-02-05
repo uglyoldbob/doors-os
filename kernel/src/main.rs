@@ -35,6 +35,28 @@ cfg_if::cfg_if! {
     }
 }
 
+/// The panic handler for the kernel
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
+    let msg = info.message();
+    if let Some(s) = msg.as_str() {
+        doors_macros2::kernel_print_alloc!("{}\r\n", s);
+    }
+    doors_macros2::kernel_print_alloc!("{}\r\n", info);
+    if let Some(t) = info.location() {
+        let f = t.file();
+        let maxlen = f.len();
+        for i in (0..maxlen).step_by(70) {
+            let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
+            doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
+        }
+        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
+    }
+    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
+    loop {}
+}
+
 use kernel::SystemTrait;
 use modules::network::NetworkAdapterTrait;
 use modules::rng;
