@@ -7,6 +7,7 @@
 #![feature(alloc_error_handler)]
 #![feature(abi_x86_interrupt)]
 #![feature(box_vec_non_null)]
+#![feature(proc_macro_hygiene)]
 
 extern crate alloc;
 

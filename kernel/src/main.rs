@@ -9,6 +9,7 @@
 #![feature(abi_x86_interrupt)]
 #![feature(box_vec_non_null)]
 #![feature(custom_test_frameworks)]
+#![feature(proc_macro_hygiene)]
 
 extern crate alloc;
 

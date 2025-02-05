@@ -233,6 +233,7 @@ impl TxBuffers {
 }
 
 /// The actual intel pro/1000 device
+#[doors_macros::enum_variant(NetworkAdapter)]
 pub struct IntelPro1000Device {
     /// The base address registers
     _bars: [Option<BarSpace>; 6],
@@ -534,9 +535,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 if let Err(e) = d.init_tx() {
                     doors_macros2::kernel_print!("TX buffer allocation error {:?}\r\n", e);
                 }
-                super::super::register_network_adapter(super::super::NetworkAdapter::IntelPro1000(
-                    d,
-                ));
+                super::super::register_network_adapter(d.into());
             }
         }
     }

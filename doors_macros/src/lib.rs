@@ -2,14 +2,123 @@
 
 //! This crate defines various macros used in the Doors kernel.
 
-use std::sync::Mutex;
+use std::{collections::BTreeMap, str::FromStr, sync::Mutex};
 
 use quote::quote;
 use syn::parse_macro_input;
 
+#[derive(Debug)]
+struct EnumData {
+    variants: Vec<String>,
+}
+
 lazy_static::lazy_static! {
     /// The number of test functions in the kernel
     static ref TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
+    /// The enum builder data
+    static ref ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::new());
+}
+
+/// A macro that declares that an enum will be created
+#[proc_macro]
+pub fn declare_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(input as syn::Ident);
+    let mut e = ENUM_BUILDER.lock().unwrap();
+    let n = f.to_string();
+    if !e.contains_key(&n) {
+        e.insert(
+            n,
+            EnumData {
+                variants: Vec::new(),
+            },
+        );
+    } else {
+        panic!("Enum {} was already declared", n);
+    }
+    quote!().into()
+}
+
+/// This attribute re-exports macro variant submodules
+#[proc_macro_attribute]
+pub fn reexport_enum_variants(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let item2 = item.clone();
+    let item: proc_macro2::TokenStream = item.into();
+    let i = parse_macro_input!(item2 as syn::ItemMod);
+    let modname = i.ident;
+    quote! {
+        #item
+        pub use #modname::DoorsEnumVariants;
+    }
+    .into()
+}
+
+/// A macro that adds a variant to an enum
+#[proc_macro_attribute]
+pub fn enum_variant(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(attr as syn::Ident);
+    let item2 = item.clone();
+    let i = parse_macro_input!(item2 as syn::ItemStruct);
+    let mut e = ENUM_BUILDER.lock().unwrap();
+    let entry = e.get_mut(&f.to_string()).unwrap();
+    let index = entry.variants.len();
+    println!(
+        "Parse enum {} with variant addition {} index {}",
+        f, i.ident, index
+    );
+    let varname = i.ident;
+    let newid = quote::format_ident!("Variant{}", index);
+    let q = quote! {
+        /// Automatically generated variant #index
+        #newid(DoorsEnumVariants::#varname),
+    };
+    entry.variants.push(q.to_string());
+    let modname = quote::format_ident!("{}Variants", varname.to_string());
+    let item: proc_macro2::TokenStream = item.into();
+    quote! {
+        #item
+        /// A module for making variants accessible
+        pub mod DoorsEnumVariants {
+            pub use super::#varname;
+        }
+    }
+    .into()
+}
+
+/// A macro that defines a previously defined macro
+#[proc_macro]
+pub fn define_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let allf: Vec<syn::Ident> =
+        parse_macro_input!(input with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated)
+            .into_iter()
+            .collect();
+    let f = &allf[0];
+    let dispatch = &allf[1];
+    let mut e = ENUM_BUILDER.lock().unwrap();
+    let n = f.to_string();
+    let data = e.remove(&n).unwrap();
+    println!("The enum data for {} is {:?}", n, data);
+    if data.variants.is_empty() {
+        panic!("No variants defined for {}", n);
+    }
+    let variants: Vec<proc_macro2::TokenStream> = data
+        .variants
+        .iter()
+        .map(|a| proc_macro2::TokenStream::from_str(a).unwrap().into())
+        .collect();
+    quote! {
+        /// Automatically generated enumeration
+        #[enum_dispatch::enum_dispatch(#dispatch)]
+        pub enum #f {
+            #(#variants)*
+        }
+    }
+    .into()
 }
 
 /// Defines the required doors test structure

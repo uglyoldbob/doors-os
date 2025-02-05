@@ -6,6 +6,9 @@ use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String, v
 
 use crate::{Locked, LockedArc};
 
+doors_macros::declare_enum!(NetworkAdapter);
+
+#[doors_macros::reexport_enum_variants()]
 pub mod intel;
 
 /// Represents all network adapters for the kernel
@@ -228,9 +231,4 @@ pub trait NetworkAdapterTrait {
     fn get_mac_address(&mut self) -> MacAddress;
 }
 
-/// Represents a network adapter of some variety
-#[enum_dispatch::enum_dispatch(NetworkAdapterTrait)]
-pub enum NetworkAdapter {
-    /// An intel network adapter
-    IntelPro1000(intel::IntelPro1000Device),
-}
+doors_macros::define_enum!(NetworkAdapter, NetworkAdapterTrait);
