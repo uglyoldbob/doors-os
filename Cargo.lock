@@ -142,7 +142,10 @@ dependencies = [
  "lazy_static",
  "proc-macro2",
  "quote",
+ "serde 1.0.198",
+ "serde-value",
  "syn 1.0.109",
+ "toml",
 ]
 
 [[package]]
@@ -240,6 +243,7 @@ dependencies = [
  "multiboot2",
  "raw-cpuid 11.0.1",
  "serde 1.0.198",
+ "serde-value",
  "spin 0.9.8",
  "target_build_utils",
  "toml",
@@ -321,6 +325,15 @@ name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
+
+[[package]]
+name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits 0.2.18",
+]
 
 [[package]]
 name = "phf"
@@ -562,6 +575,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9846a40c979031340571da2545a4e5b7c4163bdae79b301d5f86d03979451fcc"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-value"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
+dependencies = [
+ "ordered-float",
+ "serde 1.0.198",
 ]
 
 [[package]]

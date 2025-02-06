@@ -10,6 +10,8 @@
 #![feature(box_vec_non_null)]
 #![feature(custom_test_frameworks)]
 
+doors_macros::load_config!();
+
 extern crate alloc;
 
 doors_macros::use_doors_test!();

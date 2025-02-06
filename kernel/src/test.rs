@@ -8,6 +8,8 @@
 #![feature(abi_x86_interrupt)]
 #![feature(box_vec_non_null)]
 
+doors_macros::load_config!();
+
 extern crate alloc;
 
 doors_macros::use_doors_test!();

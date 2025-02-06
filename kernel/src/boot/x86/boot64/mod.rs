@@ -541,13 +541,18 @@ struct LocalApicRegister {
 struct AmlHandler {}
 
 /// The system boot structure
+#[doors_macros::config_check_struct]
 pub struct X86System<'a> {
+    #[doorsconfig = "acpi"]
     /// Used for information regarding the bootup of the kernel
-    _boot_info: multiboot2::BootInformation<'a>,
+    boot_info: multiboot2::BootInformation<'a>,
+    #[doorsconfig = "acpi"]
     /// Used for acpi
-    _acpi_handler: Acpi<'a>,
-    /// USed for cpuid stuff
+    acpi_handler: Acpi<'a>,
+    /// Used for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
+    /// Phantom
+    _phantom: core::marker::PhantomData<&'a usize>,
 }
 
 impl crate::kernel::SystemTrait for X86System<'_> {
@@ -575,8 +580,11 @@ impl crate::kernel::SystemTrait for X86System<'_> {
             p.set_physical_address_size(cap.physical_address_bits());
             doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
         }
-        //handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-        //doors_macros2::kernel_print!("Done with acpi handling\r\n");
+        doors_macros::config_check_bool!(acpi, {
+            doors_macros2::kernel_print!("About to open acpi stuff\r\n");
+            handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
+            doors_macros2::kernel_print!("Done with acpi handling\r\n");
+        });
         super::setup_pci();
     }
 }
@@ -825,16 +833,9 @@ pub extern "C" fn start64() -> ! {
     doors_macros2::kernel_print!("test var is {:p}\r\n", test.as_ptr());
     drop(test);
 
-    let acpi_handler = Acpi {
-        pageman: &PAGING_MANAGER,
-        vmm: &VIRTUAL_MEMORY_ALLOCATOR,
-    };
-
     doors_macros2::kernel_print!("INTIAL STACK IS {:x}\r\n", unsafe {
         INITIAL_STACK as usize
     });
-
-    doors_macros2::kernel_print!("About to open acpi stuff\r\n");
 
     let mut pic = Pic::new().unwrap();
     pic.disable();
@@ -873,9 +874,19 @@ pub extern "C" fn start64() -> ! {
         }
     }
 
-    super::main_boot(crate::kernel::System::X86_64(X86System {
-        _boot_info: boot_info,
-        _acpi_handler: acpi_handler,
-        cpuid,
-    }));
+    let sys = doors_macros::config_build_struct! {
+        X86System {
+            #[doorsconfig = "acpi"]
+            boot_info: boot_info,
+            #[doorsconfig = "acpi"]
+            acpi_handler: Acpi {
+                pageman: &PAGING_MANAGER,
+                vmm: &VIRTUAL_MEMORY_ALLOCATOR,
+            },
+            cpuid,
+            _phantom: core::marker::PhantomData,
+        }
+    };
+
+    super::main_boot(sys.into());
 }

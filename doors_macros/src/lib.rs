@@ -4,12 +4,16 @@
 
 use std::{
     collections::{BTreeMap, HashSet},
+    io::Read,
     str::FromStr,
     sync::Mutex,
 };
 
 use quote::quote;
 use syn::parse_macro_input;
+
+mod config;
+use config::KernelConfig;
 
 #[derive(Debug)]
 struct EnumData {
@@ -22,6 +26,225 @@ lazy_static::lazy_static! {
     static ref TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
     /// The enum builder data
     static ref ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::new());
+    /// The kernel config
+    static ref KERNEL_CONFIG: Mutex<Option<KernelConfig>> = Mutex::new(None);
+}
+
+/// Define the kernel config for the kernel build script
+#[proc_macro]
+pub fn define_config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    assert!(input.is_empty());
+    let c = include_str!("config.rs");
+    let ts = proc_macro2::TokenStream::from_str(c).unwrap();
+    quote!(
+        mod config {
+            #ts
+        }
+    )
+    .into()
+}
+
+/// Load the kernel config for building the kernel
+#[proc_macro]
+pub fn load_config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    assert!(input.is_empty());
+    let mdir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let mut p = std::path::PathBuf::from_str(&mdir).unwrap();
+    p.push("config.toml");
+    let mut config = std::fs::File::open(p).expect("Failed to open kernel configuration");
+    let mut config_contents = Vec::new();
+    config
+        .read_to_end(&mut config_contents)
+        .expect("Failed to read kernel configuration");
+    let config =
+        String::from_utf8(config_contents).expect("Invalid contents in kernel configuration");
+    let config = toml::from_str::<KernelConfig>(&config).expect("Invalid kernel configuration");
+    let mut m = KERNEL_CONFIG.lock().unwrap();
+    if m.is_some() {
+        panic!("Kernel config already loaded");
+    }
+    m.replace(config);
+    quote!().into()
+}
+
+struct ConfigCheckBlock {
+    ident: syn::Ident,
+    block: syn::Block,
+}
+
+impl syn::parse::Parse for ConfigCheckBlock {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let ident = syn::Ident::parse(input)?;
+        syn::token::Comma::parse(input)?;
+        let block = syn::Block::parse(input)?;
+        let s = Self { ident, block };
+        Ok(s)
+    }
+}
+
+/// Retrieve a boolean value from the kernel config and use it to enable a block of code
+#[proc_macro]
+pub fn config_check_bool(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(input as ConfigCheckBlock);
+    let m = KERNEL_CONFIG.lock().unwrap();
+    let m = m.as_ref().unwrap();
+    let val = m.get_field(&f.ident.to_string());
+    let block = f.block;
+    if val {
+        quote!(#block).into()
+    } else {
+        quote!().into()
+    }
+}
+
+/// Retrieve a boolean value from the kernel config
+#[proc_macro]
+pub fn config_build_struct(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let m = KERNEL_CONFIG.lock().unwrap();
+    let m = m.as_ref().unwrap();
+    let item2 = item.clone();
+    let mut f = parse_macro_input!(item2 as syn::ExprStruct);
+
+    let mod_field = |mut elem: syn::FieldValue| {
+        let field_use = elem.attrs.iter().find_map(|attr| {
+            if let Some(a) = attr.path.get_ident() {
+                if *a == "doorsconfig" {
+                    let p = attr.parse_meta().unwrap();
+                    if let syn::Meta::NameValue(n) = p {
+                        if let syn::Lit::Str(l) = n.lit {
+                            let name = l.value();
+                            let val: bool = m.get_field(&name);
+                            Some(val)
+                        } else {
+                            panic!("Expected a string literal");
+                        }
+                    } else {
+                        panic!("Expected the form doorsconfig = \"something\"");
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+        let t = elem
+            .attrs
+            .clone()
+            .into_iter()
+            .filter(|attr| {
+                if let Some(a) = attr.path.get_ident() {
+                    *a != "doorsconfig"
+                } else {
+                    true
+                }
+            })
+            .collect();
+        elem.attrs = t;
+        if let Some(u) = field_use {
+            if u {
+                Some(elem.to_owned())
+            } else {
+                None
+            }
+        } else {
+            Some(elem.to_owned())
+        }
+    };
+
+    let mut punc: syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma> =
+        syn::punctuated::Punctuated::new();
+    for field in f.fields.clone().into_iter().filter_map(mod_field) {
+        punc.push_value(field);
+        punc.push_punct(syn::token::Comma::default());
+    }
+    f.fields = punc;
+    quote!(#f).into()
+}
+
+/// Check a boolean value from the kernel config to enable code
+#[proc_macro_attribute]
+pub fn config_check_struct(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    assert!(attr.is_empty());
+    let m = KERNEL_CONFIG.lock().unwrap();
+    let m = m.as_ref().unwrap();
+    let item2 = item.clone();
+    let mut f = parse_macro_input!(item2 as syn::ItemStruct);
+
+    let mod_field = |mut elem: syn::Field| {
+        let field_use = elem.attrs.iter().find_map(|attr| {
+            if let Some(a) = attr.path.get_ident() {
+                if *a == "doorsconfig" {
+                    let p = attr.parse_meta().unwrap();
+                    if let syn::Meta::NameValue(n) = p {
+                        if let syn::Lit::Str(l) = n.lit {
+                            let name = l.value();
+                            let val: bool = m.get_field(&name);
+                            Some(val)
+                        } else {
+                            panic!("Expected a string literal");
+                        }
+                    } else {
+                        panic!("Expected the form doorsconfig = \"something\"");
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+        let t = elem
+            .attrs
+            .clone()
+            .into_iter()
+            .filter(|attr| {
+                if let Some(a) = attr.path.get_ident() {
+                    *a != "doorsconfig"
+                } else {
+                    true
+                }
+            })
+            .collect();
+        elem.attrs = t;
+        if let Some(u) = field_use {
+            if u {
+                Some(elem.to_owned())
+            } else {
+                None
+            }
+        } else {
+            Some(elem.to_owned())
+        }
+    };
+
+    f.fields = match f.fields {
+        syn::Fields::Unit => syn::Fields::Unit,
+        syn::Fields::Named(mut n) => {
+            let mut punc: syn::punctuated::Punctuated<syn::Field, syn::token::Comma> =
+                syn::punctuated::Punctuated::new();
+            for field in n.named.clone().into_iter().filter_map(mod_field) {
+                punc.push_value(field);
+                punc.push_punct(syn::token::Comma::default());
+            }
+            n.named = punc;
+            syn::Fields::Named(n)
+        }
+        syn::Fields::Unnamed(mut n) => {
+            let mut punc: syn::punctuated::Punctuated<syn::Field, syn::token::Comma> =
+                syn::punctuated::Punctuated::new();
+            for field in n.unnamed.clone().into_iter().filter_map(mod_field) {
+                punc.push_value(field);
+                punc.push_punct(syn::token::Comma::default());
+            }
+            n.unnamed = punc;
+            syn::Fields::Unnamed(n)
+        }
+    };
+    quote!(#f).into()
 }
 
 /// A macro that declares that an enum will be created

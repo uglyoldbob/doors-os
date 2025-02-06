@@ -2,9 +2,8 @@ use std::io::Read;
 
 use fontdue::FontSettings;
 
-use crate::config::KernelConfig;
-
-mod config;
+doors_macros::define_config!();
+use config::KernelConfig;
 
 struct FontData {
     c: char,
