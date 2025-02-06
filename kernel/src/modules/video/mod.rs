@@ -566,8 +566,8 @@ pub fn hex_dump(data: &[u8], print_address: bool, print_ascii: bool) {
                 let c = *d as char;
                 if c.is_ascii() {
                     match *d {
-                        0..32 => doors_macros2::kernel_print!("?"),
-                        _ => doors_macros2::kernel_print!("{}", c),
+                        32..128 => doors_macros2::kernel_print!("{}", c),
+                        _ => doors_macros2::kernel_print!("?"),
                     }
                 } else {
                     doors_macros2::kernel_print!("?");
