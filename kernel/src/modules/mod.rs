@@ -44,13 +44,8 @@ impl Default for Module {
 }
 
 /// A test module
+#[derive(Default)]
 pub struct Test {}
-
-impl Default for Test {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 impl ModuleTrait for Test {
     fn do_something(&self) {}

@@ -530,6 +530,10 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
         }
     }
 
+    fn idle(&mut self) {
+        x86_64::instructions::hlt();
+    }
+
     fn init(&mut self) {
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);

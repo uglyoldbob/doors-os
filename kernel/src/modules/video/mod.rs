@@ -546,9 +546,14 @@ pub fn hex_dump(data: &[u8], print_address: bool, print_ascii: bool) {
                 doors_macros2::kernel_print!("   ");
             }
             for d in b {
-                match char::try_from(*d) {
-                    Ok(a) => doors_macros2::kernel_print!("{:?}", a),
-                    Err(_a) => doors_macros2::kernel_print!("?"),
+                let c = *d as char;
+                if c.is_ascii() {
+                    match *d {
+                        0..32 => doors_macros2::kernel_print!("?"),
+                        _ => doors_macros2::kernel_print!("{}", c),
+                    }
+                } else {
+                    doors_macros2::kernel_print!("?");
                 }
             }
         }

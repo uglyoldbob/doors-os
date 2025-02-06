@@ -78,6 +78,8 @@ fn main(mut system: kernel::System) -> ! {
             Err(()) => doors_macros2::kernel_print!("At least one test failed\r\n"),
         }
         doors_macros2::kernel_print!("Entering idle loop\r\n");
-        loop {}
+        loop {
+            system.idle();
+        }
     }
 }

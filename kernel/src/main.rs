@@ -113,6 +113,8 @@ fn main(mut system: kernel::System) -> ! {
             }
         }
         doors_macros2::kernel_print!("Entering idle loop\r\n");
-        loop {}
+        loop {
+            system.idle();
+        }
     }
 }

@@ -156,6 +156,8 @@ pub trait SystemTrait {
     fn enable_interrupts(&self);
     /// System required init code
     fn init(&mut self);
+    /// Code to idle the system
+    fn idle(&mut self);
 }
 
 /// This struct implements the SystemTrait
