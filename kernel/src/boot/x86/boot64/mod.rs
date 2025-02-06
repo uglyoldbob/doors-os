@@ -20,6 +20,8 @@ use x86_64::structures::idt::InterruptStackFrame;
 
 pub mod memory;
 
+pub use memory::memory as mem2;
+
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
 

@@ -7,6 +7,9 @@ use core::mem::MaybeUninit;
 use alloc::{boxed::Box, vec::Vec};
 use multiboot2::{MemoryAreaType, MemoryMapTag};
 
+#[path = "../../memory.rs"]
+pub mod memory;
+
 use crate::Locked;
 
 use crate::modules::video::TextDisplayTrait;
@@ -455,7 +458,7 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
     }
 }
 
-impl crate::PciMemory {
+impl memory::PciMemory {
     /// Allocate some pci memory with the given size. TODO implement a 32-bit restricted version of this function.
     pub fn new(size: usize) -> Result<Self, core::alloc::AllocError> {
         let mut t = super::PAGE_ALLOCATOR.lock();
@@ -474,7 +477,7 @@ impl crate::PciMemory {
     }
 }
 
-impl Drop for crate::PciMemory {
+impl Drop for memory::PciMemory {
     fn drop(&mut self) {
         let mut t = super::PAGE_ALLOCATOR.lock();
         let layout = core::alloc::Layout::from_size_align(self.size(), self.size()).unwrap();
@@ -496,7 +499,7 @@ impl Drop for crate::PciMemory {
     }
 }
 
-impl<T: Default> crate::DmaMemory<T> {
+impl<T: Default> memory::DmaMemory<T> {
     /// Construct a new self
     pub fn new() -> Result<Self, core::alloc::AllocError> {
         let b: alloc::boxed::Box<T> = alloc::boxed::Box::default();
@@ -510,7 +513,7 @@ impl<T: Default> crate::DmaMemory<T> {
     }
 }
 
-impl<T> crate::DmaMemorySlice<T> {
+impl<T> memory::DmaMemorySlice<T> {
     /// Construct a new self, initializing each element with a closure
     pub fn new_with(
         quantity: usize,
@@ -530,7 +533,7 @@ impl<T> crate::DmaMemorySlice<T> {
     }
 }
 
-impl<T: Default> crate::DmaMemorySlice<T> {
+impl<T: Default> memory::DmaMemorySlice<T> {
     /// Construct a new self, with the contents initialized with the default trait
     pub fn new(quantity: usize) -> Result<Self, core::alloc::AllocError> {
         Self::new_with(quantity, |_| Ok(T::default()))

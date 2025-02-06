@@ -10,5 +10,6 @@ cfg_if::cfg_if! {
         pub use x86::IOPORTS;
         pub use x86::IoPortArray;
         pub use x86::IoPortRef;
+        pub use x86::mem2;
     }
 }

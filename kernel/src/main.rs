@@ -18,6 +18,7 @@ mod common;
 pub use common::*;
 
 pub mod boot;
+pub use boot::mem2::*;
 pub mod kernel;
 pub mod modules;
 

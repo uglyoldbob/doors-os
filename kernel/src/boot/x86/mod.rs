@@ -23,6 +23,8 @@ pub use boot32 as boot;
 
 pub mod memory;
 
+pub use boot::mem2;
+
 /// The entire list of io ports for an x86 machine
 pub static IOPORTS: Locked<IoPortManager> = Locked::new(IoPortManager::new());
 
