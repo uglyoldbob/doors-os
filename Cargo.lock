@@ -144,7 +144,7 @@ dependencies = [
  "quote",
  "serde 1.0.198",
  "serde-value",
- "syn 1.0.109",
+ "syn 2.0.98",
  "toml",
 ]
 

@@ -107,14 +107,18 @@ pub fn config_build_struct(item: proc_macro::TokenStream) -> proc_macro::TokenSt
 
     let mod_field = |mut elem: syn::FieldValue| {
         let field_use = elem.attrs.iter().find_map(|attr| {
-            if let Some(a) = attr.path.get_ident() {
+            if let Some(a) = attr.path().get_ident() {
                 if *a == "doorsconfig" {
-                    let p = attr.parse_meta().unwrap();
+                    let p = &attr.meta;
                     if let syn::Meta::NameValue(n) = p {
-                        if let syn::Lit::Str(l) = n.lit {
-                            let name = l.value();
-                            let val: bool = m.get_field(&name);
-                            Some(val)
+                        if let syn::Expr::Lit(l) = &n.value {
+                            if let syn::Lit::Str(l) = &l.lit {
+                                let name = l.value();
+                                let val: bool = m.get_field(&name);
+                                Some(val)
+                            } else {
+                                panic!("Expected a string literal");
+                            }
                         } else {
                             panic!("Expected a string literal");
                         }
@@ -133,7 +137,7 @@ pub fn config_build_struct(item: proc_macro::TokenStream) -> proc_macro::TokenSt
             .clone()
             .into_iter()
             .filter(|attr| {
-                if let Some(a) = attr.path.get_ident() {
+                if let Some(a) = attr.path().get_ident() {
                     *a != "doorsconfig"
                 } else {
                     true
@@ -176,14 +180,18 @@ pub fn config_check_struct(
 
     let mod_field = |mut elem: syn::Field| {
         let field_use = elem.attrs.iter().find_map(|attr| {
-            if let Some(a) = attr.path.get_ident() {
+            if let Some(a) = attr.path().get_ident() {
                 if *a == "doorsconfig" {
-                    let p = attr.parse_meta().unwrap();
+                    let p = &attr.meta;
                     if let syn::Meta::NameValue(n) = p {
-                        if let syn::Lit::Str(l) = n.lit {
-                            let name = l.value();
-                            let val: bool = m.get_field(&name);
-                            Some(val)
+                        if let syn::Expr::Lit(l) = &n.value {
+                            if let syn::Lit::Str(l) = &l.lit {
+                                let name = l.value();
+                                let val: bool = m.get_field(&name);
+                                Some(val)
+                            } else {
+                                panic!("Expected a string literal");
+                            }
                         } else {
                             panic!("Expected a string literal");
                         }
@@ -202,7 +210,7 @@ pub fn config_check_struct(
             .clone()
             .into_iter()
             .filter(|attr| {
-                if let Some(a) = attr.path.get_ident() {
+                if let Some(a) = attr.path().get_ident() {
                     *a != "doorsconfig"
                 } else {
                     true
