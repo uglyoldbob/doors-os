@@ -111,13 +111,13 @@ pub struct IoPortArray<'a> {
     manager: &'a Locked<IoPortManager>,
 }
 
-impl<'a> Drop for IoPortArray<'a> {
+impl Drop for IoPortArray<'_> {
     fn drop(&mut self) {
         self.manager.return_ports(self)
     }
 }
 
-impl<'a> IoPortArray<'a> {
+impl IoPortArray<'_> {
     /// Get a port reference, ensuring that it is not out of bounds for the array. Will panic if out of bounds.
     pub fn port<T>(&self, index: u16) -> IoPortRef<T> {
         assert!(index < self.quantity);
@@ -135,6 +135,7 @@ impl<'a> IoPortArray<'a> {
 
 /// Keeps track of all io ports on the system.
 pub struct IoPortManager {
+    /// A bitmap to track usage of all the ports for an x86 system
     ports: [usize; 65536 / core::mem::size_of::<usize>()],
 }
 
@@ -145,7 +146,7 @@ impl Locked<IoPortManager> {
         let p = base;
         let index = p / core::mem::size_of::<usize>() as u16;
         let shift = p % core::mem::size_of::<usize>() as u16;
-        let d = manager.ports[index as usize] & 1 << shift;
+        let d = manager.ports[index as usize] & (1 << shift);
         if d != 0 {
             None
         } else {
@@ -164,7 +165,7 @@ impl Locked<IoPortManager> {
         for p in base..base + quantity {
             let index = p / core::mem::size_of::<usize>() as u16;
             let shift = p % core::mem::size_of::<usize>() as u16;
-            let d = manager.ports[index as usize] & 1 << shift;
+            let d = manager.ports[index as usize] & (1 << shift);
             if d != 0 {
                 possible = false;
             }
@@ -212,6 +213,7 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
+/// Setup the x86 pci space and register all pci drivers
 fn setup_pci() {
     let pci = crate::modules::pci::x86::Pci::new();
     if let Some(pci) = pci {
@@ -224,6 +226,8 @@ fn setup_pci() {
     h.print();
 }
 
+/// Probe and setup all serial ports for x86
+/// This will probably be removed once pci space is further developed
 fn setup_serial() {
     let mut serials = crate::kernel::SERIAL.lock();
     for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {

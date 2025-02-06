@@ -20,6 +20,8 @@ pub struct X86VgaTextMode {
 
 impl X86VgaTextMode {
     /// Gets an instance of the X86Vga. This should be protected by a singleton type pattern to prevent multiple instances from being handed out to the kernel.
+    /// # Safety
+    /// This should be called in a manner to ensure that duplicates are not created
     pub unsafe fn get(adr: usize) -> Self {
         Self {
             hw: &mut *(adr as *mut X86VgaTextHardware),

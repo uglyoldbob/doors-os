@@ -21,10 +21,15 @@ use lazy_static::lazy_static;
 
 /// The data required to render a single font character
 pub struct FontData {
+    /// the width of the character in pixels
     width: u8,
+    /// the height of the character in pixels
     height: u8,
+    /// Represents a parameter of how to print the character. TODO
     left: i8,
+    /// Represents a parameter of how to print the character. TODO
     top: i8,
+    /// The font data for a single character
     data: &'static [u8],
 }
 
@@ -39,16 +44,23 @@ lazy_static! {
 
 /// Represents a flat representation of a frame buffer
 pub struct OpaqueFrameBuffer<'a, P> {
+    /// the buffer data
     _buffer: &'a [u8],
+    /// width in pixels
     _width: u16,
+    /// height in pixels
     _height: u16,
+    /// phantom data that the framebuffer actually stores
     pixel: core::marker::PhantomData<P>,
 }
 
 /// Represents a rectangular frame buffer
 pub struct PlainFrameBuffer<'a, P> {
+    /// The buffer reference
     _buffer: &'a [P],
+    /// The width in pixels
     _width: u16,
+    /// The height in pixels
     _height: u16,
 }
 
@@ -117,7 +129,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for SimpleRamFramebuffer {
         //doors_macros2::kernel_print!("Pixel offset {}\r\n", (2 * (self.height as usize * x as usize + y as usize))+2);
         self.buffer[self.height as usize * x as usize + y as usize] = (p.pixel & 0xff) as u8;
         self.buffer[(2 * (self.height as usize * x as usize + y as usize)) + 1] =
-            (p.pixel >> 8 & 0xff) as u8;
+            ((p.pixel >> 8) & 0xff) as u8;
         //self.buffer[(3 * (self.height as usize * x as usize + y as usize))+2] = (p.pixel>>16 & 0xff) as u8;
         //self.buffer[(3 * (self.width as usize * x as usize + y as usize))+3] = (p.pixel>>24 & 0xff) as u8;
     }
@@ -341,9 +353,13 @@ pub trait TextDisplayTrait: Sync + Send {
 
 /// Draws text onto a framebuffer
 pub struct FramebufferTextMode<P: 'static> {
+    /// The framebuffer that font is rendered to
     fb: Framebuffer,
+    /// The font reference to use for printing text to the frambuffer
     font: &'static Font<P>,
+    /// The horizontal position of the cursor in pixels
     cursor_x: u8,
+    /// The vertical position of the cursor in pixels
     cursor_y: u8,
 }
 
@@ -373,7 +389,7 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
                 let pixel: crate::modules::video::pixels::Palette<u8> =
                     crate::modules::video::pixels::Palette::new(
                         0x11,
-                        &crate::modules::video::vga::DEFAULT_PALETTE,
+                        crate::modules::video::vga::DEFAULT_PALETTE,
                     );
                 self.fb.write_pixel(x, y, pixel);
             }
@@ -452,6 +468,7 @@ impl log::Log for crate::Locked<Option<TextDisplay>> {
 
 /// Enables sending video text over a serial port
 pub struct VideoOverSerial {
+    /// The serial port to send data over
     port: LockedArc<super::serial::Serial>,
 }
 

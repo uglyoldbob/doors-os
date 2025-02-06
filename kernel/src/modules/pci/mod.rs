@@ -135,20 +135,35 @@ impl ConfigurationSpaceStandard {
 pub struct ConfigurationSpaceBridge {
     /// The base address registers for the device
     bar: [u32; 2],
+    /// TODO
     primary_bus: u8,
+    /// TODO
     secondary_bus: u8,
+    /// TODO
     subordinate_bus: u8,
+    /// TODO
     second_latency: u8,
+    /// TODO
     io_base: u8,
+    /// TODO
     io_limit: u8,
+    /// TODO
     status2: u16,
+    /// TODO
     memory_base: u16,
+    /// TODO
     memory_limit: u16,
+    /// TODO
     prefetchable_memory_base: u16,
+    /// TODO
     prefetchable_memory_limit: u16,
+    /// TODO
     prefetchable_base_upper: u32,
+    /// TODO
     prefetchable_limit_upper: u32,
+    /// TODO
     iobase_upper: u16,
+    /// TODO
     iolimit_upper: u16,
     /// Points to a linked list of new capabilites implemented by this device
     capabilities_ptr: u8,
@@ -160,6 +175,7 @@ pub struct ConfigurationSpaceBridge {
     interrupt_line: u8,
     /// Defines which interrupt pin is used
     interrupt_pin: u8,
+    /// TODO
     bridge_control: u16,
     /// The rest of the header
     _remainder: [u32; 48],
@@ -194,14 +210,15 @@ impl ConfigurationSpaceBridge {
         doors_macros2::kernel_print!(
             "{}Prefetchable: {:x} size {:x}\r\n",
             linestart,
-            (self.prefetchable_base_upper as u64) << 32 | (self.prefetchable_memory_base as u64),
-            (self.prefetchable_limit_upper as u64) << 32 | (self.prefetchable_memory_limit as u64),
+            ((self.prefetchable_base_upper as u64) << 32) | (self.prefetchable_memory_base as u64),
+            ((self.prefetchable_limit_upper as u64) << 32)
+                | (self.prefetchable_memory_limit as u64),
         );
         doors_macros2::kernel_print!(
             "{}IO: {:x} size {:x}\r\n",
             linestart,
-            (self.iobase_upper as u64) << 32 | (self.io_base as u64),
-            (self.iolimit_upper as u64) << 32 | (self.io_limit as u64),
+            ((self.iobase_upper as u64) << 32) | (self.io_base as u64),
+            ((self.iolimit_upper as u64) << 32) | (self.io_limit as u64),
         );
         doors_macros2::kernel_print!("{}Capabilites: {:x}\r\n", linestart, self.capabilities_ptr);
         doors_macros2::kernel_print!(
@@ -259,27 +276,45 @@ impl From<[u32; 60]> for ConfigurationSpaceBridge {
 
 /// Represents the configuration space for a single device
 pub struct ConfigurationSpaceCardbus {
+    /// TODO
     cardbus_base: u32,
+    /// TODO
     capabilities_offset: u8,
+    /// Reserved
     _reserved: u8,
+    /// TODO
     status2: u16,
+    /// TODO
     pci_bus_num: u8,
+    /// TODO
     cardbus_bus_num: u8,
+    /// TODO
     subordinate_bus_num: u8,
+    /// TODO
     cardbus_latency: u8,
+    /// TODO
     memory_base0: u32,
+    /// TODO
     memory_limit0: u32,
+    /// TODO
     memory_base1: u32,
+    /// TODO
     memory_limit1: u32,
+    /// TODO
     io_base0: u32,
+    /// TODO
     io_limit0: u32,
+    /// TODO
     io_base1: u32,
+    /// TODO
     io_limit1: u32,
     /// Used to convey interrupt line routing information
     interrupt_line: u8,
     /// Defines which interrupt pin is used
     interrupt_pin: u8,
+    /// TODO
     bridge_control: u16,
+    /// TODO
     legacy_base_addr: u32,
     /// The rest of the header
     _remainder: [u32; 47],
@@ -391,8 +426,10 @@ impl ConfigurationSpaceEnum {
     }
 }
 
+/// Verifies the size of [ConfigurationSpace] is correct
 const _CONFIGURATION_SPACE_CHECKER: [u8; 256] = [0; core::mem::size_of::<ConfigurationSpace>()];
 
+/// A packed version of pci configuration space, see [ConfigurationSpace] and [ConfigurationSpaceC::unpack] for a more friendly version
 #[repr(C, packed)]
 struct ConfigurationSpaceC {
     /// The manufacturer of the device
@@ -642,26 +679,20 @@ impl Default for BarSpace {
 impl BarSpace {
     /// Is the space a 64-bit space?
     pub fn is64(&self) -> bool {
-        if let Self::Memory64 {
-            base: _,
-            size: _,
-            flags: _,
-            index: _,
-        } = self
-        {
-            true
-        } else {
-            false
-        }
+        matches!(
+            self,
+            Self::Memory64 {
+                base: _,
+                size: _,
+                flags: _,
+                index: _,
+            }
+        )
     }
 
     /// Is the space valid (is the bar size non-zero)?
     pub fn is_size_valid(&self) -> bool {
-        if let Self::Invalid { index: _ } = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Self::Invalid { index: _ })
     }
 
     /// Returns the bar space index
@@ -728,7 +759,7 @@ impl BarSpace {
     }
 
     /// Obtain the memory space specified by the bar, only if it is memory space
-    pub fn get_memory<'b>(
+    pub fn get_memory(
         &mut self,
         pci: &mut PciConfigurationSpace,
         bus: &PciBus,
@@ -960,7 +991,7 @@ impl PciFunction {
             dev.dev,
             self.function,
             4,
-            (config.status as u32) << 16 | config.command.0 as u32 & 0xFFFC,
+            ((config.status as u32) << 16) | config.command.0 as u32 & 0xFFFC,
         );
         config.process_bars(bars, |barnum, bar, bar64| {
             let orig_bar: u32 = pci.read_u32(bus.num, dev.dev, self.function, bar);
@@ -984,7 +1015,7 @@ impl PciFunction {
                 let bar = if (orig_bar & 4) != 0 {
                     let usize: u32 = pci.read_u32(bus.num, dev.dev, self.function, bar);
                     let bar64 = orig_bar as u64;
-                    let size64 = (size as u64) | (usize as u64) << 32;
+                    let size64 = (size as u64) | ((usize as u64) << 32);
                     let size: u64 = !(size64 & 0xFFFFFFFFFFFFFFF0) + 1;
                     if size64 != 0 {
                         BarSpace::Memory64 {
@@ -1022,12 +1053,11 @@ impl PciFunction {
             } else {
                 //io space
                 let size: u32 = !(size & 0xFFFFFFFC) + 1;
-                let bar = BarSpace::IO {
+                BarSpace::IO {
                     base: orig_bar & 0xFFFFFFFC,
                     size,
                     index: barnum,
-                };
-                bar
+                }
             };
             pci.write_u32(bus.num, dev.dev, self.function, bar, orig_bar);
             barspace
@@ -1037,7 +1067,7 @@ impl PciFunction {
             dev.dev,
             self.function,
             4,
-            (config.status as u32) << 16 | config.command.0 as u32,
+            ((config.status as u32) << 16) | config.command.0 as u32,
         );
     }
 
@@ -1076,6 +1106,7 @@ impl PciDevice {
         }
     }
 
+    /// Print all the functions of the device
     fn print_functions(&self, pci: &mut PciConfigurationSpace, bus: &PciBus) {
         for (i, f) in self.functions.iter().enumerate() {
             doors_macros2::kernel_print!("\t\tPCI Function {}\r\n", i);

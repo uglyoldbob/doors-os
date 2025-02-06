@@ -32,6 +32,9 @@ pub struct PciMemory {
 
 impl PciMemory {
     /// Construct a new instance. Should only be used in the memory management code!
+    /// # Safety
+    /// This function should only be used within memory management code
+    /// It constructs a [Self] that is fully specified by the arguments.
     pub unsafe fn build_with(virt: usize, phys: usize, size: usize) -> Self {
         Self { virt, phys, size }
     }
@@ -48,7 +51,7 @@ impl PciMemory {
     /// Write a u32 at the specified index (byte based index), with the specified value
     pub fn write_u32(&mut self, address: usize, val: u32) {
         let mem = unsafe { core::slice::from_raw_parts_mut(self.virt as *mut u8, self.size) };
-        let a: &mut u8 = &mut mem[address as usize];
+        let a: &mut u8 = &mut mem[address];
         let b: *mut u8 = a as *mut u8;
         let c: &mut u32 = unsafe { &mut *(b as *mut u32) };
         unsafe { core::ptr::write_volatile(c, val) };
@@ -84,6 +87,9 @@ pub struct DmaMemory<T> {
 
 impl<T> DmaMemory<T> {
     /// Construct a new instance. Should only be used in the memory management code!
+    /// # Safety
+    /// This function should only be used within memory management code
+    /// It constructs a [Self] that is fully specified by the arguments.
     pub unsafe fn build_with(
         virt: usize,
         phys: usize,
@@ -141,6 +147,9 @@ pub struct DmaMemorySlice<T> {
 
 impl<T> DmaMemorySlice<T> {
     /// Construct a new instance. Should only be used in the memory management code!
+    /// # Safety
+    /// This function should only be used within memory management code
+    /// It constructs a [Self] that is fully specified by the arguments.
     pub unsafe fn build_with(
         virt: usize,
         phys: usize,

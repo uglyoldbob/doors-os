@@ -26,6 +26,7 @@ impl PciRegisters {
 }
 
 impl PciRegisters {
+    /// Set the pci configuration space address that will be either read or written next
     fn set_address(&mut self, bus: u8, device: u8, function: u8, offset: u8) {
         let a: u32 = ((bus as u32) << 16)
             | ((device as u32) << 11)

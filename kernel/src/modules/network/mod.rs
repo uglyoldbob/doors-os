@@ -20,7 +20,8 @@ static NETWORK_ADAPTERS: Locked<BTreeMap<String, LockedArc<NetworkAdapter>>> =
 pub fn register_network_adapter(na: NetworkAdapter) {
     let mut nal = NETWORK_ADAPTERS.lock();
     //TODO implement an automatic naming scheme
-    let name = alloc::format!("net0");
+    use alloc::string::ToString;
+    let name = "net0".to_string();
     doors_macros2::kernel_print!("Registering a network adapter for {}\r\n", name);
     nal.insert(name, LockedArc::new(na));
 }
@@ -40,6 +41,7 @@ pub fn get_network_adapter(s: &str) -> Option<LockedArc<NetworkAdapter>> {
 
 /// A mac address for a network adapter
 pub struct MacAddress {
+    /// The bytes of the mac address
     address: [u8; 6],
 }
 
@@ -80,8 +82,8 @@ pub struct IpV6 {
 impl alloc::fmt::Debug for IpV6 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut zeros: [bool; 8] = [false; 8];
-        for i in 0..8 {
-            zeros[i] = self.address[i] == 0;
+        for (i, a) in zeros.iter_mut().enumerate() {
+            *a = self.address[i] == 0;
         }
         let mut num_consecutive_zeros = [0; 8];
         {
@@ -150,12 +152,10 @@ impl alloc::fmt::Debug for IpV6 {
                         } else {
                             f.write_str("::")?;
                         }
+                    } else if let Some(d) = d {
+                        f.write_str(&alloc::format!(":{:x}", d))?;
                     } else {
-                        if let Some(d) = d {
-                            f.write_str(&alloc::format!(":{:x}", d))?;
-                        } else {
-                            f.write_str(":")?;
-                        }
+                        f.write_str(":")?;
                     }
                 }
                 f.write_str(&alloc::format!("/{}", self.prefix))
@@ -168,6 +168,7 @@ impl alloc::fmt::Debug for IpV6 {
     }
 }
 
+/// Test the ipv6 Debug implementation
 #[doors_macros::doors_test]
 fn ipv6_network_test() -> Result<(), ()> {
     let ipv6 = IpV6 {

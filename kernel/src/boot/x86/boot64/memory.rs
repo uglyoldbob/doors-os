@@ -105,6 +105,7 @@ impl BumpAllocator {
         }
     }
 
+    /// Add a bumpallocation to self, returning both the old and new end addresses for this allocator
     fn add_bump_allocation(&mut self, ba: BumpAllocation) -> (usize, usize) {
         for i in 1..5 {
             self.last[i] = self.last[i - 1];
@@ -168,6 +169,7 @@ impl BumpAllocator {
         Ok(ptr)
     }
 
+    /// Run a deallocation for the allocator
     fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
         if let Some(a) = self.last[0] {
             if a.addr == ptr.addr().into() {
@@ -416,7 +418,7 @@ impl<'a> SimpleMemoryManager<'a> {
     }
 }
 
-unsafe impl<'a> core::alloc::Allocator for Locked<SimpleMemoryManager<'a>> {
+unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
     fn allocate(
         &self,
         layout: core::alloc::Layout,
@@ -497,7 +499,7 @@ impl Drop for crate::PciMemory {
 impl<T: Default> crate::DmaMemory<T> {
     /// Construct a new self
     pub fn new() -> Result<Self, core::alloc::AllocError> {
-        let b: alloc::boxed::Box<T> = alloc::boxed::Box::new(T::default());
+        let b: alloc::boxed::Box<T> = alloc::boxed::Box::default();
         let va = crate::address(b.as_ref());
         let phys = super::PAGING_MANAGER
             .lock()
@@ -560,6 +562,7 @@ impl PageTable {
     }
 }
 
+/// Verifies that a PageTable is the correct size
 const _PAGETABLE_SPACE_CHECKER: [u8; 4096] = [0; core::mem::size_of::<PageTable>()];
 
 /// A reference to a page table, used for the windowing scheme. A page table is mapped into virtual memory and points to a physical page.
@@ -649,7 +652,7 @@ impl<'a> PagingTableManager<'a> {
 
         let pml4 = unsafe { &mut *((cr3 & !0xFFF) as *mut PageTable) };
         let pml4_index = (vaddr >> 39) & 0x1FF;
-        let pml3 = pml4.get_entry(pml4_index as usize);
+        let pml3 = pml4.get_entry(pml4_index);
         if pml3.is_none() {
             unimplemented!();
         }
@@ -657,7 +660,7 @@ impl<'a> PagingTableManager<'a> {
         let pml3 = unsafe { &mut *(pml3 as *mut PageTable) };
 
         let pml3_index = (vaddr >> 30) & 0x1FF;
-        let pml2 = pml3.get_entry(pml3_index as usize);
+        let pml2 = pml3.get_entry(pml3_index);
         if pml2.is_none() {
             unimplemented!();
         }
@@ -665,7 +668,7 @@ impl<'a> PagingTableManager<'a> {
         let pml2 = unsafe { &mut *(pml2 as *mut PageTable) };
 
         let pml2_index = (vaddr >> 21) & 0x1FF;
-        let mut pml1 = pml2.get_entry(pml2_index as usize);
+        let mut pml1 = pml2.get_entry(pml2_index);
         if pml1.is_none() {
             let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
                 Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::new_in(
@@ -674,7 +677,7 @@ impl<'a> PagingTableManager<'a> {
                 );
             let entry = Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
             pml2.entries[pml2_index] = (entry as *const PageTable as u64) | 1;
-            pml1 = pml2.get_entry(pml2_index as usize);
+            pml1 = pml2.get_entry(pml2_index);
         }
         let pml1 = pml1.unwrap();
         let pml1 = unsafe { &mut *(pml1 as *mut PageTable) };
@@ -697,7 +700,7 @@ impl<'a> PagingTableManager<'a> {
         let page_table_window = mm.get_complete_virtual_page();
         drop(mm);
 
-        let a = self.map_window(pml4_window, cr3 as u64);
+        let a = self.map_window(pml4_window, cr3);
         let b = self.map_window(pdpt_window, 0);
         let c = self.map_window(page_directory_window, 0);
         let d = self.map_window(page_table_window, 0);
@@ -710,9 +713,9 @@ impl<'a> PagingTableManager<'a> {
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
     fn setup_cache(&mut self, cr3: usize, address: usize) {
-        let pt4_index = ((address >> 39) & 0x1FF) as usize;
-        let pt3_index = ((address >> 30) & 0x1FF) as usize;
-        let pt2_index = ((address >> 21) & 0x1FF) as usize;
+        let pt4_index = (address >> 39) & 0x1FF;
+        let pt3_index = (address >> 30) & 0x1FF;
+        let pt2_index = (address >> 21) & 0x1FF;
 
         unsafe { &mut *self.pt4.as_mut_ptr() }.update(cr3 as u64);
 
@@ -772,7 +775,7 @@ impl<'a> PagingTableManager<'a> {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
             self.setup_cache(cr3, vaddr);
-            let pt1_index = ((vaddr >> 12) & 0x3FF) as usize;
+            let pt1_index = (vaddr >> 12) & 0x3FF;
 
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
                 let table = unsafe { &mut *self.pt1.as_mut_ptr() };
@@ -780,9 +783,6 @@ impl<'a> PagingTableManager<'a> {
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
             } else {
                 return Err(());
-            }
-            if size > 0x5000 && i > 63000 * core::mem::size_of::<Page>() as usize {
-                loop {}
             }
         }
         Ok(())
@@ -802,7 +802,7 @@ impl<'a> PagingTableManager<'a> {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
             self.setup_cache(cr3, vaddr);
-            let pt1_index = ((vaddr >> 12) & 0x1FF) as usize;
+            let pt1_index = (vaddr >> 12) & 0x1FF;
 
             let newval = paddr as u64 | 0x1;
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
@@ -821,9 +821,6 @@ impl<'a> PagingTableManager<'a> {
                 );
                 return Err(());
             }
-            if size > 0x5000 && i > 63000 * core::mem::size_of::<Page>() as usize {
-                loop {}
-            }
         }
         Ok(())
     }
@@ -836,7 +833,7 @@ impl<'a> PagingTableManager<'a> {
         for i in (0..size).step_by(core::mem::size_of::<Page>()).rev() {
             let vaddr = virtual_address + i;
             self.setup_cache(cr3, vaddr);
-            let pt1_index = ((vaddr >> 12) & 0x1FF) as usize;
+            let pt1_index = (vaddr >> 12) & 0x1FF;
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) != 0 {
                 unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] = 0;
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
@@ -851,7 +848,7 @@ impl<'a> PagingTableManager<'a> {
 
         self.setup_cache(cr3, address);
 
-        let pt1_index = ((address >> 12) & 0x1FF) as usize;
+        let pt1_index = (address >> 12) & 0x1FF;
 
         if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) != 0 {
             let a = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 0xFFFFFFFFFF000;
@@ -875,7 +872,7 @@ impl<'a> PagingTableManager<'a> {
 
         self.setup_cache(cr3, address);
 
-        let pt1_index = ((address >> 12) & 0x1FF) as usize;
+        let pt1_index = (address >> 12) & 0x1FF;
         let value = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index];
         if (value & 1) == 0 {
             let entry: Box<MaybeUninit<PageTable>, &'a crate::Locked<SimpleMemoryManager>> =

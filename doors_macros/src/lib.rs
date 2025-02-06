@@ -30,16 +30,14 @@ pub fn declare_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let f = parse_macro_input!(input as syn::Ident);
     let mut e = ENUM_BUILDER.lock().unwrap();
     let n = f.to_string();
-    if !e.contains_key(&n) {
-        e.insert(
-            n,
-            EnumData {
-                variants: Vec::new(),
-                variant_names: HashSet::new(),
-            },
-        );
+    let n2 = n.clone();
+    if let std::collections::btree_map::Entry::Vacant(e) = e.entry(n) {
+        e.insert(EnumData {
+            variants: Vec::new(),
+            variant_names: HashSet::new(),
+        });
     } else {
-        panic!("Enum {} was already declared", n);
+        panic!("Enum {} was already declared", n2);
     }
     quote!().into()
 }

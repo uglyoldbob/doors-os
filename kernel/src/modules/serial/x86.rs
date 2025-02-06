@@ -72,6 +72,7 @@ impl X86SerialPort {
         Some(self.base.port(0).port_read())
     }
 
+    /// Setup the serial port
     fn setup(&mut self) {
         self.base.port(4).port_write(0x03u8);
     }

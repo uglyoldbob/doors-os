@@ -85,16 +85,21 @@ lazy_static! {
 #[interrupt_64]
 pub extern "C" fn divide_by_zero() {
     doors_macros2::kernel_print!("Divide by zero\r\n");
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 ///The handler for segment not present
 #[interrupt_arg_64]
 pub extern "C" fn segment_not_present(arg: u32) {
     doors_macros2::kernel_print!("Segment not present {:x}\r\n", arg);
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
+/// The handler for the double fault exception
 extern "x86-interrupt" fn double_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: u64,
@@ -104,9 +109,12 @@ extern "x86-interrupt" fn double_fault_handler(
         error_code,
         sf.instruction_pointer
     );
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
+/// Handles the page fault exception
 extern "x86-interrupt" fn page_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: x86_64::structures::idt::PageFaultErrorCode,
@@ -120,27 +128,36 @@ extern "x86-interrupt" fn page_fault_handler(
         "Fault address 0x{:X}\r\n",
         x86_64::registers::control::Cr2::read().unwrap()
     );
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
+/// Handles the invalid opcode exception
 extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
     doors_macros2::kernel_print!("Invalid opcode {:p}\r\n", &sf);
     doors_macros2::kernel_print!("Invalid opcode {:x}\r\n", sf.instruction_pointer.as_u64());
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 /// A test interrupt handler
 #[interrupt_arg_64]
 pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
     doors_macros2::kernel_print!("Invalid opcode {:x}\r\n", sf.instruction_pointer.as_u64());
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 /// A test interrupt handler
 #[interrupt_64]
 pub extern "C" fn unknown_interrupt() {
     doors_macros2::kernel_print!("Unknown interrupt fired\r\n");
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 core::arch::global_asm!(include_str!("boot.s"));
@@ -178,7 +195,7 @@ struct Acpi<'a> {
     vmm: &'a Locked<memory::BumpAllocator>,
 }
 
-impl<'a> acpi::AcpiHandler for &Acpi<'a> {
+impl acpi::AcpiHandler for &Acpi<'_> {
     unsafe fn map_physical_region<T>(
         &self,
         physical_address: usize,
@@ -186,7 +203,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
     ) -> acpi::PhysicalMapping<Self, T> {
         if physical_address == 0 {
             log::error!("Received a null pointer request size {:x}", size);
-            loop {}
+            panic!("Received a null pointer request size");
         }
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
@@ -256,7 +273,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
             let acpi = acpi::PhysicalMapping::handler(region);
             let mut p = region.handler().pageman.lock();
             let s = region.virtual_start().as_ptr() as usize;
-            let s = s - s % core::mem::size_of::<memory::Page>() as usize;
+            let s = s - s % core::mem::size_of::<memory::Page>();
             let length = region.region_length();
             doors_macros2::kernel_print!(
                 "ACPI UNMAP virtual {:x} physical {:x} size {:x} {:x}\r\n",
@@ -276,7 +293,7 @@ impl<'a> acpi::AcpiHandler for &Acpi<'a> {
     }
 }
 
-#[inline(never)]
+/// Perform processing necessary for acpi functionality
 fn handle_acpi(
     boot_info: &multiboot2::BootInformation,
     acpi_handler: impl AcpiHandler,
@@ -409,7 +426,7 @@ fn handle_acpi(
                                     "madt lapic entry {:x} {:x} {:x}\r\n",
                                     lapic.processor_id,
                                     lapic.apic_id,
-                                    lapic.flags as u32
+                                    { lapic.flags }
                                 );
                             }
                             acpi::madt::MadtEntry::IoApic(_ioapic) => {
@@ -450,8 +467,11 @@ fn handle_acpi(
     }
 }
 
+/// The programmable interrupt controller
 struct Pic {
+    /// The first pic
     pic1: super::IoPortArray<'static>,
+    /// The second pic
     pic2: super::IoPortArray<'static>,
 }
 
@@ -467,8 +487,8 @@ impl Pic {
     /// Disable all interrupts for both pics
     pub fn disable(&mut self) {
         use crate::IoReadWrite;
-        self.pic1.port(1).port_write(0xff as u8);
-        self.pic2.port(1).port_write(0xff as u8);
+        self.pic1.port(1).port_write(0xffu8);
+        self.pic2.port(1).port_write(0xffu8);
     }
 
     /// Perform a remap of the pic interrupts
@@ -508,21 +528,27 @@ impl Pic {
     }
 }
 
+/// The registers for a local apic
 #[repr(align(16))]
 struct LocalApicRegister {
+    /// The apic registers
     regs: [u32; 256],
 }
 
+/// Aml processing struct
 struct AmlHandler {}
 
 /// The system boot structure
 pub struct X86System<'a> {
+    /// Used for information regarding the bootup of the kernel
     _boot_info: multiboot2::BootInformation<'a>,
+    /// Used for acpi
     _acpi_handler: Acpi<'a>,
+    /// USed for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
 }
 
-impl<'a> crate::kernel::SystemTrait for X86System<'a> {
+impl crate::kernel::SystemTrait for X86System<'_> {
     fn enable_interrupts(&self) {
         unsafe {
             INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
@@ -537,10 +563,8 @@ impl<'a> crate::kernel::SystemTrait for X86System<'a> {
     fn init(&mut self) {
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-        if true {
-            if aml.initialize_objects().is_ok() {
-                doors_macros2::kernel_print!("AML READY\r\n");
-            }
+        if aml.initialize_objects().is_ok() {
+            doors_macros2::kernel_print!("AML READY\r\n");
         }
 
         let cap = self.cpuid.get_processor_capacity_feature_info().unwrap();
@@ -744,7 +768,7 @@ pub extern "C" fn start64() -> ! {
 
     if false {
         if true {
-            let vga = unsafe { crate::modules::video::vga::X86VgaMode::get(0xa0000) }.unwrap();
+            let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();
             let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
             {
                 let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);

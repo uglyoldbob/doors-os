@@ -15,7 +15,9 @@ impl<P> FullColor<P> {
 
 /// Represents a paletted pixel
 pub struct Palette<P> {
+    /// The pixel data
     pixel: P,
+    /// Palette reference for the pixel
     _palette: &'static [u8],
 }
 

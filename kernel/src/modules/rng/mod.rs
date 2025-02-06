@@ -22,10 +22,12 @@ pub enum Rng {
 
 /// A dummy serial port that does nothing
 pub struct RngLfsr {
+    /// The next value in the sequence, not yet used
     next: u32,
 }
 
 impl RngLfsr {
+    /// Get a random number and advance to the next number in the sequence
     fn advance(&mut self) -> u32 {
         let v = self.next;
         let calc = !((self.next >> 31) ^ (self.next >> 21) ^ (self.next >> 1) ^ (self.next & 1));

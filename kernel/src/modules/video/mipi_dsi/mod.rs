@@ -21,7 +21,9 @@ pub struct MipiDsiConfig {
 
 /// A dcs packet structure that can be sent directly over mipi-dsi
 pub struct DcsPacket<'a> {
+    /// The packet header
     _header: [u8; 4],
+    /// The optional packet data
     _data: Option<&'a [u8]>,
 }
 
@@ -70,10 +72,7 @@ pub enum DcsHeaderCommandType {
 impl DcsHeaderCommandType {
     /// Is the command representable with a long command, true means long command, false means short command.
     pub fn is_long(&self) -> bool {
-        match self {
-            DcsHeaderCommandType::LongWrite => true,
-            _ => false,
-        }
+        matches!(self, DcsHeaderCommandType::LongWrite)
     }
 }
 
@@ -90,10 +89,15 @@ bitflags::bitflags! {
 
 /// A dcs command that can be sent over a mipi-dsi bus.
 pub struct DcsCommand<'a> {
+    /// The channel for the command
     channel: u8,
+    /// The command type
     kind: DcsHeaderCommandType,
+    /// Flags that alter the behavior of the command
     _flags: DcsCommandFlags,
+    /// The data to send
     send: &'a [u8],
+    /// An optional reference for receiving data in response to a command
     _recv: Option<&'a mut [u8]>,
 }
 
@@ -104,7 +108,7 @@ impl<'a> DcsCommand<'a> {
         flags: DcsCommandFlags,
         data: &'a [u8],
     ) -> Result<Self, ()> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(());
         }
         if channel > 3 {
@@ -131,7 +135,7 @@ impl<'a> DcsCommand<'a> {
         data: &'a [u8],
         dout: &'a mut [u8],
     ) -> Result<Self, ()> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(());
         }
         if channel > 3 {
@@ -237,7 +241,7 @@ pub enum DcsCommandError {
 #[enum_dispatch::enum_dispatch]
 pub trait MipiDsiDcsTrait {
     /// Dcs command that writes a buffer, not used yet.
-    fn dcs_do_command<'a>(&mut self, cmd: &mut DcsCommand<'a>) -> Result<(), DcsCommandError>;
+    fn dcs_do_command(&mut self, cmd: &mut DcsCommand) -> Result<(), DcsCommandError>;
     /// A dcs write buffer command
     fn dcs_write_buffer(&mut self, channel: u8, buf: &[u8]) -> Result<(), DcsCommandError> {
         let cmd = DcsCommand::create_buffer_write(channel, DcsCommandFlags::empty(), buf);
@@ -345,7 +349,7 @@ pub enum MipiDsiDcs {
 pub struct DummyDcsProvider {}
 
 impl MipiDsiDcsTrait for DummyDcsProvider {
-    fn dcs_do_command<'a>(&mut self, _cmd: &mut DcsCommand<'a>) -> Result<(), DcsCommandError> {
+    fn dcs_do_command(&mut self, _cmd: &mut DcsCommand) -> Result<(), DcsCommandError> {
         Ok(())
     }
 }
@@ -398,8 +402,11 @@ impl MipiDsiTrait for DummyMipiCsi {
 
 /// The orisetech otm8009a panel. https://www.orientdisplay.com/pdf/OTM8009A.pdf
 pub struct OrisetechOtm8009a {
+    /// Reset control for the panel (optional)
     reset: Option<super::super::gpio::GpioPin>,
+    /// Backlight control gpio (optional)
     backlight: Option<super::super::gpio::GpioPin>,
+    /// The resolution of the panel
     resolution: ScreenResolution,
 }
 
@@ -439,8 +446,7 @@ impl OrisetechOtm8009a {
         let ta = [(cmd >> 8) as u8];
         let v = ta.iter();
         let v2 = data.iter();
-        let v3 = v.chain(v2);
-        let v: Vec<u8> = v3.map(|v| *v).collect();
+        let v: Vec<u8> = v.chain(v2).copied().collect();
         dsi.dcs_write_buffer(0, &v)?;
         Ok(())
     }

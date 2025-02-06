@@ -45,7 +45,7 @@ impl X86VgaWithFont<super::pixels::Palette<u8>> {
     fn clear_screen(&mut self) {
         for x in 0..320 {
             for y in 0..200 {
-                let pixel = Palette::<u8>::new(0x32, &DEFAULT_PALETTE);
+                let pixel = Palette::<u8>::new(0x32, DEFAULT_PALETTE);
                 super::FramebufferTrait::write_pixel(&mut self.vga, x, y, pixel);
             }
         }
@@ -72,7 +72,7 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
                     } else {
                         0x32
                     };
-                    let pixel = Palette::<u8>::new(val, &DEFAULT_PALETTE);
+                    let pixel = Palette::<u8>::new(val, DEFAULT_PALETTE);
                     super::FramebufferTrait::write_pixel(
                         &mut self.vga,
                         self.column + x as u16,
@@ -149,11 +149,11 @@ pub const DEFAULT_PALETTE: &[u8] = &[
 ];
 
 impl X86VgaMode {
-    /// Gets an instance of the X86Vga. This should be protected by a singleton type pattern to prevent multiple instances from being handed out to the kernel.
-    pub unsafe fn get(adr: usize) -> Option<Self> {
+    /// Gets an instance of the X86Vga.
+    pub fn get(adr: usize) -> Option<Self> {
         let ports = IOPORTS.get_ports(0x3c0, 32).unwrap();
         let mut check = Self {
-            hw: &mut *(adr as *mut X86VgaHardware),
+            hw: unsafe { &mut *(adr as *mut X86VgaHardware) },
             ports,
         };
         let emulation_mode = check.read_misc_output_register() & 1;
@@ -201,11 +201,11 @@ impl X86VgaMode {
 
         Some(check)
     }
-
+    /// Read the current value of the misc output register
     fn read_misc_output_register(&self) -> u8 {
         self.ports.port(0xc).port_read()
     }
-
+    /// Write the misc output register with the specified value
     fn write_misc_output_register(&self, v: u8) {
         self.ports.port(0x2).port_write(v);
     }
@@ -231,21 +231,22 @@ impl X86VgaMode {
             self.ports.port(0xf).port_read()
         }
     */
+    /// Write the specified graphics register
     fn write_graphics_register(&mut self, i: u8, val: u8) {
         self.ports.port(0xe).port_write(i);
         self.ports.port(0xf).port_write(val);
     }
-
+    /// Read the specified sequencer register
     fn read_sequencer_register(&mut self, i: u8) -> u8 {
         self.ports.port(0x4).port_write(i);
         self.ports.port(0x5).port_read()
     }
-
+    /// Write the specified sequencer register
     fn write_sequencer_register(&mut self, i: u8, val: u8) {
         self.ports.port(0x4).port_write(i);
         self.ports.port(0x5).port_write(val);
     }
-
+    /// Set the plane mask, used for writing pixels to the screen
     fn set_plane_mask(&mut self, mask: u8) {
         let val: u8 = self.read_sequencer_register(2) & 0xF0;
         self.write_sequencer_register(2, val | (mask & 0xF));
@@ -257,34 +258,40 @@ impl X86VgaMode {
             self.ports.port(0x1).port_read()
         }
     */
+    /// Write the specified attribute color register
     fn write_attribute_color_register(&mut self, i: u8, val: u8) {
         let _: u8 = self.ports.port(0x1a).port_read();
         self.ports.port(0x0).port_write(i);
         self.ports.port(0x0).port_write(val);
     }
 
+    /// Read the specified crt controller register
     fn read_crt_controller_register(&mut self, i: u8) -> u8 {
         self.ports.port(0x14).port_write(i);
         self.ports.port(0x15).port_read()
     }
 
+    /// Write a crt controller register. i is the register number, val is the value to write
     fn write_crt_controller_register(&mut self, i: u8, val: u8) {
         self.ports.port(0x14).port_write(i);
         self.ports.port(0x15).port_write(val);
     }
 
+    /// Blank the screen
     fn blank_screen(&mut self) {
         let _: u8 = self.ports.port(0x1a).port_read();
         let v: u8 = self.ports.port(0).port_read();
         self.ports.port(0).port_write(v & 0xdf);
     }
 
+    /// Unblank the screen
     fn unblank_screen(&mut self) {
         let _: u8 = self.ports.port(0x1a).port_read();
         let v: u8 = self.ports.port(0).port_read();
         self.ports.port(0).port_write(v | 0x20);
     }
 
+    /// Unlock the crct registers
     fn unlock_crtc_registers(&mut self, _mode: u8) {
         let hblank_end = self.read_crt_controller_register(3);
         self.write_crt_controller_register(3, hblank_end | 0x80);
@@ -293,8 +300,9 @@ impl X86VgaMode {
         self.write_crt_controller_register(11, vblank_end & 0x7f);
     }
 
+    /// Write the palette with the specified data
     fn write_palette(&mut self, p: &[u8]) {
-        self.ports.port(8).port_write(0 as u8);
+        self.ports.port(8).port_write(0u8);
         for val in p {
             self.ports.port(9).port_write(*val);
         }

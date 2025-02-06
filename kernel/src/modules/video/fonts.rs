@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 
 /// A fixed width font
 pub struct FixedWidthFont<P> {
+    /// What the struct pretends to hold
     _phantom: PhantomData<P>,
 }
 
@@ -26,7 +27,9 @@ where
 
 /// A fixed width font
 pub struct VariableWidthFont<P> {
+    /// The font lookup table
     fdata: &'static alloc::collections::BTreeMap<char, super::FontData>,
+    /// What the struct pretends to hold
     _phantom: PhantomData<P>,
 }
 

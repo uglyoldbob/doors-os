@@ -15,35 +15,62 @@ use crate::IoReadWrite;
 
 /// Holds either memory or io space
 enum MemoryOrIo {
+    /// Regular memory
     Memory(crate::PciMemory),
+    /// Io space
     Io(crate::IoPortArray<'static>),
 }
 
+/// The model variants for the pro1000
 #[derive(Debug)]
 enum Model {
+    /// TODO
     Model82540EP_A_Desktop,
+    /// TODO
     Model82540EP_A_Mobile,
+    /// TODO
     Model82540EM_A_Desktop,
+    /// TODO
     Model82540EM_A_Mobile,
+    /// TODO
     Model82541EI_A0_or_Model82541EI_B0_Copper,
+    /// TODO
     Model82541EI_B0_Mobile,
+    /// TODO
     Model82541GI_B1_Copper_or_Model82541PI_C0,
+    /// TODO
     Model82541GI_B1_Mobile,
+    /// TODO
     Model82541PI_C0,
+    /// TODO
     Model82544EI_A4,
+    /// TODO
     Model82544GC_A4,
+    /// TODO
     Model82545EM_A_Copper,
+    /// TODO
     Model82545EM_A_Fiber,
+    /// TODO
     Model82545GM_B_Copper,
+    /// TODO
     Model82545GM_B_Fiber,
+    /// TODO
     Model82545GM_B_SerDes,
+    /// TODO
     Model82546EB_A1_CopperDual,
+    /// TODO
     Model82546EB_A1_Fiber,
+    /// TODO
     Model82546EB_A1_CopperQuad,
+    /// TODO
     Model82546GB_B0_Copper,
+    /// TODO
     Model82546GB_B0_Fiber,
+    /// TODO
     Model82546GB_B0_SerDes,
+    /// TODO
     Model82547EI_A0_or_Model82547EI_A1_or_Model82547EI_B0_Copper_or_Model82547GI_B0,
+    /// TODO
     Model82547EI_B0_Mobile,
 }
 
@@ -81,6 +108,7 @@ impl TryFrom<u16> for Model {
 }
 
 impl MemoryOrIo {
+    /// Dump the contents of the data as hex
     fn hex_dump(&self) {
         match self {
             MemoryOrIo::Memory(_m) => {
@@ -94,6 +122,7 @@ impl MemoryOrIo {
         }
     }
 
+    /// Read a u32 from the specified address
     fn read(&self, address: u16) -> u32 {
         match self {
             MemoryOrIo::Memory(mem) => mem.read_u32(address as usize),
@@ -104,6 +133,7 @@ impl MemoryOrIo {
         }
     }
 
+    /// Write the specified address with the specified u32
     fn write(&mut self, address: u16, val: u32) {
         match self {
             MemoryOrIo::Memory(mem) => {
@@ -117,21 +147,35 @@ impl MemoryOrIo {
     }
 }
 
+/// Defines the addresses of various registers for the pro1000 device
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u16)]
 enum IntelPro1000Registers {
+    /// The eeprom read register
     Eeprom = 0x14,
+    /// Receive control register
     Rctrl = 0x100,
+    /// Transmit control register
     Tctrl = 0x400,
+    /// Receive descriptor base low
     RxDescLow = 0x2800,
+    /// Receive descriptor base high
     RxDescHigh = 0x2804,
+    /// Receive descriptor length
     RxDescLen = 0x2808,
+    /// Receive descriptor head
     RxDescHead = 0x2810,
+    /// Receive descriptor tail
     RxDescTail = 0x2818,
+    /// Transmit descriptor base low
     TxDescLow = 0x3800,
+    /// Transmit descriptor base high
     TxDescHigh = 0x3804,
+    /// Transmit descriptor length
     TxDescLen = 0x3808,
+    /// Transmit descriptor head
     TxDescHead = 0x3810,
+    /// Transmit descriptor tail
     TxDescTail = 0x3818,
 }
 
@@ -140,17 +184,26 @@ enum IntelPro1000Registers {
 #[derive(Clone, Default)]
 pub struct IntelPro1000 {}
 
+/// An Rx buffer for the device
 #[repr(C, packed)]
 struct RxBuffer {
+    /// TODO
     address: u64,
+    /// TODO
     length: u16,
+    /// TODO
     checksum: u16,
+    /// TODO
     status: u8,
+    /// TODO
     errors: u8,
+    /// TODO
     special: u16,
 }
 
 impl RxBuffer {
+    /// Construct a new [Self] of 8192 bytes
+    /// TODO FIXME I'm broken
     fn new() -> Self {
         let buf: alloc::boxed::Box<[u8; 8192]> = alloc::boxed::Box::new([0; 8192]);
         let buf2 = alloc::boxed::Box::leak(buf);
@@ -165,18 +218,28 @@ impl RxBuffer {
     }
 }
 
+/// A TxBuffer for the device
 #[repr(C, packed)]
 struct TxBuffer {
+    /// TODO
     address: u64,
+    /// TODO
     length: u16,
+    /// TODO
     cso: u8,
+    /// TODO
     cmd: u8,
+    /// TODO
     status: u8,
+    /// TODO
     css: u8,
+    /// TODO
     special: u16,
 }
 
 impl TxBuffer {
+    /// Construct a new [Self] of 8192 bytes
+    /// TODO FIXME I'm broken
     fn new() -> Self {
         let buf: alloc::boxed::Box<[u8; 8192]> = alloc::boxed::Box::new([0; 8192]);
         let buf2 = alloc::boxed::Box::leak(buf);
@@ -201,6 +264,7 @@ struct RxBuffers {
 }
 
 impl RxBuffers {
+    /// Construct a new set of tx buffers of the specified quantity and size in bytes
     fn new(quantity: u8, size: usize) -> Result<Self, core::alloc::AllocError> {
         let m: crate::DmaMemorySlice<RxBuffer> =
             crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(RxBuffer::new()))?;
@@ -221,6 +285,7 @@ struct TxBuffers {
 }
 
 impl TxBuffers {
+    /// construct a new set of tx buffers of the specified quantity and size in bytes
     fn new(quantity: u8, size: usize) -> Result<Self, core::alloc::AllocError> {
         let m: crate::DmaMemorySlice<TxBuffer> =
             crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(TxBuffer::new()))?;
@@ -255,20 +320,34 @@ pub struct IntelPro1000Device {
     model: Model,
 }
 
+/// receive enable flag
 const RCTRL_EN: u32 = 1 << 1;
+/// store bad packets flag
 const RCTRL_SBP: u32 = 1 << 2;
+/// unicast promiscuos enabled
 const RCTRL_UPE: u32 = 1 << 3;
+/// multicast promiscuous enabled
 const RCTRL_MPE: u32 = 1 << 4;
+/// no loopback for operation
 const RCTRL_LBM_NONE: u32 = 0;
+/// free buffer threshold is 1/2 of RDLEN
 const RCTRL_RDMTS_HALF: u32 = 0;
+/// broadcast accept mode
 const RCTRL_BAM: u32 = 1 << 15;
+/// strip ethernet crc
 const RCTRL_SECRC: u32 = 1 << 26;
-const RCTRL_BSIZE_8192: u32 = 2 << 16 | 1 << 25;
+/// The receive buffer size is 8192 bytes
+const RCTRL_BSIZE_8192: u32 = (2 << 16) | (1 << 25);
 
+/// transmit enable flag
 const TCTRL_EN: u32 = 1 << 1;
+/// pad short packets flag
 const TCTRL_PSP: u32 = 1 << 3;
+/// collision threshold
 const TCTRL_CT_SHIFT: u8 = 4;
+/// collision distance
 const TCTRL_COLD_SHIFT: u8 = 12u8;
+/// Retransmit on late collision
 const TCTRL_RTLC: u32 = 1 << 24;
 
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
@@ -290,6 +369,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
 }
 
 impl IntelPro1000Device {
+    /// Detect the presence of an eeprom and store the result
     fn detect_eeprom(&mut self) -> bool {
         if self.eeprom_present.is_none() {
             self.bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
@@ -307,21 +387,23 @@ impl IntelPro1000Device {
         self.eeprom_present.unwrap()
     }
 
+    /// Does the device support pci-x extension to pci?
     fn supports_pcix(&self) -> bool {
-        match self.model {
+        !matches!(
+            self.model,
             Model::Model82541EI_A0_or_Model82541EI_B0_Copper
-            | Model::Model82541EI_B0_Mobile
-            | Model::Model82541GI_B1_Copper_or_Model82541PI_C0
-            | Model::Model82541GI_B1_Mobile
-            | Model::Model82541PI_C0
-            | Model::Model82540EP_A_Desktop
-            | Model::Model82540EP_A_Mobile
-            | Model::Model82540EM_A_Desktop
-            | Model::Model82540EM_A_Mobile => false,
-            _ => true,
-        }
+                | Model::Model82541EI_B0_Mobile
+                | Model::Model82541GI_B1_Copper_or_Model82541PI_C0
+                | Model::Model82541GI_B1_Mobile
+                | Model::Model82541PI_C0
+                | Model::Model82540EP_A_Desktop
+                | Model::Model82540EP_A_Mobile
+                | Model::Model82540EM_A_Desktop
+                | Model::Model82540EM_A_Mobile
+        )
     }
 
+    /// Initialize the rx buffers for the device
     fn init_rx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
             let rxbuf = RxBuffers::new(32, 8192)?;
@@ -368,6 +450,7 @@ impl IntelPro1000Device {
         Ok(())
     }
 
+    /// Initialize the tx buffers for the device
     fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
             let txbuf = TxBuffers::new(8, 8192)?;
@@ -406,6 +489,7 @@ impl IntelPro1000Device {
         Ok(())
     }
 
+    /// Read a word from the eeprom at the specified address
     fn read_from_eeprom(&mut self, addr: u8) -> u16 {
         if self.detect_eeprom() {
             self.bar0.write(
@@ -453,10 +537,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
             0x1107, 0x1112,
         ] {
             let dev = dev as u16;
-            let vendor_combo = (dev as u32) << 16 | 0x8086;
-            if !m.contains_key(&vendor_combo) {
-                m.insert(vendor_combo, self.clone().into());
-            }
+            let vendor_combo = ((dev as u32) << 16) | 0x8086;
+            m.entry(vendor_combo).or_insert_with(|| self.clone().into());
         }
     }
 
@@ -479,11 +561,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         doors_macros2::kernel_print!("Got memory at {:x}\r\n", d.virt());
                         Some(MemoryOrIo::Memory(d))
                     } else {
-                        if let Some(io) = bar.get_io(cs, bus, dev, f, config) {
-                            Some(MemoryOrIo::Io(io))
-                        } else {
-                            None
-                        }
+                        bar.get_io(cs, bus, dev, f, config).map(MemoryOrIo::Io)
                     }
                 } else {
                     None
@@ -503,10 +581,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         configspace.dump("\t");
         if let Some(m) = bar0 {
             if let Some(i) = io {
-                for b in &bars {
-                    if let Some(b) = b {
-                        b.print();
-                    }
+                for b in bars.iter().flatten() {
+                    b.print();
                 }
                 let model = Model::try_from(configspace.get_device_id()).unwrap();
                 let mut d = IntelPro1000Device {

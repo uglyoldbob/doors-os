@@ -43,16 +43,12 @@ impl HeapNode {
 
     /// Attempt to merge this block with the ones that come after it
     fn try_merge_with_next(&mut self) {
-        loop {
-            if let Some(n) = self.next {
-                if (crate::address(self) + self.size) == (n.as_ptr() as usize) {
-                    let nn = unsafe { n.as_ref() }.next;
-                    let nsize = unsafe { n.as_ref() }.size;
-                    self.next = nn;
-                    self.size += nsize;
-                } else {
-                    break;
-                }
+        while let Some(n) = self.next {
+            if (crate::address(self) + self.size) == (n.as_ptr() as usize) {
+                let nn = unsafe { n.as_ref() }.next;
+                let nsize = unsafe { n.as_ref() }.size;
+                self.next = nn;
+                self.size += nsize;
             } else {
                 break;
             }
@@ -105,7 +101,7 @@ pub struct HeapManager<'a> {
     vmm: &'a crate::Locked<Allocator>,
 }
 
-unsafe impl<'a> Send for HeapManager<'a> {}
+unsafe impl Send for HeapManager<'_> {}
 
 impl<'a> HeapManager<'a> {
     /// Create a heap manager.
@@ -156,10 +152,10 @@ impl<'a> HeapManager<'a> {
 
         let new_section = Vec::<Page, &Locked<Allocator>>::with_capacity_in(a, self.vmm);
 
-        let sa = new_section.as_ptr() as *const Page as usize;
+        let sa = new_section.as_ptr() as usize;
         let mut mm = self.mm.lock();
         for i in (sa..sa + a * core::mem::size_of::<Page>()).step_by(core::mem::size_of::<Page>()) {
-            mm.map_new_page(i as usize)?;
+            mm.map_new_page(i)?;
         }
         drop(mm);
 
@@ -182,10 +178,12 @@ impl<'a> HeapManager<'a> {
 
     /// Perform an actual allocation
     fn run_alloc(&mut self, layout: core::alloc::Layout) -> *mut u8 {
-        if self.head.is_none() {
-            if let Err(_) = self.expand_with_physical_memory(layout.size() + layout.align()) {
-                return core::ptr::null_mut();
-            }
+        if self.head.is_none()
+            && self
+                .expand_with_physical_memory(layout.size() + layout.align())
+                .is_err()
+        {
+            return core::ptr::null_mut();
         }
 
         let mut times = 0;
@@ -261,11 +259,13 @@ impl<'a> HeapManager<'a> {
                 };
                 return r;
             }
-            if times == 1 {
-                if let Err(_) = self.expand_with_physical_memory(layout.size() + layout.align()) {
-                    doors_macros2::kernel_print!("OUT OF MEMORY 1\r\n");
-                    return core::ptr::null_mut();
-                }
+            if times == 1
+                && self
+                    .expand_with_physical_memory(layout.size() + layout.align())
+                    .is_err()
+            {
+                doors_macros2::kernel_print!("OUT OF MEMORY 1\r\n");
+                return core::ptr::null_mut();
             }
             if times == 2 {
                 doors_macros2::kernel_print!("OUT OF MEMORY 2\r\n");
@@ -317,7 +317,7 @@ impl<'a> HeapManager<'a> {
     }
 }
 
-unsafe impl<'a> core::alloc::GlobalAlloc for Locked<HeapManager<'a>> {
+unsafe impl core::alloc::GlobalAlloc for Locked<HeapManager<'_>> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         let mut alloc = self.lock();
         let layout2 = layout.align_to(HeapNode::NODEALIGN).unwrap();
