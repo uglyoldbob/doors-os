@@ -3,6 +3,17 @@
 #![no_std]
 #![deny(missing_docs)]
 
+/// This macro re-exports definitions required to fill out enum variants
+#[macro_export]
+macro_rules! enum_reexport {
+    ( $m:ident) => {
+        /// A module for re-exporting things for enumeration fillout
+        pub mod doors_enum_variants {
+            pub use super::$m::doors_enum_variants::*;
+        }
+    };
+}
+
 /// A macro for printing strings from the kernel
 #[macro_export]
 macro_rules! kernel_print {

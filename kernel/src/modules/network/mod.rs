@@ -8,8 +8,9 @@ use crate::{Locked, LockedArc};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
-#[doors_macros::reexport_enum_variants()]
 pub mod intel;
+
+doors_macros2::enum_reexport!(intel);
 
 /// Represents all network adapters for the kernel
 static NETWORK_ADAPTERS: Locked<BTreeMap<String, LockedArc<NetworkAdapter>>> =

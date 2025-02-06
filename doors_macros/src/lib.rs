@@ -38,23 +38,6 @@ pub fn declare_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     quote!().into()
 }
 
-/// This attribute re-exports macro variant submodules
-#[proc_macro_attribute]
-pub fn reexport_enum_variants(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let item2 = item.clone();
-    let item: proc_macro2::TokenStream = item.into();
-    let i = parse_macro_input!(item2 as syn::ItemMod);
-    let modname = i.ident;
-    quote! {
-        #item
-        pub use #modname::DoorsEnumVariants;
-    }
-    .into()
-}
-
 /// A macro that adds a variant to an enum
 #[proc_macro_attribute]
 pub fn enum_variant(
@@ -71,14 +54,14 @@ pub fn enum_variant(
     let newid = quote::format_ident!("Variant{}", index);
     let q = quote! {
         /// Automatically generated variant
-        #newid(DoorsEnumVariants::#varname)
+        #newid(doors_enum_variants::#varname)
     };
     entry.variants.push(q.to_string());
     let item: proc_macro2::TokenStream = item.into();
     quote! {
         #item
         /// A module for making variants accessible
-        pub mod DoorsEnumVariants {
+        pub mod doors_enum_variants {
             pub use super::#varname;
         }
     }
