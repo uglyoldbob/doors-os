@@ -2,7 +2,11 @@
 
 //! This crate defines various macros used in the Doors kernel.
 
-use std::{collections::BTreeMap, str::FromStr, sync::Mutex};
+use std::{
+    collections::{BTreeMap, HashSet},
+    str::FromStr,
+    sync::Mutex,
+};
 
 use quote::quote;
 use syn::parse_macro_input;
@@ -10,6 +14,7 @@ use syn::parse_macro_input;
 #[derive(Debug)]
 struct EnumData {
     variants: Vec<String>,
+    variant_names: HashSet<String>,
 }
 
 lazy_static::lazy_static! {
@@ -30,6 +35,7 @@ pub fn declare_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             n,
             EnumData {
                 variants: Vec::new(),
+                variant_names: HashSet::new(),
             },
         );
     } else {
@@ -51,9 +57,14 @@ pub fn enum_variant(
     let entry = e.get_mut(&f.to_string()).unwrap();
     let index = entry.variants.len();
     let varname = i.ident;
-    let newid = quote::format_ident!("Variant{}", index);
+    let comments = i.attrs;
+    let newid = if entry.variant_names.contains(&varname.to_string()) {
+        quote::format_ident!("{}{}", varname, index)
+    } else {
+        quote::format_ident!("{}", varname)
+    };
     let q = quote! {
-        /// Automatically generated variant
+        #(#comments)*
         #newid(doors_enum_variants::#varname)
     };
     entry.variants.push(q.to_string());

@@ -232,8 +232,8 @@ impl TxBuffers {
     }
 }
 
-/// The actual intel pro/1000 device
 #[doors_macros::enum_variant(NetworkAdapter)]
+/// The actual intel pro/1000 device
 pub struct IntelPro1000Device {
     /// The base address registers
     _bars: [Option<BarSpace>; 6],
