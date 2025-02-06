@@ -67,18 +67,13 @@ pub fn enum_variant(
     let mut e = ENUM_BUILDER.lock().unwrap();
     let entry = e.get_mut(&f.to_string()).unwrap();
     let index = entry.variants.len();
-    println!(
-        "Parse enum {} with variant addition {} index {}",
-        f, i.ident, index
-    );
     let varname = i.ident;
     let newid = quote::format_ident!("Variant{}", index);
     let q = quote! {
-        /// Automatically generated variant #index
-        #newid(DoorsEnumVariants::#varname),
+        /// Automatically generated variant
+        #newid(DoorsEnumVariants::#varname)
     };
     entry.variants.push(q.to_string());
-    let modname = quote::format_ident!("{}Variants", varname.to_string());
     let item: proc_macro2::TokenStream = item.into();
     quote! {
         #item
@@ -90,33 +85,32 @@ pub fn enum_variant(
     .into()
 }
 
-/// A macro that defines a previously defined macro
-#[proc_macro]
-pub fn define_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let allf: Vec<syn::Ident> =
-        parse_macro_input!(input with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated)
-            .into_iter()
-            .collect();
-    let f = &allf[0];
-    let dispatch = &allf[1];
+/// A macro that adds the previously defined variants into the enum, adding an enum_dispatch for a given trait
+#[proc_macro_attribute]
+pub fn fill_enum_with_variants(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let dispatch = parse_macro_input!(attr as syn::Ident);
+    let mut f = parse_macro_input!(item as syn::ItemEnum);
+    let name = f.ident.clone();
+    let vars = &mut f.variants;
+
     let mut e = ENUM_BUILDER.lock().unwrap();
-    let n = f.to_string();
+    let n = name.to_string();
     let data = e.remove(&n).unwrap();
-    println!("The enum data for {} is {:?}", n, data);
     if data.variants.is_empty() {
         panic!("No variants defined for {}", n);
     }
-    let variants: Vec<proc_macro2::TokenStream> = data
-        .variants
-        .iter()
-        .map(|a| proc_macro2::TokenStream::from_str(a).unwrap().into())
-        .collect();
+    for d in data.variants {
+        let ts = proc_macro::TokenStream::from_str(&d).unwrap();
+        let v = parse_macro_input!(ts as syn::Variant);
+        vars.push(v);
+    }
+    let fts = quote::ToTokens::into_token_stream(f);
     quote! {
-        /// Automatically generated enumeration
         #[enum_dispatch::enum_dispatch(#dispatch)]
-        pub enum #f {
-            #(#variants)*
-        }
+        #fts
     }
     .into()
 }

@@ -231,4 +231,6 @@ pub trait NetworkAdapterTrait {
     fn get_mac_address(&mut self) -> MacAddress;
 }
 
-doors_macros::define_enum!(NetworkAdapter, NetworkAdapterTrait);
+/// A network adapter
+#[doors_macros::fill_enum_with_variants(NetworkAdapterTrait)]
+pub enum NetworkAdapter {}
