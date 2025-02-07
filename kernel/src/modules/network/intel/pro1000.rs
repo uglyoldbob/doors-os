@@ -152,12 +152,16 @@ impl MemoryOrIo {
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u16)]
 enum IntelPro1000Registers {
+    /// Device control register
+    CTRL = 0,
     /// The eeprom read register
     Eeprom = 0x14,
     /// Receive control register
     Rctrl = 0x100,
     /// Transmit control register
     Tctrl = 0x400,
+    /// Transmit IPG (inter packet gap) register
+    TIPG = 0x410,
     /// Receive descriptor base low
     RxDescLow = 0x2800,
     /// Receive descriptor base high
@@ -178,6 +182,72 @@ enum IntelPro1000Registers {
     TxDescHead = 0x3810,
     /// Transmit descriptor tail
     TxDescTail = 0x3818,
+    /// Multicast table array base register
+    MTA_BASE = 0x5200,
+    /// Receive address low
+    RAL0 = 0x5400,
+    /// Receive address high
+    RAH0 = 0x5404,
+    /// Receive address low
+    RAL1 = 0x5400 + 8 * 1,
+    /// Receive address high
+    RAH1 = 0x5404 + 8 * 1,
+    /// Receive address low
+    RAL2 = 0x5400 + 8 * 2,
+    /// Receive address high
+    RAH2 = 0x5404 + 8 * 2,
+    /// Receive address low
+    RAL3 = 0x5400 + 8 * 3,
+    /// Receive address high
+    RAH3 = 0x5404 + 8 * 3,
+    /// Receive address low
+    RAL4 = 0x5400 + 8 * 4,
+    /// Receive address high
+    RAH4 = 0x5404 + 8 * 4,
+    /// Receive address low
+    RAL5 = 0x5400 + 8 * 5,
+    /// Receive address high
+    RAH5 = 0x5404 + 8 * 5,
+    /// Receive address low
+    RAL6 = 0x5400 + 8 * 6,
+    /// Receive address high
+    RAH6 = 0x5404 + 8 * 6,
+    /// Receive address low
+    RAL7 = 0x5400 + 8 * 7,
+    /// Receive address high
+    RAH7 = 0x5404 + 8 * 7,
+    /// Receive address low
+    RAL8 = 0x5400 + 8 * 8,
+    /// Receive address high
+    RAH8 = 0x5404 + 8 * 8,
+    /// Receive address low
+    RAL9 = 0x5400 + 8 * 9,
+    /// Receive address high
+    RAH9 = 0x5404 + 8 * 9,
+    /// Receive address low
+    RAL10 = 0x5400 + 8 * 10,
+    /// Receive address high
+    RAH10 = 0x5404 + 8 * 10,
+    /// Receive address low
+    RAL11 = 0x5400 + 8 * 11,
+    /// Receive address high
+    RAH11 = 0x5404 + 8 * 11,
+    /// Receive address low
+    RAL12 = 0x5400 + 8 * 12,
+    /// Receive address high
+    RAH12 = 0x5404 + 8 * 12,
+    /// Receive address low
+    RAL13 = 0x5400 + 8 * 13,
+    /// Receive address high
+    RAH13 = 0x5404 + 8 * 13,
+    /// Receive address low
+    RAL14 = 0x5400 + 8 * 14,
+    /// Receive address high
+    RAH14 = 0x5404 + 8 * 14,
+    /// Receive address low
+    RAL15 = 0x5400 + 8 * 15,
+    /// Receive address high
+    RAH15 = 0x5404 + 8 * 15,
 }
 
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
@@ -203,6 +273,55 @@ bitfield::bitfield! {
     ipcs, _ : 6;
     /// passed in-exact filter. Used to expedite processing that determines if a packet is for this station
     pif, _ : 7;
+}
+
+bitfield::bitfield! {
+    /// The status of an rx descriptor
+    struct DeviceControl(u32);
+    impl Debug;
+    impl new;
+    /// full-duplex enable. This allows overriding the hardware auto-negotiation function. FRCDPLX must be set in order for duplex mode to be set.
+    fd, set_fd: 0;
+    /// link reset. For TBI/SerDes modes, reset the link and restart auto-negotation.
+    lrst, set_lrst: 3;
+    /// auto speed detection enable. SLU must also be set for this to function.
+    asde, set_asde: 5;
+    /// set link up. For TBI/SerDes mode this provides manual link configuration. Auto-negotation must be disabled for this to function. This must be set for internal PHY mode.
+    slu, set_slu: 6;
+    /// invert loss of signal. This makes the loss of signal input active low. Only for 82541xx and 82547GI/EI models.
+    ilos, set_ilos: 7;
+    /// the speed configuration of the link. Not used for TBI / internal Serdes modes. Ignored when auto-speed detection is enabled (asde). frcspd must be set for this to operate.
+    /// 0 = 10 Mbps
+    /// 1 = 100 Mbps
+    /// 2 = 1000 Mbps
+    /// 3 = Reserved
+    u8, speed, set_speed: 9, 8;
+    /// Force speed enable.
+    frcspd, set_frcspd: 11;
+    /// Force duplex mode enable
+    frcdplx, set_frcdplx: 12;
+    /// sdp0 data value. Used to read and write value of IO pin SDP0
+    sdp0_data, set_spd0_data: 18;
+    /// sdp1 data value. Used to read and write value of IO pin SDP1
+    sdp1_data, set_spd1_data: 19;
+    /// D3cold wakeup capability advertisement enable. When enabled, advertisement is based on AUX_PWR pin.
+    advd3wuc, set_advd3wuc: 20;
+    /// enable phy power management
+    en_phy_pwr_mgmt, set_en_phy_pwr_mgmt: 21;
+    /// Set SDP0 pin as an output.
+    sdp0_iodir, set_sdp0_iodir: 22;
+    /// Set SDP1 pin as an output.
+    sdp1_iodir, set_sdp1_iodir: 23;
+    /// Device reset, this is self clearing. PCI configuration registers are not cleared by this. Wait for 1us after setting before doing anything else to the device.
+    rst, set_rst: 26;
+    /// Receive flow control enable. Enables response to flow control packets.
+    rfce, set_rfce: 27;
+    /// Transmit flow control enable. Enables transmission of flow control packets (XOK and XOFF)
+    tfce, set_tfce: 28;
+    ///vlan mode enable. Enables vlan mode for 802.1q packets in both receive and transmit.
+    vme, set_vme: 30;
+    /// PHY reset. Set this, wait 3us, then clear it. For the 82546GB, hold for 10ms instead of 3us.
+    phy_rst, set_phy_rst: 31;
 }
 
 bitfield::bitfield! {
@@ -472,6 +591,27 @@ bitflags::bitflags! {
     }
 }
 
+bitfield::bitfield! {
+    /// The status of an rx descriptor
+    struct ReceiveAddress(u64);
+    impl Debug;
+    impl new;
+    /// The mac address
+    u64, from into MacAddress, mac, set_mac: 47, 0;
+    /// How the address is to be used in address filtering
+    /// 0 = Use destination address (normal mode)
+    /// 1 = Source address
+    /// 2 = Reserved
+    /// 3 = Reserved
+    u8, address_select, set_address_select: 49, 48;
+    /// Set when the address is compared against incoming packets
+    address_valid, set_address_valid: 63;
+    /// The low 32 bits of the struct
+    u32, low, _ : 31, 0;
+    /// The high 32 bits of the struct
+    u32, high, _ : 63, 32;
+}
+
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     fn get_mac_address(&mut self) -> MacAddress {
         if self.detect_eeprom() {
@@ -525,9 +665,85 @@ impl IntelPro1000Device {
         )
     }
 
+    /// Get the two registers for the receive mac address at the specified index
+    fn receive_mac_address_registers(index: u8) -> (IntelPro1000Registers, IntelPro1000Registers) {
+        match index {
+            0 => (IntelPro1000Registers::RAL0, IntelPro1000Registers::RAH0),
+            1 => (IntelPro1000Registers::RAL1, IntelPro1000Registers::RAH1),
+            2 => (IntelPro1000Registers::RAL2, IntelPro1000Registers::RAH2),
+            3 => (IntelPro1000Registers::RAL3, IntelPro1000Registers::RAH3),
+            4 => (IntelPro1000Registers::RAL4, IntelPro1000Registers::RAH4),
+            5 => (IntelPro1000Registers::RAL5, IntelPro1000Registers::RAH5),
+            6 => (IntelPro1000Registers::RAL6, IntelPro1000Registers::RAH6),
+            7 => (IntelPro1000Registers::RAL7, IntelPro1000Registers::RAH7),
+            8 => (IntelPro1000Registers::RAL8, IntelPro1000Registers::RAH8),
+            9 => (IntelPro1000Registers::RAL9, IntelPro1000Registers::RAH9),
+            10 => (IntelPro1000Registers::RAL10, IntelPro1000Registers::RAH10),
+            11 => (IntelPro1000Registers::RAL11, IntelPro1000Registers::RAH11),
+            12 => (IntelPro1000Registers::RAL12, IntelPro1000Registers::RAH12),
+            13 => (IntelPro1000Registers::RAL13, IntelPro1000Registers::RAH13),
+            14 => (IntelPro1000Registers::RAL14, IntelPro1000Registers::RAH14),
+            15 => (IntelPro1000Registers::RAL15, IntelPro1000Registers::RAH15),
+            _ => panic!("Invalid index {}", index),
+        }
+    }
+
+    /// Set the receive address of the specified index
+    fn set_receive_mac_address(&mut self, index: u8, ra: &ReceiveAddress) {
+        let (low, high) = Self::receive_mac_address_registers(index);
+        self.bar0.write(low as u16, ra.low());
+        self.bar0.write(high as u16, ra.high());
+    }
+
+    /// Clear the receive address at the specified index
+    fn clear_receive_mac_address(&mut self, index: u8) {
+        let (low, high) = Self::receive_mac_address_registers(index);
+        self.bar0.write(high as u16, 0u32);
+        self.bar0.write(low as u16, 0u32);
+    }
+
+    /// Retrieve the existing receive address at the specified index from the device
+    fn get_receive_mac_address(&mut self, index: u8) -> ReceiveAddress {
+        let (low, high) = Self::receive_mac_address_registers(index);
+        let ral = self.bar0.read(low as u16);
+        let rah = self.bar0.read(high as u16);
+        let combined: u64 = ((rah as u64) << 32) | (ral as u64);
+        ReceiveAddress(combined)
+    }
+
+    /// Clear the multicast table array
+    fn clear_multicast_table_array(&mut self) {
+        let base = IntelPro1000Registers::MTA_BASE as u16;
+        let end = base + 0x200;
+        for r in (base..end).step_by(4) {
+            self.bar0.write(r, 0u32);
+        }
+    }
+
+    /// Perform a general configuration of the device, to be performed after power-up or after reset.
+    fn general_config(&mut self) {
+        if matches!(
+            self.model,
+            Model::Model82541EI_A0_or_Model82541EI_B0_Copper
+                | Model::Model82541EI_B0_Mobile
+                | Model::Model82541GI_B1_Copper_or_Model82541PI_C0
+                | Model::Model82541GI_B1_Mobile
+                | Model::Model82541PI_C0
+                | Model::Model82547EI_A0_or_Model82547EI_A1_or_Model82547EI_B0_Copper_or_Model82547GI_B0
+                | Model::Model82547EI_B0_Mobile
+        ) {
+            todo!("Configure LED behavior");
+            todo!("Clear statistics counters");
+        }
+    }
+
     /// Initialize the rx buffers for the device
     fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
+            let ra = ReceiveAddress::new(*mac, 0, true);
+            self.set_receive_mac_address(0, &ra);
+            self.clear_multicast_table_array();
+            // Interrupts will be enabled later on
             let rxbuf = RxBuffers::new(32, 8192)?;
             let rxaddr = rxbuf.bufs.phys();
             doors_macros2::kernel_print!("Writing RX stuff to network card\r\n");
@@ -544,13 +760,18 @@ impl IntelPro1000Device {
                 core::mem::size_of::<RxBuffer>() as u32 * rxbuf.bufs.len() as u32,
             );
             self.bar0.write(IntelPro1000Registers::RxDescHead as u16, 0);
+            // This might be off by 1, as the manual states tail should point to the element after the last valid descriptor
             self.bar0.write(
                 IntelPro1000Registers::RxDescTail as u16,
                 rxbuf.bufs.len() as u32 - 1,
             );
             self.bar0.write(
                 IntelPro1000Registers::Rctrl as u16,
-                (RctrlFlags::EN | RctrlFlags::RDMTS_HALF | RctrlFlags::BSIZE_8192).bits(),
+                (RctrlFlags::EN
+                    | RctrlFlags::BAM
+                    | RctrlFlags::RDMTS_HALF
+                    | RctrlFlags::BSIZE_8192)
+                    .bits(),
             );
             self.rxbufindex = Some(0);
             doors_macros2::kernel_print!(
@@ -597,6 +818,10 @@ impl IntelPro1000Device {
                     | (15 << TctrlFlags::CT_SHIFT.bits())
                     | (64 << TctrlFlags::COLD_SHIFT.bits()),
             );
+            doors_macros2::kernel_print!(
+                "Need to SET TIPG, it is currently {:x}\r\n",
+                self.bar0.read(IntelPro1000Registers::TIPG as u16)
+            );
             self.txbufindex = Some(0);
             doors_macros2::kernel_print!(
                 "TX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
@@ -628,8 +853,6 @@ impl IntelPro1000Device {
                 let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
                 if (a & (0x10)) != 0 {
                     return (a >> 16) as u16;
-                } else {
-                    //doors_macros2::kernel_print!("VAL1: {:x}\r\n", a);
                 }
             }
         } else {
@@ -641,8 +864,6 @@ impl IntelPro1000Device {
                 let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
                 if (a & (0x2)) != 0 {
                     return (a >> 16) as u16;
-                } else {
-                    //doors_macros2::kernel_print!("VAL2: {:x}\r\n", a);
                 }
             }
         }
@@ -733,6 +954,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 }
                 hex_dump_generic(&data, true, false);
                 let mac = d.get_mac_address();
+                d.general_config();
                 hex_dump(&mac.address, false, false);
                 if let Err(e) = d.init_rx(&mac) {
                     doors_macros2::kernel_print!("RX buffer allocation error {:?}\r\n", e);

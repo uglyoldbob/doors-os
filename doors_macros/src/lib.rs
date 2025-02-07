@@ -304,24 +304,29 @@ pub fn enum_variant(
     let f = parse_macro_input!(attr as syn::Ident);
     let item2 = item.clone();
     let i = parse_macro_input!(item2 as syn::ItemStruct);
-    let mut e = ENUM_BUILDER.lock().unwrap();
     let varname = {
-        let entry = e.get_mut(&f.to_string()).unwrap();
-        let index = entry.variants.len();
-        let varname = i.ident;
-        let comments = i.attrs;
-        let newid = if entry.variant_names.contains(&varname.to_string()) {
-            quote::format_ident!("{}{}", varname, index)
+        let mut e = ENUM_BUILDER.lock().unwrap();
+        let entry = e.get_mut(&f.to_string());
+        if let Some(entry) = entry {
+            let index = entry.variants.len();
+            let varname = i.ident;
+            let comments = i.attrs;
+            let newid = if entry.variant_names.contains(&varname.to_string()) {
+                quote::format_ident!("{}{}", varname, index)
+            } else {
+                quote::format_ident!("{}", varname)
+            };
+            let q = quote! {
+                #(#comments)*
+                #newid(doors_enum_variants::#varname)
+            };
+            entry.variants.push(q.to_string());
+            Ok(varname)
         } else {
-            quote::format_ident!("{}", varname)
-        };
-        let q = quote! {
-            #(#comments)*
-            #newid(doors_enum_variants::#varname)
-        };
-        entry.variants.push(q.to_string());
-        varname
-    };
+            Err(())
+        }
+    }
+    .unwrap();
     let item: proc_macro2::TokenStream = item.into();
     quote! {
         #item
@@ -412,9 +417,13 @@ pub fn doors_test(
         impl crate::DoorsTester {
             /// Test function #index
             pub fn #id() -> Result<(),()> {
+                doors_macros2::kernel_print!("Running test #{}: {}... ", #index, #fcall2);
                 let r = #fcall();
                 if r.is_err() {
-                    doors_macros2::kernel_print!("Test {} failed\r\n", #fcall2);
+                    doors_macros2::kernel_print!("failed\r\n");
+                }
+                else {
+                    doors_macros2::kernel_print!("passed\r\n");
                 }
                 r
             }
@@ -441,7 +450,9 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
     quote! {
         impl DoorsTester {
             fn doors_test_main() -> Result<(),()> {
+                doors_macros2::kernel_print!("Running all {} Doors tests\r\n", #testa);
                 #(#calls()?;)*
+                doors_macros2::kernel_print!("All {} tests passed\r\n", #testa);
                 Ok(())
             }
         }

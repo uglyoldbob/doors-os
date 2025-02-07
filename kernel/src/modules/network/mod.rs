@@ -40,9 +40,48 @@ pub fn get_network_adapter(s: &str) -> Option<LockedArc<NetworkAdapter>> {
 }
 
 /// A mac address for a network adapter
+#[derive(Clone, Copy, Debug)]
 pub struct MacAddress {
     /// The bytes of the mac address
     address: [u8; 6],
+}
+
+impl From<u64> for MacAddress {
+    fn from(value: u64) -> Self {
+        let a = value.to_le_bytes();
+        Self {
+            address: [a[0], a[1], a[2], a[3], a[4], a[5]],
+        }
+    }
+}
+
+impl Into<u64> for MacAddress {
+    fn into(self) -> u64 {
+        let a: [u8; 8] = [
+            self.address[0],
+            self.address[1],
+            self.address[2],
+            self.address[3],
+            self.address[4],
+            self.address[5],
+            0,
+            0,
+        ];
+        u64::from_le_bytes(a)
+    }
+}
+
+/// Test the mac address conversion to and from u64
+#[doors_macros::doors_test]
+fn mac_address_conversion_test() -> Result<(), ()> {
+    let mac = MacAddress {
+        address: [1, 2, 3, 4, 5, 6],
+    };
+    let b: u64 = mac.clone().into();
+    assert_eq!(b, 0x060504030201);
+    let mac2: MacAddress = b.into();
+    assert_eq!(mac.address, mac2.address);
+    Ok(())
 }
 
 /// An Ipv4 address
@@ -176,7 +215,6 @@ fn ipv6_network_test() -> Result<(), ()> {
         prefix: 4,
     };
     let t1 = alloc::format!("{:?}", ipv6);
-    doors_macros2::kernel_print_alloc!("{}\r\n", t1);
     assert_eq!(t1, "1:2:3:4:5:6:7:8/4");
 
     let zeros: &[(&[u8], &str)] = &[
@@ -211,7 +249,6 @@ fn ipv6_network_test() -> Result<(), ()> {
             ipc.address[*z as usize] = 0;
         }
         let t1 = alloc::format!("{:?}", ipc);
-        doors_macros2::kernel_print_alloc!("{}\r\n", t1);
         assert_eq!(&t1, check);
     }
     Ok(())

@@ -73,10 +73,8 @@ fn main(mut system: kernel::System) -> ! {
     {
         system.enable_interrupts();
         system.init();
-        doors_macros2::kernel_print!("DoorsOs running tests\r\n");
-        match DoorsTester::doors_test_main() {
-            Ok(()) => doors_macros2::kernel_print!("All tests passed\r\n"),
-            Err(()) => doors_macros2::kernel_print!("At least one test failed\r\n"),
+        if DoorsTester::doors_test_main().is_err() {
+            doors_macros2::kernel_print!("At least one test failed\r\n");
         }
         doors_macros2::kernel_print!("Entering idle loop\r\n");
         loop {
