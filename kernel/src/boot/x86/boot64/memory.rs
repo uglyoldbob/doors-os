@@ -514,7 +514,7 @@ impl<T: Default> memory::DmaMemory<T> {
 }
 
 impl<T> memory::DmaMemorySlice<T> {
-    /// Construct a new self, initializing each element with a closure
+    /// Construct a new self, initializing each individual element with a closure
     pub fn new_with(
         quantity: usize,
         mut f: impl FnMut(usize) -> Result<T, core::alloc::AllocError>,

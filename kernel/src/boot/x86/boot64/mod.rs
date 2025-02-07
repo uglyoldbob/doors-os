@@ -256,7 +256,7 @@ impl acpi::AcpiHandler for &Acpi<'_> {
                 *self,
             );
             doors_macros2::kernel_print!("Dumping mapped structure\r\n");
-            hex_dump_generic(r.virtual_start().as_ref(), false, false);
+            hex_dump_generic(r.virtual_start().as_ref(), true, true);
             let _a: usize = r.virtual_start().addr().into();
             doors_macros2::kernel_print!(
                 "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",

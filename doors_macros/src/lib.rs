@@ -59,11 +59,19 @@ pub fn load_config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let config =
         String::from_utf8(config_contents).expect("Invalid contents in kernel configuration");
     let config = toml::from_str::<KernelConfig>(&config).expect("Invalid kernel configuration");
-    let mut m = KERNEL_CONFIG.lock().unwrap();
-    if m.is_some() {
-        panic!("Kernel config already loaded");
+    let check = {
+        let mut m = KERNEL_CONFIG.lock().unwrap();
+        if m.is_some() {
+            Err(format!("Kernel config already loaded"))
+        } else {
+            m.replace(config);
+            Ok(())
+        }
+    };
+    if let Err(e) = check {
+        panic!("{}", e);
     }
-    m.replace(config);
+
     quote!().into()
 }
 
@@ -86,9 +94,11 @@ impl syn::parse::Parse for ConfigCheckBlock {
 #[proc_macro]
 pub fn config_check_bool(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let f = parse_macro_input!(input as ConfigCheckBlock);
-    let m = KERNEL_CONFIG.lock().unwrap();
-    let m = m.as_ref().unwrap();
-    let val = m.get_field(&f.ident.to_string());
+    let check = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref().map(|a| a.get_field(&f.ident.to_string()))
+    };
+    let val = check.unwrap();
     let block = f.block;
     if val {
         quote!(#block).into()
@@ -100,8 +110,11 @@ pub fn config_check_bool(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 /// Retrieve a boolean value from the kernel config
 #[proc_macro]
 pub fn config_build_struct(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let m = KERNEL_CONFIG.lock().unwrap();
-    let m = m.as_ref().unwrap();
+    let m = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref().map(|a| a.to_owned())
+    }
+    .unwrap();
     let item2 = item.clone();
     let mut f = parse_macro_input!(item2 as syn::ExprStruct);
 
@@ -173,8 +186,11 @@ pub fn config_check_struct(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     assert!(attr.is_empty());
-    let m = KERNEL_CONFIG.lock().unwrap();
-    let m = m.as_ref().unwrap();
+    let m = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref().map(|a| a.to_owned())
+    }
+    .unwrap();
     let item2 = item.clone();
     let mut f = parse_macro_input!(item2 as syn::ItemStruct);
 
@@ -259,16 +275,22 @@ pub fn config_check_struct(
 #[proc_macro]
 pub fn declare_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let f = parse_macro_input!(input as syn::Ident);
-    let mut e = ENUM_BUILDER.lock().unwrap();
-    let n = f.to_string();
-    let n2 = n.clone();
-    if let std::collections::btree_map::Entry::Vacant(e) = e.entry(n) {
-        e.insert(EnumData {
-            variants: Vec::new(),
-            variant_names: HashSet::new(),
-        });
-    } else {
-        panic!("Enum {} was already declared", n2);
+    let c = {
+        let mut e = ENUM_BUILDER.lock().unwrap();
+        let n = f.to_string();
+        let n2 = n.clone();
+        if let std::collections::btree_map::Entry::Vacant(e) = e.entry(n) {
+            e.insert(EnumData {
+                variants: Vec::new(),
+                variant_names: HashSet::new(),
+            });
+            Ok(())
+        } else {
+            Err(format!("Enum {} was already declared", n2))
+        }
+    };
+    if let Err(e) = c {
+        panic!("{}", e);
     }
     quote!().into()
 }
@@ -283,20 +305,23 @@ pub fn enum_variant(
     let item2 = item.clone();
     let i = parse_macro_input!(item2 as syn::ItemStruct);
     let mut e = ENUM_BUILDER.lock().unwrap();
-    let entry = e.get_mut(&f.to_string()).unwrap();
-    let index = entry.variants.len();
-    let varname = i.ident;
-    let comments = i.attrs;
-    let newid = if entry.variant_names.contains(&varname.to_string()) {
-        quote::format_ident!("{}{}", varname, index)
-    } else {
-        quote::format_ident!("{}", varname)
+    let varname = {
+        let entry = e.get_mut(&f.to_string()).unwrap();
+        let index = entry.variants.len();
+        let varname = i.ident;
+        let comments = i.attrs;
+        let newid = if entry.variant_names.contains(&varname.to_string()) {
+            quote::format_ident!("{}{}", varname, index)
+        } else {
+            quote::format_ident!("{}", varname)
+        };
+        let q = quote! {
+            #(#comments)*
+            #newid(doors_enum_variants::#varname)
+        };
+        entry.variants.push(q.to_string());
+        varname
     };
-    let q = quote! {
-        #(#comments)*
-        #newid(doors_enum_variants::#varname)
-    };
-    entry.variants.push(q.to_string());
     let item: proc_macro2::TokenStream = item.into();
     quote! {
         #item
@@ -318,15 +343,17 @@ pub fn fill_enum_with_variants(
     let mut f = parse_macro_input!(item as syn::ItemEnum);
     let name = f.ident.clone();
     let vars = &mut f.variants;
-
-    let mut e = ENUM_BUILDER.lock().unwrap();
     let n = name.to_string();
-    let data = e.remove(&n).unwrap();
+    let data = {
+        let mut e = ENUM_BUILDER.lock().unwrap();
+        e.remove(&n)
+    }
+    .unwrap();
     if data.variants.is_empty() {
         panic!("No variants defined for {}", n);
     }
-    for d in data.variants {
-        let ts = proc_macro::TokenStream::from_str(&d).unwrap();
+    for d in &data.variants {
+        let ts = proc_macro::TokenStream::from_str(d).unwrap();
         let v = parse_macro_input!(ts as syn::Variant);
         vars.push(v);
     }
@@ -399,8 +426,11 @@ pub fn doors_test(
 /// This creates the function that runs all of the tests
 #[proc_macro]
 pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let mut testa = TEST_CALL_QUANTITY.lock().unwrap();
-    let testa = testa.take().unwrap();
+    let check = {
+        let mut testa = TEST_CALL_QUANTITY.lock().unwrap();
+        testa.take()
+    };
+    let testa = check.unwrap();
 
     let i = 0..testa;
     let calls = i.into_iter().map(|i| {

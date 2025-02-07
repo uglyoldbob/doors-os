@@ -13,6 +13,12 @@ pub struct Multiboot {
     checksum: u32,
 }
 
+impl Default for Multiboot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Multiboot {
     /// Construct a new instance of a multiboot header for a multiboot kernel.
     pub const fn new() -> Self {

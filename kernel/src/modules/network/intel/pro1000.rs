@@ -1,4 +1,5 @@
-//! This driver is for the intel pro/1000 networking hardware
+//! This driver is for the intel pro/1000 networking hardware.
+//! TODO: Implement support notation for ipv6 (82544GC/EI does not support ipv6)
 
 use alloc::collections::btree_map::BTreeMap;
 
@@ -180,40 +181,92 @@ enum IntelPro1000Registers {
 }
 
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
-/// TODO: move this to crate::modules::network
 #[derive(Clone, Default)]
 pub struct IntelPro1000 {}
+
+bitfield::bitfield! {
+    /// The status of an rx descriptor
+    struct RxBufferStatus(u8);
+    impl Debug;
+    impl new;
+    /// the hardware is done with the descriptor
+    dd, _ : 0;
+    /// end of packet, last descriptor for an incoming packet
+    eop, _ : 1;
+    /// ignore checksum indication, ignore the checksum indicators when set
+    ixsm, _ : 2;
+    /// The packet is 802.1q. The packet type matches VET. Only set when CTRL.VME is set.
+    vp, _ : 3;
+    /// checksum was performed
+    tcpcs, _ : 5;
+    /// ip checksum on packet was calculated by hardware
+    ipcs, _ : 6;
+    /// passed in-exact filter. Used to expedite processing that determines if a packet is for this station
+    pif, _ : 7;
+}
+
+bitfield::bitfield! {
+    /// The error field of an rx descriptor
+    struct RxError(u8);
+    impl Debug;
+    impl new;
+    /// crc error or alignment error, check statistics registers to distinguish between the two
+    ce, _ : 0;
+    /// symbol error. packet received with bad symbol. Only for TBI / SerDes mode.
+    se, _ : 1;
+    /// sequence error. received packet contained a bad delimiter sequence (TBI or SerDes mode). for 802.3 this is a framing error.
+    /// Valid sequence is as follows: idle, start of frame, data, Option<pad>, end of frame, Option<fill>, idle.
+    seq, _ : 2;
+    /// carrier extension error. GMII interface indicates a carrier extension error. Only valid for 1000Mbps half-duplex operations. Only valid for the 82544GC/EI models.
+    cxe, _ : 4;
+    /// tcp/udp checksum error. Only valid when status.tcpcs is set.
+    tcpe, _ : 5;
+    /// ip checksum error. Only valid when status.ipcs is set.
+    ipe, _ : 6;
+    /// rx data error. error during packet reception. For TBI / internal SerDes mode, a /V/ code was received. For MII or GMII mode, i_RX_ER was adderted during packet reception. Only valid when status.eop and status.dd are set. Only set when rctl.sbp is set.
+    rxe, _ : 7;
+}
+
+bitfield::bitfield! {
+    /// The special field of an rx descriptor. For storing additional information of 802.1q packets. (not valid for model 82544GC/EI).
+    struct RxSpecial(u16);
+    impl Debug;
+    impl new;
+    /// vlan identifier
+    vlan, _ : 11, 0;
+    /// canonical form indicator
+    cfi, _ : 12;
+    /// user priority
+    pri, _ : 15, 13;
+}
 
 /// An Rx buffer for the device
 #[repr(C, packed)]
 struct RxBuffer {
-    /// TODO
+    /// the physical address of the buffer
     address: u64,
-    /// TODO
+    /// packet length
     length: u16,
-    /// TODO
+    /// the checksum of the packet (not valid for model 82544GC/EI)
     checksum: u16,
-    /// TODO
-    status: u8,
-    /// TODO
-    errors: u8,
-    /// TODO
-    special: u16,
+    /// descriptor status
+    status: RxBufferStatus,
+    /// receive errors, TODO make a bitfield for this
+    errors: RxError,
+    /// extra data for 802.1q packets (not valid for model 82544GC/EI)
+    special: RxSpecial,
 }
 
 impl RxBuffer {
-    /// Construct a new [Self] of 8192 bytes
-    /// TODO FIXME I'm broken
-    fn new() -> Self {
-        let buf: alloc::boxed::Box<[u8; 8192]> = alloc::boxed::Box::new([0; 8192]);
-        let buf2 = alloc::boxed::Box::leak(buf);
+    /// Construct a new [Self]. address must be the physical address
+    fn new(address: u64) -> Self {
         Self {
-            address: crate::slice_address(buf2) as u64,
+            address,
             length: 0,
             checksum: 0,
-            status: 0,
-            errors: 0,
-            special: 0,
+            status: RxBufferStatus::new(),
+            errors: RxError::new(),
+            special: RxSpecial::new(),
         }
     }
 }
@@ -238,13 +291,10 @@ struct TxBuffer {
 }
 
 impl TxBuffer {
-    /// Construct a new [Self] of 8192 bytes
-    /// TODO FIXME I'm broken
-    fn new() -> Self {
-        let buf: alloc::boxed::Box<[u8; 8192]> = alloc::boxed::Box::new([0; 8192]);
-        let buf2 = alloc::boxed::Box::leak(buf);
+    /// Construct a new [Self], address must be the physical address
+    fn new(address: u64) -> Self {
         Self {
-            address: crate::slice_address(buf2) as u64,
+            address,
             length: 0,
             cso: 0,
             cmd: 0,
@@ -266,13 +316,15 @@ struct RxBuffers {
 impl RxBuffers {
     /// Construct a new set of tx buffers of the specified quantity and size in bytes
     fn new(quantity: u8, size: usize) -> Result<Self, core::alloc::AllocError> {
-        let m: crate::DmaMemorySlice<RxBuffer> =
-            crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(RxBuffer::new()))?;
         let mut dmas = alloc::vec::Vec::with_capacity(quantity as usize);
         for _i in 0..quantity {
             dmas.push(crate::DmaMemorySlice::new(size)?);
         }
-        Ok(Self { bufs: m, dmas })
+        let bufs = crate::DmaMemorySlice::new_with(quantity as usize, |i| {
+            let dma = &dmas[i];
+            Ok(RxBuffer::new(dma.phys() as u64))
+        })?;
+        Ok(Self { bufs, dmas })
     }
 }
 
@@ -287,13 +339,15 @@ struct TxBuffers {
 impl TxBuffers {
     /// construct a new set of tx buffers of the specified quantity and size in bytes
     fn new(quantity: u8, size: usize) -> Result<Self, core::alloc::AllocError> {
-        let m: crate::DmaMemorySlice<TxBuffer> =
-            crate::DmaMemorySlice::new_with(quantity as usize, |_| Ok(TxBuffer::new()))?;
         let mut dmas = alloc::vec::Vec::with_capacity(quantity as usize);
         for _i in 0..quantity {
             dmas.push(crate::DmaMemorySlice::new(size)?);
         }
-        Ok(Self { bufs: m, dmas })
+        let bufs = crate::DmaMemorySlice::new_with(quantity as usize, |i| {
+            let dma = &dmas[i];
+            Ok(TxBuffer::new(dma.phys() as u64))
+        })?;
+        Ok(Self { bufs, dmas })
     }
 }
 
@@ -320,35 +374,103 @@ pub struct IntelPro1000Device {
     model: Model,
 }
 
-/// receive enable flag
-const RCTRL_EN: u32 = 1 << 1;
-/// store bad packets flag
-const RCTRL_SBP: u32 = 1 << 2;
-/// unicast promiscuos enabled
-const RCTRL_UPE: u32 = 1 << 3;
-/// multicast promiscuous enabled
-const RCTRL_MPE: u32 = 1 << 4;
-/// no loopback for operation
-const RCTRL_LBM_NONE: u32 = 0;
-/// free buffer threshold is 1/2 of RDLEN
-const RCTRL_RDMTS_HALF: u32 = 0;
-/// broadcast accept mode
-const RCTRL_BAM: u32 = 1 << 15;
-/// strip ethernet crc
-const RCTRL_SECRC: u32 = 1 << 26;
-/// The receive buffer size is 8192 bytes
-const RCTRL_BSIZE_8192: u32 = (2 << 16) | (1 << 25);
+bitflags::bitflags! {
+    /// Represents a set of flags.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    struct RctrlFlags: u32 {
+        /// Receiver enable. After disabling the receiver, reset the receiver before enabling it.
+        const EN = 1<<1;
+        /// Store bad packets. Store bad packets (crc error, symbol error, sequence error, length error, alignment error, short packets, carrier extension or RX_ERR) that pass the filter function.
+        const SBP = 1<<2;
+        /// Unicast promiscuous mode enabled. Passes all received unicast packets without filtering them.
+        const UPE = 1<<3;
+        /// Multicast promiscuous mode enabled. Passes all received multicast packets without filtering them.
+        const MPE = 1<<4;
+        /// Long packet reception enable. Allows packets with a length of up to 16384 bytes when set, otherwise allows packets of length 1522 bytes when not set.
+        const LPE = 1<<5;
+        /// Loopback enabled. Only allowed for ful-duplex operations. Not supported by 82540EP/EM, 82541XX, and 82547GI/EI models.
+        const LOOPBACK = 3<<6;
+        /// Set the receive descriptor minimum threshold size to 1/2 of RDLEN
+        const RDMTS_HALF = 0;
+        /// Set the receive descriptor minimum threshold size to 1/4 of RDLEN
+        const RDMTS_QUARTER = 1<<8;
+        /// Set the receive descriptor minimum threshold size to 1/8 of RDLEN
+        const RDMTS_EIGHTH = 2<<8;
+        /// Multicast offset use bits [47:36]
+        const MO_36 = 0;
+        /// Multicast offset use bits [46:35]
+        const MO_35 = 1<<12;
+        /// Multicast offset use bits [45:34]
+        const MO_34 = 2<<12;
+        /// Multicast offset use bits [43:32]
+        const MO_32 = 3<<12;
+        /// Broadcast acept mode
+        const BAM = 1<<15;
+        /// Receive buffer size 16384 bytes
+        const BSIZE_16384 = 1<<16 | 1<<25;
+        /// Receive buffer size 8192 bytes
+        const BSIZE_8192 = 2<<16 | 1<<25;
+        /// Receive buffer size 4096 bytes
+        const BSIZE_4096 = 3<<16 | 1<<25;
+        /// Receive buffer size 2048 bytes
+        const BSIZE_2048 = 0;
+        /// Receive buffer size 1024 bytes
+        const BSIZE_1024 = 1<<16;
+        /// Receive buffer size 512 bytes
+        const BSIZE_512 = 2<<16;
+        /// Receive buffer size 256 bytes
+        const BSIZE_256 = 3<<16;
+        /// vlan filter enable. See also CFIEN, CFI
+        const VFE = 1<<18;
+        /// canonical form indicator enable for 802.1q packets.
+        const CFIEN = 1<<19;
+        /// canonical form indicator bit value. When CFIEN is set, packets with CFI equal to this field are accepted.
+        const CFI = 1<<20;
+        /// discard pause frames
+        const DPF = 1<<22;
+        /// pass MAC control frames
+        const PMCF = 1<<23;
+        /// strip ethernet CRC from incoming packet
+        const SECRC = 1<<26;
+    }
+}
 
-/// transmit enable flag
-const TCTRL_EN: u32 = 1 << 1;
-/// pad short packets flag
-const TCTRL_PSP: u32 = 1 << 3;
-/// collision threshold
-const TCTRL_CT_SHIFT: u8 = 4;
-/// collision distance
-const TCTRL_COLD_SHIFT: u8 = 12u8;
-/// Retransmit on late collision
-const TCTRL_RTLC: u32 = 1 << 24;
+bitflags::bitflags! {
+    /// Represents a set of flags.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    struct TctrlFlags: u32 {
+        /// Transmit enable. After disabling, the transmitter should be reset before enabling.
+        const EN = 1<<1;
+        /// pad short packets enable. Makes short packets 64 bytes long by padding with data bytes, otherwise the minimum packet length is 32 bytes. Not the same as minimum collision distance.
+        const PSP = 1<<3;
+        /// collision threshold shift.
+        /// # Examples
+        /// ```
+        /// let ct = 14<<TctrlFlags::CT_SHIFT.bits();
+        /// ```
+        const CT_SHIFT = 4;
+        /// collision threshold base mask
+        const CT_BASE_MASK = 0xff;
+        /// collision threshold final mask
+        const CT_FINAL_MASK = Self::CT_BASE_MASK.bits()<<Self::CT_SHIFT.bits();
+        /// collision distance. Minimum number of byte times to elapse for proper CSMA/CD operation. Packets are padded with special symbols.
+        /// # Examples
+        /// ```
+        /// let cold = 14<<TctrlFlags::COLD_SHIFT.bits();
+        /// ```
+        const COLD_SHIFT = 12;
+        /// the collision distance base mask
+        const COLD_BASE_MASK = 0x3FF;
+        /// The collision distance final mask
+        const COLD_FINAL_MASK = Self::COLD_BASE_MASK.bits()<<Self::COLD_SHIFT.bits();
+        /// software XOFF transmission. schedules the transmission of an XOFF (puase) frame using the current value of the PAUSe timer (FCTTV.TTV)
+        const SWXOFF = 1<<22;
+        /// retransmit on late colision. Enables retransmit when there is a late collision event. Collision window is speed dependent. (64 bytes for 10/100 Mbps, 512 bytes for 1000 Mbps). Only for half-duplex mode.
+        const RTLC = 1<<24;
+        /// No re-transmit on underrun (8244GC/EI only)
+        const NRTU = 1<<25;
+    }
+}
 
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     fn get_mac_address(&mut self) -> MacAddress {
@@ -404,7 +526,7 @@ impl IntelPro1000Device {
     }
 
     /// Initialize the rx buffers for the device
-    fn init_rx(&mut self) -> Result<(), core::alloc::AllocError> {
+    fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
             let rxbuf = RxBuffers::new(32, 8192)?;
             let rxaddr = rxbuf.bufs.phys();
@@ -428,22 +550,22 @@ impl IntelPro1000Device {
             );
             self.bar0.write(
                 IntelPro1000Registers::Rctrl as u16,
-                RCTRL_EN
-                    | RCTRL_SBP
-                    | RCTRL_UPE
-                    | RCTRL_MPE
-                    | RCTRL_LBM_NONE
-                    | RCTRL_RDMTS_HALF
-                    | RCTRL_BAM
-                    | RCTRL_SECRC
-                    | RCTRL_BSIZE_8192,
+                (RctrlFlags::EN | RctrlFlags::RDMTS_HALF | RctrlFlags::BSIZE_8192).bits(),
             );
             self.rxbufindex = Some(0);
-            doors_macros2::kernel_print!("RX BUFFER ARRAY IS AT {:x}\r\n", rxaddr);
-            for r in rxbuf.bufs.iter() {
-                doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
-                    core::ptr::read_unaligned(&raw const r.address)
-                });
+            doors_macros2::kernel_print!(
+                "RX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
+                rxbuf.bufs.virt(),
+                rxaddr,
+                rxbuf.bufs.size()
+            );
+            for r in rxbuf.dmas.iter() {
+                doors_macros2::kernel_print!(
+                    "\tIndividual buffer addr is virtual {:x} physical {:x}, size {}\r\n",
+                    r.virt(),
+                    r.phys(),
+                    r.size()
+                );
             }
             self.rxbufs = Some(rxbuf);
         }
@@ -471,18 +593,24 @@ impl IntelPro1000Device {
             self.bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
             self.bar0.write(
                 IntelPro1000Registers::Tctrl as u16,
-                TCTRL_EN
-                    | TCTRL_PSP
-                    | (15 << TCTRL_CT_SHIFT)
-                    | (64 << TCTRL_COLD_SHIFT)
-                    | TCTRL_RTLC,
+                (TctrlFlags::EN | TctrlFlags::PSP | TctrlFlags::RTLC).bits()
+                    | (15 << TctrlFlags::CT_SHIFT.bits())
+                    | (64 << TctrlFlags::COLD_SHIFT.bits()),
             );
             self.txbufindex = Some(0);
-            doors_macros2::kernel_print!("TX BUFFER ARRAY IS AT {:x}\r\n", txaddr);
-            for t in txbuf.bufs.iter() {
-                doors_macros2::kernel_print!("\tIndividual buffer addr is {:x}\r\n", unsafe {
-                    core::ptr::read_unaligned(&raw const t.address)
-                });
+            doors_macros2::kernel_print!(
+                "TX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
+                txbuf.bufs.virt(),
+                txaddr,
+                txbuf.bufs.size()
+            );
+            for r in txbuf.dmas.iter() {
+                doors_macros2::kernel_print!(
+                    "\tIndividual buffer addr is virtual {:x} physical {:x}, size {}\r\n",
+                    r.virt(),
+                    r.phys(),
+                    r.size()
+                );
             }
             self.txbufs = Some(txbuf);
         }
@@ -604,8 +732,9 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     *data = d.read_from_eeprom(i as u8);
                 }
                 hex_dump_generic(&data, true, false);
-                hex_dump(&d.get_mac_address().address, false, false);
-                if let Err(e) = d.init_rx() {
+                let mac = d.get_mac_address();
+                hex_dump(&mac.address, false, false);
+                if let Err(e) = d.init_rx(&mac) {
                     doors_macros2::kernel_print!("RX buffer allocation error {:?}\r\n", e);
                 }
                 if let Err(e) = d.init_tx() {

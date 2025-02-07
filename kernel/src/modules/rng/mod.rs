@@ -26,6 +26,12 @@ pub struct RngLfsr {
     next: u32,
 }
 
+impl Default for RngLfsr {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RngLfsr {
     /// Get a random number and advance to the next number in the sequence
     fn advance(&mut self) -> u32 {

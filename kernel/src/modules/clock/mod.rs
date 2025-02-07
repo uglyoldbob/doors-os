@@ -76,6 +76,12 @@ impl ClockRefTrait for FixedClock {
 #[derive(Clone)]
 pub struct DummyClock {}
 
+impl Default for DummyClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DummyClock {
     /// Construct a dummy clock
     pub fn new() -> Self {

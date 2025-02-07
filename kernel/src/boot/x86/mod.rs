@@ -199,6 +199,12 @@ impl Locked<IoPortManager> {
     }
 }
 
+impl Default for IoPortManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IoPortManager {
     /// Create a new io port manager. All ports are assumed to be unused initially.
     pub const fn new() -> Self {

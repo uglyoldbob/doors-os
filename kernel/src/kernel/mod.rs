@@ -84,6 +84,12 @@ pub struct DisplayHandler {
     displays: Vec<LockedArc<crate::modules::video::Display>>,
 }
 
+impl Default for DisplayHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DisplayHandler {
     /// Create a new handler
     pub fn new() -> Self {
