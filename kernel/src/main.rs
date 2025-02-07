@@ -5,10 +5,7 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 #![feature(allocator_api)]
-#![feature(alloc_error_handler)]
 #![feature(abi_x86_interrupt)]
-#![feature(box_vec_non_null)]
-#![feature(custom_test_frameworks)]
 
 doors_macros::load_config!();
 
