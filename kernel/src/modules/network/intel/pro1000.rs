@@ -156,6 +156,8 @@ enum IntelPro1000Registers {
     CTRL = 0,
     /// The eeprom read register
     Eeprom = 0x14,
+    /// MDI control register
+    MDIC = 0x20,
     /// Receive control register
     Rctrl = 0x100,
     /// Transmit control register
@@ -612,6 +614,27 @@ bitfield::bitfield! {
     u32, high, _ : 63, 32;
 }
 
+bitfield::bitfield! {
+    /// The MDIC register
+    struct MdicRegister(u32);
+    impl Debug;
+    impl new;
+    /// The data for a write command
+    u16, data, set_data: 15, 0;
+    /// The phy register address
+    u8, regadd, set_regadd: 20, 16;
+    /// The phy address
+    u8, phyadd, set_phyadd: 25, 21;
+    /// The opcode. 1 = write, 2 = read
+    u8, opcode, set_opcode: 27, 26;
+    /// The ready flag
+    ready, _ : 28;
+    /// Interrupt enable
+    i, set_i: 29;
+    /// Error flag
+    error, _: 30;
+}
+
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     fn get_mac_address(&mut self) -> MacAddress {
         if self.detect_eeprom() {
@@ -717,6 +740,29 @@ impl IntelPro1000Device {
         let end = base + 0x200;
         for r in (base..end).step_by(4) {
             self.bar0.write(r, 0u32);
+        }
+    }
+
+    /// Read a u16 from the specified phy
+    fn read_from_phy(&mut self, phy: u8, index: u8) -> Option<u16> {
+        self.bar0.write(
+            IntelPro1000Registers::MDIC as u16,
+            MdicRegister::new(0, index, phy, 2, false).0,
+        );
+
+        loop {
+            let v = self.bar0.read(IntelPro1000Registers::MDIC as u16);
+            let mdic = MdicRegister(v);
+            if mdic.ready() {
+                break;
+            }
+        }
+        let v = self.bar0.read(IntelPro1000Registers::MDIC as u16);
+        let mdic = MdicRegister(v);
+        if mdic.error() {
+            None
+        } else {
+            Some(mdic.data())
         }
     }
 
@@ -961,6 +1007,11 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 }
                 if let Err(e) = d.init_tx() {
                     doors_macros2::kernel_print!("TX buffer allocation error {:?}\r\n", e);
+                }
+                for r in 0..32 {
+                    if let Some(v) = d.read_from_phy(1, r) {
+                        doors_macros2::kernel_print_alloc!("PHY 1 reg {} is {:x}\r\n", r, v);
+                    }
                 }
                 super::super::register_network_adapter(d.into());
             }

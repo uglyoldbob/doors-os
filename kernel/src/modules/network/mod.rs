@@ -55,15 +55,15 @@ impl From<u64> for MacAddress {
     }
 }
 
-impl Into<u64> for MacAddress {
-    fn into(self) -> u64 {
+impl From<MacAddress> for u64 {
+    fn from(value: MacAddress) -> u64 {
         let a: [u8; 8] = [
-            self.address[0],
-            self.address[1],
-            self.address[2],
-            self.address[3],
-            self.address[4],
-            self.address[5],
+            value.address[0],
+            value.address[1],
+            value.address[2],
+            value.address[3],
+            value.address[4],
+            value.address[5],
             0,
             0,
         ];
@@ -77,7 +77,7 @@ fn mac_address_conversion_test() -> Result<(), ()> {
     let mac = MacAddress {
         address: [1, 2, 3, 4, 5, 6],
     };
-    let b: u64 = mac.clone().into();
+    let b: u64 = mac.into();
     assert_eq!(b, 0x060504030201);
     let mac2: MacAddress = b.into();
     assert_eq!(mac.address, mac2.address);
