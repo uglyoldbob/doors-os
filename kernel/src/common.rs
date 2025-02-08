@@ -1,5 +1,9 @@
 //! Code common to regular kernel and kernel test code
 
+#[path = "executor.rs"]
+pub mod executor;
+pub use executor::*;
+
 use alloc::sync::Arc;
 
 /// Get the address of the specified variable

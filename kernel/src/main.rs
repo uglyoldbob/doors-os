@@ -39,11 +39,6 @@ cfg_if::cfg_if! {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
-    let msg = info.message();
-    if let Some(s) = msg.as_str() {
-        doors_macros2::kernel_print_alloc!("{}\r\n", s);
-    }
-    doors_macros2::kernel_print_alloc!("{}\r\n", info);
     if let Some(t) = info.location() {
         let f = t.file();
         let maxlen = f.len();
@@ -53,6 +48,11 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         }
         doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
     }
+    let msg = info.message();
+    if let Some(s) = msg.as_str() {
+        doors_macros2::kernel_print_alloc!("{}\r\n", s);
+    }
+    doors_macros2::kernel_print_alloc!("{}\r\n", info);
     doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
@@ -110,11 +110,11 @@ fn main(mut system: kernel::System) -> ! {
                 doors_macros2::kernel_print!("About to do some stuff with a network card\r\n");
                 let ma = na.get_mac_address();
                 hex_dump_generic(&ma, false, false);
+                doors_macros2::kernel_print!("Done doing stuff with network card\r\n");
             }
         }
-        doors_macros2::kernel_print!("Entering idle loop\r\n");
-        loop {
-            system.idle();
-        }
+        doors_macros2::kernel_print!("About to start the executor\r\n");
+        let mut executor = Executor::default();
+        executor.run(system)
     }
 }

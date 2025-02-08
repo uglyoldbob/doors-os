@@ -557,14 +557,24 @@ pub struct X86System<'a> {
 
 impl crate::kernel::SystemTrait for X86System<'_> {
     fn enable_interrupts(&self) {
-        unsafe {
-            INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
-            x86_64::instructions::interrupts::enable();
-        }
+        x86_64::instructions::interrupts::enable();
+    }
+
+    fn disable_interrupts(&self) {
+        x86_64::instructions::interrupts::disable();
     }
 
     fn idle(&mut self) {
         x86_64::instructions::hlt();
+    }
+
+    fn idle_if(&mut self, mut f: impl FnMut() -> bool) {
+        self.disable_interrupts();
+        if f() {
+            x86_64::instructions::interrupts::enable_and_hlt();
+        } else {
+            self.enable_interrupts();
+        }
     }
 
     fn init(&mut self) {
@@ -887,6 +897,10 @@ pub extern "C" fn start64() -> ! {
             _phantom: core::marker::PhantomData,
         }
     };
+
+    unsafe {
+        INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
+    }
 
     super::main_boot(sys.into());
 }

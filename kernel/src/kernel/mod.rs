@@ -158,12 +158,16 @@ lazy_static! {
 /// This trait defines system specific elements
 #[enum_dispatch::enum_dispatch]
 pub trait SystemTrait {
-    /// Enable interrupts for the system
+    /// Enable interrupts
     fn enable_interrupts(&self);
+    /// Disable interrupts
+    fn disable_interrupts(&self);
     /// System required init code
     fn init(&mut self);
     /// Code to idle the system
     fn idle(&mut self);
+    /// Code to conditionally idle the system based on a closure
+    fn idle_if(&mut self, f: impl FnMut() -> bool);
 }
 
 /// This struct implements the SystemTrait

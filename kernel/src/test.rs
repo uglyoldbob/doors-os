@@ -51,11 +51,6 @@ doors_macros::define_doors_test_runner!();
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
-    let msg = info.message();
-    if let Some(s) = msg.as_str() {
-        doors_macros2::kernel_print_alloc!("{}\r\n", s);
-    }
-    doors_macros2::kernel_print_alloc!("{}\r\n", info);
     if let Some(t) = info.location() {
         let f = t.file();
         let maxlen = f.len();
@@ -65,6 +60,11 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         }
         doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
     }
+    let msg = info.message();
+    if let Some(s) = msg.as_str() {
+        doors_macros2::kernel_print_alloc!("{}\r\n", s);
+    }
+    doors_macros2::kernel_print_alloc!("{}\r\n", info);
     doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
@@ -76,9 +76,7 @@ fn main(mut system: kernel::System) -> ! {
         if DoorsTester::doors_test_main().is_err() {
             doors_macros2::kernel_print!("At least one test failed\r\n");
         }
-        doors_macros2::kernel_print!("Entering idle loop\r\n");
-        loop {
-            system.idle();
-        }
+        let mut executor = Executor::default();
+        executor.run(system)
     }
 }
