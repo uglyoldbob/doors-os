@@ -36,6 +36,14 @@ impl HeapNode {
     /// The required alignment for nodes and allocations based on the size of a node
     const NODEALIGN: usize = core::mem::size_of::<HeapNode>();
 
+    fn print(&self) {
+        doors_macros2::kernel_print!("heap node is {:p} {:?}\r\n", self, self);
+    }
+
+    fn next(&self) -> Option<&Self> {
+        self.next.map(|a| unsafe { a.as_ref() })
+    }
+
     /// Return the start address of this free block
     fn start(&self) -> usize {
         self as *const HeapNode as usize
@@ -83,6 +91,20 @@ impl HeapNode {
         } else {
             0
         };
+        if align_pad != 0 {
+            doors_macros2::kernel_print!(
+                "ALIGN PAD CALCULATED {:x} {:x} {:x}\r\n",
+                self.start(),
+                size,
+                align
+            );
+            doors_macros2::kernel_print!("\talign_mask: {:x}\r\n", align_mask);
+            doors_macros2::kernel_print!("\talign_err: {:x}\r\n", align_err);
+            doors_macros2::kernel_print!("\talign_pad: {:x}\r\n", align_pad);
+            doors_macros2::kernel_print!("\tsize_needed: {:x}\r\n", size_needed);
+            doors_macros2::kernel_print!("\tposterr: {:x}\r\n", posterr);
+            doors_macros2::kernel_print!("\tpostpad: {:x}\r\n", postpad);
+        }
         HeapNodeAlign {
             size_needed: size_needed + postpad,
             pre_align: align_pad,
@@ -121,20 +143,22 @@ impl<'a> HeapManager<'a> {
         doors_macros2::kernel_print!("mm: {:p}\r\n", self.mm);
         doors_macros2::kernel_print!("vmm: {:p}\r\n", self.vmm);
         if let Some(mut r) = self.head {
-            doors_macros2::kernel_print!("head: {:p}\r\n", r);
+            let mut t = unsafe { r.as_ref() };
+            doors_macros2::kernel_print!("HEAP:\r\n");
+            t.print();
             loop {
-                doors_macros2::kernel_print!(
-                    "heap node is {:?} {:x}, {:?}\r\n",
-                    r.as_ptr(),
-                    unsafe { &*r.as_ptr() }.size,
-                    unsafe { &*r.as_ptr() }.next
-                );
-
-                if let Some(nr) = unsafe { r.as_mut() }.next {
-                    r = nr;
-                } else {
-                    break;
+                match t.next() {
+                    Some(a) => {
+                        a.print();
+                        t = a;
+                    }
+                    None => {
+                        break;
+                    }
                 }
+            }
+            while let Some(t2) = t.next() {
+                t2.print();
             }
         } else {
             doors_macros2::kernel_print!("Heap is empty\r\n");
@@ -244,10 +268,18 @@ impl<'a> HeapManager<'a> {
                         (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                     }
                 } else {
-                    doors_macros2::kernel_print!("A free node will exist before the placement\r\n");
-                    if (unsafe { best.as_ref() }.size - ha.size_needed)
-                        < core::mem::size_of::<HeapNode>()
-                    {
+                    doors_macros2::kernel_print!(
+                        "Alloc layout size {:x} alignment {:x}\r\n",
+                        layout.size(),
+                        layout.align()
+                    );
+                    doors_macros2::kernel_print!(
+                        "A free node size {:x} will exist before the placement\r\n",
+                        ha.pre_align
+                    );
+                    let b = unsafe { best.as_ref() };
+                    b.print();
+                    if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
                         doors_macros2::kernel_print!("The end of the block will be used\r\n");
                     } else {
                         doors_macros2::kernel_print!(
