@@ -145,6 +145,7 @@ impl Executor {
         loop {
             doors_macros2::kernel_print!("Running the executor loop {}\r\n", l);
             self.run_tasks(&mut system);
+            doors_macros2::kernel_print!("Running the executor idle check {}\r\n", l);
             system.idle_if(|| self.basic_tasks.is_empty());
             l += 1;
         }

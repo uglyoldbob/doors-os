@@ -23,7 +23,7 @@ struct HeapNodeAlign {
     _post_align: usize,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 /// A node of memory for the heap
 struct HeapNode {
     /// The optional next node of memory for the heap
@@ -61,6 +61,18 @@ impl HeapNode {
                 break;
             }
         }
+    }
+
+    /// Create a heap node, at the specified location, with the specified size
+    unsafe fn with_size(
+        ptr: *mut u8,
+        size: usize,
+        next: Option<NonNull<HeapNode>>,
+    ) -> NonNull<Self> {
+        let node = ptr as *mut Self;
+        (*node).size = size;
+        (*node).next = next;
+        NonNull::<Self>::new_unchecked(node)
     }
 
     /// Create a heap node, at the specified location, using the specified layout
@@ -246,7 +258,7 @@ impl<'a> HeapManager<'a> {
                 elem = unsafe { h.as_ref() }.next;
             }
 
-            if let Some(best) = best_fit {
+            if let Some(mut best) = best_fit {
                 let ha = best_fit_ha.unwrap();
                 let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
                     if (unsafe { best.as_ref() }.size - ha.size_needed)
@@ -278,16 +290,31 @@ impl<'a> HeapManager<'a> {
                         ha.pre_align
                     );
                     let b = unsafe { best.as_ref() };
-                    b.print();
                     if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
+                        self.print();
                         doors_macros2::kernel_print!("The end of the block will be used\r\n");
+                        let c = HeapNode {
+                            next: b.next,
+                            size: ha.pre_align,
+                        };
+                        c.print();
+                        doors_macros2::kernel_print!("Done printing new nodes");
+                        self.print();
+                        todo!();
                     } else {
-                        doors_macros2::kernel_print!(
-                            "There will be blank space at the end of the block\r\n"
-                        );
+                        let newblock = crate::address(b) + ha.pre_align + b.size;
+                        let e = unsafe {
+                            HeapNode::with_size(
+                                newblock as *mut u8,
+                                b.size - ha.size_needed,
+                                b.next,
+                            )
+                        };
+                        let c = unsafe { best.as_mut() };
+                        c.next = Some(e);
+                        c.size = ha.pre_align;
+                        (crate::address(b) + ha.pre_align) as *mut u8
                     }
-                    self.print();
-                    todo!();
                 };
                 return r;
             }
