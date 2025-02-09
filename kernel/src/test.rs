@@ -5,6 +5,7 @@
 #![deny(clippy::missing_docs_in_private_items)]
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
+#![feature(async_fn_traits)]
 
 doors_macros::load_config!();
 

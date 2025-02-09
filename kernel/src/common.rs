@@ -2,6 +2,13 @@
 
 #[path = "executor.rs"]
 pub mod executor;
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    ops::{Deref, DerefMut},
+    sync::atomic::Ordering,
+};
+
 pub use executor::*;
 
 use alloc::sync::Arc;
@@ -85,6 +92,105 @@ impl<A> LockedArc<A> {
     }
 }
 
+/// An async mutex
+pub struct AsyncLocked<A: ?Sized> {
+    /// The lock
+    lock: core::sync::atomic::AtomicBool,
+    /// The protected data
+    data: UnsafeCell<A>,
+}
+
+/// The guard for the async mutex
+pub struct AsyncLockedMutexGuard<'a, A: ?Sized> {
+    /// The lock reference
+    lock: &'a core::sync::atomic::AtomicBool,
+    /// The unlocked data
+    data: *mut A,
+}
+
+unsafe impl<A: ?Sized + Send> Sync for AsyncLocked<A> {}
+unsafe impl<A: ?Sized + Send> Send for AsyncLocked<A> {}
+
+unsafe impl<A: ?Sized + Sync> Sync for AsyncLockedMutexGuard<'_, A> {}
+unsafe impl<A: ?Sized + Send> Send for AsyncLockedMutexGuard<'_, A> {}
+
+impl<A> AsyncLocked<A> {
+    /// Construct a new Self
+    pub const fn new(data: A) -> Self {
+        Self {
+            lock: core::sync::atomic::AtomicBool::new(false),
+            data: UnsafeCell::new(data),
+        }
+    }
+
+    /// Synchronously lock the mutex, spinning as necessary
+    pub fn sync_lock(&self) -> AsyncLockedMutexGuard<A> {
+        loop {
+            if self
+                .lock
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                break AsyncLockedMutexGuard {
+                    lock: &self.lock,
+                    data: unsafe { &mut *self.data.get() },
+                };
+            }
+        }
+    }
+
+    /// Lock the mutex, returning the guard
+    pub async fn lock(&self) -> AsyncLockedMutexGuard<A> {
+        loop {
+            if self
+                .lock
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                break AsyncLockedMutexGuard {
+                    lock: &self.lock,
+                    data: unsafe { &mut *self.data.get() },
+                };
+            }
+            executor::Task::yield_now().await;
+        }
+    }
+}
+
+impl<T: ?Sized + fmt::Debug> fmt::Debug for AsyncLockedMutexGuard<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<T: ?Sized + fmt::Display> fmt::Display for AsyncLockedMutexGuard<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<T: ?Sized> Deref for AsyncLockedMutexGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        // We know statically that only we are referencing data
+        unsafe { &*self.data }
+    }
+}
+
+impl<T: ?Sized> DerefMut for AsyncLockedMutexGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        // We know statically that only we are referencing data
+        unsafe { &mut *self.data }
+    }
+}
+
+impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
+    /// The dropping of the MutexGuard will release the lock it was created from.
+    fn drop(&mut self) {
+        self.lock.store(false, Ordering::Release);
+    }
+}
+
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
 pub struct Locked<A> {
     /// The contained thing
@@ -115,4 +221,4 @@ impl<A> Locked<A> {
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
 /// The VGA instance used for x86 kernel printing
-pub static VGA: Locked<Option<crate::TextDisplay>> = Locked::new(None);
+pub static VGA: AsyncLocked<Option<crate::TextDisplay>> = AsyncLocked::new(None);

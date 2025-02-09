@@ -36,10 +36,12 @@ impl HeapNode {
     /// The required alignment for nodes and allocations based on the size of a node
     const NODEALIGN: usize = core::mem::size_of::<HeapNode>();
 
+    /// Print information for the node
     fn print(&self) {
         doors_macros2::kernel_print!("heap node is {:p} {:?}\r\n", self, self);
     }
 
+    /// Returns the next Self, as an optional reference
     fn next(&self) -> Option<&Self> {
         self.next.map(|a| unsafe { a.as_ref() })
     }
@@ -154,20 +156,13 @@ impl<'a> HeapManager<'a> {
     pub fn print(&self) {
         doors_macros2::kernel_print!("mm: {:p}\r\n", self.mm);
         doors_macros2::kernel_print!("vmm: {:p}\r\n", self.vmm);
-        if let Some(mut r) = self.head {
+        if let Some(r) = self.head {
             let mut t = unsafe { r.as_ref() };
             doors_macros2::kernel_print!("HEAP:\r\n");
             t.print();
-            loop {
-                match t.next() {
-                    Some(a) => {
-                        a.print();
-                        t = a;
-                    }
-                    None => {
-                        break;
-                    }
-                }
+            while let Some(a) = t.next() {
+                a.print();
+                t = a;
             }
             while let Some(t2) = t.next() {
                 t2.print();

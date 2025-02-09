@@ -792,13 +792,13 @@ pub extern "C" fn start64() -> ! {
             let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
             {
                 let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
-                let mut v = crate::VGA.lock();
+                let mut v = crate::VGA.sync_lock();
                 v.replace(a);
             }
         } else {
             let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
             let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
-            let mut v = crate::VGA.lock();
+            let mut v = crate::VGA.sync_lock();
             v.replace(b);
             drop(v);
         }

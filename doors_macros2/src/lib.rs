@@ -24,7 +24,7 @@ macro_rules! kernel_print {
                 &mut a,
                 core::format_args!($($arg)*),
             );
-            let mut v = crate::VGA.lock();
+            let mut v = crate::VGA.sync_lock();
             let mut vga = v.as_mut();
             if let core::option::Option::Some(vga) = vga {
                 match r {
@@ -46,7 +46,51 @@ macro_rules! kernel_print_alloc {
                 &mut a,
                 core::format_args!($($arg)*),
             );
-            let mut v = crate::VGA.lock();
+            let mut v = crate::VGA.sync_lock();
+            let mut vga = v.as_mut();
+            if let core::option::Option::Some(vga) = vga {
+                match r {
+                    core::result::Result::Ok(_) => vga.print_str(a.as_str()),
+                    core::result::Result::Err(_) => vga.print_str("Error parsing string\r\n"),
+                }
+            }
+        }
+    };
+}
+
+/// A macro for printing strings from the kernel, asynchronously
+#[macro_export]
+macro_rules! async_kernel_print {
+    ( $($arg:tt)* ) => {
+        {
+            let mut a: crate::FixedString = crate::FixedString::new();
+            let r = core::fmt::write(
+                &mut a,
+                core::format_args!($($arg)*),
+            );
+            let mut v = crate::VGA.lock().await;
+            let mut vga = v.as_mut();
+            if let core::option::Option::Some(vga) = vga {
+                match r {
+                    core::result::Result::Ok(_) => vga.print_str(a.as_str()),
+                    core::result::Result::Err(_) => vga.print_str("Error parsing string\r\n"),
+                }
+            }
+        }
+    };
+}
+
+/// Like kernel print, but it might allocate memory
+#[macro_export]
+macro_rules! async_kernel_print_alloc {
+    ( $($arg:tt)* ) => {
+        {
+            let mut a: alloc::string::String = alloc::string::String::new();
+            let r = core::fmt::write(
+                &mut a,
+                core::format_args!($($arg)*),
+            );
+            let mut v = crate::VGA.lock().await;
             let mut vga = v.as_mut();
             if let core::option::Option::Some(vga) = vga {
                 match r {

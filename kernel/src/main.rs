@@ -6,6 +6,7 @@
 #![deny(clippy::missing_docs_in_private_items)]
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
+#![feature(async_fn_traits)]
 
 doors_macros::load_config!();
 
@@ -115,6 +116,28 @@ fn main(mut system: kernel::System) -> ! {
         }
         doors_macros2::kernel_print!("About to start the executor\r\n");
         let mut executor = Executor::default();
+        executor
+            .spawn_closure(async || {
+                for i in 0..32 {
+                    doors_macros2::async_kernel_print!("I am groot {}\r\n", i);
+                    executor::Task::yield_now().await;
+                }
+                loop {
+                    executor::Task::yield_now().await;
+                }
+            })
+            .unwrap();
+        executor
+            .spawn_closure(async || {
+                for i in 0..32 {
+                    doors_macros2::async_kernel_print!("I am batman {}\r\n", i);
+                    executor::Task::yield_now().await;
+                }
+                loop {
+                    executor::Task::yield_now().await;
+                }
+            })
+            .unwrap();
         executor.run(system)
     }
 }

@@ -439,13 +439,13 @@ pub enum TextDisplay {
     FramebufferTextFull(FramebufferTextMode<pixels::FullColor<u32>>),
 }
 
-impl log::Log for crate::Locked<Option<TextDisplay>> {
+impl log::Log for crate::AsyncLocked<Option<TextDisplay>> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true
     }
 
     fn log(&self, record: &log::Record) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         if let Some(s) = s.as_mut() {
             s.print_str("LOG RECORD\r\n");
             s.print_str(&record.level().to_string());

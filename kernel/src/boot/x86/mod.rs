@@ -250,7 +250,7 @@ fn setup_serial() {
     if serials.exists(0) {
         let s = serials.module(0);
         let sd = s.make_text_display();
-        let mut v = crate::VGA.lock();
+        let mut v = crate::VGA.sync_lock();
         v.replace(sd);
         drop(v);
         match log::set_logger(&crate::VGA) {
