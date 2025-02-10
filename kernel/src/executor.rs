@@ -6,7 +6,6 @@ use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
 use crate::kernel::SystemTrait;
-use crate::modules::video::TextDisplayTrait;
 
 /// The id for a task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -188,12 +187,18 @@ impl Executor {
 
     /// Run the executor
     pub fn run(&mut self, mut system: crate::kernel::System) -> ! {
-        doors_macros2::kernel_print!("Running the executor\r\n");
+        crate::VGA.print_str("Running the executor\r\n");
         let mut l = 0usize;
         loop {
-            doors_macros2::kernel_print!("Running the executor loop {}\r\n", l);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Running the executor loop {}\r\n",
+                l
+            ));
             self.run_tasks(&mut system);
-            doors_macros2::kernel_print!("Running the executor idle check {}\r\n", l);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Running the executor idle check {}\r\n",
+                l
+            ));
             system.idle_if(|| self.basic_tasks.is_empty());
             l += 1;
         }

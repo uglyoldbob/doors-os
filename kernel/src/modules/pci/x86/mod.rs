@@ -3,8 +3,6 @@
 use crate::boot::x86::{IoPortRef, IOPORTS};
 use crate::IoReadWrite;
 
-use crate::modules::video::TextDisplayTrait;
-
 /// Defines the io registers for x86 pci configuration space access
 pub struct PciRegisters {
     /// The address register
@@ -75,19 +73,22 @@ impl Pci {
 
 impl super::PciTrait for Pci {
     fn setup(&mut self) {
-        doors_macros2::kernel_print!("pci: Probing for pci busses\r\n");
+        crate::VGA.print_str("pci: Probing for pci busses\r\n");
         for i in 0..=255 {
             if let Some(bus) = super::PciBus::new(&mut self.configuration, i) {
-                doors_macros2::kernel_print!("pci: Bus {} exists\r\n", i);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "pci: Bus {} exists\r\n",
+                    i
+                ));
                 self.busses.push(bus);
             }
         }
-        doors_macros2::kernel_print!("pci: Done probing for pci busses\r\n");
+        crate::VGA.print_str("pci: Done probing for pci busses\r\n");
     }
 
     fn print_devices(&mut self) {
         for (i, bus) in self.busses.iter().enumerate() {
-            doors_macros2::kernel_print!("PCI BUS {}\r\n", i);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PCI BUS {}\r\n", i));
             bus.print_devices(&mut self.configuration);
         }
     }

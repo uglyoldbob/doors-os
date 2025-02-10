@@ -1,7 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::modules::video::hex_dump_generic;
-use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
@@ -86,7 +85,7 @@ lazy_static! {
 /// The divide by zero handler
 #[interrupt_64]
 pub extern "C" fn divide_by_zero() {
-    doors_macros2::kernel_print!("Divide by zero\r\n");
+    crate::VGA.print_str("Divide by zero\r\n");
     loop {
         x86_64::instructions::hlt();
     }
@@ -95,7 +94,10 @@ pub extern "C" fn divide_by_zero() {
 ///The handler for segment not present
 #[interrupt_arg_64]
 pub extern "C" fn segment_not_present(arg: u32) {
-    doors_macros2::kernel_print!("Segment not present {:x}\r\n", arg);
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "Segment not present {:x}\r\n",
+        arg
+    ));
     loop {
         x86_64::instructions::hlt();
     }
@@ -106,11 +108,11 @@ extern "x86-interrupt" fn double_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: u64,
 ) -> ! {
-    doors_macros2::kernel_print!(
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Double fault {:x} @ 0x{:X}\r\n",
         error_code,
         sf.instruction_pointer
-    );
+    ));
     loop {
         x86_64::instructions::hlt();
     }
@@ -121,15 +123,15 @@ extern "x86-interrupt" fn page_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: x86_64::structures::idt::PageFaultErrorCode,
 ) {
-    doors_macros2::kernel_print!(
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Page fault {:x} @ 0x{:X}\r\n",
         error_code,
         sf.instruction_pointer
-    );
-    doors_macros2::kernel_print!(
+    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Fault address 0x{:X}\r\n",
         x86_64::registers::control::Cr2::read().unwrap()
-    );
+    ));
     loop {
         x86_64::instructions::hlt();
     }
@@ -137,8 +139,14 @@ extern "x86-interrupt" fn page_fault_handler(
 
 /// Handles the invalid opcode exception
 extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
-    doors_macros2::kernel_print!("Invalid opcode {:p}\r\n", &sf);
-    doors_macros2::kernel_print!("Invalid opcode {:x}\r\n", sf.instruction_pointer.as_u64());
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "Invalid opcode {:p}\r\n",
+        &sf
+    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "Invalid opcode {:x}\r\n",
+        sf.instruction_pointer.as_u64()
+    ));
     loop {
         x86_64::instructions::hlt();
     }
@@ -147,7 +155,10 @@ extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
 /// A test interrupt handler
 #[interrupt_arg_64]
 pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
-    doors_macros2::kernel_print!("Invalid opcode {:x}\r\n", sf.instruction_pointer.as_u64());
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "Invalid opcode {:x}\r\n",
+        sf.instruction_pointer.as_u64()
+    ));
     loop {
         x86_64::instructions::hlt();
     }
@@ -156,7 +167,9 @@ pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
 /// A test interrupt handler
 #[interrupt_64]
 pub extern "C" fn unknown_interrupt() {
-    doors_macros2::kernel_print!("Unknown interrupt fired\r\n");
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "Unknown interrupt fired\r\n"
+    ));
     loop {
         x86_64::instructions::hlt();
     }
@@ -216,7 +229,11 @@ impl acpi::AcpiHandler for &Acpi<'_> {
                 *self,
             )
         } else {
-            doors_macros2::kernel_print!("ACPI MAP {:x} size {:x}\r\n", physical_address, size);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "ACPI MAP {:x} size {:x}\r\n",
+                physical_address,
+                size
+            ));
             let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
             let end_remainder =
                 (size_before_allocation + size) % core::mem::size_of::<memory::Page>();
@@ -235,11 +252,11 @@ impl acpi::AcpiHandler for &Acpi<'_> {
             .unwrap();
             let buf = self.vmm.allocate(layout).unwrap();
             let bufaddr = crate::slice_address(buf.as_ref());
-            doors_macros2::kernel_print!(
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "Got a virtual addres {:x}, size {:x}\r\n",
                 bufaddr,
                 buf.len()
-            );
+            ));
 
             let mut p = self.pageman.lock();
             let e = p.map_addresses_read_only(bufaddr, start, realsize);
@@ -255,17 +272,20 @@ impl acpi::AcpiHandler for &Acpi<'_> {
                 size,
                 *self,
             );
-            doors_macros2::kernel_print!("Dumping mapped structure\r\n");
+            crate::VGA.print_str("Dumping mapped structure\r\n");
             hex_dump_generic(r.virtual_start().as_ref(), true, true);
             let _a: usize = r.virtual_start().addr().into();
-            doors_macros2::kernel_print!(
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
                 r.virtual_start().as_ptr() as usize,
                 r.physical_start(),
                 r.region_length(),
                 r.mapped_length()
-            );
-            doors_macros2::kernel_print!("sizeof T is {:x}\r\n", core::mem::size_of::<T>());
+            ));
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "sizeof T is {:x}\r\n",
+                core::mem::size_of::<T>()
+            ));
             r
         }
     }
@@ -277,14 +297,17 @@ impl acpi::AcpiHandler for &Acpi<'_> {
             let s = region.virtual_start().as_ptr() as usize;
             let s = s - s % core::mem::size_of::<memory::Page>();
             let length = region.region_length();
-            doors_macros2::kernel_print!(
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI UNMAP virtual {:x} physical {:x} size {:x} {:x}\r\n",
                 region.virtual_start().as_ptr() as usize,
                 region.physical_start(),
                 length,
                 region.mapped_length()
-            );
-            doors_macros2::kernel_print!("sizeof T is {:x}\r\n", core::mem::size_of::<T>());
+            ));
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "sizeof T is {:x}\r\n",
+                core::mem::size_of::<T>()
+            ));
             p.unmap_mapped_pages(s, length);
             let ptr = s as *mut u8;
             let layout =
@@ -301,30 +324,30 @@ fn handle_acpi(
     acpi_handler: impl AcpiHandler,
     aml: &mut aml::AmlContext,
 ) {
-    doors_macros2::kernel_print!(
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Size of acpi::fadt::Fadt is {:x}\r\n",
         core::mem::size_of::<acpi::fadt::Fadt>()
-    );
-    doors_macros2::kernel_print!(
+    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Size of acpi::hpet::HpetTable is {:x}\r\n",
         core::mem::size_of::<acpi::hpet::HpetTable>()
-    );
-    doors_macros2::kernel_print!(
+    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Size of acpi::madt::Madt is {:x}\r\n",
         core::mem::size_of::<acpi::madt::Madt>()
-    );
-    doors_macros2::kernel_print!(
+    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Size of acpi::rsdp::Rsdp is {:x}\r\n",
         core::mem::size_of::<acpi::rsdp::Rsdp>()
-    );
+    ));
 
     let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "rsdpv2 at {:X} {:x} revision {}\r\n",
             rsdp2 as *const multiboot2::RsdpV2Tag as usize,
             rsdp2.xsdt_address(),
             rsdp2.revision()
-        );
+        ));
         Some(
             unsafe {
                 acpi::AcpiTables::from_rsdp(
@@ -335,11 +358,11 @@ fn handle_acpi(
             .unwrap(),
         )
     } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "rsdpv1 at {:p} {:x}\r\n",
             rsdp1.signature().unwrap().as_ptr(),
             rsdp1.rsdt_address()
-        );
+        ));
         let t = unsafe {
             acpi::AcpiTables::from_rsdp(
                 acpi_handler.clone(),
@@ -347,10 +370,16 @@ fn handle_acpi(
             )
         };
         if let Err(e) = &t {
-            doors_macros2::kernel_print!("acpi error {:?}\r\n", e);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "acpi error {:?}\r\n",
+                e
+            ));
         }
         if let Ok(t) = &t {
-            doors_macros2::kernel_print!("ACPI ADDRESS {:p}\r\n", t);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "ACPI ADDRESS {:p}\r\n",
+                t
+            ));
         }
         Some(t.unwrap())
     } else {
@@ -358,16 +387,25 @@ fn handle_acpi(
     };
 
     if acpi.is_none() {
-        doors_macros2::kernel_print!("No ACPI table found\r\n");
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "No ACPI table found\r\n"
+        ));
     }
     let acpi = acpi.unwrap();
-    doors_macros2::kernel_print!("acpi rev {:x}\r\n", acpi.revision());
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "acpi rev {:x}\r\n",
+        acpi.revision()
+    ));
 
-    doors_macros2::kernel_print!("Trying DSDT\r\n");
+    crate::VGA.print_str("Trying DSDT\r\n");
 
     if true {
         if let Ok(v) = acpi.dsdt() {
-            doors_macros2::kernel_print!("dsdt {:x} {:x}\r\n", v.address, v.length);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "dsdt {:x} {:x}\r\n",
+                v.address,
+                v.length
+            ));
             PAGING_MANAGER
                 .lock()
                 .map_addresses_read_only(v.address, v.address, v.length as usize)
@@ -375,14 +413,18 @@ fn handle_acpi(
             let table: &[u8] =
                 unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
             if aml.parse_table(table).is_ok() {
-                doors_macros2::kernel_print!("DSDT PARSED OK\r\n");
+                crate::VGA.print_str("DSDT PARSED OK\r\n");
             }
         }
     }
     if true {
-        doors_macros2::kernel_print!("About to iterate ssdts\r\n");
+        crate::VGA.print_str("About to iterate ssdts\r\n");
         for v in acpi.ssdts() {
-            doors_macros2::kernel_print!("ssdt {:x} {:x}\r\n", v.address, v.length);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "ssdt {:x} {:x}\r\n",
+                v.address,
+                v.length
+            ));
             PAGING_MANAGER
                 .lock()
                 .map_addresses_read_only(v.address, v.address, v.length as usize)
@@ -390,56 +432,71 @@ fn handle_acpi(
             let table: &[u8] =
                 unsafe { core::slice::from_raw_parts(v.address as *const u8, v.length as usize) };
             match aml.parse_table(table) {
-                Ok(()) => doors_macros2::kernel_print!("SSDT PARSED OK\r\n"),
-                Err(e) => doors_macros2::kernel_print!("SSDT PARSED ERR {:?}\r\n", e),
+                Ok(()) => crate::VGA.print_str("SSDT PARSED OK\r\n"),
+                Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "SSDT PARSED ERR {:?}\r\n",
+                    e
+                )),
             }
         }
     }
 
-    doors_macros2::kernel_print!("There are {} entries\r\n", acpi.headers().count());
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "There are {} entries\r\n",
+        acpi.headers().count()
+    ));
 
     for header in acpi.headers() {
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "sdt {:X} {} {} {}\r\n",
             &header as *const SdtHeader as usize,
             header.signature.as_str(),
             header.length as usize,
             header.revision
-        );
+        ));
         match header.signature {
             acpi::sdt::Signature::WAET => {
-                doors_macros2::kernel_print!("TODO Parse the Waet table\r\n");
+                crate::VGA.print_str("TODO Parse the Waet table\r\n");
             }
             acpi::sdt::Signature::HPET => match acpi.find_table::<HpetTable>() {
-                Ok(_hpet) => doors_macros2::kernel_print!("TODO Parse the Hpet table\r\n"),
-                Err(e) => doors_macros2::kernel_print!("HPET ERROR {:?}\r\n", e),
+                Ok(_hpet) => crate::VGA.print_str("TODO Parse the Hpet table\r\n"),
+                Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "HPET ERROR {:?}\r\n",
+                    e
+                )),
             },
             acpi::sdt::Signature::FADT => match acpi.find_table::<Fadt>() {
-                Ok(_fadt) => doors_macros2::kernel_print!("TODO Parse the Fadt\r\n"),
-                Err(e) => doors_macros2::kernel_print!("FADT ERROR {:?}\r\n", e),
+                Ok(_fadt) => crate::VGA.print_str("TODO Parse the Fadt\r\n"),
+                Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "FADT ERROR {:?}\r\n",
+                    e
+                )),
             },
             acpi::sdt::Signature::MADT => match acpi.find_table::<Madt>() {
-                Err(e) => doors_macros2::kernel_print!("MADT ERROR {:?}\r\n", e),
+                Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "MADT ERROR {:?}\r\n",
+                    e
+                )),
                 Ok(madt) => {
                     for e in madt.entries() {
                         match e {
                             acpi::madt::MadtEntry::LocalApic(lapic) => {
-                                doors_macros2::kernel_print!(
+                                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                                     "madt lapic entry {:x} {:x} {:x}\r\n",
                                     lapic.processor_id,
                                     lapic.apic_id,
                                     { lapic.flags }
-                                );
+                                ));
                             }
                             acpi::madt::MadtEntry::IoApic(_ioapic) => {
-                                doors_macros2::kernel_print!("madt ioapic entry\r\n");
+                                crate::VGA.print_str("madt ioapic entry\r\n");
                             }
                             acpi::madt::MadtEntry::InterruptSourceOverride(_i) => {
-                                doors_macros2::kernel_print!("madt int source override\r\n");
+                                crate::VGA.print_str("madt int source override\r\n");
                             }
                             acpi::madt::MadtEntry::NmiSource(_) => todo!(),
                             acpi::madt::MadtEntry::LocalApicNmi(_) => {
-                                doors_macros2::kernel_print!("madt lapic nmi entry\r\n");
+                                crate::VGA.print_str("madt lapic nmi entry\r\n");
                             }
                             acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
                             acpi::madt::MadtEntry::IoSapic(_) => todo!(),
@@ -461,11 +518,14 @@ fn handle_acpi(
         }
     }
 
-    doors_macros2::kernel_print!("acpi: is {:p}\r\n", &acpi);
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "acpi: is {:p}\r\n",
+        &acpi
+    ));
 
     let pi = PlatformInfo::new(&acpi);
     if let Ok(pi) = pi {
-        doors_macros2::kernel_print!("pi: is {:p}\r\n", &pi);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &pi));
     }
 }
 
@@ -581,19 +641,22 @@ impl crate::kernel::SystemTrait for X86System<'_> {
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
         if aml.initialize_objects().is_ok() {
-            doors_macros2::kernel_print!("AML READY\r\n");
+            crate::VGA.print_str("AML READY\r\n");
         }
 
         let cap = self.cpuid.get_processor_capacity_feature_info().unwrap();
         {
             let mut p = PAGING_MANAGER.lock();
             p.set_physical_address_size(cap.physical_address_bits());
-            doors_macros2::kernel_print!("CPUID MAXADDR is {:?}\r\n", cap.physical_address_bits());
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "CPUID MAXADDR is {:?}\r\n",
+                cap.physical_address_bits()
+            ));
         }
         doors_macros::config_check_bool!(acpi, {
-            doors_macros2::kernel_print!("About to open acpi stuff\r\n");
+            crate::VGA.print_fixed_str("About to open acpi stuff\r\n");
             handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-            doors_macros2::kernel_print!("Done with acpi handling\r\n");
+            crate::VGA.print_fixed_str("Done with acpi handling\r\n");
         });
         super::setup_pci();
     }
@@ -601,77 +664,77 @@ impl crate::kernel::SystemTrait for X86System<'_> {
 
 impl aml::Handler for AmlHandler {
     fn read_u8(&self, _address: usize) -> u8 {
-        doors_macros2::kernel_print!("r1\r\n");
+        crate::VGA.print_str("r1\r\n");
         todo!()
     }
 
     fn read_u16(&self, _address: usize) -> u16 {
-        doors_macros2::kernel_print!("r2\r\n");
+        crate::VGA.print_str("r2\r\n");
         todo!()
     }
 
     fn read_u32(&self, _address: usize) -> u32 {
-        doors_macros2::kernel_print!("r3\r\n");
+        crate::VGA.print_str("r3\r\n");
         todo!()
     }
 
     fn read_u64(&self, _address: usize) -> u64 {
-        doors_macros2::kernel_print!("r4\r\n");
+        crate::VGA.print_str("r4\r\n");
         todo!()
     }
 
     fn write_u8(&mut self, _address: usize, _value: u8) {
-        doors_macros2::kernel_print!("w1\r\n");
+        crate::VGA.print_str("w1\r\n");
         todo!()
     }
 
     fn write_u16(&mut self, _address: usize, _value: u16) {
-        doors_macros2::kernel_print!("w2\r\n");
+        crate::VGA.print_str("w2\r\n");
         todo!()
     }
 
     fn write_u32(&mut self, _address: usize, _value: u32) {
-        doors_macros2::kernel_print!("w3\r\n");
+        crate::VGA.print_str("w3\r\n");
         todo!()
     }
 
     fn write_u64(&mut self, _address: usize, _value: u64) {
-        doors_macros2::kernel_print!("w4\r\n");
+        crate::VGA.print_str("w4\r\n");
         todo!()
     }
 
     fn read_io_u8(&self, _port: u16) -> u8 {
-        doors_macros2::kernel_print!("i1\r\n");
+        crate::VGA.print_str("i1\r\n");
         todo!()
     }
 
     fn read_io_u16(&self, _port: u16) -> u16 {
-        doors_macros2::kernel_print!("i2\r\n");
+        crate::VGA.print_str("i2\r\n");
         todo!()
     }
 
     fn read_io_u32(&self, _port: u16) -> u32 {
-        doors_macros2::kernel_print!("i3\r\n");
+        crate::VGA.print_str("i3\r\n");
         todo!()
     }
 
     fn write_io_u8(&self, _port: u16, _value: u8) {
-        doors_macros2::kernel_print!("o1\r\n");
+        crate::VGA.print_str("o1\r\n");
         todo!()
     }
 
     fn write_io_u16(&self, _port: u16, _value: u16) {
-        doors_macros2::kernel_print!("o2\r\n");
+        crate::VGA.print_str("o2\r\n");
         todo!()
     }
 
     fn write_io_u32(&self, _port: u16, _value: u32) {
-        doors_macros2::kernel_print!("o3\r\n");
+        crate::VGA.print_str("o3\r\n");
         todo!()
     }
 
     fn read_pci_u8(&self, _segment: u16, _bus: u8, _device: u8, _function: u8, _offset: u16) -> u8 {
-        doors_macros2::kernel_print!("pr1\r\n");
+        crate::VGA.print_str("pr1\r\n");
         todo!()
     }
 
@@ -683,7 +746,7 @@ impl aml::Handler for AmlHandler {
         _function: u8,
         _offset: u16,
     ) -> u16 {
-        doors_macros2::kernel_print!("pr2\r\n");
+        crate::VGA.print_str("pr2\r\n");
         todo!()
     }
 
@@ -695,7 +758,7 @@ impl aml::Handler for AmlHandler {
         _function: u8,
         _offset: u16,
     ) -> u32 {
-        doors_macros2::kernel_print!("pr3\r\n");
+        crate::VGA.print_str("pr3\r\n");
         todo!()
     }
 
@@ -708,7 +771,7 @@ impl aml::Handler for AmlHandler {
         _offset: u16,
         _value: u8,
     ) {
-        doors_macros2::kernel_print!("pw1\r\n");
+        crate::VGA.print_str("pw1\r\n");
         todo!()
     }
 
@@ -721,7 +784,7 @@ impl aml::Handler for AmlHandler {
         _offset: u16,
         _value: u16,
     ) {
-        doors_macros2::kernel_print!("pw2\r\n");
+        crate::VGA.print_str("pw2\r\n");
         todo!()
     }
 
@@ -734,7 +797,7 @@ impl aml::Handler for AmlHandler {
         _offset: u16,
         _value: u32,
     ) {
-        doors_macros2::kernel_print!("pw3\r\n");
+        crate::VGA.print_str("pw3\r\n");
         todo!()
     }
 }
@@ -812,12 +875,24 @@ pub extern "C" fn start64() -> ! {
         .lock()
         .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
         .unwrap();
-    doors_macros2::kernel_print!("APIC MSR IS {:x}\r\n", apic_msr_value);
-    doors_macros2::kernel_print!("APIC RESERVED AT {:x?}\r\n", crate::address(apic.as_ref()));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "APIC MSR IS {:x}\r\n",
+        apic_msr_value
+    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "APIC RESERVED AT {:x?}\r\n",
+        crate::address(apic.as_ref())
+    ));
     let apic_id = apic.regs[0x20 / 4];
-    doors_macros2::kernel_print!("APIC ID IS {:x}\r\n", apic_id);
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "APIC ID IS {:x}\r\n",
+        apic_id
+    ));
     let apic_version = apic.regs[0x30 / 4];
-    doors_macros2::kernel_print!("APIC VERSION IS {:x}\r\n", apic_version);
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "APIC VERSION IS {:x}\r\n",
+        apic_version
+    ));
 
     {
         let stack_end = unsafe { INITIAL_STACK as usize };
@@ -830,22 +905,32 @@ pub extern "C" fn start64() -> ! {
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
-        doors_macros2::kernel_print!("test is {:x}\r\n", test.as_ref() as *const u8 as usize);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "test is {:x}\r\n",
+            test.as_ref() as *const u8 as usize
+        ));
     }
 
     if true {
         let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
             alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
-        doors_macros2::kernel_print!("test2 is {:x}\r\n", test.as_ref() as *const u8 as usize);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "test2 is {:x}\r\n",
+            test.as_ref() as *const u8 as usize
+        ));
     }
 
     let test: Box<[Big]> = Box::new([Big { _data: 5 }; 32]);
-    doors_macros2::kernel_print!("test var is {:p}\r\n", test.as_ptr());
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "test var is {:p}\r\n",
+        test.as_ptr()
+    ));
     drop(test);
 
-    doors_macros2::kernel_print!("INTIAL STACK IS {:x}\r\n", unsafe {
-        INITIAL_STACK as usize
-    });
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "INTIAL STACK IS {:x}\r\n",
+        unsafe { INITIAL_STACK as usize }
+    ));
 
     let mut pic = Pic::new().unwrap();
     pic.disable();

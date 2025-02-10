@@ -39,22 +39,26 @@ cfg_if::cfg_if! {
 /// The panic handler for the kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
+    crate::VGA.print_str("PANIC AT THE DISCO!\r\n");
     if let Some(t) = info.location() {
         let f = t.file();
         let maxlen = f.len();
         for i in (0..maxlen).step_by(70) {
             let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
-            doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
+            crate::VGA.print_str(&f[i..tmax]);
         }
-        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
+        crate::VGA.print_str("\r\n");
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            " LINE {}\r\n",
+            t.line()
+        ));
     }
     let msg = info.message();
     if let Some(s) = msg.as_str() {
-        doors_macros2::kernel_print_alloc!("{}\r\n", s);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", s));
     }
-    doors_macros2::kernel_print_alloc!("{}\r\n", info);
-    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", info));
+    crate::VGA.print_str("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
 
@@ -64,7 +68,6 @@ use modules::rng;
 use modules::rng::RngTrait;
 use modules::video::hex_dump_generic;
 pub use modules::video::TextDisplay;
-use modules::video::TextDisplayTrait;
 
 /// This creates the multiboot2 signature that allows the kernel to be booted by a multiboot compliant bootloader such as grub.
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
@@ -79,10 +82,10 @@ fn main(mut system: kernel::System) -> ! {
     {
         system.enable_interrupts();
         system.init();
-        doors_macros2::kernel_print!("DoorsOs Booting now\r\n");
+        crate::VGA.print_str("DoorsOs Booting now\r\n");
 
         {
-            doors_macros2::kernel_print!("Registering LFSR rng\r\n");
+            crate::VGA.print_str("Registering LFSR rng\r\n");
             let rng = rng::RngLfsr::new();
             kernel::RNGS
                 .lock()
@@ -95,7 +98,7 @@ fn main(mut system: kernel::System) -> ! {
                 let e = d.module(0);
                 let mut f = e.lock();
                 if let Some(fb) = f.try_get_pixel_buffer() {
-                    doors_macros2::kernel_print!("Writing random data to framebuffer\r\n");
+                    crate::VGA.print_str("Writing random data to framebuffer\r\n");
                     let mut rng = kernel::RNGS.lock();
                     let rngm = rng.module(0);
                     let rng = rngm.lock();
@@ -108,18 +111,21 @@ fn main(mut system: kernel::System) -> ! {
         {
             if let Some(na) = crate::modules::network::get_network_adapter("net0") {
                 let mut na = na.lock();
-                doors_macros2::kernel_print!("About to do some stuff with a network card\r\n");
+                crate::VGA.print_str("About to do some stuff with a network card\r\n");
                 let ma = na.get_mac_address();
                 hex_dump_generic(&ma, false, false);
-                doors_macros2::kernel_print!("Done doing stuff with network card\r\n");
+                crate::VGA.print_str("Done doing stuff with network card\r\n");
             }
         }
-        doors_macros2::kernel_print!("About to start the executor\r\n");
+        crate::VGA.print_str("About to start the executor\r\n");
         let mut executor = Executor::default();
         executor
             .spawn_closure(async || {
                 for i in 0..32 {
-                    doors_macros2::async_kernel_print!("I am groot {}\r\n", i);
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "I am groot {}\r\n",
+                        i
+                    ));
                     executor::Task::yield_now().await;
                 }
                 loop {
@@ -130,7 +136,10 @@ fn main(mut system: kernel::System) -> ! {
         executor
             .spawn_closure(async || {
                 for i in 0..32 {
-                    doors_macros2::async_kernel_print!("I am batman {}\r\n", i);
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "I am batman {}\r\n",
+                        i
+                    ));
                     executor::Task::yield_now().await;
                 }
                 loop {

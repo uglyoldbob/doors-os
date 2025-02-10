@@ -4,7 +4,6 @@
 use alloc::collections::btree_map::BTreeMap;
 
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
-use crate::modules::video::TextDisplayTrait;
 use crate::modules::{
     pci::{
         BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
@@ -662,7 +661,11 @@ impl IntelPro1000Device {
             for _i in 0..10000 {
                 let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
                 let val2 = val & 0x10;
-                doors_macros2::kernel_print!("EEPROM DETECT: {:x} {:x}\r\n", val, val2);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "EEPROM DETECT: {:x} {:x}\r\n",
+                    val,
+                    val2
+                ));
                 if (val2) != 0 {
                     self.eeprom_present = Some(true);
                     break;
@@ -792,7 +795,9 @@ impl IntelPro1000Device {
             // Interrupts will be enabled later on
             let rxbuf = RxBuffers::new(32, 8192)?;
             let rxaddr = rxbuf.bufs.phys();
-            doors_macros2::kernel_print!("Writing RX stuff to network card\r\n");
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Writing RX stuff to network card\r\n"
+            ));
             self.bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
                 (rxaddr >> 32) as u32,
@@ -820,19 +825,19 @@ impl IntelPro1000Device {
                     .bits(),
             );
             self.rxbufindex = Some(0);
-            doors_macros2::kernel_print!(
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "RX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
                 rxbuf.bufs.virt(),
                 rxaddr,
                 rxbuf.bufs.size()
-            );
+            ));
             for r in rxbuf.dmas.iter() {
-                doors_macros2::kernel_print!(
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "\tIndividual buffer addr is virtual {:x} physical {:x}, size {}\r\n",
                     r.virt(),
                     r.phys(),
                     r.size()
-                );
+                ));
             }
             self.rxbufs = Some(rxbuf);
         }
@@ -864,24 +869,24 @@ impl IntelPro1000Device {
                     | (15 << TctrlFlags::CT_SHIFT.bits())
                     | (64 << TctrlFlags::COLD_SHIFT.bits()),
             );
-            doors_macros2::kernel_print!(
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "Need to SET TIPG, it is currently {:x}\r\n",
                 self.bar0.read(IntelPro1000Registers::TIPG as u16)
-            );
+            ));
             self.txbufindex = Some(0);
-            doors_macros2::kernel_print!(
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "TX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
                 txbuf.bufs.virt(),
                 txaddr,
                 txbuf.bufs.size()
-            );
+            ));
             for r in txbuf.dmas.iter() {
-                doors_macros2::kernel_print!(
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "\tIndividual buffer addr is virtual {:x} physical {:x}, size {}\r\n",
                     r.virt(),
                     r.phys(),
                     r.size()
-                );
+                ));
             }
             self.txbufs = Some(txbuf);
         }
@@ -925,7 +930,7 @@ impl IntelPro1000 {
 
 impl PciFunctionDriverTrait for IntelPro1000 {
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
-        doors_macros2::kernel_print!("Register intel pro/1000 pci driver\r\n");
+        crate::VGA.print_str("Register intel pro/1000 pci driver\r\n");
         for dev in [
             0x100e, 0x100f, 0x1011, 0x1015, 0x1019, 0x101a, 0x1010, 0x1012, 0x1013, 0x1016, 0x1017,
             0x1018, 0x101d, 0x1026, 0x1027, 0x1028, 0x1076, 0x1077, 0x1078, 0x1079, 0x107a, 0x107b,
@@ -949,11 +954,17 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         let bar0 = {
             if let Some(bar) = &mut bars[0] {
                 if bar.is_size_valid() {
-                    doors_macros2::kernel_print!("PCI PARSE BAR {}\r\n", bar.get_index());
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "PCI PARSE BAR {}\r\n",
+                        bar.get_index()
+                    ));
                     bar.print();
                     let d = bar.get_memory(cs, bus, dev, f, config);
                     if let Some(d) = d {
-                        doors_macros2::kernel_print!("Got memory at {:x}\r\n", d.virt());
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "Got memory at {:x}\r\n",
+                            d.virt()
+                        ));
                         Some(MemoryOrIo::Memory(d))
                     } else {
                         bar.get_io(cs, bus, dev, f, config).map(MemoryOrIo::Io)
@@ -992,8 +1003,14 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     model,
                 };
                 d.bar0.hex_dump();
-                doors_macros2::kernel_print!("Detected model as {:?}\r\n", d.model);
-                doors_macros2::kernel_print!("EEPROM DETECTED: {}\r\n", d.detect_eeprom());
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "Detected model as {:?}\r\n",
+                    d.model
+                ));
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "EEPROM DETECTED: {}\r\n",
+                    d.detect_eeprom()
+                ));
                 let mut data = [0u16; 256];
                 for (i, data) in data.iter_mut().enumerate() {
                     *data = d.read_from_eeprom(i as u8);
@@ -1003,14 +1020,24 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 d.general_config();
                 hex_dump(&mac.address, false, false);
                 if let Err(e) = d.init_rx(&mac) {
-                    doors_macros2::kernel_print!("RX buffer allocation error {:?}\r\n", e);
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "RX buffer allocation error {:?}\r\n",
+                        e
+                    ));
                 }
                 if let Err(e) = d.init_tx() {
-                    doors_macros2::kernel_print!("TX buffer allocation error {:?}\r\n", e);
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "TX buffer allocation error {:?}\r\n",
+                        e
+                    ));
                 }
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {
-                        doors_macros2::kernel_print_alloc!("PHY 1 reg {} is {:x}\r\n", r, v);
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "PHY 1 reg {} is {:x}\r\n",
+                            r,
+                            v
+                        ));
                     }
                 }
                 super::super::register_network_adapter(d.into());

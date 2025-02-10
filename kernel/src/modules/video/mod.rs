@@ -118,14 +118,14 @@ impl FramebufferTrait<pixels::FullColor<u32>> for SimpleRamFramebuffer {
     }
 
     fn write_pixel(&mut self, x: u16, y: u16, p: pixels::FullColor<u32>) {
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "Pixel offset {}\r\n",
             (self.height as usize * x as usize + y as usize)
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "Pixel offset {}\r\n",
             (2 * (self.height as usize * x as usize + y as usize)) + 1
-        );
+        ));
         //doors_macros2::kernel_print!("Pixel offset {}\r\n", (2 * (self.height as usize * x as usize + y as usize))+2);
         self.buffer[self.height as usize * x as usize + y as usize] = (p.pixel & 0xff) as u8;
         self.buffer[(2 * (self.height as usize * x as usize + y as usize)) + 1] =
@@ -230,9 +230,9 @@ impl Framebuffer {
     /// Debug print an important address for the display
     pub fn print_address(&self) {
         match self {
-            Framebuffer::SimpleRam(fb) => {
-                doors_macros2::kernel_print!("FB IS AT {:p}\r\n", &fb.buffer[0])
-            }
+            Framebuffer::SimpleRam(fb) => crate::VGA.print_fixed_str(
+                doors_macros2::fixed_string_format!("FB IS AT {:p}\r\n", &fb.buffer[0]),
+            ),
             #[cfg(kernel_machine = "pc64")]
             Framebuffer::VgaHardware(_vga) => todo!(),
         }
@@ -349,6 +349,19 @@ pub trait TextDisplayTrait: Sync + Send {
             self.print_char(d);
         }
     }
+
+    /// Asynchronously print a character
+    async fn print_char_async(&mut self, d: char);
+
+    /// Asynchronously print a string
+    async fn print_str_async(&mut self, d: &str) {
+        for c in d.chars() {
+            self.print_char_async(c).await;
+        }
+    }
+
+    /// Asynchrouously flush all data
+    async fn flush(&mut self);
 }
 
 /// Draws text onto a framebuffer
@@ -395,6 +408,12 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
             }
         }
     }
+
+    async fn print_char_async(&mut self, d: char) {
+        self.print_char(d);
+    }
+
+    async fn flush(&mut self) {}
 }
 
 impl<P> TextDisplayTrait for FramebufferTextMode<pixels::FullColor<P>>
@@ -408,20 +427,26 @@ where
                 for j in 0..10 {
                     let p = 0xffffffff;
                     let p = FullColor::<u32>::new(p);
-                    doors_macros2::kernel_print!(
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                         "Print pixel {} {}\r\n",
                         self.cursor_x as u16 + i,
                         self.cursor_y as u16 + j
-                    );
+                    ));
                     self.fb
                         .write_pixel(self.cursor_x as u16 + i, self.cursor_y as u16 + j, p);
                 }
             }
-            doors_macros2::kernel_print!("Done printing char\r\n");
+            crate::VGA.print_str("Done printing char\r\n");
             self.cursor_x += 5;
         }
         todo!();
     }
+
+    async fn print_char_async(&mut self, d: char) {
+        self.print_char(d);
+    }
+
+    async fn flush(&mut self) {}
 }
 
 /// An enumeration of all the types of text display options
@@ -491,6 +516,23 @@ impl TextDisplayTrait for VideoOverSerial {
         let port = self.port.lock();
         port.sync_transmit_str(d);
     }
+
+    async fn print_char_async(&mut self, d: char) {
+        let port = self.port.lock();
+        let mut c = [0; 4];
+        let s = d.encode_utf8(&mut c);
+        port.transmit_str(s).await;
+    }
+
+    async fn print_str_async(&mut self, d: &str) {
+        let port = self.port.lock();
+        port.transmit_str(d).await;
+    }
+
+    async fn flush(&mut self) {
+        let port = self.port.lock();
+        port.flush().await;
+    }
 }
 
 /// Represents a screen resolution
@@ -550,31 +592,40 @@ pub fn hex_dump(data: &[u8], print_address: bool, print_ascii: bool) {
             break;
         }
     }
-    doors_macros2::kernel_print!("ADDRESS IS {:p}, size {:x}\r\n", data, data.len());
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "ADDRESS IS {:p}, size {:x}\r\n",
+        data,
+        data.len()
+    ));
     for (i, b) in data.chunks(16).enumerate() {
         if print_address {
-            doors_macros2::kernel_print!("{:0>addr_len$x}: ", i * 16);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "{:0>addr_len$x}: ",
+                i * 16
+            ));
         }
         for d in b {
-            doors_macros2::kernel_print!("{:02x} ", d);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{:02x} ", d));
         }
         if print_ascii {
             for _ in b.len()..16 {
-                doors_macros2::kernel_print!("   ");
+                crate::VGA.print_str("   ");
             }
             for d in b {
                 let c = *d as char;
                 if c.is_ascii() {
                     match *d {
-                        32..128 => doors_macros2::kernel_print!("{}", c),
-                        _ => doors_macros2::kernel_print!("?"),
+                        32..128 => {
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}", c))
+                        }
+                        _ => crate::VGA.print_str("?"),
                     }
                 } else {
-                    doors_macros2::kernel_print!("?");
+                    crate::VGA.print_str("?");
                 }
             }
         }
-        doors_macros2::kernel_print!("\r\n");
+        crate::VGA.print_str("\r\n");
     }
 }
 

@@ -62,7 +62,7 @@ pub fn load_config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let check = {
         let mut m = KERNEL_CONFIG.lock().unwrap();
         if m.is_some() {
-            Err(format!("Kernel config already loaded"))
+            Err("Kernel config already loaded")
         } else {
             m.replace(config);
             Ok(())
@@ -417,13 +417,13 @@ pub fn doors_test(
         impl crate::DoorsTester {
             /// Test function #index
             pub fn #id() -> Result<(),()> {
-                doors_macros2::kernel_print!("Running test #{}: {}... ", #index, #fcall2);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("Running test #{}: {}... ", #index, #fcall2));
                 let r = #fcall();
                 if r.is_err() {
-                    doors_macros2::kernel_print!("failed\r\n");
+                    crate::VGA.print_str("failed\r\n");
                 }
                 else {
-                    doors_macros2::kernel_print!("passed\r\n");
+                    crate::VGA.print_str("passed\r\n");
                 }
                 r
             }
@@ -450,9 +450,9 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
     quote! {
         impl DoorsTester {
             fn doors_test_main() -> Result<(),()> {
-                doors_macros2::kernel_print!("Running all {} Doors tests\r\n", #testa);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("Running all {} Doors tests\r\n", #testa));
                 #(#calls()?;)*
-                doors_macros2::kernel_print!("All {} tests passed\r\n", #testa);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("All {} tests passed\r\n", #testa));
                 Ok(())
             }
         }

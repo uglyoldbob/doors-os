@@ -222,3 +222,25 @@ pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
 /// The VGA instance used for x86 kernel printing
 pub static VGA: AsyncLocked<Option<crate::TextDisplay>> = AsyncLocked::new(None);
+
+impl AsyncLocked<Option<crate::TextDisplay>> {
+    /// Print a fixed string. This is intended to be used in panic type situations.
+    pub fn print_fixed_str(&self, a: FixedString) {
+        let mut v = self.sync_lock();
+        let vga = v.as_mut();
+        if let core::option::Option::Some(vga) = vga {
+            use crate::modules::video::TextDisplayTrait;
+            vga.print_str(a.as_str());
+        }
+    }
+
+    /// Print a string. This is intended to be used in panic type situations.
+    pub fn print_str(&self, a: &str) {
+        let mut v = self.sync_lock();
+        let vga = v.as_mut();
+        if let core::option::Option::Some(vga) = vga {
+            use crate::modules::video::TextDisplayTrait;
+            vga.print_str(a);
+        }
+    }
+}

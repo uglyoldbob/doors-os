@@ -12,8 +12,6 @@ pub mod memory;
 
 use crate::Locked;
 
-use crate::modules::video::TextDisplayTrait;
-
 extern "C" {
     /// A page table for the system to boot with.
     pub static PAGE_DIRECTORY_BOOT1: PageTable;
@@ -441,7 +439,7 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
                 }
             }
         }
-        doors_macros2::kernel_print!("Error allocating\r\n");
+        crate::VGA.print_str("Error allocating\r\n");
         Err(core::alloc::AllocError)
     }
 
@@ -469,7 +467,11 @@ impl memory::PciMemory {
         let mut mm = super::PAGING_MANAGER.lock();
         let va = unsafe { virt.as_ref() }.as_ptr() as usize;
         let pa = unsafe { phys.as_ref() }.as_ptr() as usize;
-        doors_macros2::kernel_print!("PCI: virtual {:x} physical {:x}\r\n", va, pa);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "PCI: virtual {:x} physical {:x}\r\n",
+            va,
+            pa
+        ));
         match mm.map_addresses_read_write(va, pa, layout.size()) {
             Ok(()) => Ok(unsafe { Self::build_with(va, pa, size) }),
             Err(()) => Err(core::alloc::AllocError),
@@ -816,12 +818,12 @@ impl<'a> PagingTableManager<'a> {
             {
                 // already mapped to what we want it to be, do nothing
             } else {
-                doors_macros2::kernel_print!(
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "ADDRESS {:x} is already mapped to {:x} {:x}?\r\n",
                     virtual_address,
                     unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index],
                     newval
-                );
+                ));
                 return Err(());
             }
         }
@@ -890,7 +892,8 @@ impl<'a> PagingTableManager<'a> {
             Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
             Ok(())
         } else {
-            doors_macros2::kernel_print!("ERROR {:x}\r\n", value);
+            crate::VGA
+                .print_fixed_str(doors_macros2::fixed_string_format!("ERROR {:x}\r\n", value));
             Err(())
         }
     }

@@ -1,6 +1,5 @@
 //! Code for the pci bus
 
-use crate::modules::video::TextDisplayTrait;
 use crate::LockedArc;
 use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
@@ -105,29 +104,54 @@ impl ConfigurationSpaceStandard {
     /// Dump the configuration data contents
     pub fn dump(&self, linestart: &str) {
         for i in 0..6 {
-            doors_macros2::kernel_print!("{}BAR {}: {:X}\r\n", linestart, i, self.bar[i]);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "{}BAR {}: {:X}\r\n",
+                linestart,
+                i,
+                self.bar[i]
+            ));
         }
-        doors_macros2::kernel_print!("{}Cardbus CIS {:x}\r\n", linestart, self.cardbus_cis);
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Cardbus CIS {:x}\r\n",
+            linestart,
+            self.cardbus_cis
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Subsytem vendor {:x}\r\n",
             linestart,
             self.subsystem_vendor
-        );
-        doors_macros2::kernel_print!("{}Subsystem {:x}\r\n", linestart, self.subsystem);
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Subsystem {:x}\r\n",
+            linestart,
+            self.subsystem
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Expansion rom {:x}\r\n",
             linestart,
             self.expansion_rom_base
-        );
-        doors_macros2::kernel_print!("{}Capabilites: {:x}\r\n", linestart, self.capabilities_ptr);
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Capabilites: {:x}\r\n",
+            linestart,
+            self.capabilities_ptr
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Interrupt line: {:X} pin {:X} \r\n",
             linestart,
             self.interrupt_line,
             self.interrupt_pin
-        );
-        doors_macros2::kernel_print!("{}Min gnt: {} \r\n", linestart, self.min_gnt);
-        doors_macros2::kernel_print!("{}Max latency: {} \r\n", linestart, self.max_lat);
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Min gnt: {} \r\n",
+            linestart,
+            self.min_gnt
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Max latency: {} \r\n",
+            linestart,
+            self.max_lat
+        ));
     }
 }
 
@@ -184,55 +208,79 @@ pub struct ConfigurationSpaceBridge {
 impl ConfigurationSpaceBridge {
     /// Dump the configuration data contents
     pub fn dump(&self, linestart: &str) {
-        doors_macros2::kernel_print!("{}PCI Bridge\r\n", linestart);
-        doors_macros2::kernel_print!("{}BAR: {:x} {:x}\r\n", linestart, self.bar[0], self.bar[1]);
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}PCI Bridge\r\n",
+            linestart
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}BAR: {:x} {:x}\r\n",
+            linestart,
+            self.bar[0],
+            self.bar[1]
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Bus: {} {} {}\r\n",
             linestart,
             self.primary_bus,
             self.secondary_bus,
             self.subordinate_bus
-        );
-        doors_macros2::kernel_print!("{}Latency: {}\r\n", linestart, self.second_latency);
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Latency: {}\r\n",
+            linestart,
+            self.second_latency
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}IO: {:x} size {:x}\r\n",
             linestart,
             self.io_base,
             self.io_limit
-        );
-        doors_macros2::kernel_print!("{}Status: {:x}\r\n", linestart, self.status2);
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Status: {:x}\r\n",
+            linestart,
+            self.status2
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Memory: {:X} {:x}\r\n",
             linestart,
             self.memory_base,
             self.memory_limit
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Prefetchable: {:x} size {:x}\r\n",
             linestart,
             ((self.prefetchable_base_upper as u64) << 32) | (self.prefetchable_memory_base as u64),
             ((self.prefetchable_limit_upper as u64) << 32)
                 | (self.prefetchable_memory_limit as u64),
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}IO: {:x} size {:x}\r\n",
             linestart,
             ((self.iobase_upper as u64) << 32) | (self.io_base as u64),
             ((self.iolimit_upper as u64) << 32) | (self.io_limit as u64),
-        );
-        doors_macros2::kernel_print!("{}Capabilites: {:x}\r\n", linestart, self.capabilities_ptr);
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Capabilites: {:x}\r\n",
+            linestart,
+            self.capabilities_ptr
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Expansion rom: {:x}\r\n",
             linestart,
             self.expansion_rom_base
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Interrupt line: {:X} pin {:X} \r\n",
             linestart,
             self.interrupt_line,
             self.interrupt_pin
-        );
-        doors_macros2::kernel_print!("{}Bridge control: {:X}\r\n", linestart, self.bridge_control);
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Bridge control: {:X}\r\n",
+            linestart,
+            self.bridge_control
+        ));
     }
 }
 
@@ -323,50 +371,77 @@ pub struct ConfigurationSpaceCardbus {
 impl ConfigurationSpaceCardbus {
     /// Dump the configuration data contents
     pub fn dump(&self, linestart: &str) {
-        doors_macros2::kernel_print!("{}CARDBUS Device\r\n", linestart);
-        doors_macros2::kernel_print!("{}Base: {:X}\r\n", linestart, self.cardbus_base);
-        doors_macros2::kernel_print!("{}Offset: {:X}\r\n", linestart, self.capabilities_offset);
-        doors_macros2::kernel_print!("{}Status2: {:X}\r\n", linestart, self.status2);
-        doors_macros2::kernel_print!(
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}CARDBUS Device\r\n",
+            linestart
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Base: {:X}\r\n",
+            linestart,
+            self.cardbus_base
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Offset: {:X}\r\n",
+            linestart,
+            self.capabilities_offset
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Status2: {:X}\r\n",
+            linestart,
+            self.status2
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Pci: {}, cardbus {}, sub {}\r\n",
             linestart,
             self.pci_bus_num,
             self.cardbus_bus_num,
             self.subordinate_bus_num
-        );
-        doors_macros2::kernel_print!("{}Latency: {}\r\n", linestart, self.cardbus_latency);
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Latency: {}\r\n",
+            linestart,
+            self.cardbus_latency
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Memory0: {:X} size {:x}\r\n",
             linestart,
             self.memory_base0,
             self.memory_limit0
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Memory1: {:X} size {:x}\r\n",
             linestart,
             self.memory_base1,
             self.memory_limit1
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}IO0: {:X} size {:x}\r\n",
             linestart,
             self.io_base0,
             self.io_limit0
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}IO1: {:X} size {:x}\r\n",
             linestart,
             self.io_base1,
             self.io_limit1
-        );
-        doors_macros2::kernel_print!(
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "{}Interrupt line: {:X} pin {:X} \r\n",
             linestart,
             self.interrupt_line,
             self.interrupt_pin
-        );
-        doors_macros2::kernel_print!("{}Bridge control: {:X}\r\n", linestart, self.bridge_control);
-        doors_macros2::kernel_print!("{}Legacy base: {:X}\r\n", linestart, self.legacy_base_addr);
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Bridge control: {:X}\r\n",
+            linestart,
+            self.bridge_control
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Legacy base: {:X}\r\n",
+            linestart,
+            self.legacy_base_addr
+        ));
     }
 }
 
@@ -539,19 +614,70 @@ impl ConfigurationSpace {
 
     /// Dump the configuration space
     pub fn dump(&self, linestart: &str) {
-        doors_macros2::kernel_print!("{}Configuration space:\r\n", linestart);
-        doors_macros2::kernel_print!("{}Vendor: {:x}\r\n", linestart, self.vendor);
-        doors_macros2::kernel_print!("{}Device: {:x}\r\n", linestart, self.device);
-        doors_macros2::kernel_print!("{}Command: {:x}\r\n", linestart, self.command.0);
-        doors_macros2::kernel_print!("{}Status: {:x}\r\n", linestart, self.status);
-        doors_macros2::kernel_print!("{}Revision: {:x}\r\n", linestart, self.revision);
-        doors_macros2::kernel_print!("{}ProgIf: {:x}\r\n", linestart, self.prog_if);
-        doors_macros2::kernel_print!("{}Subclass: {:x}\r\n", linestart, self.subclass);
-        doors_macros2::kernel_print!("{}Class: {:x}\r\n", linestart, self.class);
-        doors_macros2::kernel_print!("{}Cache: {:x}\r\n", linestart, self.cache_size);
-        doors_macros2::kernel_print!("{}Latency: {:x}\r\n", linestart, self.latency);
-        doors_macros2::kernel_print!("{}HEADER: {:x}\r\n", linestart, self.header);
-        doors_macros2::kernel_print!("{}BIST: {:x}\r\n", linestart, self.bist);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Configuration space:\r\n",
+            linestart
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Vendor: {:x}\r\n",
+            linestart,
+            self.vendor
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Device: {:x}\r\n",
+            linestart,
+            self.device
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Command: {:x}\r\n",
+            linestart,
+            self.command.0
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Status: {:x}\r\n",
+            linestart,
+            self.status
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Revision: {:x}\r\n",
+            linestart,
+            self.revision
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}ProgIf: {:x}\r\n",
+            linestart,
+            self.prog_if
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Subclass: {:x}\r\n",
+            linestart,
+            self.subclass
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Class: {:x}\r\n",
+            linestart,
+            self.class
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Cache: {:x}\r\n",
+            linestart,
+            self.cache_size
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}Latency: {:x}\r\n",
+            linestart,
+            self.latency
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}HEADER: {:x}\r\n",
+            linestart,
+            self.header
+        ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "{}BIST: {:x}\r\n",
+            linestart,
+            self.bist
+        ));
         if let Some(h) = self.get_space() {
             match h {
                 ConfigurationSpaceEnum::Standard(cs) => {
@@ -742,7 +868,10 @@ impl BarSpace {
                             size: *size,
                             index: *index,
                         };
-                        doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", addr);
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "Writing bar with address {:x}\r\n",
+                            addr
+                        ));
                         newbar.write_to_pci(pci, bus, dev, function, config);
                         *self = newbar;
                     }
@@ -782,7 +911,10 @@ impl BarSpace {
                         flags: *flags,
                         index: *index,
                     };
-                    doors_macros2::kernel_print!("Writing bar with address {:x}\r\n", pcim.phys());
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "Writing bar with address {:x}\r\n",
+                        pcim.phys()
+                    ));
                     newbar.write_to_pci(pci, bus, dev, function, config);
                     *self = newbar;
                 }
@@ -881,12 +1013,12 @@ impl BarSpace {
                 flags,
                 index: _,
             } => {
-                doors_macros2::kernel_print!(
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "BAR32: {:x} x {:x} flags {:x}\r\n",
                     base,
                     size,
                     flags
-                );
+                ));
             }
             BarSpace::Memory64 {
                 base,
@@ -894,22 +1026,26 @@ impl BarSpace {
                 flags,
                 index: _,
             } => {
-                doors_macros2::kernel_print!(
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "BAR64: {:x} x {:x} flags {:x}\r\n",
                     base,
                     size,
                     flags
-                );
+                ));
             }
             BarSpace::IO {
                 base,
                 size,
                 index: _,
             } => {
-                doors_macros2::kernel_print!("BARIO: {:x} x {:x}\r\n", base, size);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "BARIO: {:x} x {:x}\r\n",
+                    base,
+                    size
+                ));
             }
             BarSpace::Invalid { index: _ } => {
-                doors_macros2::kernel_print!("BAR INVALID\r\n");
+                crate::VGA.print_str("BAR INVALID\r\n");
             }
         }
     }
@@ -1109,7 +1245,10 @@ impl PciDevice {
     /// Print all the functions of the device
     fn print_functions(&self, pci: &mut PciConfigurationSpace, bus: &PciBus) {
         for (i, f) in self.functions.iter().enumerate() {
-            doors_macros2::kernel_print!("\t\tPCI Function {}\r\n", i);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "\t\tPCI Function {}\r\n",
+                i
+            ));
             f.print(pci, bus, self);
         }
     }
@@ -1156,7 +1295,10 @@ impl PciBus {
     /// Print all devices on the bus
     fn print_devices(&self, pci: &mut PciConfigurationSpace) {
         for (i, d) in self.devices.iter().enumerate() {
-            doors_macros2::kernel_print!("\tPCI device {}\r\n", i);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "\tPCI device {}\r\n",
+                i
+            ));
             d.print_functions(pci, self);
         }
     }
@@ -1170,7 +1312,10 @@ impl PciBus {
         for d in &self.devices {
             for f in &d.functions {
                 let id = f.get_driver_id(pci, self, d);
-                doors_macros2::kernel_print!("Checking pci device {:x}\r\n", id);
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "Checking pci device {:x}\r\n",
+                    id
+                ));
                 if map.contains_key(&id) {
                     let config = f.get_all_configuration(pci, self, d);
                     let code = map.get_mut(&id).unwrap();
@@ -1178,7 +1323,10 @@ impl PciBus {
                     f.parse_bars(&mut bars, pci, self, d, &config);
                     code.parse_bars(pci, self, d, f, &config.get_space().unwrap(), bars);
                 } else {
-                    doors_macros2::kernel_print!("Unknown PCI FUNCTION: {:X}\r\n", id);
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "Unknown PCI FUNCTION: {:X}\r\n",
+                        id
+                    ));
                     let config = f.get_all_configuration(pci, self, d);
                     config.dump("\t");
                 }
@@ -1244,11 +1392,11 @@ pub trait PciFunctionDriverTrait: Clone + Default {
 pub fn pci_register_drivers() {
     let mut drivers = PCI_DRIVERS.lock();
 
-    doors_macros2::kernel_print!("Registering pci drivers\r\n");
+    crate::VGA.print_str("Registering pci drivers\r\n");
     for d in PCI_CODE {
         d.register(&mut drivers);
     }
-    doors_macros2::kernel_print!("Done registering pci drivers\r\n");
+    crate::VGA.print_str("Done registering pci drivers\r\n");
 }
 
 /// Represents a device driver for a pci function
@@ -1279,7 +1427,7 @@ pub struct DummyPciFunctionDriver {}
 
 impl PciFunctionDriverTrait for DummyPciFunctionDriver {
     fn register(&self, _m: &mut BTreeMap<u32, PciFunctionDriver>) {
-        doors_macros2::kernel_print!("Register dummy pci driver\r\n");
+        crate::VGA.print_str("Register dummy pci driver\r\n");
     }
 
     fn parse_bars(

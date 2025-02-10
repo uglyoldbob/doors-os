@@ -3,7 +3,6 @@
 use core::marker::PhantomData;
 
 use crate::modules::pci::PciTrait;
-use crate::modules::video::TextDisplayTrait;
 use crate::IoReadWrite;
 use crate::Locked;
 use crate::LockedArc;
@@ -240,7 +239,10 @@ fn setup_serial() {
     let mut serials = crate::kernel::SERIAL.lock();
     for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
         if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base) {
-            doors_macros2::kernel_print!("Registered serial port {:x}\r\n", base);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Registered serial port {:x}\r\n",
+                base
+            ));
             let com = crate::modules::serial::Serial::PcComPort(LockedArc::new(com));
             crate::modules::serial::SerialTrait::sync_transmit_str(&com, "Serial port test\r\n");
             serials.register_serial(com);
@@ -254,8 +256,11 @@ fn setup_serial() {
         v.replace(sd);
         drop(v);
         match log::set_logger(&crate::VGA) {
-            Ok(_a) => doors_macros2::kernel_print!("logger set\r\n"),
-            Err(e) => doors_macros2::kernel_print!("Logger failed to set {:?}\r\n", e),
+            Ok(_a) => crate::VGA.print_str("logger set\r\n"),
+            Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Logger failed to set {:?}\r\n",
+                e
+            )),
         }
         log::set_max_level(log::LevelFilter::Trace);
         log::error!("This is a test of the log system");
@@ -264,6 +269,6 @@ fn setup_serial() {
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot(system: crate::kernel::System) -> ! {
-    doors_macros2::kernel_print!("This is a test\r\n");
+    crate::VGA.print_str("This is a test\r\n");
     crate::main(system)
 }

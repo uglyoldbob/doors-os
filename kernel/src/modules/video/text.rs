@@ -71,4 +71,14 @@ impl crate::modules::video::TextDisplayTrait for X86VgaTextMode {
             }
         }
     }
+
+    async fn print_char_async(&mut self, d: char) {
+        self.print_char(d);
+    }
+
+    async fn print_str_async(&mut self, d: &str) {
+        self.print_str(d);
+    }
+
+    async fn flush(&mut self) {}
 }

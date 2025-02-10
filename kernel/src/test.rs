@@ -26,7 +26,6 @@ pub use boot::IoPortManager;
 pub use boot::IoPortRef;
 
 pub use modules::video::TextDisplay;
-use modules::video::TextDisplayTrait;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "arm")] {
@@ -51,22 +50,26 @@ doors_macros::define_doors_test_runner!();
 /// The panic handler for the kernel
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
+    crate::VGA.print_str("PANIC AT THE DISCO!\r\n");
     if let Some(t) = info.location() {
         let f = t.file();
         let maxlen = f.len();
         for i in (0..maxlen).step_by(70) {
             let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
-            doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
+            crate::VGA.print_str(&f[i..tmax]);
         }
-        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
+        crate::VGA.print_str("\r\n");
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            " LINE {}\r\n",
+            t.line()
+        ));
     }
     let msg = info.message();
     if let Some(s) = msg.as_str() {
-        doors_macros2::kernel_print_alloc!("{}\r\n", s);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", s));
     }
-    doors_macros2::kernel_print_alloc!("{}\r\n", info);
-    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", info));
+    crate::VGA.print_str("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
 
@@ -75,7 +78,7 @@ fn main(mut system: kernel::System) -> ! {
         system.enable_interrupts();
         system.init();
         if DoorsTester::doors_test_main().is_err() {
-            doors_macros2::kernel_print!("At least one test failed\r\n");
+            crate::VGA.print_str("At least one test failed\r\n");
         }
         let mut executor = Executor::default();
         executor.run(system)

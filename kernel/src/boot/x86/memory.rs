@@ -5,7 +5,6 @@
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use crate::modules::video::TextDisplayTrait;
 use crate::Locked;
 
 use super::boot::memory::{Page, PagingTableManager};
@@ -38,7 +37,11 @@ impl HeapNode {
 
     /// Print information for the node
     fn print(&self) {
-        doors_macros2::kernel_print!("heap node is {:p} {:?}\r\n", self, self);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "heap node is {:p} {:?}\r\n",
+            self,
+            self
+        ));
     }
 
     /// Returns the next Self, as an optional reference
@@ -105,20 +108,6 @@ impl HeapNode {
         } else {
             0
         };
-        if align_pad != 0 {
-            doors_macros2::kernel_print!(
-                "ALIGN PAD CALCULATED {:x} {:x} {:x}\r\n",
-                self.start(),
-                size,
-                align
-            );
-            doors_macros2::kernel_print!("\talign_mask: {:x}\r\n", align_mask);
-            doors_macros2::kernel_print!("\talign_err: {:x}\r\n", align_err);
-            doors_macros2::kernel_print!("\talign_pad: {:x}\r\n", align_pad);
-            doors_macros2::kernel_print!("\tsize_needed: {:x}\r\n", size_needed);
-            doors_macros2::kernel_print!("\tposterr: {:x}\r\n", posterr);
-            doors_macros2::kernel_print!("\tpostpad: {:x}\r\n", postpad);
-        }
         HeapNodeAlign {
             size_needed: size_needed + postpad,
             pre_align: align_pad,
@@ -154,11 +143,14 @@ impl<'a> HeapManager<'a> {
 
     /// Print details of the heap
     pub fn print(&self) {
-        doors_macros2::kernel_print!("mm: {:p}\r\n", self.mm);
-        doors_macros2::kernel_print!("vmm: {:p}\r\n", self.vmm);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("mm: {:p}\r\n", self.mm));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "vmm: {:p}\r\n",
+            self.vmm
+        ));
         if let Some(r) = self.head {
             let mut t = unsafe { r.as_ref() };
-            doors_macros2::kernel_print!("HEAP:\r\n");
+            crate::VGA.print_str("HEAP:\r\n");
             t.print();
             while let Some(a) = t.next() {
                 a.print();
@@ -168,7 +160,7 @@ impl<'a> HeapManager<'a> {
                 t2.print();
             }
         } else {
-            doors_macros2::kernel_print!("Heap is empty\r\n");
+            crate::VGA.print_str("Heap is empty\r\n");
         }
     }
 
@@ -275,25 +267,29 @@ impl<'a> HeapManager<'a> {
                         (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                     }
                 } else {
-                    doors_macros2::kernel_print!(
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                         "Alloc layout size {:x} alignment {:x}\r\n",
                         layout.size(),
                         layout.align()
-                    );
-                    doors_macros2::kernel_print!(
+                    ));
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                         "A free node size {:x} will exist before the placement\r\n",
                         ha.pre_align
-                    );
+                    ));
                     let b = unsafe { best.as_ref() };
                     if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
                         self.print();
-                        doors_macros2::kernel_print!("The end of the block will be used\r\n");
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "The end of the block will be used\r\n"
+                        ));
                         let c = HeapNode {
                             next: b.next,
                             size: ha.pre_align,
                         };
                         c.print();
-                        doors_macros2::kernel_print!("Done printing new nodes");
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "Done printing new nodes"
+                        ));
                         self.print();
                         todo!();
                     } else {
@@ -318,11 +314,11 @@ impl<'a> HeapManager<'a> {
                     .expand_with_physical_memory(layout.size() + layout.align())
                     .is_err()
             {
-                doors_macros2::kernel_print!("OUT OF MEMORY 1\r\n");
+                crate::VGA.print_str("OUT OF MEMORY 1\r\n");
                 return core::ptr::null_mut();
             }
             if times == 2 {
-                doors_macros2::kernel_print!("OUT OF MEMORY 2\r\n");
+                crate::VGA.print_str("OUT OF MEMORY 2\r\n");
                 return core::ptr::null_mut();
             }
         }

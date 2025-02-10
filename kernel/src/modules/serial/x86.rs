@@ -98,4 +98,18 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
             s.base.port(0).port_write(c);
         }
     }
+
+    fn sync_flush(&self) {}
+
+    async fn transmit(&self, data: &[u8]) {
+        self.sync_transmit(data);
+    }
+
+    async fn transmit_str(&self, data: &str) {
+        self.sync_transmit_str(data);
+    }
+
+    async fn flush(&self) {
+        self.sync_flush();
+    }
 }

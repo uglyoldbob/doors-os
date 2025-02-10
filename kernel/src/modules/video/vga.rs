@@ -94,6 +94,16 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
             }
         }
     }
+
+    async fn print_char_async(&mut self, d: char) {
+        self.print_char(d);
+    }
+
+    async fn print_str_async(&mut self, d: &str) {
+        self.print_str(d);
+    }
+
+    async fn flush(&mut self) {}
 }
 
 /// The default palette for vga operations
