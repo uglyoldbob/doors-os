@@ -1,5 +1,6 @@
 //! Serial port code for x86 serial ports
 
+use crate::executor;
 use crate::IoPortArray;
 use crate::IoReadWrite;
 use crate::LockedArc;
@@ -9,6 +10,8 @@ use crate::IO_PORT_MANAGER;
 pub struct X86SerialPort {
     /// The io ports
     base: IoPortArray<'static>,
+    /// The transmit queue
+    tx_queue: conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>,
 }
 
 impl X86SerialPort {
@@ -34,7 +37,10 @@ impl X86SerialPort {
         let testval = 0x55u8;
         ports.port(0).port_write(testval);
 
-        let mut s = Self { base: ports };
+        let mut s = Self {
+            base: ports,
+            tx_queue: conquer_once::spin::OnceCell::uninit(),
+        };
         let a = s.receive();
         if let Some(a) = a {
             if a == testval {
@@ -74,7 +80,11 @@ impl X86SerialPort {
 
     /// Setup the serial port
     fn setup(&mut self) {
-        self.base.port(4).port_write(0x03u8);
+        self.tx_queue
+            .try_init_once(|| crossbeam::queue::ArrayQueue::new(32));
+        // Enable interrupts for sending and receiving data
+        self.base.port(1).port_write(3u8);
+        self.base.port(4).port_write(0x03u8 | 8u8);
     }
 }
 
@@ -85,6 +95,11 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
 
     fn sync_transmit(&self, data: &[u8]) {
         let mut s = self.lock();
+        if let Some(q) = s.tx_queue.get() {
+            for c in data {
+                while q.push(*c).is_err() {}
+            }
+        }
         for c in data {
             while !s.can_send() {}
             s.base.port(0).port_write(*c);
@@ -93,6 +108,11 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
 
     fn sync_transmit_str(&self, data: &str) {
         let mut s = self.lock();
+        if let Some(q) = s.tx_queue.get() {
+            for c in data.bytes() {
+                while q.push(c).is_err() {}
+            }
+        }
         for c in data.bytes() {
             while !s.can_send() {}
             s.base.port(0).port_write(c);
@@ -102,14 +122,33 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
     fn sync_flush(&self) {}
 
     async fn transmit(&self, data: &[u8]) {
-        self.sync_transmit(data);
+        let mut s = self.lock();
+        if let Some(q) = s.tx_queue.get() {
+            for c in data {
+                while q.push(*c).is_err() {
+                    executor::Task::yield_now().await;
+                }
+            }
+        }
     }
 
     async fn transmit_str(&self, data: &str) {
-        self.sync_transmit_str(data);
+        let mut s = self.lock();
+        if let Some(q) = s.tx_queue.get() {
+            for c in data.bytes() {
+                while q.push(c).is_err() {
+                    executor::Task::yield_now().await;
+                }
+            }
+        }
     }
 
     async fn flush(&self) {
-        self.sync_flush();
+        let mut s = self.lock();
+        if let Some(q) = s.tx_queue.get() {
+            while !q.is_empty() {
+                executor::Task::yield_now().await;
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@ arraystring = {version = "0.3.0", default-features=false }
 bitfield = "0.18.1"
 bitflags = "2.4.2"
 cfg-if = "1.0.0"
+conquer-once = { version = "0.4.0", default-features = false }
 crossbeam = { version = "0.8.4", default-features = false, features = ["alloc"] }
 doors_macros = { path = "../doors_macros", version = "0.1.0" }
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }

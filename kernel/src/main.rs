@@ -122,10 +122,9 @@ fn main(mut system: kernel::System) -> ! {
         executor
             .spawn_closure(async || {
                 for i in 0..32 {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "I am groot {}\r\n",
-                        i
-                    ));
+                    crate::VGA
+                        .print_str_async(&alloc::format!("I am groot {}\r\n", i))
+                        .await;
                     executor::Task::yield_now().await;
                 }
                 loop {
@@ -136,10 +135,9 @@ fn main(mut system: kernel::System) -> ! {
         executor
             .spawn_closure(async || {
                 for i in 0..32 {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "I am batman {}\r\n",
-                        i
-                    ));
+                    crate::VGA
+                        .print_str_async(&alloc::format!("I am batman {}\r\n", i))
+                        .await;
                     executor::Task::yield_now().await;
                 }
                 loop {
@@ -150,3 +148,5 @@ fn main(mut system: kernel::System) -> ! {
         executor.run(system)
     }
 }
+
+doors_macros::populate_todo_list!();

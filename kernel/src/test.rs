@@ -75,6 +75,9 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 fn main(mut system: kernel::System) -> ! {
     {
+        if true {
+            doors_macros::todo_item_panic!("This should never happen");
+        }
         system.enable_interrupts();
         system.init();
         if DoorsTester::doors_test_main().is_err() {
@@ -84,3 +87,5 @@ fn main(mut system: kernel::System) -> ! {
         executor.run(system)
     }
 }
+
+doors_macros::populate_todo_list!();

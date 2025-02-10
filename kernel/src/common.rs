@@ -243,4 +243,14 @@ impl AsyncLocked<Option<crate::TextDisplay>> {
             vga.print_str(a);
         }
     }
+
+    /// Print a string reference, asynchronously
+    pub async fn print_str_async(&self, a: &str) {
+        let mut v = self.lock().await;
+        let vga = v.as_mut();
+        if let core::option::Option::Some(vga) = vga {
+            use crate::modules::video::TextDisplayTrait;
+            vga.print_str_async(a).await;
+        }
+    }
 }

@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![feature(proc_macro_span)]
 
 //! This crate defines various macros used in the Doors kernel.
 
@@ -21,6 +22,19 @@ struct EnumData {
     variant_names: HashSet<String>,
 }
 
+struct TodoList {
+    items: Vec<String>,
+}
+
+impl TodoList {
+    const fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+
+/// The todo list for the kernel
+static TODOLIST: Mutex<Option<TodoList>> = Mutex::new(Some(TodoList::new()));
+
 lazy_static::lazy_static! {
     /// The number of test functions in the kernel
     static ref TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
@@ -28,6 +42,63 @@ lazy_static::lazy_static! {
     static ref ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::new());
     /// The kernel config
     static ref KERNEL_CONFIG: Mutex<Option<KernelConfig>> = Mutex::new(None);
+}
+
+/// Insert a todo list entry into the todolist and do nothing else
+#[proc_macro]
+pub fn todo_item(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item2 = item.clone();
+    let f = parse_macro_input!(item2 as syn::LitStr);
+    let mut list = TODOLIST.lock().unwrap();
+    let list = list.as_mut().unwrap();
+    let ds = proc_macro::Span::call_site();
+    list.items.push(format!(
+        "{} @ {:?} line {}",
+        f.value(),
+        ds.source_file().path(),
+        ds.start().line()
+    ));
+    quote!().into()
+}
+
+/// Insert a todo list entry into the todolist and also panic
+#[proc_macro]
+pub fn todo_item_panic(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item2 = item.clone();
+    let f = parse_macro_input!(item2 as syn::LitStr);
+    let mut list = TODOLIST.lock().unwrap();
+    let list = list.as_mut().unwrap();
+    let ds = proc_macro::Span::call_site();
+    list.items.push(format!(
+        "{} @ {:?} line {}",
+        f.value(),
+        ds.source_file().path(),
+        ds.start().line()
+    ));
+    quote!(
+        panic!(#f);
+    )
+    .into()
+}
+
+/// Populate the todo list for the kernel
+#[proc_macro]
+pub fn populate_todo_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    assert!(input.is_empty());
+    let list = TODOLIST.lock().unwrap().take().unwrap();
+    let things = list.items.iter().map(|i| {
+        let msg = format!("* {}", i);
+        println!("Populating todo item {}", msg);
+        quote! {
+            #[doc = #msg]
+        }
+    });
+    quote!(
+        /// The todo list. This is a list of things that need to be done.
+        #(#things)*
+        struct TodoList {}
+    )
+    .into()
 }
 
 /// Define the kernel config for the kernel build script
