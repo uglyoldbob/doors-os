@@ -713,11 +713,8 @@ impl crate::kernel::SystemTrait for Pin<Box<X86System>> {
 
     fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
-        doors_macros::todo_item!("Should interrupts be disabled and enabled for this?");
-        {
-            let mut irqs = IRQ_HANDLERS.lock();
-            irqs[irq as usize] = Some(a);
-        }
+        let mut irqs = IRQ_HANDLERS.lock();
+        irqs[irq as usize] = Some(a);
     }
 
     fn disable_irq(&self, irq: u8) {

@@ -3,9 +3,9 @@
 use core::marker::PhantomData;
 
 use crate::modules::pci::PciTrait;
+use crate::AsyncLockedArc;
 use crate::IoReadWrite;
 use crate::Locked;
-use crate::LockedArc;
 
 #[cfg(target_arch = "x86_64")]
 pub mod boot64;
@@ -238,13 +238,13 @@ fn setup_pci() {
 /// This will probably be removed once pci space is further developed
 fn setup_serial() {
     let mut serials = crate::kernel::SERIAL.lock();
-    for base in [0x3f8, 0x2f8, 0x3e8, 0x2e8, 0x5f8, 0x4f8, 0x5e8, 0x4e8] {
-        if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base) {
+    for (base, irq) in [(0x3f8, 4), (0x2f8, 3), (0x3e8, 4), (0x2e8, 3)] {
+        if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base, irq) {
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "Registered serial port {:x}\r\n",
                 base
             ));
-            let com = crate::modules::serial::Serial::PcComPort(LockedArc::new(com));
+            let com = crate::modules::serial::Serial::PcComPort(AsyncLockedArc::new(com));
             crate::modules::serial::SerialTrait::sync_transmit_str(&com, "Serial port test\r\n");
             serials.register_serial(com);
         }

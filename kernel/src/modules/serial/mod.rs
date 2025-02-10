@@ -6,12 +6,12 @@ pub mod stm32f769;
 #[cfg(kernel_machine = "pc64")]
 pub mod x86;
 
-use crate::LockedArc;
+use crate::{AsyncLockedArc, LockedArc};
 
 /// The standard trait for serial ports
 #[enum_dispatch::enum_dispatch]
 pub trait SerialTrait {
-    /// Enable any required interrupts
+    /// Enable any required interrupts for async operations
     fn enable_interrupts(&self) -> Result<(), ()>;
     /// Setup the serial port
     fn setup(&self, rate: u32) -> Result<(), ()>;
@@ -37,7 +37,7 @@ pub enum Serial {
     Stm32f769(LockedArc<stm32f769::Usart>),
     /// X86 serial port
     #[cfg(kernel_machine = "pc64")]
-    PcComPort(LockedArc<x86::X86SerialPort>),
+    PcComPort(AsyncLockedArc<x86::X86SerialPort>),
     /// The dummy implementation
     Dummy(DummySerial),
 }

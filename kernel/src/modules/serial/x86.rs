@@ -4,9 +4,9 @@ use alloc::sync::Arc;
 
 use crate::executor;
 use crate::kernel::SystemTrait;
+use crate::AsyncLockedArc;
 use crate::IoPortArray;
 use crate::IoReadWrite;
-use crate::LockedArc;
 use crate::IO_PORT_MANAGER;
 
 /// A serial port (COM) for x86
@@ -19,11 +19,13 @@ pub struct X86SerialPort {
     interrupts: bool,
     /// Is an interrupt driven transmission currently in progress?
     itx: bool,
+    /// Irq number for interrupts
+    irq: u8,
 }
 
 impl X86SerialPort {
     /// Attempt to build a new serial port, probing it as needed
-    pub fn new(base: u16) -> Option<Self> {
+    pub fn new(base: u16, irq: u8) -> Option<Self> {
         let ports = IO_PORT_MANAGER
             .as_ref()
             .unwrap()
@@ -49,6 +51,7 @@ impl X86SerialPort {
             tx_queue: Arc::new(conquer_once::spin::OnceCell::uninit()),
             interrupts: false,
             itx: false,
+            irq,
         };
         let a = s.receive();
         if let Some(a) = a {
@@ -97,15 +100,14 @@ impl X86SerialPort {
     }
 
     /// The interrupt handler code
-    fn handle_interrupt(
-        s: &LockedArc<X86SerialPort>,
-        tx_queue: &Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
-    ) {
-        if let Ok(aq) = tx_queue.try_get() {
+    fn handle_interrupt(s: &AsyncLockedArc<X86SerialPort>) {
+        let mut s2 = s.sync_lock();
+        if let Ok(aq) = s2.tx_queue.try_get() {
             if let Some(v) = aq.pop() {
-                s.lock().base.port(0).port_write(v);
-            } else {
-                s.lock().disable_tx_interrupt();
+                s2.base.port(0).port_write(v);
+            }
+            if aq.is_empty() {
+                s2.disable_tx_interrupt();
             }
         }
     }
@@ -130,7 +132,7 @@ impl X86SerialPort {
     }
 }
 
-impl LockedArc<X86SerialPort> {
+impl AsyncLockedArc<X86SerialPort> {
     /// Asynchronously enable the tx interrupt.
     async fn enable_tx_interrupt(&self) {
         crate::SYSTEM
@@ -139,33 +141,29 @@ impl LockedArc<X86SerialPort> {
             .as_ref()
             .map(|s| s.disable_irq(4));
         unsafe {
-            self.lock().enable_tx_interrupt();
+            self.lock().await.enable_tx_interrupt();
         }
         crate::SYSTEM.lock().await.as_ref().map(|s| s.enable_irq(4));
     }
 }
 
-impl super::SerialTrait for LockedArc<X86SerialPort> {
+impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
     fn setup(&self, _rate: u32) -> Result<(), ()> {
         todo!();
     }
 
     fn enable_interrupts(&self) -> Result<(), ()> {
-        doors_macros::todo_item!(
-            "Use the appropriate irq number here instead of hardcoding the value"
-        );
-        let irqnum = 4;
-        let txq = {
-            let mut s = self.lock();
+        let irqnum = {
+            let mut s = self.sync_lock();
             s.base.port(4).port_write(0x03u8 | 8u8);
             s.interrupts = true;
-            s.tx_queue.clone()
+            s.irq
         };
         let mut p = crate::SYSTEM.sync_lock();
         use crate::kernel::SystemTrait;
         let s2 = self.clone();
         p.as_mut().map(move |p| {
-            p.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2, &txq));
+            p.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
             p.enable_irq(irqnum);
         });
 
@@ -173,7 +171,7 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
     }
 
     fn sync_transmit(&self, data: &[u8]) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         for c in data {
             while !s.can_send() {}
             s.base.port(0).port_write(*c);
@@ -181,7 +179,7 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
     }
 
     fn sync_transmit_str(&self, data: &str) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         for c in data.bytes() {
             while !s.can_send() {}
             s.base.port(0).port_write(c);
@@ -192,7 +190,7 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
 
     async fn transmit(&self, data: &[u8]) {
         let txq = {
-            let s = self.lock();
+            let s = self.lock().await;
             s.tx_queue.clone()
         };
         if let Some(q) = txq.get() {
@@ -207,7 +205,7 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
 
     async fn transmit_str(&self, data: &str) {
         let txq = {
-            let s = self.lock();
+            let s = self.lock().await;
             s.tx_queue.clone()
         };
         if let Some(q) = txq.get() {
@@ -221,7 +219,7 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
     }
 
     async fn flush(&self) {
-        let mut s = self.lock();
+        let s = self.lock().await;
         if let Some(q) = s.tx_queue.get() {
             while !q.is_empty() {
                 executor::Task::yield_now().await;
