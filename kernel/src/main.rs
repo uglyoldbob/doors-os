@@ -66,6 +66,7 @@ use kernel::SystemTrait;
 use modules::network::NetworkAdapterTrait;
 use modules::rng;
 use modules::rng::RngTrait;
+use modules::serial::SerialTrait;
 use modules::video::hex_dump_generic;
 pub use modules::video::TextDisplay;
 
@@ -78,13 +79,22 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
-fn main(mut system: kernel::System) -> ! {
+fn main() -> ! {
     {
-        system.enable_interrupts();
-        system.init();
-        //SYSTEM.replace(Some(system));
+        SYSTEM.sync_lock().as_mut().unwrap().enable_interrupts();
+        SYSTEM.sync_lock().as_mut().unwrap().init();
         crate::VGA.print_str("DoorsOs Booting now\r\n");
-
+        {
+            let mut ser = crate::kernel::SERIAL.lock();
+            for (i, s) in ser.iter().enumerate() {
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "SERIAL PORT {} enable interrupts\r\n",
+                    i
+                ));
+                let s = s.lock();
+                s.enable_interrupts().unwrap();
+            }
+        }
         {
             crate::VGA.print_str("Registering LFSR rng\r\n");
             let rng = rng::RngLfsr::new();

@@ -1,6 +1,9 @@
 //! Serial port code for x86 serial ports
 
+use alloc::sync::Arc;
+
 use crate::executor;
+use crate::kernel::SystemTrait;
 use crate::IoPortArray;
 use crate::IoReadWrite;
 use crate::LockedArc;
@@ -11,7 +14,11 @@ pub struct X86SerialPort {
     /// The io ports
     base: IoPortArray<'static>,
     /// The transmit queue
-    tx_queue: conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>,
+    tx_queue: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
+    /// Are interrupts enabled?
+    interrupts: bool,
+    /// Is an interrupt driven transmission currently in progress?
+    itx: bool,
 }
 
 impl X86SerialPort {
@@ -39,7 +46,9 @@ impl X86SerialPort {
 
         let mut s = Self {
             base: ports,
-            tx_queue: conquer_once::spin::OnceCell::uninit(),
+            tx_queue: Arc::new(conquer_once::spin::OnceCell::uninit()),
+            interrupts: false,
+            itx: false,
         };
         let a = s.receive();
         if let Some(a) = a {
@@ -82,16 +91,85 @@ impl X86SerialPort {
     fn setup(&mut self) {
         self.tx_queue
             .try_init_once(|| crossbeam::queue::ArrayQueue::new(32));
-        // Enable interrupts for sending and receiving data
-        crate::VGA.print_str(&alloc::format!("Enabling serial port interrupts\r\n"));
-        self.base.port(1).port_write(3u8);
-        self.base.port(4).port_write(0x03u8 | 8u8);
+        // Enable interrupts for receiving data
+        self.base.port(1).port_write(1u8);
+        self.base.port(4).port_write(0x03u8);
+    }
+
+    /// The interrupt handler code
+    fn handle_interrupt(
+        s: &LockedArc<X86SerialPort>,
+        tx_queue: &Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
+    ) {
+        if let Ok(aq) = tx_queue.try_get() {
+            if let Some(v) = aq.pop() {
+                s.lock().base.port(0).port_write(v);
+            } else {
+                s.lock().disable_tx_interrupt();
+            }
+        }
+    }
+
+    /// Enable the tx interrupt, used when sending data over the serial port
+    /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
+    unsafe fn enable_tx_interrupt(&mut self) {
+        if !self.itx {
+            let v: u8 = self.base.port(1).port_read();
+            self.base.port(1).port_write(v | 2);
+            self.itx = true;
+        }
+    }
+
+    /// Stop the tx interrupt. Used when a transmission has completed.
+    fn disable_tx_interrupt(&mut self) {
+        if self.itx {
+            let v: u8 = self.base.port(1).port_read();
+            self.base.port(1).port_write(v & !2);
+            self.itx = false;
+        }
+    }
+}
+
+impl LockedArc<X86SerialPort> {
+    /// Asynchronously enable the tx interrupt.
+    async fn enable_tx_interrupt(&self) {
+        crate::SYSTEM
+            .lock()
+            .await
+            .as_ref()
+            .map(|s| s.disable_irq(4));
+        unsafe {
+            self.lock().enable_tx_interrupt();
+        }
+        crate::SYSTEM.lock().await.as_ref().map(|s| s.enable_irq(4));
     }
 }
 
 impl super::SerialTrait for LockedArc<X86SerialPort> {
     fn setup(&self, _rate: u32) -> Result<(), ()> {
         todo!();
+    }
+
+    fn enable_interrupts(&self) -> Result<(), ()> {
+        doors_macros::todo_item!(
+            "Use the appropriate irq number here instead of hardcoding the value"
+        );
+        let irqnum = 4;
+        let txq = {
+            let mut s = self.lock();
+            s.base.port(4).port_write(0x03u8 | 8u8);
+            s.interrupts = true;
+            s.tx_queue.clone()
+        };
+        let mut p = crate::SYSTEM.sync_lock();
+        use crate::kernel::SystemTrait;
+        let s2 = self.clone();
+        p.as_mut().map(move |p| {
+            p.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2, &txq));
+            p.enable_irq(irqnum);
+        });
+
+        Ok(())
     }
 
     fn sync_transmit(&self, data: &[u8]) {
@@ -113,23 +191,31 @@ impl super::SerialTrait for LockedArc<X86SerialPort> {
     fn sync_flush(&self) {}
 
     async fn transmit(&self, data: &[u8]) {
-        let mut s = self.lock();
-        if let Some(q) = s.tx_queue.get() {
+        let txq = {
+            let s = self.lock();
+            s.tx_queue.clone()
+        };
+        if let Some(q) = txq.get() {
             for c in data {
                 while q.push(*c).is_err() {
                     executor::Task::yield_now().await;
                 }
+                self.enable_tx_interrupt().await;
             }
         }
     }
 
     async fn transmit_str(&self, data: &str) {
-        let mut s = self.lock();
-        if let Some(q) = s.tx_queue.get() {
+        let txq = {
+            let s = self.lock();
+            s.tx_queue.clone()
+        };
+        if let Some(q) = txq.get() {
             for c in data.bytes() {
                 while q.push(c).is_err() {
                     executor::Task::yield_now().await;
                 }
+                self.enable_tx_interrupt().await;
             }
         }
     }

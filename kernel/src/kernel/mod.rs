@@ -1,7 +1,9 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
+use core::{ops::DerefMut, pin::Pin};
+
 use crate::{Locked, LockedArc};
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
 /// This is the main struct for interacting with the gpio system
@@ -52,6 +54,11 @@ impl SerialHandler {
     /// Get a serial module
     pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::serial::Serial> {
         self.devs[i].clone()
+    }
+
+    /// Iterate over all serial ports
+    pub fn iter(&mut self) -> core::slice::Iter<LockedArc<crate::modules::serial::Serial>> {
+        self.devs.iter()
     }
 }
 
@@ -162,6 +169,8 @@ pub trait SystemTrait {
     fn enable_interrupts(&self);
     /// Disable interrupts
     fn disable_interrupts(&self);
+    /// Register a serial port handler
+    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F);
     /// Enable IRQ
     fn enable_irq(&self, irq: u8);
     /// Disable IRQ
@@ -176,8 +185,8 @@ pub trait SystemTrait {
 
 /// This struct implements the SystemTrait
 #[enum_dispatch::enum_dispatch(SystemTrait)]
-pub enum System<'a> {
+pub enum System {
     #[cfg(kernel_machine = "pc64")]
     /// The x86 64 system code
-    X86_64(crate::boot::x86::boot64::X86System<'a>),
+    X86_64(Pin<Box<crate::boot::x86::boot64::X86System>>),
 }

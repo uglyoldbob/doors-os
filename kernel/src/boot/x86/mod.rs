@@ -121,6 +121,7 @@ impl Drop for IoPortArray<'_> {
 impl IoPortArray<'_> {
     /// Get a port reference, ensuring that it is not out of bounds for the array. Will panic if out of bounds.
     pub fn port<T>(&self, index: u16) -> IoPortRef<T> {
+        doors_macros::todo_item!("Figure out how to disallow port writes on the port ref for this");
         assert!(index < self.quantity);
         IoPortRef {
             r: self.base + index,
@@ -268,7 +269,7 @@ fn setup_serial() {
 }
 
 /// This function is called by the entrance module for the kernel.
-fn main_boot(system: crate::kernel::System) -> ! {
+fn main_boot() -> ! {
     crate::VGA.print_str("This is a test\r\n");
-    crate::main(system)
+    crate::main()
 }

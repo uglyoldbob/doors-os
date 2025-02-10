@@ -6,12 +6,13 @@ use core::{
     cell::UnsafeCell,
     fmt,
     ops::{Deref, DerefMut},
+    pin::Pin,
     sync::atomic::Ordering,
 };
 
 pub use executor::*;
 
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 
 use crate::kernel;
 
@@ -31,33 +32,6 @@ pub trait IoReadWrite<T> {
     fn port_read(&mut self) -> T;
     /// Write data to the io port, with the proper size. It is advised that the address be properly aligned for the size of access being performed.
     fn port_write(&mut self, val: T);
-}
-
-/// A wrapper around box that allows for traits to be implemented on a Box
-pub struct Box<T> {
-    /// The contained object
-    inner: alloc::boxed::Box<T>,
-}
-
-impl<T: Clone> Clone for Box<T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<T> core::ops::Deref for Box<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.inner
-    }
-}
-
-impl<T> core::ops::DerefMut for Box<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
 }
 
 /// A wrapper that allows for traits to be implemented on an Arc<Mutex<A>>
@@ -275,6 +249,11 @@ pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
 /// The VGA instance used for x86 kernel printing
 pub static VGA: AsyncLocked<Option<crate::TextDisplay>> = AsyncLocked::new(None);
+
+lazy_static::lazy_static! {
+    /// The system manger for the kernel
+    pub static ref SYSTEM: AsyncLocked<Option<kernel::System>> = AsyncLocked::new(None);
+}
 
 impl AsyncLocked<Option<crate::TextDisplay>> {
     /// Print a fixed string. This is intended to be used in panic type situations.

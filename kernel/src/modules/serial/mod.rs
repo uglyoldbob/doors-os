@@ -11,6 +11,8 @@ use crate::LockedArc;
 /// The standard trait for serial ports
 #[enum_dispatch::enum_dispatch]
 pub trait SerialTrait {
+    /// Enable any required interrupts
+    fn enable_interrupts(&self) -> Result<(), ()>;
     /// Setup the serial port
     fn setup(&self, rate: u32) -> Result<(), ()>;
     /// Transmit some data synchronously. Data may not be fully sent until flush is performed.
@@ -53,6 +55,10 @@ pub struct DummySerial {}
 
 impl SerialTrait for DummySerial {
     fn setup(&self, _rate: u32) -> Result<(), ()> {
+        Err(())
+    }
+
+    fn enable_interrupts(&self) -> Result<(), ()> {
         Err(())
     }
 

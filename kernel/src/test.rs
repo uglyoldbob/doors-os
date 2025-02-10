@@ -73,14 +73,13 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-fn main(mut system: kernel::System) -> ! {
+fn main() -> ! {
     {
         if true {
             doors_macros::todo_item_panic!("This should never happen");
         }
-        system.enable_interrupts();
-        system.init();
-        //SYSTEM.replace(Some(system));
+        SYSTEM.sync_lock().as_mut().unwrap().enable_interrupts();
+        SYSTEM.sync_lock().as_mut().unwrap().init();
         if DoorsTester::doors_test_main().is_err() {
             crate::VGA.print_str("At least one test failed\r\n");
         }

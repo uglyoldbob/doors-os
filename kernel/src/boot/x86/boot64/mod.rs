@@ -1,8 +1,10 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use crate::kernel;
 use crate::modules::video::hex_dump_generic;
 use crate::IoReadWrite;
 use crate::Locked;
+use crate::LockedArc;
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
 use acpi::madt::Madt;
@@ -10,7 +12,10 @@ use acpi::sdt::SdtHeader;
 use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::alloc::Allocator;
+use core::pin::Pin;
 use core::ptr::NonNull;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
@@ -81,6 +86,8 @@ extern "C" {
 
 lazy_static! {
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
+    /// The irq handlers registered by the system
+    static ref IRQ_HANDLERS: LockedArc<[Option<Box<dyn FnMut() -> () + Send + Sync>>; 256]> = LockedArc::new([const { None }; 256]);
 }
 
 /// The divide by zero handler
@@ -94,7 +101,12 @@ pub extern "C" fn divide_by_zero() {
 
 /// The test irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
-    crate::VGA.print_str("IRQ4\r\n");
+    let mut h = IRQ_HANDLERS.lock();
+    if let Some(h2) = &mut h[4] {
+        h2();
+    } else {
+        panic!("NOT WORKING?");
+    }
     let mut p = INTERRUPT_CONTROLLER.lock();
     p.as_mut().map(|p| p.end_of_interrupt(4));
 }
@@ -573,7 +585,7 @@ impl Pic {
     }
 
     /// Enable the specified irq
-    pub fn enable(&mut self, irq: u8) {
+    pub fn enable_irq(&mut self, irq: u8) {
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
             self.pic1.port(1).port_write(data & !(1 << irq));
@@ -581,6 +593,18 @@ impl Pic {
             let irq = irq - 8;
             let data: u8 = self.pic2.port(1).port_read();
             self.pic2.port(1).port_write(data & !(1 << irq));
+        }
+    }
+
+    /// Disable the specified irq
+    pub fn disable_irq(&mut self, irq: u8) {
+        if irq < 8 {
+            let data: u8 = self.pic1.port(1).port_read();
+            self.pic1.port(1).port_write(data | (1 << irq));
+        } else {
+            let irq = irq - 8;
+            let data: u8 = self.pic2.port(1).port_read();
+            self.pic2.port(1).port_write(data | (1 << irq));
         }
     }
 
@@ -633,7 +657,7 @@ struct AmlHandler {}
 
 /// The system boot structure
 #[doors_macros::config_check_struct]
-pub struct X86System<'a> {
+pub struct X86System {
     #[doorsconfig = "acpi"]
     /// Used for information regarding the bootup of the kernel
     boot_info: multiboot2::BootInformation<'a>,
@@ -642,11 +666,34 @@ pub struct X86System<'a> {
     acpi_handler: Acpi<'a>,
     /// Used for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
-    /// Phantom
-    _phantom: core::marker::PhantomData<&'a usize>,
+    /// Suppress `Unpin` because this is self-referencing
+    _pin: core::marker::PhantomPinned,
 }
 
-impl crate::kernel::SystemTrait for X86System<'_> {
+doors_macros::todo_item!("Make macro for optional arguments to a function");
+impl X86System {
+    /// construct a new unmovable System
+    pub fn new(cpuid: CpuId<CpuIdReaderNative>) -> Pin<Box<Self>> {
+        let s = doors_macros::config_build_struct! {
+            X86System {
+                #[doorsconfig = "acpi"]
+                boot_info: boot_info,
+                #[doorsconfig = "acpi"]
+                acpi_handler: Acpi {
+                    pageman: &PAGING_MANAGER,
+                    vmm: &VIRTUAL_MEMORY_ALLOCATOR,
+                },
+                cpuid,
+                _pin: core::marker::PhantomPinned,
+            }
+        };
+        let b = Box::new(s);
+        doors_macros::todo_item!("Populated acpi stuff here");
+        Box::into_pin(b)
+    }
+}
+
+impl crate::kernel::SystemTrait for Pin<Box<X86System>> {
     fn enable_interrupts(&self) {
         x86_64::instructions::interrupts::enable();
     }
@@ -656,12 +703,26 @@ impl crate::kernel::SystemTrait for X86System<'_> {
     }
 
     fn enable_irq(&self, irq: u8) {
-        let mut p = INTERRUPT_CONTROLLER.lock();
-        p.as_mut().map(|p| p.enable(irq));
+        self.disable_interrupts();
+        {
+            let mut p = INTERRUPT_CONTROLLER.lock();
+            p.as_mut().map(|p| p.enable_irq(irq));
+        }
+        self.enable_interrupts();
+    }
+
+    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F) {
+        let a = Box::new(handler);
+        doors_macros::todo_item!("Should interrupts be disabled and enabled for this?");
+        {
+            let mut irqs = IRQ_HANDLERS.lock();
+            irqs[irq as usize] = Some(a);
+        }
     }
 
     fn disable_irq(&self, irq: u8) {
-        doors_macros::todo_item_panic!("Disable IRQ with PIC");
+        let mut p = INTERRUPT_CONTROLLER.lock();
+        p.as_mut().map(|p| p.disable_irq(irq));
     }
 
     fn idle(&mut self) {
@@ -1013,23 +1074,12 @@ pub extern "C" fn start64() -> ! {
         }
     }
 
-    let sys = doors_macros::config_build_struct! {
-        X86System {
-            #[doorsconfig = "acpi"]
-            boot_info: boot_info,
-            #[doorsconfig = "acpi"]
-            acpi_handler: Acpi {
-                pageman: &PAGING_MANAGER,
-                vmm: &VIRTUAL_MEMORY_ALLOCATOR,
-            },
-            cpuid,
-            _phantom: core::marker::PhantomData,
-        }
-    };
+    let sys = X86System::new(cpuid);
 
     unsafe {
         INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
     }
 
-    super::main_boot(sys.into());
+    crate::SYSTEM.replace(Some(kernel::System::X86_64(sys)));
+    super::main_boot();
 }
