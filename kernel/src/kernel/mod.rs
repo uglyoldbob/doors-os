@@ -162,6 +162,10 @@ pub trait SystemTrait {
     fn enable_interrupts(&self);
     /// Disable interrupts
     fn disable_interrupts(&self);
+    /// Enable IRQ
+    fn enable_irq(&self, irq: u8);
+    /// Disable IRQ
+    fn disable_irq(&self, irq: u8);
     /// System required init code
     fn init(&mut self);
     /// Code to idle the system

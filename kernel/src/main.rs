@@ -82,6 +82,7 @@ fn main(mut system: kernel::System) -> ! {
     {
         system.enable_interrupts();
         system.init();
+        //SYSTEM.replace(Some(system));
         crate::VGA.print_str("DoorsOs Booting now\r\n");
 
         {
@@ -145,7 +146,7 @@ fn main(mut system: kernel::System) -> ! {
                 }
             })
             .unwrap();
-        executor.run(system)
+        executor.run()
     }
 }
 

@@ -13,6 +13,8 @@ pub use executor::*;
 
 use alloc::sync::Arc;
 
+use crate::kernel;
+
 /// Get the address of the specified variable
 pub fn address<T>(v: &T) -> usize {
     v as *const T as usize
@@ -92,6 +94,51 @@ impl<A> LockedArc<A> {
     }
 }
 
+/// A wrapper that allows for traits to be implemented on an Arc<Mutex<A>>
+pub struct AsyncLockedArc<A> {
+    /// The arc with the contained object
+    inner: Arc<AsyncLocked<A>>,
+}
+
+impl<A> Clone for AsyncLockedArc<A> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<A> AsyncLockedArc<A> {
+    /// Create a new locked arc object.
+    pub fn new(inner: A) -> Self {
+        Self {
+            inner: Arc::new(AsyncLocked::new(inner)),
+        }
+    }
+
+    /// Lock the contained mutex, returning a protected instance of the contained object
+    pub fn sync_lock(&self) -> AsyncLockedMutexGuard<A> {
+        self.inner.sync_lock()
+    }
+
+    /// Lock the contained mutex asynchronously, returning a protected instance of the contained object
+    pub async fn lock(&self) -> AsyncLockedMutexGuard<A> {
+        self.inner.lock().await
+    }
+
+    /// Replace the contents of the protected instance with another instance of the thing
+    pub fn sync_replace(&self, r: A) {
+        let mut s = self.inner.sync_lock();
+        *s = r;
+    }
+
+    /// Replace the contents of the protected instance with another instance of the thing
+    pub async fn replace(&self, r: A) {
+        let mut s = self.inner.lock().await;
+        *s = r;
+    }
+}
+
 /// An async mutex
 pub struct AsyncLocked<A: ?Sized> {
     /// The lock
@@ -154,6 +201,12 @@ impl<A> AsyncLocked<A> {
             }
             executor::Task::yield_now().await;
         }
+    }
+
+    /// Replace the contents of the protected instance with another instance of the thing
+    pub fn replace(&self, r: A) {
+        let mut s = self.sync_lock();
+        *s = r;
     }
 }
 

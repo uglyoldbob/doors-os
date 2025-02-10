@@ -80,11 +80,12 @@ fn main(mut system: kernel::System) -> ! {
         }
         system.enable_interrupts();
         system.init();
+        //SYSTEM.replace(Some(system));
         if DoorsTester::doors_test_main().is_err() {
             crate::VGA.print_str("At least one test failed\r\n");
         }
         let mut executor = Executor::default();
-        executor.run(system)
+        executor.run()
     }
 }
 

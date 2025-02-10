@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::modules::video::hex_dump_generic;
+use crate::IoReadWrite;
 use crate::Locked;
 use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
@@ -89,6 +90,13 @@ pub extern "C" fn divide_by_zero() {
     loop {
         x86_64::instructions::hlt();
     }
+}
+
+/// The test irq4 handler
+pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
+    crate::VGA.print_str("IRQ4\r\n");
+    let mut p = INTERRUPT_CONTROLLER.lock();
+    p.as_mut().map(|p| p.end_of_interrupt(4));
 }
 
 ///The handler for segment not present
@@ -192,6 +200,9 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
 /// The interrupt descriptor table for the system
 pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
+
+/// The interrupt controller
+static INTERRUPT_CONTROLLER: Locked<Option<Pic>> = Locked::new(None);
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
@@ -546,11 +557,31 @@ impl Pic {
         })
     }
 
+    /// Signal end of interrupt for the specified irq
+    pub fn end_of_interrupt(&mut self, irq: u8) {
+        if irq >= 8 {
+            self.pic2.port(0).port_write(0x20u8);
+        }
+        self.pic1.port(0).port_write(0x20u8);
+    }
+
     /// Disable all interrupts for both pics
     pub fn disable(&mut self) {
         use crate::IoReadWrite;
         self.pic1.port(1).port_write(0xffu8);
         self.pic2.port(1).port_write(0xffu8);
+    }
+
+    /// Enable the specified irq
+    pub fn enable(&mut self, irq: u8) {
+        if irq < 8 {
+            let data: u8 = self.pic1.port(1).port_read();
+            self.pic1.port(1).port_write(data & !(1 << irq));
+        } else {
+            let irq = irq - 8;
+            let data: u8 = self.pic2.port(1).port_read();
+            self.pic2.port(1).port_write(data & !(1 << irq));
+        }
     }
 
     /// Perform a remap of the pic interrupts
@@ -622,6 +653,15 @@ impl crate::kernel::SystemTrait for X86System<'_> {
 
     fn disable_interrupts(&self) {
         x86_64::instructions::interrupts::disable();
+    }
+
+    fn enable_irq(&self, irq: u8) {
+        let mut p = INTERRUPT_CONTROLLER.lock();
+        p.as_mut().map(|p| p.enable(irq));
+    }
+
+    fn disable_irq(&self, irq: u8) {
+        doors_macros::todo_item_panic!("Disable IRQ with PIC");
     }
 
     fn idle(&mut self) {
@@ -932,9 +972,12 @@ pub extern "C" fn start64() -> ! {
         unsafe { INITIAL_STACK as usize }
     ));
 
-    let mut pic = Pic::new().unwrap();
-    pic.disable();
-    pic.remap(0x20, 0x28);
+    {
+        let mut pic = Pic::new().unwrap();
+        pic.disable();
+        pic.remap(0x20, 0x28);
+        INTERRUPT_CONTROLLER.replace(Some(pic));
+    }
 
     {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.lock();
@@ -942,6 +985,7 @@ pub extern "C" fn start64() -> ! {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 divide_by_zero_asm as *const (),
             ));
+            idt[0x24].set_handler_fn(irq4);
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 segment_not_present_asm as *const (),

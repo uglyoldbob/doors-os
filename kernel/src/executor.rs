@@ -5,8 +5,6 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
-use crate::kernel::SystemTrait;
-
 /// The id for a task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TaskId(usize);
@@ -129,7 +127,6 @@ impl TaskList {
     /// Run tasks in the list
     fn run(
         &mut self,
-        system: &mut crate::kernel::System,
         all_tasks: &mut alloc::collections::BTreeMap<TaskId, Task>,
         wakers: &mut alloc::collections::BTreeMap<TaskId, Waker>,
     ) {
@@ -180,13 +177,12 @@ impl Executor {
     }
 
     /// Runs tasks
-    fn run_tasks(&mut self, system: &mut crate::kernel::System) {
-        self.basic_tasks
-            .run(system, &mut self.all_tasks, &mut self.wakers);
+    fn run_tasks(&mut self) {
+        self.basic_tasks.run(&mut self.all_tasks, &mut self.wakers);
     }
 
     /// Run the executor
-    pub fn run(&mut self, mut system: crate::kernel::System) -> ! {
+    pub fn run(&mut self) -> ! {
         crate::VGA.print_str("Running the executor\r\n");
         let mut l = 0usize;
         loop {
@@ -194,12 +190,13 @@ impl Executor {
                 "Running the executor loop {}\r\n",
                 l
             ));
-            self.run_tasks(&mut system);
+            self.run_tasks();
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "Running the executor idle check {}\r\n",
                 l
             ));
-            system.idle_if(|| self.basic_tasks.is_empty());
+            doors_macros::todo_item!("Properly idle the system here");
+            //system.idle_if(|| self.basic_tasks.is_empty());
             l += 1;
         }
     }
