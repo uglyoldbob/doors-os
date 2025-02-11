@@ -68,6 +68,7 @@ use modules::rng;
 use modules::rng::RngTrait;
 use modules::serial::SerialTrait;
 use modules::video::hex_dump_generic;
+use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
 
 /// This creates the multiboot2 signature that allows the kernel to be booted by a multiboot compliant bootloader such as grub.
@@ -78,6 +79,29 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
+
+/// Run a network test on the net0 network card, if it exists
+async fn net_test() {
+    crate::VGA
+        .print_str_async("Waiting for network card net0\r\n")
+        .await;
+    executor::Task::yield_now().await;
+    crate::VGA
+        .print_str_async("About to do some stuff with a network card net0\r\n")
+        .await;
+    executor::Task::yield_now().await;
+    if let Some(na) = crate::modules::network::get_network_adapter("net0").await {
+        let mut na = na.lock();
+        crate::VGA
+            .print_str_async("About to do some stuff with a network card\r\n")
+            .await;
+        let ma = na.get_mac_address();
+        hex_dump_generic_async(&ma, false, false).await;
+        crate::VGA
+            .print_str_async("Done doing stuff with network card\r\n")
+            .await;
+    }
+}
 
 fn main() -> ! {
     {
@@ -119,26 +143,15 @@ fn main() -> ! {
                 }
             }
         }
-        {
-            if let Some(na) = crate::modules::network::get_network_adapter("net0") {
-                let mut na = na.lock();
-                crate::VGA.print_str("About to do some stuff with a network card\r\n");
-                let ma = na.get_mac_address();
-                hex_dump_generic(&ma, false, false);
-                crate::VGA.print_str("Done doing stuff with network card\r\n");
-            }
-        }
         crate::VGA.print_str("About to start the executor\r\n");
         let mut executor = Executor::default();
+        executor.spawn(executor::Task::new(net_test())).unwrap();
         executor
             .spawn_closure(async || {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am groot {}\r\n", i))
                         .await;
-                    executor::Task::yield_now().await;
-                }
-                loop {
                     executor::Task::yield_now().await;
                 }
             })
@@ -149,9 +162,6 @@ fn main() -> ! {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am batman {}\r\n", i))
                         .await;
-                    executor::Task::yield_now().await;
-                }
-                loop {
                     executor::Task::yield_now().await;
                 }
             })

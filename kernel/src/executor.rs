@@ -186,17 +186,13 @@ impl Executor {
         crate::VGA.print_str("Running the executor\r\n");
         let mut l = 0usize;
         loop {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Running the executor loop {}\r\n",
-                l
-            ));
             self.run_tasks();
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Running the executor idle check {}\r\n",
-                l
-            ));
-            doors_macros::todo_item!("Properly idle the system here");
-            //system.idle_if(|| self.basic_tasks.is_empty());
+            use crate::kernel::SystemTrait;
+            crate::SYSTEM
+                .sync_lock()
+                .as_mut()
+                .unwrap()
+                .idle_if(|| self.basic_tasks.is_empty());
             l += 1;
         }
     }

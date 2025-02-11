@@ -275,7 +275,10 @@ impl Future for AsyncWriter<'_> {
                         if newindex < self.data.len() {
                             if q.push(self.data[newindex]).is_ok() {
                                 newindex += 1;
-                                self.interrupt_enable = true;
+                                if !self.interrupt_enable {
+                                    self.interrupt_enable = true;
+                                    self.ienable = Box::pin(self.s.enable_tx_interrupt());
+                                }
                             } else {
                                 let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
                                 break core::task::Poll::Pending;
@@ -291,8 +294,11 @@ impl Future for AsyncWriter<'_> {
                         } else {
                             break core::task::Poll::Ready(());
                         }
-                    } else {
+                    } else if self.interrupt_enable {
                         let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
+                        if self.ienable.as_mut().poll(cx).is_ready() {
+                            self.interrupt_enable = false;
+                        }
                         break core::task::Poll::Pending;
                     }
                 }

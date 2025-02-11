@@ -635,3 +635,61 @@ pub fn hex_dump_generic<T>(data: &T, print_address: bool, print_ascii: bool) {
     let data = unsafe { core::slice::from_raw_parts((data as *const T) as *const u8, len) };
     hex_dump(data, print_address, print_ascii);
 }
+
+/// prints out a user friendly hex dump of the specified data
+pub async fn hex_dump_async(data: &[u8], print_address: bool, print_ascii: bool) {
+    let len = data.len();
+    let mut addr_len = 1;
+    let mut len_calc = len;
+    loop {
+        if len_calc > 15 {
+            addr_len += 1;
+            len_calc /= 16;
+        } else {
+            break;
+        }
+    }
+    crate::VGA
+        .print_str_async(&alloc::format!(
+            "ADDRESS IS {:p}, size {:x}\r\n",
+            data,
+            data.len()
+        ))
+        .await;
+    for (i, b) in data.chunks(16).enumerate() {
+        if print_address {
+            crate::VGA
+                .print_str_async(&alloc::format!("{:0>addr_len$x}: ", i * 16))
+                .await;
+        }
+        for d in b {
+            crate::VGA
+                .print_str_async(&alloc::format!("{:02x} ", d))
+                .await;
+        }
+        if print_ascii {
+            for _ in b.len()..16 {
+                crate::VGA.print_str_async("   ").await;
+            }
+            for d in b {
+                let c = *d as char;
+                if c.is_ascii() {
+                    match *d {
+                        32..128 => crate::VGA.print_str_async(&alloc::format!("{}", c)).await,
+                        _ => crate::VGA.print_str_async("?").await,
+                    }
+                } else {
+                    crate::VGA.print_str_async("?").await;
+                }
+            }
+        }
+        crate::VGA.print_str_async("\r\n").await;
+    }
+}
+
+/// prints out a user friendly hex dump of the specified data
+pub async fn hex_dump_generic_async<T>(data: &T, print_address: bool, print_ascii: bool) {
+    let len = core::mem::size_of::<T>();
+    let data = unsafe { core::slice::from_raw_parts((data as *const T) as *const u8, len) };
+    hex_dump_async(data, print_address, print_ascii).await;
+}
