@@ -464,33 +464,6 @@ pub enum TextDisplay {
     FramebufferTextFull(FramebufferTextMode<pixels::FullColor<u32>>),
 }
 
-impl log::Log for crate::AsyncLocked<Option<TextDisplay>> {
-    fn enabled(&self, _metadata: &log::Metadata) -> bool {
-        true
-    }
-
-    fn log(&self, record: &log::Record) {
-        let mut s = self.sync_lock();
-        if let Some(s) = s.as_mut() {
-            s.print_str("LOG RECORD\r\n");
-            s.print_str(&record.level().to_string());
-            s.print_str(": ");
-            let target = if !record.target().is_empty() {
-                record.target()
-            } else {
-                record.module_path().unwrap_or_default()
-            };
-            s.print_str(target);
-            s.print_str(&alloc::format!("{}", record.args()));
-            s.print_str("\r\n");
-        } else {
-            panic!();
-        }
-    }
-
-    fn flush(&self) {}
-}
-
 /// Enables sending video text over a serial port
 pub struct VideoOverSerial {
     /// The serial port to send data over

@@ -10,9 +10,11 @@ pub mod intel;
 
 doors_macros2::enum_reexport!(intel);
 
-/// Represents all network adapters for the kernel
-static NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, LockedArc<NetworkAdapter>>> =
-    AsyncLocked::new(BTreeMap::new());
+lazy_static::lazy_static! {
+    /// Represents all network adapters for the kernel
+    static ref NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, LockedArc<NetworkAdapter>>> =
+        AsyncLocked::new(BTreeMap::new());
+}
 
 /// Register a network adapter
 pub fn register_network_adapter(na: NetworkAdapter) {

@@ -221,19 +221,6 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
-/// Setup the x86 pci space and register all pci drivers
-fn setup_pci() {
-    let pci = crate::modules::pci::x86::Pci::new();
-    if let Some(pci) = pci {
-        let mut pci = crate::modules::pci::Pci::X86Pci(pci);
-        pci.setup();
-        crate::modules::pci::pci_register_drivers();
-        pci.driver_setup();
-    }
-    let h = HEAP_MANAGER.lock();
-    h.print();
-}
-
 /// Probe and setup all serial ports for x86
 /// This will probably be removed once pci space is further developed
 fn setup_serial() {
@@ -256,7 +243,7 @@ fn setup_serial() {
         let mut v = crate::VGA.sync_lock();
         v.replace(sd);
         drop(v);
-        match log::set_logger(&crate::VGA) {
+        match log::set_logger(&*crate::VGA) {
             Ok(_a) => crate::VGA.print_str("logger set\r\n"),
             Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "Logger failed to set {:?}\r\n",

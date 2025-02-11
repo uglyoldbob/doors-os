@@ -5,6 +5,8 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
+use alloc::borrow::ToOwned;
+
 /// The id for a task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TaskId(usize);
@@ -184,16 +186,11 @@ impl Executor {
     /// Run the executor
     pub fn run(&mut self) -> ! {
         crate::VGA.print_str("Running the executor\r\n");
-        let mut l = 0usize;
+        let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
         loop {
             self.run_tasks();
             use crate::kernel::SystemTrait;
-            crate::SYSTEM
-                .sync_lock()
-                .as_mut()
-                .unwrap()
-                .idle_if(|| self.basic_tasks.is_empty());
-            l += 1;
+            sys.idle_if(|| self.basic_tasks.is_empty());
         }
     }
 }

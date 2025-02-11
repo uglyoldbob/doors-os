@@ -206,6 +206,7 @@ impl<'a> HeapManager<'a> {
                 .expand_with_physical_memory(layout.size() + layout.align())
                 .is_err()
         {
+            crate::VGA.print_str("OUT OF MEMORY 0\r\n");
             return core::ptr::null_mut();
         }
 
@@ -309,16 +310,23 @@ impl<'a> HeapManager<'a> {
                 };
                 return r;
             }
-            if times == 1
-                && self
-                    .expand_with_physical_memory(layout.size() + layout.align())
-                    .is_err()
-            {
-                crate::VGA.print_str("OUT OF MEMORY 1\r\n");
-                return core::ptr::null_mut();
+            if times == 1 {
+                self.print();
+                match self.expand_with_physical_memory(layout.size() + layout.align()) {
+                    Ok(_) => {
+                        crate::VGA.print_str("GOT SOME MEMORY 1\r\n");
+                        self.print();
+                    }
+                    Err(_) => {
+                        crate::VGA.print_str("OUT OF MEMORY 1\r\n");
+                        self.print();
+                        return core::ptr::null_mut();
+                    }
+                }
             }
             if times == 2 {
                 crate::VGA.print_str("OUT OF MEMORY 2\r\n");
+                self.print();
                 return core::ptr::null_mut();
             }
         }

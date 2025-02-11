@@ -15,6 +15,7 @@ extern crate alloc;
 doors_macros::use_doors_test!();
 
 mod common;
+use alloc::borrow::ToOwned;
 pub use common::*;
 
 pub mod boot;
@@ -67,7 +68,6 @@ use modules::network::NetworkAdapterTrait;
 use modules::rng;
 use modules::rng::RngTrait;
 use modules::serial::SerialTrait;
-use modules::video::hex_dump_generic;
 use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
 
@@ -105,8 +105,9 @@ async fn net_test() {
 
 fn main() -> ! {
     {
-        SYSTEM.sync_lock().as_mut().unwrap().enable_interrupts();
-        SYSTEM.sync_lock().as_mut().unwrap().init();
+        let sys = SYSTEM.sync_lock().to_owned().unwrap();
+        sys.enable_interrupts();
+        sys.init();
         crate::VGA.print_str("DoorsOs Booting now\r\n");
         {
             let mut ser = crate::kernel::SERIAL.lock();
@@ -145,7 +146,12 @@ fn main() -> ! {
         }
         crate::VGA.print_str("About to start the executor\r\n");
         let mut executor = Executor::default();
-        executor.spawn(executor::Task::new(net_test())).unwrap();
+        executor
+            .spawn_closure(async || {
+                modules::pci::setup_pci().await;
+            })
+            .unwrap();
+        //executor.spawn(executor::Task::new(net_test())).unwrap();
         executor
             .spawn_closure(async || {
                 for i in 0..32 {

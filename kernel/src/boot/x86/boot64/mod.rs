@@ -693,7 +693,7 @@ impl X86System {
     }
 }
 
-impl crate::kernel::SystemTrait for Pin<Box<X86System>> {
+impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
     fn enable_interrupts(&self) {
         x86_64::instructions::interrupts::enable();
     }
@@ -722,11 +722,11 @@ impl crate::kernel::SystemTrait for Pin<Box<X86System>> {
         p.as_mut().map(|p| p.disable_irq(irq));
     }
 
-    fn idle(&mut self) {
+    fn idle(&self) {
         x86_64::instructions::hlt();
     }
 
-    fn idle_if(&mut self, mut f: impl FnMut() -> bool) {
+    fn idle_if(&self, mut f: impl FnMut() -> bool) {
         self.disable_interrupts();
         if f() {
             x86_64::instructions::interrupts::enable_and_hlt();
@@ -735,28 +735,30 @@ impl crate::kernel::SystemTrait for Pin<Box<X86System>> {
         }
     }
 
-    fn init(&mut self) {
+    fn init(&self) {
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
         if aml.initialize_objects().is_ok() {
             crate::VGA.print_str("AML READY\r\n");
         }
-
-        let cap = self.cpuid.get_processor_capacity_feature_info().unwrap();
         {
-            let mut p = PAGING_MANAGER.lock();
-            p.set_physical_address_size(cap.physical_address_bits());
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "CPUID MAXADDR is {:?}\r\n",
-                cap.physical_address_bits()
-            ));
+            let this = self.lock();
+            let cap = this.cpuid.get_processor_capacity_feature_info().unwrap();
+            {
+                let mut p = PAGING_MANAGER.lock();
+                p.set_physical_address_size(cap.physical_address_bits());
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "CPUID MAXADDR is {:?}\r\n",
+                    cap.physical_address_bits()
+                ));
+            }
         }
+
         doors_macros::config_check_bool!(acpi, {
             crate::VGA.print_fixed_str("About to open acpi stuff\r\n");
             handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
             crate::VGA.print_fixed_str("Done with acpi handling\r\n");
         });
-        super::setup_pci();
     }
 }
 
@@ -1067,7 +1069,6 @@ pub extern "C" fn start64() -> ! {
                 invalid_opcode as *const (),
             ));
             idt.invalid_opcode = entry;
-            //idt[6].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(unknown_interrupt_asm as *const ()));
         }
     }
 
@@ -1077,6 +1078,6 @@ pub extern "C" fn start64() -> ! {
         INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
     }
 
-    crate::SYSTEM.replace(Some(kernel::System::X86_64(sys)));
+    crate::SYSTEM.replace(Some(kernel::System::X86_64(LockedArc::new(sys))));
     super::main_boot();
 }

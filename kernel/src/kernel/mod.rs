@@ -176,17 +176,18 @@ pub trait SystemTrait {
     /// Disable IRQ
     fn disable_irq(&self, irq: u8);
     /// System required init code
-    fn init(&mut self);
+    fn init(&self);
     /// Code to idle the system
-    fn idle(&mut self);
+    fn idle(&self);
     /// Code to conditionally idle the system based on a closure
-    fn idle_if(&mut self, f: impl FnMut() -> bool);
+    fn idle_if(&self, f: impl FnMut() -> bool);
 }
 
 /// This struct implements the SystemTrait
+#[derive(Clone)]
 #[enum_dispatch::enum_dispatch(SystemTrait)]
 pub enum System {
     #[cfg(kernel_machine = "pc64")]
     /// The x86 64 system code
-    X86_64(Pin<Box<crate::boot::x86::boot64::X86System>>),
+    X86_64(LockedArc<Pin<Box<crate::boot::x86::boot64::X86System>>>),
 }

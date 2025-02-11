@@ -155,21 +155,17 @@ impl X86SerialPort {
 
 impl AsyncLockedArc<X86SerialPort> {
     /// Asynchronously enable the tx interrupt.
-    async fn enable_tx_interrupt(&self) {
+    async fn enable_tx_interrupt(&self, sys: crate::kernel::System) {
         let (flag, irqnum) = {
             let s = self.lock().await;
             (s.itx, s.irq)
         };
         if !flag {
-            if let Some(s) = crate::SYSTEM.lock().await.as_ref() {
-                s.disable_irq(irqnum);
-            }
+            sys.disable_irq(irqnum);
             unsafe {
                 self.lock().await.enable_tx_interrupt();
             }
-            if let Some(s) = crate::SYSTEM.lock().await.as_ref() {
-                s.enable_irq(irqnum);
-            }
+            sys.enable_irq(irqnum);
         }
     }
 }
@@ -214,11 +210,18 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
     fn sync_flush(&self) {}
 
     async fn transmit(&self, data: &[u8]) {
-        AsyncWriter::new(self, data).await
+        use alloc::borrow::ToOwned;
+        AsyncWriter::new(self, data, crate::SYSTEM.sync_lock().to_owned().unwrap()).await
     }
 
     async fn transmit_str(&self, data: &str) {
-        AsyncWriter::new(self, data.as_bytes()).await
+        use alloc::borrow::ToOwned;
+        AsyncWriter::new(
+            self,
+            data.as_bytes(),
+            crate::SYSTEM.sync_lock().to_owned().unwrap(),
+        )
+        .await
     }
 
     async fn flush(&self) {
@@ -242,6 +245,8 @@ struct AsyncWriter<'a> {
     data: &'a [u8],
     /// Waiting on interrupt enable
     interrupt_enable: bool,
+    /// The system
+    sys: crate::kernel::System,
     /// The interrupt enable future
     #[pin]
     ienable: futures::future::BoxFuture<'a, ()>,
@@ -249,13 +254,18 @@ struct AsyncWriter<'a> {
 
 impl<'a> AsyncWriter<'a> {
     /// Construct a new object for asynchronous serial port writing
-    fn new(s: &'a AsyncLockedArc<X86SerialPort>, data: &'a [u8]) -> Self {
+    fn new(
+        s: &'a AsyncLockedArc<X86SerialPort>,
+        data: &'a [u8],
+        sys: crate::kernel::System,
+    ) -> Self {
         Self {
             s,
             index: 0,
             data,
             interrupt_enable: false,
-            ienable: Box::pin(s.enable_tx_interrupt()),
+            sys: sys.clone(),
+            ienable: Box::pin(s.enable_tx_interrupt(sys)),
         }
     }
 }
@@ -277,7 +287,8 @@ impl Future for AsyncWriter<'_> {
                                 newindex += 1;
                                 if !self.interrupt_enable {
                                     self.interrupt_enable = true;
-                                    self.ienable = Box::pin(self.s.enable_tx_interrupt());
+                                    self.ienable =
+                                        Box::pin(self.s.enable_tx_interrupt(self.sys.clone()));
                                 }
                             } else {
                                 let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());

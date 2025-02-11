@@ -10,6 +10,7 @@ use core::{
     sync::atomic::Ordering,
 };
 
+use crossbeam::queue::ArrayQueue;
 pub use executor::*;
 
 use alloc::{boxed::Box, sync::Arc};
@@ -117,6 +118,8 @@ impl<A> AsyncLockedArc<A> {
 pub struct AsyncLocked<A: ?Sized> {
     /// The lock
     lock: core::sync::atomic::AtomicBool,
+    /// Wakers for the lock
+    wakers: Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
     /// The protected data
     data: UnsafeCell<A>,
 }
@@ -127,6 +130,8 @@ pub struct AsyncLockedMutexGuard<'a, A: ?Sized> {
     lock: &'a core::sync::atomic::AtomicBool,
     /// The unlocked data
     data: *mut A,
+    /// The wakers for the mutex
+    wakers: Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
 }
 
 unsafe impl<A: ?Sized + Send> Sync for AsyncLocked<A> {}
@@ -135,11 +140,42 @@ unsafe impl<A: ?Sized + Send> Send for AsyncLocked<A> {}
 unsafe impl<A: ?Sized + Sync> Sync for AsyncLockedMutexGuard<'_, A> {}
 unsafe impl<A: ?Sized + Send> Send for AsyncLockedMutexGuard<'_, A> {}
 
+/// A struct for a future to lock the mutex
+pub struct AsyncLockedMutexGuardFuture<'a, A> {
+    /// The inner mutex
+    inner: &'a AsyncLocked<A>,
+}
+
+impl<'a, A> core::future::Future for AsyncLockedMutexGuardFuture<'a, A> {
+    type Output = AsyncLockedMutexGuard<'a, A>;
+    fn poll(
+        self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        if self
+            .inner
+            .lock
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            core::task::Poll::Ready(AsyncLockedMutexGuard {
+                lock: &self.inner.lock,
+                data: unsafe { &mut *self.inner.data.get() },
+                wakers: self.inner.wakers.clone(),
+            })
+        } else {
+            self.inner.wakers.push(cx.waker().clone());
+            core::task::Poll::Pending
+        }
+    }
+}
+
 impl<A> AsyncLocked<A> {
     /// Construct a new Self
-    pub const fn new(data: A) -> Self {
+    pub fn new(data: A) -> Self {
         Self {
             lock: core::sync::atomic::AtomicBool::new(false),
+            wakers: Arc::new(ArrayQueue::new(32)),
             data: UnsafeCell::new(data),
         }
     }
@@ -155,26 +191,15 @@ impl<A> AsyncLocked<A> {
                 break AsyncLockedMutexGuard {
                     lock: &self.lock,
                     data: unsafe { &mut *self.data.get() },
+                    wakers: self.wakers.clone(),
                 };
             }
         }
     }
 
     /// Lock the mutex, returning the guard
-    pub async fn lock(&self) -> AsyncLockedMutexGuard<A> {
-        loop {
-            if self
-                .lock
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-                .is_ok()
-            {
-                break AsyncLockedMutexGuard {
-                    lock: &self.lock,
-                    data: unsafe { &mut *self.data.get() },
-                };
-            }
-            executor::Task::yield_now().await;
-        }
+    pub fn lock(&self) -> AsyncLockedMutexGuardFuture<A> {
+        AsyncLockedMutexGuardFuture { inner: self }
     }
 
     /// Replace the contents of the protected instance with another instance of the thing
@@ -215,6 +240,9 @@ impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
         self.lock.store(false, Ordering::Release);
+        for w in self.wakers.pop() {
+            w.wake();
+        }
     }
 }
 
@@ -247,15 +275,42 @@ impl<A> Locked<A> {
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
-/// The VGA instance used for x86 kernel printing
-pub static VGA: AsyncLocked<Option<crate::TextDisplay>> = AsyncLocked::new(None);
-
 lazy_static::lazy_static! {
     /// The system manger for the kernel
     pub static ref SYSTEM: AsyncLocked<Option<kernel::System>> = AsyncLocked::new(None);
+    /// The VGA instance used for x86 kernel printing
+    pub static ref VGA: AsyncLockedArc<Option<crate::TextDisplay>> = AsyncLockedArc::new(None);
 }
 
-impl AsyncLocked<Option<crate::TextDisplay>> {
+impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record) {
+        let mut s = self.sync_lock();
+        use crate::modules::video::TextDisplayTrait;
+        if let Some(s) = s.as_mut() {
+            s.print_str("LOG RECORD\r\n");
+            s.print_str(&doors_macros2::fixed_string_format!("{}", record.level()));
+            s.print_str(": ");
+            let target = if !record.target().is_empty() {
+                record.target()
+            } else {
+                record.module_path().unwrap_or_default()
+            };
+            s.print_str(target);
+            s.print_str(&doors_macros2::fixed_string_format!("{}", record.args()));
+            s.print_str("\r\n");
+        } else {
+            panic!();
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+impl AsyncLockedArc<Option<crate::TextDisplay>> {
     /// Print a fixed string. This is intended to be used in panic type situations.
     pub fn print_fixed_str(&self, a: FixedString) {
         let mut v = self.sync_lock();

@@ -1,5 +1,7 @@
 //! X86 pci bus code
 
+use alloc::format;
+
 use crate::boot::x86::{IoPortRef, IOPORTS};
 use crate::IoReadWrite;
 
@@ -72,33 +74,38 @@ impl Pci {
 }
 
 impl super::PciTrait for Pci {
-    fn setup(&mut self) {
-        crate::VGA.print_str("pci: Probing for pci busses\r\n");
+    async fn setup(&mut self) {
+        crate::VGA
+            .print_str_async("pci: Probing for pci busses\r\n")
+            .await;
         for i in 0..=255 {
             if let Some(bus) = super::PciBus::new(&mut self.configuration, i) {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "pci: Bus {} exists\r\n",
-                    i
-                ));
+                crate::VGA
+                    .print_str_async(&format!("pci: Bus {} exists\r\n", i))
+                    .await;
                 self.busses.push(bus);
             }
         }
-        crate::VGA.print_str("pci: Done probing for pci busses\r\n");
+        crate::VGA
+            .print_str_async("pci: Done probing for pci busses\r\n")
+            .await;
     }
 
-    fn print_devices(&mut self) {
+    async fn print_devices(&mut self) {
         for (i, bus) in self.busses.iter().enumerate() {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PCI BUS {}\r\n", i));
-            bus.print_devices(&mut self.configuration);
+            crate::VGA
+                .print_str_async(&format!("PCI BUS {}\r\n", i))
+                .await;
+            bus.print_devices(&mut self.configuration).await;
         }
     }
 
-    fn driver_run(
+    async fn driver_run(
         &mut self,
         d: &mut alloc::collections::btree_map::BTreeMap<u32, super::PciFunctionDriver>,
     ) {
         for bus in &self.busses {
-            bus.driver_run(d, &mut self.configuration);
+            bus.driver_run(d, &mut self.configuration).await;
         }
     }
 }
