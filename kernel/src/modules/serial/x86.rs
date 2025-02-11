@@ -1,5 +1,10 @@
 //! Serial port code for x86 serial ports
 
+use core::future::Future;
+use core::pin::Pin;
+use core::task::Waker;
+
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use crate::executor;
@@ -15,6 +20,8 @@ pub struct X86SerialPort {
     base: IoPortArray<'static>,
     /// The transmit queue
     tx_queue: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
+    /// The transmit wakers
+    tx_wakers: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<Waker>>>,
     /// Are interrupts enabled?
     interrupts: bool,
     /// Is an interrupt driven transmission currently in progress?
@@ -49,6 +56,7 @@ impl X86SerialPort {
         let mut s = Self {
             base: ports,
             tx_queue: Arc::new(conquer_once::spin::OnceCell::uninit()),
+            tx_wakers: Arc::new(conquer_once::spin::OnceCell::uninit()),
             interrupts: false,
             itx: false,
             irq,
@@ -94,6 +102,8 @@ impl X86SerialPort {
     fn setup(&mut self) {
         self.tx_queue
             .try_init_once(|| crossbeam::queue::ArrayQueue::new(32));
+        self.tx_wakers
+            .try_init_once(|| crossbeam::queue::ArrayQueue::new(32));
         // Enable interrupts for receiving data
         self.base.port(1).port_write(1u8);
         self.base.port(4).port_write(0x03u8);
@@ -110,6 +120,11 @@ impl X86SerialPort {
                 s2.disable_tx_interrupt();
             }
         }
+        let _ = s2.tx_wakers.try_get().map(|a| {
+            while let Some(w) = a.pop() {
+                w.wake();
+            }
+        });
     }
 
     /// Enable the tx interrupt, used when sending data over the serial port
@@ -130,20 +145,32 @@ impl X86SerialPort {
             self.itx = false;
         }
     }
+
+    /// synchronously send a byte
+    fn sync_send_byte(&mut self, c: u8) {
+        while !self.can_send() {}
+        self.base.port(0).port_write(c);
+    }
 }
 
 impl AsyncLockedArc<X86SerialPort> {
     /// Asynchronously enable the tx interrupt.
     async fn enable_tx_interrupt(&self) {
-        crate::SYSTEM
-            .lock()
-            .await
-            .as_ref()
-            .map(|s| s.disable_irq(4));
-        unsafe {
-            self.lock().await.enable_tx_interrupt();
+        let (flag, irqnum) = {
+            let s = self.lock().await;
+            (s.itx, s.irq)
+        };
+        if !flag {
+            if let Some(s) = crate::SYSTEM.lock().await.as_ref() {
+                s.disable_irq(irqnum);
+            }
+            unsafe {
+                self.lock().await.enable_tx_interrupt();
+            }
+            if let Some(s) = crate::SYSTEM.lock().await.as_ref() {
+                s.enable_irq(irqnum);
+            }
         }
-        crate::SYSTEM.lock().await.as_ref().map(|s| s.enable_irq(4));
     }
 }
 
@@ -173,49 +200,25 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
     fn sync_transmit(&self, data: &[u8]) {
         let mut s = self.sync_lock();
         for c in data {
-            while !s.can_send() {}
-            s.base.port(0).port_write(*c);
+            s.sync_send_byte(*c);
         }
     }
 
     fn sync_transmit_str(&self, data: &str) {
         let mut s = self.sync_lock();
         for c in data.bytes() {
-            while !s.can_send() {}
-            s.base.port(0).port_write(c);
+            s.sync_send_byte(c);
         }
     }
 
     fn sync_flush(&self) {}
 
     async fn transmit(&self, data: &[u8]) {
-        let txq = {
-            let s = self.lock().await;
-            s.tx_queue.clone()
-        };
-        if let Some(q) = txq.get() {
-            for c in data {
-                while q.push(*c).is_err() {
-                    executor::Task::yield_now().await;
-                }
-                self.enable_tx_interrupt().await;
-            }
-        }
+        AsyncWriter::new(self, data).await
     }
 
     async fn transmit_str(&self, data: &str) {
-        let txq = {
-            let s = self.lock().await;
-            s.tx_queue.clone()
-        };
-        if let Some(q) = txq.get() {
-            for c in data.bytes() {
-                while q.push(c).is_err() {
-                    executor::Task::yield_now().await;
-                }
-                self.enable_tx_interrupt().await;
-            }
-        }
+        AsyncWriter::new(self, data.as_bytes()).await
     }
 
     async fn flush(&self) {
@@ -224,6 +227,87 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
             while !q.is_empty() {
                 executor::Task::yield_now().await;
             }
+        }
+    }
+}
+
+/// The async struct for serial port sending
+#[pin_project::pin_project]
+struct AsyncWriter<'a> {
+    /// The array queue to write into
+    s: &'a AsyncLockedArc<X86SerialPort>,
+    /// The index into the data
+    index: usize,
+    /// The data reference
+    data: &'a [u8],
+    /// Waiting on interrupt enable
+    interrupt_enable: bool,
+    /// The interrupt enable future
+    #[pin]
+    ienable: futures::future::BoxFuture<'a, ()>,
+}
+
+impl<'a> AsyncWriter<'a> {
+    /// Construct a new object for asynchronous serial port writing
+    fn new(s: &'a AsyncLockedArc<X86SerialPort>, data: &'a [u8]) -> Self {
+        Self {
+            s,
+            index: 0,
+            data,
+            interrupt_enable: false,
+            ienable: Box::pin(s.enable_tx_interrupt()),
+        }
+    }
+}
+
+impl Future for AsyncWriter<'_> {
+    type Output = ();
+    fn poll(
+        mut self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        if !self.interrupt_enable {
+            let mut newindex = self.index;
+            let this = self.s.sync_lock();
+            let r2 = if let Some(q) = this.tx_queue.get() {
+                loop {
+                    if !q.is_full() {
+                        if newindex < self.data.len() {
+                            if q.push(self.data[newindex]).is_ok() {
+                                newindex += 1;
+                                self.interrupt_enable = true;
+                            } else {
+                                let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
+                                break core::task::Poll::Pending;
+                            }
+                        } else if self.interrupt_enable {
+                            if self.ienable.as_mut().poll(cx).is_ready() {
+                                self.interrupt_enable = false;
+                                break core::task::Poll::Ready(());
+                            } else {
+                                let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
+                                break core::task::Poll::Pending;
+                            }
+                        } else {
+                            break core::task::Poll::Ready(());
+                        }
+                    } else {
+                        let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
+                        break core::task::Poll::Pending;
+                    }
+                }
+            } else {
+                let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
+                core::task::Poll::Pending
+            };
+            drop(this);
+            self.index = newindex;
+            r2
+        } else {
+            if self.ienable.as_mut().poll(cx).is_ready() {
+                self.interrupt_enable = false;
+            }
+            core::task::Poll::Pending
         }
     }
 }

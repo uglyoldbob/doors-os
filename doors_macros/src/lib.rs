@@ -88,7 +88,6 @@ pub fn populate_todo_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
     let list = TODOLIST.lock().unwrap().take().unwrap();
     let things = list.items.iter().map(|i| {
         let msg = format!("* {}", i);
-        println!("Populating todo item {}", msg);
         quote! {
             #[doc = #msg]
         }
