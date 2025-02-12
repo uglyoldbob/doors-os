@@ -87,17 +87,16 @@ impl<'a> LocalTask<'a> {
 }
 
 /// A task for the kernel
-pub struct Task {
+pub struct Task<'a> {
     /// The id for the task. This is unique across all tasks in the system.
     id: TaskId,
     /// The future that the task executes
-    future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + Send>>,
+    future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + Send + 'a>>,
 }
 
-impl Task {
+impl<'a> Task<'a> {
     /// Construct a new task with a future.
-    /// TODO determine a way to remove the 'static lifetime from the future
-    pub fn new(future: impl core::future::Future<Output = ()> + Send + 'static) -> Self {
+    pub fn new(future: impl core::future::Future<Output = ()> + Send + 'a) -> Self {
         Self {
             id: TaskId::new(),
             future: alloc::boxed::Box::pin(future),
@@ -222,7 +221,7 @@ impl TaskList {
 #[derive(Default)]
 pub struct Executor<'a> {
     /// The list of all tasks in the executor
-    all_tasks: alloc::collections::BTreeMap<TaskId, Task>,
+    all_tasks: alloc::collections::BTreeMap<TaskId, Task<'a>>,
     /// The list of all tasks specific to this executor
     local_tasks: alloc::collections::BTreeMap<TaskId, LocalTask<'a>>,
     /// The list of wakers for all tasks
@@ -252,7 +251,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Spawn a new task
-    pub fn spawn(&mut self, task: Task) -> Result<(), ()> {
+    pub fn spawn(&mut self, task: Task<'a>) -> Result<(), ()> {
         let id = task.id;
         if self.all_tasks.insert(id, task).is_some() {
             panic!("Task already spawned");
@@ -264,7 +263,7 @@ impl<'a> Executor<'a> {
     pub fn spawn_closure<F>(&mut self, c: F) -> Result<(), ()>
     where
         F: AsyncFnOnce() -> (),
-        F::CallOnceFuture: Send + 'static,
+        F::CallOnceFuture: Send + 'a,
     {
         let task = Task::new(c.async_call_once(()));
         self.spawn(task)
