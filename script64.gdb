@@ -1,4 +1,10 @@
 add-symbol-file kernel64.debug
+
+define exit
+    monitor quit
+    quit
+end
+
 break start64
 break segment_not_present_asm
 disp /i $pc

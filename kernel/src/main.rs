@@ -110,17 +110,6 @@ fn main() -> ! {
         sys.init();
         crate::VGA.print_str("DoorsOs Booting now\r\n");
         {
-            let mut ser = crate::kernel::SERIAL.lock();
-            for (i, s) in ser.iter().enumerate() {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "SERIAL PORT {} enable interrupts\r\n",
-                    i
-                ));
-                let s = s.lock();
-                s.enable_interrupts().unwrap();
-            }
-        }
-        {
             crate::VGA.print_str("Registering LFSR rng\r\n");
             let rng = rng::RngLfsr::new();
             kernel::RNGS

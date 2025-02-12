@@ -130,7 +130,7 @@ impl X86SerialPort {
     /// Enable the tx interrupt, used when sending data over the serial port
     /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
     unsafe fn enable_tx_interrupt(&mut self) {
-        if !self.itx {
+        if self.interrupts && !self.itx {
             let v: u8 = self.base.port(1).port_read();
             self.base.port(1).port_write(v | 2);
             self.itx = true;
@@ -156,14 +156,16 @@ impl X86SerialPort {
 impl AsyncLockedArc<X86SerialPort> {
     /// Asynchronously enable the tx interrupt.
     async fn enable_tx_interrupt(&self, sys: crate::kernel::System) {
-        let (flag, irqnum) = {
+        let (ie, flag, irqnum) = {
             let s = self.lock().await;
-            (s.itx, s.irq)
+            (s.interrupts, s.itx, s.irq)
         };
-        if !flag {
+        if ie && !flag {
             sys.disable_irq(irqnum);
-            unsafe {
-                self.lock().await.enable_tx_interrupt();
+            {
+                unsafe {
+                    self.lock().await.enable_tx_interrupt();
+                }
             }
             sys.enable_irq(irqnum);
         }
@@ -175,20 +177,22 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
         todo!();
     }
 
-    fn enable_interrupts(&self) -> Result<(), ()> {
+    fn enable_interrupts(&self, sys: crate::kernel::System) -> Result<(), ()> {
         let irqnum = {
+            let s = self.sync_lock();
+            s.irq
+        };
+        {
+            use crate::kernel::SystemTrait;
+            let s2 = self.clone();
+            sys.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
+            sys.enable_irq(irqnum);
+        }
+        {
             let mut s = self.sync_lock();
             s.base.port(4).port_write(0x03u8 | 8u8);
             s.interrupts = true;
-            s.irq
         };
-        let mut p = crate::SYSTEM.sync_lock();
-        use crate::kernel::SystemTrait;
-        let s2 = self.clone();
-        p.as_mut().map(move |p| {
-            p.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
-            p.enable_irq(irqnum);
-        });
 
         Ok(())
     }
@@ -279,6 +283,9 @@ impl Future for AsyncWriter<'_> {
         if !self.interrupt_enable {
             let mut newindex = self.index;
             let this = self.s.sync_lock();
+            if !this.interrupts {
+                doors_macros::todo_item_panic!("interrupts not enabled for future");
+            }
             let r2 = if let Some(q) = this.tx_queue.get() {
                 loop {
                     if !q.is_full() {

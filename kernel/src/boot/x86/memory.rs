@@ -3,7 +3,7 @@
 //! Memory is organized by blocks that represent free memory.
 
 use alloc::vec::Vec;
-use core::ptr::NonNull;
+use core::{alloc::Layout, ptr::NonNull, sync::atomic::Ordering};
 
 use crate::Locked;
 
@@ -143,11 +143,6 @@ impl<'a> HeapManager<'a> {
 
     /// Print details of the heap
     pub fn print(&self) {
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("mm: {:p}\r\n", self.mm));
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "vmm: {:p}\r\n",
-            self.vmm
-        ));
         if let Some(r) = self.head {
             let mut t = unsafe { r.as_ref() };
             crate::VGA.print_str("HEAP:\r\n");
@@ -165,7 +160,8 @@ impl<'a> HeapManager<'a> {
     }
 
     /// Expand the heap by a certain amount, using real memory.
-    fn expand_with_physical_memory(&mut self, amount: usize) -> Result<(), ()> {
+    fn expand_with_physical_memory(&mut self, amount: usize) -> Result<NonNull<[u8]>, ()> {
+        use core::alloc::Allocator as caAlloc;
         // Round up a partial page to a whole page, a is number of pages, not number of bytes
         let (a, r) = (
             amount / core::mem::size_of::<Page>(),
@@ -173,9 +169,11 @@ impl<'a> HeapManager<'a> {
         );
         let a = if r != 0 { a + 1 } else { a };
 
-        let new_section = Vec::<Page, &Locked<Allocator>>::with_capacity_in(a, self.vmm);
+        let layout =
+            Layout::from_size_align(amount, core::mem::size_of::<Page>()).map_err(|_| ())?;
+        let new_section = self.vmm.allocate(layout).map_err(|_| ())?;
 
-        let sa = new_section.as_ptr() as usize;
+        let sa = new_section.as_ptr() as *mut u8 as usize;
         let mut mm = self.mm.lock();
         for i in (sa..sa + a * core::mem::size_of::<Page>()).step_by(core::mem::size_of::<Page>()) {
             mm.map_new_page(i)?;
@@ -185,7 +183,7 @@ impl<'a> HeapManager<'a> {
         let mut node =
             unsafe { NonNull::<HeapNode>::new_unchecked(new_section.as_ptr() as *mut HeapNode) };
         unsafe { node.as_mut() }.next = None;
-        unsafe { node.as_mut() }.size = new_section.capacity() * core::mem::size_of::<Page>();
+        unsafe { node.as_mut() }.size = new_section.len();
         if self.head.is_none() {
             self.head = Some(node);
         } else {
@@ -195,8 +193,7 @@ impl<'a> HeapManager<'a> {
             }
             unsafe { elem.as_mut() }.next = Some(node);
         }
-        new_section.leak();
-        Ok(())
+        Ok(new_section)
     }
 
     /// Perform an actual allocation
@@ -279,19 +276,23 @@ impl<'a> HeapManager<'a> {
                     ));
                     let b = unsafe { best.as_ref() };
                     if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
-                        self.print();
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "The end of the block will be used\r\n"
-                        ));
+                        if crate::VGA_READY.load(Ordering::Relaxed) {
+                            self.print();
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                                "The end of the block will be used\r\n"
+                            ));
+                        }
                         let c = HeapNode {
                             next: b.next,
                             size: ha.pre_align,
                         };
-                        c.print();
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "Done printing new nodes"
-                        ));
-                        self.print();
+                        if crate::VGA_READY.load(Ordering::Relaxed) {
+                            c.print();
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                                "Done printing new nodes"
+                            ));
+                            self.print();
+                        }
                         todo!();
                     } else {
                         let newblock = crate::address(b) + ha.pre_align + b.size;
@@ -311,22 +312,33 @@ impl<'a> HeapManager<'a> {
                 return r;
             }
             if times == 1 {
-                self.print();
+                if crate::VGA_READY.load(Ordering::Relaxed) {
+                    self.print();
+                }
                 match self.expand_with_physical_memory(layout.size() + layout.align()) {
-                    Ok(_) => {
-                        crate::VGA.print_str("GOT SOME MEMORY 1\r\n");
-                        self.print();
+                    Ok(m) => {
+                        if crate::VGA_READY.load(Ordering::Relaxed) {
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                                "GOT SOME MEMORY 1 {:p}\r\n",
+                                m.as_ptr()
+                            ));
+                            self.print();
+                        }
                     }
                     Err(_) => {
-                        crate::VGA.print_str("OUT OF MEMORY 1\r\n");
-                        self.print();
+                        if crate::VGA_READY.load(Ordering::Relaxed) {
+                            crate::VGA.print_str("OUT OF MEMORY 1\r\n");
+                            self.print();
+                        }
                         return core::ptr::null_mut();
                     }
                 }
             }
             if times == 2 {
-                crate::VGA.print_str("OUT OF MEMORY 2\r\n");
-                self.print();
+                if crate::VGA_READY.load(Ordering::Relaxed) {
+                    crate::VGA.print_str("OUT OF MEMORY 2\r\n");
+                    self.print();
+                }
                 return core::ptr::null_mut();
             }
         }

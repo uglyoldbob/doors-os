@@ -1,8 +1,10 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
 use core::marker::PhantomData;
+use core::sync::atomic::Ordering;
 
 use crate::modules::pci::PciTrait;
+use crate::modules::serial::SerialTrait;
 use crate::AsyncLockedArc;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -239,10 +241,13 @@ fn setup_serial() {
 
     if serials.exists(0) {
         let s = serials.module(0);
+        let sys = crate::SYSTEM.sync_lock().as_ref().unwrap().clone();
+        s.lock().enable_interrupts(sys).unwrap();
         let sd = s.make_text_display();
         let mut v = crate::VGA.sync_lock();
         v.replace(sd);
         drop(v);
+        crate::VGA_READY.store(true, Ordering::Relaxed);
         match log::set_logger(&*crate::VGA) {
             Ok(_a) => crate::VGA.print_str("logger set\r\n"),
             Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(

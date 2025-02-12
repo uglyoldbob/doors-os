@@ -12,8 +12,7 @@ use acpi::sdt::SdtHeader;
 use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -86,9 +85,11 @@ extern "C" {
 
 lazy_static! {
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
-    /// The irq handlers registered by the system
-    static ref IRQ_HANDLERS: LockedArc<[Option<Box<dyn FnMut() -> () + Send + Sync>>; 256]> = LockedArc::new([const { None }; 256]);
 }
+
+/// The irq handlers registered by the system
+static IRQ_HANDLERS: OnceCell<LockedArc<[Option<Box<dyn FnMut() -> () + Send + Sync>>; 256]>> =
+    OnceCell::uninit();
 
 /// The divide by zero handler
 #[interrupt_64]
@@ -101,14 +102,18 @@ pub extern "C" fn divide_by_zero() {
 
 /// The test irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
-    let mut h = IRQ_HANDLERS.lock();
-    if let Some(h2) = &mut h[4] {
-        h2();
-    } else {
-        panic!("NOT WORKING?");
+    if let Ok(h) = IRQ_HANDLERS.try_get() {
+        let mut h = h.lock();
+        if let Some(h2) = &mut h[4] {
+            h2();
+        } else {
+            panic!("NOT WORKING?");
+        }
     }
     let mut p = INTERRUPT_CONTROLLER.lock();
-    p.as_mut().map(|p| p.end_of_interrupt(4));
+    if let Some(p) = p.as_mut() {
+        p.end_of_interrupt(irq)
+    }
 }
 
 ///The handler for segment not present
@@ -706,20 +711,26 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
         self.disable_interrupts();
         {
             let mut p = INTERRUPT_CONTROLLER.lock();
-            p.as_mut().map(|p| p.enable_irq(irq));
+            if let Some(p) = p.as_mut() {
+                p.enable_irq(irq)
+            }
         }
         self.enable_interrupts();
     }
 
     fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
-        let mut irqs = IRQ_HANDLERS.lock();
-        irqs[irq as usize] = Some(a);
+        if let Ok(ih) = IRQ_HANDLERS.try_get() {
+            let mut irqs = ih.lock();
+            irqs[irq as usize] = Some(a);
+        }
     }
 
     fn disable_irq(&self, irq: u8) {
         let mut p = INTERRUPT_CONTROLLER.lock();
-        p.as_mut().map(|p| p.disable_irq(irq));
+        if let Some(p) = p.as_mut() {
+            p.disable_irq(irq)
+        }
     }
 
     fn idle(&self) {
@@ -736,6 +747,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
     }
 
     fn init(&self) {
+        super::setup_serial();
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
         if aml.initialize_objects().is_ok() {
@@ -759,6 +771,13 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
             handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
             crate::VGA.print_fixed_str("Done with acpi handling\r\n");
         });
+
+        if let Ok(h) = IRQ_HANDLERS.try_get() {
+            let h = h.lock();
+            if h[4].is_none() {
+                panic!("NOT WORKING?");
+            }
+        }
     }
 }
 
@@ -914,6 +933,8 @@ pub extern "C" fn start64() -> ! {
         .unwrap()
     };
 
+    crate::VGA_READY.store(false, core::sync::atomic::Ordering::Relaxed);
+
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
@@ -947,7 +968,13 @@ pub extern "C" fn start64() -> ! {
 
     PAGING_MANAGER.lock().init();
 
-    super::setup_serial();
+    {
+        let stack_end = unsafe { INITIAL_STACK as usize };
+        let stack_size = 8 * 1024;
+        PAGE_ALLOCATOR
+            .lock()
+            .set_area_used(stack_end - stack_size, stack_size);
+    }
 
     if false {
         if true {
@@ -975,62 +1002,10 @@ pub extern "C" fn start64() -> ! {
         .lock()
         .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
         .unwrap();
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "APIC MSR IS {:x}\r\n",
-        apic_msr_value
-    ));
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "APIC RESERVED AT {:x?}\r\n",
-        crate::address(apic.as_ref())
-    ));
-    let apic_id = apic.regs[0x20 / 4];
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "APIC ID IS {:x}\r\n",
-        apic_id
-    ));
-    let apic_version = apic.regs[0x30 / 4];
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "APIC VERSION IS {:x}\r\n",
-        apic_version
-    ));
 
-    {
-        let stack_end = unsafe { INITIAL_STACK as usize };
-        let stack_size = 8 * 1024;
-        PAGE_ALLOCATOR
-            .lock()
-            .set_area_used(stack_end - stack_size, stack_size);
-    }
-
-    if true {
-        let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
-            alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "test is {:x}\r\n",
-            test.as_ref() as *const u8 as usize
-        ));
-    }
-
-    if true {
-        let test: alloc::boxed::Box<[u8; 4096], &Locked<memory::SimpleMemoryManager>> =
-            alloc::boxed::Box::new_in([0; 4096], &PAGE_ALLOCATOR);
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "test2 is {:x}\r\n",
-            test.as_ref() as *const u8 as usize
-        ));
-    }
-
-    let test: Box<[Big]> = Box::new([Big { _data: 5 }; 32]);
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "test var is {:p}\r\n",
-        test.as_ptr()
-    ));
-    drop(test);
-
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "INTIAL STACK IS {:x}\r\n",
-        unsafe { INITIAL_STACK as usize }
-    ));
+    IRQ_HANDLERS
+        .try_init_once(|| LockedArc::new([const { None }; 256]))
+        .unwrap();
 
     {
         let mut pic = Pic::new().unwrap();

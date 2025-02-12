@@ -7,7 +7,7 @@ use core::{
     fmt,
     ops::{Deref, DerefMut},
     pin::Pin,
-    sync::atomic::Ordering,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use crossbeam::queue::ArrayQueue;
@@ -240,7 +240,7 @@ impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
         self.lock.store(false, Ordering::Release);
-        for w in self.wakers.pop() {
+        while let Some(w) = self.wakers.pop() {
             w.wake();
         }
     }
@@ -281,6 +281,9 @@ lazy_static::lazy_static! {
     /// The VGA instance used for x86 kernel printing
     pub static ref VGA: AsyncLockedArc<Option<crate::TextDisplay>> = AsyncLockedArc::new(None);
 }
+
+/// Indicates that the VGA is ready
+pub static VGA_READY: AtomicBool = AtomicBool::new(false);
 
 impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {

@@ -1299,7 +1299,7 @@ impl PciBus {
                         id
                     ));
                     let config = f.get_all_configuration(pci, self, d);
-                    config.dump("\t");
+                    config.dump("\t").await;
                 }
             }
         }
