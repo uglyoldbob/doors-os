@@ -1292,7 +1292,8 @@ impl PciBus {
                     let code = map.get_mut(&id).unwrap();
                     let mut bars: [Option<BarSpace>; 6] = [None; 6];
                     f.parse_bars(&mut bars, pci, self, d, &config);
-                    code.parse_bars(pci, self, d, f, &config.get_space().unwrap(), bars);
+                    code.parse_bars(pci, self, d, f, &config.get_space().unwrap(), bars)
+                        .await;
                 } else {
                     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                         "Unknown PCI FUNCTION: {:X}\r\n",
@@ -1348,7 +1349,7 @@ pub trait PciFunctionDriverTrait: Clone + Default {
     fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
 
     /// Parse a bar register for the device
-    fn parse_bars(
+    async fn parse_bars(
         &mut self,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
@@ -1401,7 +1402,7 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
         crate::VGA.print_str("Register dummy pci driver\r\n");
     }
 
-    fn parse_bars(
+    async fn parse_bars(
         &mut self,
         _cs: &mut PciConfigurationSpace,
         _bus: &PciBus,

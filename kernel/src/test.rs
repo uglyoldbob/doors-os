@@ -6,6 +6,8 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(type_alias_impl_trait)]
+#![feature(unboxed_closures)]
 
 doors_macros::load_config!();
 
@@ -14,6 +16,7 @@ extern crate alloc;
 doors_macros::use_doors_test!();
 
 mod common;
+use alloc::borrow::ToOwned;
 pub use common::*;
 
 pub mod boot;
@@ -73,17 +76,33 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+/// This is an example of a future that is non-Send.
+async fn non_send_future() {
+    let mut nonsend = NonSendable::new();
+    crate::VGA.print_str_async("Stuff 1\r\n").await;
+    nonsend.do_thing();
+    crate::VGA.print_str_async("Stuff 2\r\n").await;
+    nonsend.do_thing();
+    crate::VGA.print_str_async("Stuff 3\r\n").await;
+    nonsend.do_thing();
+    crate::VGA.print_str_async("Stuff 4\r\n").await;
+    nonsend.do_thing();
+}
+
 fn main() -> ! {
     {
-        if true {
+        if false {
             doors_macros::todo_item_panic!("This should never happen");
         }
-        SYSTEM.sync_lock().as_mut().unwrap().enable_interrupts();
-        SYSTEM.sync_lock().as_mut().unwrap().init();
+        let sys = SYSTEM.sync_lock().to_owned().unwrap();
+        sys.enable_interrupts();
+        sys.init();
+        crate::VGA.print_str("DoorsOs Booting now\r\n");
         if DoorsTester::doors_test_main().is_err() {
             crate::VGA.print_str("At least one test failed\r\n");
         }
         let mut executor = Executor::default();
+        executor.spawn_closure_local(non_send_future).unwrap();
         executor.run()
     }
 }

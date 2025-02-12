@@ -3,7 +3,6 @@
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
-use crate::modules::pci::PciTrait;
 use crate::modules::serial::SerialTrait;
 use crate::AsyncLockedArc;
 use crate::IoReadWrite;

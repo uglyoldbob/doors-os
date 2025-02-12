@@ -7,6 +7,8 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(type_alias_impl_trait)]
+#![feature(unboxed_closures)]
 
 doors_macros::load_config!();
 
@@ -67,7 +69,6 @@ use kernel::SystemTrait;
 use modules::network::NetworkAdapterTrait;
 use modules::rng;
 use modules::rng::RngTrait;
-use modules::serial::SerialTrait;
 use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
 
@@ -85,11 +86,15 @@ async fn net_test() {
     crate::VGA
         .print_str_async("Waiting for network card net0\r\n")
         .await;
-    executor::Task::yield_now().await;
+    while crate::modules::network::get_network_adapter("net0")
+        .await
+        .is_none()
+    {
+        executor::Task::yield_now().await;
+    }
     crate::VGA
         .print_str_async("About to do some stuff with a network card net0\r\n")
         .await;
-    executor::Task::yield_now().await;
     if let Some(na) = crate::modules::network::get_network_adapter("net0").await {
         let mut na = na.lock();
         crate::VGA
@@ -109,13 +114,6 @@ fn main() -> ! {
         sys.enable_interrupts();
         sys.init();
         crate::VGA.print_str("DoorsOs Booting now\r\n");
-        {
-            crate::VGA.print_str("Registering LFSR rng\r\n");
-            let rng = rng::RngLfsr::new();
-            kernel::RNGS
-                .lock()
-                .register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
-        }
 
         {
             let mut d = kernel::DISPLAYS.lock();
@@ -137,10 +135,19 @@ fn main() -> ! {
         let mut executor = Executor::default();
         executor
             .spawn_closure(async || {
+                crate::VGA.print_str_async("Registering LFSR rng\r\n").await;
+                let rng = rng::RngLfsr::new();
+                kernel::RNGS
+                    .lock()
+                    .register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
+            })
+            .unwrap();
+        executor.spawn(executor::Task::new(net_test())).unwrap();
+        executor
+            .spawn_closure(async || {
                 modules::pci::setup_pci().await;
             })
             .unwrap();
-        //executor.spawn(executor::Task::new(net_test())).unwrap();
         executor
             .spawn_closure(async || {
                 for i in 0..32 {

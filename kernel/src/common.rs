@@ -13,7 +13,7 @@ use core::{
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::sync::Arc;
 
 use crate::kernel;
 

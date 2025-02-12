@@ -2,7 +2,6 @@
 //! The heap is a linked list of memory areas ([HeapNode]).
 //! Memory is organized by blocks that represent free memory.
 
-use alloc::vec::Vec;
 use core::{alloc::Layout, ptr::NonNull, sync::atomic::Ordering};
 
 use crate::Locked;
@@ -312,26 +311,15 @@ impl<'a> HeapManager<'a> {
                 return r;
             }
             if times == 1 {
-                if crate::VGA_READY.load(Ordering::Relaxed) {
-                    self.print();
-                }
-                match self.expand_with_physical_memory(layout.size() + layout.align()) {
-                    Ok(m) => {
-                        if crate::VGA_READY.load(Ordering::Relaxed) {
-                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                                "GOT SOME MEMORY 1 {:p}\r\n",
-                                m.as_ptr()
-                            ));
-                            self.print();
-                        }
+                if self
+                    .expand_with_physical_memory(layout.size() + layout.align())
+                    .is_err()
+                {
+                    if crate::VGA_READY.load(Ordering::Relaxed) {
+                        crate::VGA.print_str("OUT OF MEMORY 1\r\n");
+                        self.print();
                     }
-                    Err(_) => {
-                        if crate::VGA_READY.load(Ordering::Relaxed) {
-                            crate::VGA.print_str("OUT OF MEMORY 1\r\n");
-                            self.print();
-                        }
-                        return core::ptr::null_mut();
-                    }
+                    return core::ptr::null_mut();
                 }
             }
             if times == 2 {

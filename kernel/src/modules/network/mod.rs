@@ -2,7 +2,7 @@
 
 use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String};
 
-use crate::{AsyncLocked, Locked, LockedArc};
+use crate::{AsyncLocked, LockedArc};
 
 doors_macros::declare_enum!(NetworkAdapter);
 

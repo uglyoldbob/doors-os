@@ -19,18 +19,85 @@ impl TaskId {
     }
 }
 
+/// An example struct that is non sendable
+pub struct NonSendable {
+    /// The non-sendable element
+    elem: alloc::rc::Rc<u32>,
+}
+
+impl NonSendable {
+    /// Construct a new Self
+    pub fn new() -> Self {
+        Self {
+            elem: alloc::rc::Rc::new(0),
+        }
+    }
+
+    /// Do the thing
+    pub fn do_thing(&mut self) {
+        self.elem = (*self.elem + 1).into();
+    }
+}
+
+/// A task for the kernel
+pub struct LocalTask<'a> {
+    /// The id for the task. This is unique across all tasks in the system.
+    id: TaskId,
+    /// The future that the task executes
+    future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + 'a>>,
+}
+
+impl<'a> LocalTask<'a> {
+    /// Construct a new task with a future.
+    pub fn new(future: impl core::future::Future<Output = ()> + 'a) -> Self {
+        Self {
+            id: TaskId::new(),
+            future: alloc::boxed::Box::pin(future),
+        }
+    }
+
+    /// Poll the task
+    fn poll(&mut self, context: &mut core::task::Context) -> core::task::Poll<()> {
+        self.future.as_mut().poll(context)
+    }
+
+    /// Yield the task to other tasks in the same priority
+    pub async fn yield_now() {
+        /// Yield implementation
+        struct YieldNow {
+            /// Has the task already yielded?
+            yielded: bool,
+        }
+
+        impl Future for YieldNow {
+            type Output = ();
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+                if self.yielded {
+                    return Poll::Ready(());
+                }
+                self.yielded = true;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+
+        YieldNow { yielded: false }.await;
+    }
+}
+
 /// A task for the kernel
 pub struct Task {
     /// The id for the task. This is unique across all tasks in the system.
     id: TaskId,
     /// The future that the task executes
-    future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()>>>,
+    future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + Send>>,
 }
 
 impl Task {
     /// Construct a new task with a future.
     /// TODO determine a way to remove the 'static lifetime from the future
-    pub fn new(future: impl core::future::Future<Output = ()> + 'static) -> Self {
+    pub fn new(future: impl core::future::Future<Output = ()> + Send + 'static) -> Self {
         Self {
             id: TaskId::new(),
             future: alloc::boxed::Box::pin(future),
@@ -153,16 +220,37 @@ impl TaskList {
 
 /// The async executor for the kernel
 #[derive(Default)]
-pub struct Executor {
+pub struct Executor<'a> {
     /// The list of all tasks in the executor
     all_tasks: alloc::collections::BTreeMap<TaskId, Task>,
+    /// The list of all tasks specific to this executor
+    local_tasks: alloc::collections::BTreeMap<TaskId, LocalTask<'a>>,
     /// The list of wakers for all tasks
     wakers: alloc::collections::BTreeMap<TaskId, Waker>,
     /// The basic list of tasks for the executor
     basic_tasks: TaskList,
 }
 
-impl Executor {
+impl<'a> Executor<'a> {
+    /// Spawn a new task that always runs on this executor
+    pub fn spawn_local(&mut self, task: LocalTask<'a>) -> Result<(), ()> {
+        let id = task.id;
+        if self.local_tasks.insert(id, task).is_some() {
+            panic!("Task already spawned");
+        }
+        self.basic_tasks.add(id)
+    }
+
+    /// Spawn a task using a closure
+    pub fn spawn_closure_local<F>(&mut self, c: F) -> Result<(), ()>
+    where
+        F: AsyncFnOnce() -> (),
+        F::CallOnceFuture: 'a,
+    {
+        let task = LocalTask::new(c.async_call_once(()));
+        self.spawn_local(task)
+    }
+
     /// Spawn a new task
     pub fn spawn(&mut self, task: Task) -> Result<(), ()> {
         let id = task.id;
@@ -173,7 +261,11 @@ impl Executor {
     }
 
     /// Spawn a task using a closure
-    pub fn spawn_closure<F: AsyncFnOnce() -> () + 'static>(&mut self, c: F) -> Result<(), ()> {
+    pub fn spawn_closure<F>(&mut self, c: F) -> Result<(), ()>
+    where
+        F: AsyncFnOnce() -> (),
+        F::CallOnceFuture: Send + 'static,
+    {
         let task = Task::new(c.async_call_once(()));
         self.spawn(task)
     }

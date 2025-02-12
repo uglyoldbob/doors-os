@@ -2,8 +2,10 @@
 //! TODO: Implement support notation for ipv6 (82544GC/EI does not support ipv6)
 
 use alloc::collections::btree_map::BTreeMap;
+use alloc::format;
 
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
+use crate::modules::video::hex_dump_generic_async;
 use crate::modules::{
     pci::{
         BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
@@ -23,6 +25,7 @@ enum MemoryOrIo {
 
 /// The model variants for the pro1000
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 enum Model {
     /// TODO
     Model82540EP_A_Desktop,
@@ -149,6 +152,7 @@ impl MemoryOrIo {
 
 /// Defines the addresses of various registers for the pro1000 device
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[allow(non_camel_case_types)]
 #[repr(u16)]
 enum IntelPro1000Registers {
     /// Device control register
@@ -942,7 +946,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         }
     }
 
-    fn parse_bars(
+    async fn parse_bars(
         &mut self,
         cs: &mut PciConfigurationSpace,
         bus: &PciBus,
@@ -954,17 +958,15 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         let bar0 = {
             if let Some(bar) = &mut bars[0] {
                 if bar.is_size_valid() {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "PCI PARSE BAR {}\r\n",
-                        bar.get_index()
-                    ));
+                    crate::VGA
+                        .print_str_async(&format!("PCI PARSE BAR {}\r\n", bar.get_index()))
+                        .await;
                     bar.print();
                     let d = bar.get_memory(cs, bus, dev, f, config);
                     if let Some(d) = d {
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "Got memory at {:x}\r\n",
-                            d.virt()
-                        ));
+                        crate::VGA
+                            .print_str_async(&format!("Got memory at {:x}\r\n", d.virt()))
+                            .await;
                         Some(MemoryOrIo::Memory(d))
                     } else {
                         bar.get_io(cs, bus, dev, f, config).map(MemoryOrIo::Io)
@@ -984,7 +986,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
             }
         });
         let configspace = f.get_all_configuration(cs, bus, dev);
-        configspace.dump("\t");
+        configspace.dump("\t").await;
         if let Some(m) = bar0 {
             if let Some(i) = io {
                 for b in bars.iter().flatten() {
@@ -1003,41 +1005,35 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     model,
                 };
                 d.bar0.hex_dump();
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "Detected model as {:?}\r\n",
-                    d.model
-                ));
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "EEPROM DETECTED: {}\r\n",
-                    d.detect_eeprom()
-                ));
+                crate::VGA
+                    .print_str_async(&format!("Detected model as {:?}\r\n", d.model))
+                    .await;
+                crate::VGA
+                    .print_str_async(&format!("EEPROM DETECTED: {}\r\n", d.detect_eeprom()))
+                    .await;
                 let mut data = [0u16; 256];
                 for (i, data) in data.iter_mut().enumerate() {
                     *data = d.read_from_eeprom(i as u8);
                 }
-                hex_dump_generic(&data, true, false);
+                hex_dump_generic_async(&data, true, false);
                 let mac = d.get_mac_address();
                 d.general_config();
                 hex_dump(&mac.address, false, false);
                 if let Err(e) = d.init_rx(&mac) {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "RX buffer allocation error {:?}\r\n",
-                        e
-                    ));
+                    crate::VGA
+                        .print_str_async(&format!("RX buffer allocation error {:?}\r\n", e))
+                        .await;
                 }
                 if let Err(e) = d.init_tx() {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "TX buffer allocation error {:?}\r\n",
-                        e
-                    ));
+                    crate::VGA
+                        .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
+                        .await;
                 }
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "PHY 1 reg {} is {:x}\r\n",
-                            r,
-                            v
-                        ));
+                        crate::VGA
+                            .print_str_async(&format!("PHY 1 reg {} is {:x}\r\n", r, v))
+                            .await;
                     }
                 }
                 super::super::register_network_adapter(d.into());

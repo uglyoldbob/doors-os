@@ -88,7 +88,7 @@ lazy_static! {
 }
 
 /// The irq handlers registered by the system
-static IRQ_HANDLERS: OnceCell<LockedArc<[Option<Box<dyn FnMut() -> () + Send + Sync>>; 256]>> =
+static IRQ_HANDLERS: OnceCell<LockedArc<[Option<Box<dyn FnMut() + Send + Sync>>; 256]>> =
     OnceCell::uninit();
 
 /// The divide by zero handler
@@ -106,13 +106,11 @@ pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
         let mut h = h.lock();
         if let Some(h2) = &mut h[4] {
             h2();
-        } else {
-            panic!("NOT WORKING?");
         }
     }
     let mut p = INTERRUPT_CONTROLLER.lock();
     if let Some(p) = p.as_mut() {
-        p.end_of_interrupt(irq)
+        p.end_of_interrupt(4)
     }
 }
 
@@ -220,14 +218,6 @@ pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
 
 /// The interrupt controller
 static INTERRUPT_CONTROLLER: Locked<Option<Pic>> = Locked::new(None);
-
-#[repr(align(16))]
-#[derive(Copy, Clone)]
-/// A structure for testing
-struct Big {
-    /// Some data to take up space
-    _data: u128,
-}
 
 #[derive(Clone)]
 /// A structure for mapping and unmapping acpi memory
@@ -346,6 +336,7 @@ impl acpi::AcpiHandler for &Acpi<'_> {
     }
 }
 
+doors_macros::todo_item!("Create an attribute macro conditionally compile functions");
 /// Perform processing necessary for acpi functionality
 fn handle_acpi(
     boot_info: &multiboot2::BootInformation,

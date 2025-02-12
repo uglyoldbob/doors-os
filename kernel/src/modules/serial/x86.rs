@@ -1,7 +1,6 @@
 //! Serial port code for x86 serial ports
 
 use core::future::Future;
-use core::pin::Pin;
 use core::task::Waker;
 
 use alloc::boxed::Box;
@@ -225,7 +224,7 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
             data.as_bytes(),
             crate::SYSTEM.sync_lock().to_owned().unwrap(),
         )
-        .await
+        .await;
     }
 
     async fn flush(&self) {

@@ -1,6 +1,6 @@
 //! Video related kernel modules
 
-use alloc::{string::ToString, vec::Vec};
+use alloc::vec::Vec;
 use fonts::VariableWidthFont;
 use pixels::FullColor;
 

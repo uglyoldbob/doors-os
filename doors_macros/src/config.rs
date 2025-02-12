@@ -8,6 +8,7 @@ pub struct KernelConfig {
 
 impl KernelConfig {
     /// Returns the architecture that is supposed to be used for the machine
+    #[allow(dead_code)]
     pub fn get_arch(&self) -> String {
         match self.machine_name.as_str() {
             "stm32f769i-disco" => "arm",
