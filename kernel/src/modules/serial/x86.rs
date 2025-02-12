@@ -283,7 +283,7 @@ impl Future for AsyncWriter<'_> {
             let mut newindex = self.index;
             let this = self.s.sync_lock();
             if !this.interrupts {
-                doors_macros::todo_item_panic!("interrupts not enabled for future");
+                panic!("interrupts not enabled for future");
             }
             let r2 = if let Some(q) = this.tx_queue.get() {
                 loop {

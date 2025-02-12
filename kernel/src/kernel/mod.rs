@@ -138,6 +138,11 @@ impl RngHandler {
         self.rng.push(LockedArc::new(m));
     }
 
+    /// Does the module index exist?
+    pub fn exists(&self, i: usize) -> bool {
+        i < self.rng.len()
+    }
+
     /// Get a rng module
     pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::rng::Rng> {
         self.rng[i].clone()

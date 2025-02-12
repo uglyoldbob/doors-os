@@ -93,9 +93,16 @@ async fn net_test() {
         executor::Task::yield_now().await;
     }
     crate::VGA
+        .print_str_async("Waiting for first rng\r\n")
+        .await;
+    while !kernel::RNGS.lock().exists(0) {
+        executor::Task::yield_now().await;
+    }
+    crate::VGA
         .print_str_async("About to do some stuff with a network card net0\r\n")
         .await;
     if let Some(na) = crate::modules::network::get_network_adapter("net0").await {
+        let rng = kernel::RNGS.lock().module(0);
         let mut na = na.lock();
         crate::VGA
             .print_str_async("About to do some stuff with a network card\r\n")
@@ -105,6 +112,17 @@ async fn net_test() {
         crate::VGA
             .print_str_async("Done doing stuff with network card\r\n")
             .await;
+        for i in 0..32 {
+            crate::VGA
+                .print_str_async(&alloc::format!("Sending packet {}\r\n", i))
+                .await;
+            let mut packet = [0; 64];
+            {
+                let rng = rng.lock();
+                rng.generate_iter(packet.iter_mut());
+            }
+            na.send_packet(&packet).await.unwrap();
+        }
     }
 }
 

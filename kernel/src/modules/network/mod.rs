@@ -17,15 +17,17 @@ lazy_static::lazy_static! {
 }
 
 /// Register a network adapter
-pub fn register_network_adapter(na: NetworkAdapter) {
-    let mut nal = NETWORK_ADAPTERS.sync_lock();
+pub async fn register_network_adapter(na: NetworkAdapter) {
+    let mut nal = NETWORK_ADAPTERS.lock().await;
     //TODO implement an automatic naming scheme
     use alloc::string::ToString;
     let name = "net0".to_string();
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "Registering a network adapter for {}\r\n",
-        name
-    ));
+    crate::VGA
+        .print_str_async(&alloc::format!(
+            "Registering a network adapter for {}\r\n",
+            name
+        ))
+        .await;
     nal.insert(name, LockedArc::new(na));
 }
 
@@ -89,6 +91,8 @@ fn mac_address_conversion_test() -> Result<(), ()> {
 pub trait NetworkAdapterTrait {
     /// Retrieve the mac address for the network adapter
     fn get_mac_address(&mut self) -> MacAddress;
+    /// Send a packet over the network interface
+    async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()>;
 }
 
 /// A network adapter

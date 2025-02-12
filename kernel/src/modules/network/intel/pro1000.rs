@@ -5,7 +5,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
 
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
-use crate::modules::video::hex_dump_generic_async;
+use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
 use crate::modules::{
     pci::{
         BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
@@ -161,6 +161,10 @@ enum IntelPro1000Registers {
     Eeprom = 0x14,
     /// MDI control register
     MDIC = 0x20,
+    /// Interrupt cause register
+    ICR = 0xc0,
+    /// Interrupt mask set/read register
+    IMS = 0xd0,
     /// Receive control register
     Rctrl = 0x100,
     /// Transmit control register
@@ -395,20 +399,21 @@ impl RxBuffer {
     }
 }
 
-/// A TxBuffer for the device
+/// A legacy TxBuffer for the device
 #[repr(C, packed)]
+#[derive(Debug)]
 struct TxBuffer {
-    /// TODO
+    /// The buffer address
     address: u64,
-    /// TODO
+    /// The length of the data for the descriptor
     length: u16,
-    /// TODO
+    /// checksum offset, where a tcp checksum should be inserted, if enabled
     cso: u8,
-    /// TODO
+    /// command field
     cmd: u8,
-    /// TODO
+    /// status field
     status: u8,
-    /// TODO
+    /// checksum start field, where to begin computing the checksum for tcp packets
     css: u8,
     /// TODO
     special: u16,
@@ -512,7 +517,7 @@ bitflags::bitflags! {
         const MPE = 1<<4;
         /// Long packet reception enable. Allows packets with a length of up to 16384 bytes when set, otherwise allows packets of length 1522 bytes when not set.
         const LPE = 1<<5;
-        /// Loopback enabled. Only allowed for ful-duplex operations. Not supported by 82540EP/EM, 82541XX, and 82547GI/EI models.
+        /// Loopback enabled. Only allowed for full-duplex operations. Not supported by 82540EP/EM, 82541XX, and 82547GI/EI models.
         const LOOPBACK = 3<<6;
         /// Set the receive descriptor minimum threshold size to 1/2 of RDLEN
         const RDMTS_HALF = 0;
@@ -652,6 +657,70 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
             }
         } else {
             todo!();
+        }
+    }
+
+    async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
+        doors_macros::todo_item!("Implement packet sending");
+        hex_dump_async(packet, true, true).await;
+        let len = packet.len();
+        if len < 8192 {
+            let txindex = self.txbufindex.unwrap() as usize;
+            let txb = self.txbufs.as_mut().unwrap();
+            let desc_count = txb.dmas.len();
+            let dest = &mut txb.dmas[txindex];
+            dest[..len].clone_from_slice(packet);
+            crate::VGA
+                .print_str_async(&format!(
+                    "Sending packet data to {:x}\r\n",
+                    crate::slice_address(dest.as_ref())
+                ))
+                .await;
+            let newindex = (txindex + 1) % desc_count;
+            {
+                let descriptor = &mut txb.bufs[txindex];
+                descriptor.length = len as u16;
+                doors_macros::todo_item!("Replace hard-coded value with constants");
+                descriptor.cmd = 0x0b;
+                descriptor.status = 0;
+                descriptor.css = 0;
+                self.txbufindex = Some(newindex as u8);
+                hex_dump_generic_async(descriptor, false, true).await;
+            }
+            let descriptor = &txb.bufs[txindex];
+            crate::VGA
+                .print_str_async(&format!(
+                    "TX HEAD/TAIL is {:x} {:x}\r\n",
+                    self.bar0.read(IntelPro1000Registers::TxDescHead as u16),
+                    self.bar0.read(IntelPro1000Registers::TxDescTail as u16)
+                ))
+                .await;
+            self.bar0
+                .write(IntelPro1000Registers::TxDescTail as u16, newindex as u32);
+            for _ in 0..100 {
+                let stat = unsafe { core::ptr::read_volatile(&descriptor.status) };
+                crate::VGA
+                    .print_str_async(&format!("Descriptor status is {:x?}\r\n", descriptor))
+                    .await;
+                crate::VGA
+                    .print_str_async(&format!(
+                        "TX HEAD/TAIL is {:x} {:x}\r\n",
+                        self.bar0.read(IntelPro1000Registers::TxDescHead as u16),
+                        self.bar0.read(IntelPro1000Registers::TxDescTail as u16)
+                    ))
+                    .await;
+                for d in txb.bufs.iter() {
+                    crate::VGA
+                        .print_str_async(&format!("Descriptor status is {:x?}\r\n", d))
+                        .await;
+                }
+                if (stat & 1) == 1 {
+                    break;
+                }
+            }
+            Ok(())
+        } else {
+            doors_macros::todo_item_panic!("Packets larger than 8192 bytes not yet handled");
         }
     }
 }
@@ -824,6 +893,7 @@ impl IntelPro1000Device {
                 IntelPro1000Registers::Rctrl as u16,
                 (RctrlFlags::EN
                     | RctrlFlags::BAM
+                    | RctrlFlags::LOOPBACK
                     | RctrlFlags::RDMTS_HALF
                     | RctrlFlags::BSIZE_8192)
                     .bits(),
@@ -895,6 +965,16 @@ impl IntelPro1000Device {
             self.txbufs = Some(txbuf);
         }
         Ok(())
+    }
+
+    /// Enable interrupts for the network card
+    fn enable_interrupts(&mut self) {
+        doors_macros::todo_item!(
+            "Replace the constant with named values by defining a bitfield for the register"
+        );
+        self.bar0.write(IntelPro1000Registers::IMS as u16, 0x1f6fc);
+        // Read the interrupt register to clear it
+        let _ = self.bar0.read(IntelPro1000Registers::ICR as u16);
     }
 
     /// Read a word from the eeprom at the specified address
@@ -1015,10 +1095,10 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 for (i, data) in data.iter_mut().enumerate() {
                     *data = d.read_from_eeprom(i as u8);
                 }
-                hex_dump_generic_async(&data, true, false);
+                hex_dump_generic_async(&data, true, false).await;
                 let mac = d.get_mac_address();
                 d.general_config();
-                hex_dump(&mac.address, false, false);
+                hex_dump_async(&mac.address, false, false).await;
                 if let Err(e) = d.init_rx(&mac) {
                     crate::VGA
                         .print_str_async(&format!("RX buffer allocation error {:?}\r\n", e))
@@ -1029,6 +1109,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
+                d.enable_interrupts();
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {
                         crate::VGA
@@ -1036,7 +1117,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                             .await;
                     }
                 }
-                super::super::register_network_adapter(d.into());
+                super::super::register_network_adapter(d.into()).await;
             }
         }
     }
