@@ -5,7 +5,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
 
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
-use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
+use crate::modules::video::{hex_dump_async, hex_dump_generic_async, hex_dump_generic_slice_async};
 use crate::modules::{
     pci::{
         BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
@@ -157,6 +157,8 @@ impl MemoryOrIo {
 enum IntelPro1000Registers {
     /// Device control register
     CTRL = 0,
+    /// Device status register
+    STATUS = 8,
     /// The eeprom read register
     Eeprom = 0x14,
     /// MDI control register
@@ -427,7 +429,7 @@ impl TxBuffer {
             length: 0,
             cso: 0,
             cmd: 0,
-            status: 0,
+            status: 1,
             css: 1,
             special: 0,
         }
@@ -661,59 +663,31 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     }
 
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
-        doors_macros::todo_item!("Implement packet sending");
         hex_dump_async(packet, true, true).await;
         let len = packet.len();
         if len < 8192 {
             let txindex = self.txbufindex.unwrap() as usize;
-            let txb = self.txbufs.as_mut().unwrap();
-            let desc_count = txb.dmas.len();
-            let dest = &mut txb.dmas[txindex];
-            dest[..len].clone_from_slice(packet);
-            crate::VGA
-                .print_str_async(&format!(
-                    "Sending packet data to {:x}\r\n",
-                    crate::slice_address(dest.as_ref())
-                ))
-                .await;
-            let newindex = (txindex + 1) % desc_count;
+            let newindex = (txindex + 1) % self.txbufs.as_ref().unwrap().dmas.len();
             {
-                let descriptor = &mut txb.bufs[txindex];
-                descriptor.length = len as u16;
-                doors_macros::todo_item!("Replace hard-coded value with constants");
-                descriptor.cmd = 0x0b;
-                descriptor.status = 0;
-                descriptor.css = 0;
-                self.txbufindex = Some(newindex as u8);
-                hex_dump_generic_async(descriptor, false, true).await;
+                let txb = self.txbufs.as_mut().unwrap();
+                let dest = &mut txb.dmas[txindex];
+                dest[..len].clone_from_slice(packet);
+                {
+                    let descriptor = &mut txb.bufs[txindex];
+                    descriptor.length = len as u16;
+                    doors_macros::todo_item!("Replace hard-coded value with constants");
+                    descriptor.cmd = 0x0b;
+                    descriptor.status = 0;
+                    descriptor.css = 0;
+                    hex_dump_generic_async(descriptor, false, true).await;
+                }
             }
-            let descriptor = &txb.bufs[txindex];
-            crate::VGA
-                .print_str_async(&format!(
-                    "TX HEAD/TAIL is {:x} {:x}\r\n",
-                    self.bar0.read(IntelPro1000Registers::TxDescHead as u16),
-                    self.bar0.read(IntelPro1000Registers::TxDescTail as u16)
-                ))
-                .await;
+            let descriptor = &self.txbufs.as_ref().unwrap().bufs[txindex];
             self.bar0
                 .write(IntelPro1000Registers::TxDescTail as u16, newindex as u32);
-            for _ in 0..100 {
+            self.txbufindex = Some(newindex as u8);
+            loop {
                 let stat = unsafe { core::ptr::read_volatile(&descriptor.status) };
-                crate::VGA
-                    .print_str_async(&format!("Descriptor status is {:x?}\r\n", descriptor))
-                    .await;
-                crate::VGA
-                    .print_str_async(&format!(
-                        "TX HEAD/TAIL is {:x} {:x}\r\n",
-                        self.bar0.read(IntelPro1000Registers::TxDescHead as u16),
-                        self.bar0.read(IntelPro1000Registers::TxDescTail as u16)
-                    ))
-                    .await;
-                for d in txb.bufs.iter() {
-                    crate::VGA
-                        .print_str_async(&format!("Descriptor status is {:x?}\r\n", d))
-                        .await;
-                }
                 if (stat & 1) == 1 {
                     break;
                 }
@@ -746,6 +720,32 @@ impl IntelPro1000Device {
             }
         }
         self.eeprom_present.unwrap()
+    }
+
+    /// Dump the contents of key registers
+    async fn dump_registers(&self) {
+        let regs = &[
+            IntelPro1000Registers::CTRL,
+            IntelPro1000Registers::STATUS,
+            IntelPro1000Registers::Rctrl,
+            IntelPro1000Registers::RxDescLen,
+            IntelPro1000Registers::RxDescHead,
+            IntelPro1000Registers::RxDescTail,
+            IntelPro1000Registers::Tctrl,
+            IntelPro1000Registers::TxDescLow,
+            IntelPro1000Registers::TxDescHigh,
+            IntelPro1000Registers::TxDescHead,
+            IntelPro1000Registers::TxDescTail,
+        ];
+        for r in regs {
+            crate::VGA
+                .print_str_async(&format!(
+                    "{:?} register is {:x}\r\n",
+                    r,
+                    self.bar0.read(*r as u16)
+                ))
+                .await;
+        }
     }
 
     /// Does the device support pci-x extension to pci?
@@ -873,11 +873,11 @@ impl IntelPro1000Device {
             ));
             self.bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
-                (rxaddr >> 32) as u32,
+                (rxaddr & 0xFFFFFFFF) as u32,
             );
             self.bar0.write(
                 IntelPro1000Registers::RxDescHigh as u16,
-                (rxaddr & 0xFFFFFFFF) as u32,
+                (rxaddr >> 32) as u32,
             );
             self.bar0.write(
                 IntelPro1000Registers::RxDescLen as u16,
@@ -893,7 +893,6 @@ impl IntelPro1000Device {
                 IntelPro1000Registers::Rctrl as u16,
                 (RctrlFlags::EN
                     | RctrlFlags::BAM
-                    | RctrlFlags::LOOPBACK
                     | RctrlFlags::RDMTS_HALF
                     | RctrlFlags::BSIZE_8192)
                     .bits(),
@@ -925,28 +924,34 @@ impl IntelPro1000Device {
             let txaddr = txbuf.bufs.phys();
             self.bar0.write(
                 IntelPro1000Registers::TxDescLow as u16,
-                (txaddr >> 32) as u32,
-            );
-            self.bar0.write(
-                IntelPro1000Registers::TxDescHigh as u16,
                 (txaddr & 0xFFFFFFFF) as u32,
             );
             self.bar0.write(
-                IntelPro1000Registers::TxDescLen as u16,
-                core::mem::size_of::<TxBuffer>() as u32 * txbuf.bufs.len() as u32,
+                IntelPro1000Registers::TxDescHigh as u16,
+                (txaddr >> 32) as u32,
             );
+            let desclen = core::mem::size_of::<TxBuffer>() as u32 * txbuf.bufs.len() as u32;
+            crate::VGA.print_str(&format!("Tx descriptor length is {} bytes\r\n", desclen));
+            self.bar0
+                .write(IntelPro1000Registers::TxDescLen as u16, desclen);
             self.bar0.write(IntelPro1000Registers::TxDescHead as u16, 0);
             self.bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
+
+            self.bar0
+                .write(IntelPro1000Registers::TIPG as u16, 10 | 8 << 10 | 6 << 20);
+            let v = self.bar0.read(IntelPro1000Registers::TIPG as u16);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Need to SET TIPG, it is currently {:x}\r\n",
+                v
+            ));
+
             self.bar0.write(
                 IntelPro1000Registers::Tctrl as u16,
                 (TctrlFlags::EN | TctrlFlags::PSP | TctrlFlags::RTLC).bits()
                     | (15 << TctrlFlags::CT_SHIFT.bits())
                     | (64 << TctrlFlags::COLD_SHIFT.bits()),
             );
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Need to SET TIPG, it is currently {:x}\r\n",
-                self.bar0.read(IntelPro1000Registers::TIPG as u16)
-            ));
+
             self.txbufindex = Some(0);
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "TX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
@@ -1109,7 +1114,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
-                d.enable_interrupts();
+                f.set_bus_mastering(cs, bus, dev, true);
+                //d.enable_interrupts();
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {
                         crate::VGA

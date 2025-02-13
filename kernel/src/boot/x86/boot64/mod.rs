@@ -709,7 +709,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
         self.enable_interrupts();
     }
 
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F) {
+    fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
         if let Ok(ih) = IRQ_HANDLERS.try_get() {
             let mut irqs = ih.lock();

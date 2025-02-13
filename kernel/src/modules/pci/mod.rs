@@ -1041,6 +1041,23 @@ impl PciFunction {
         }
     }
 
+    /// Set the bus mastering value in the command register
+    pub fn set_bus_mastering(
+        &self,
+        pci: &mut PciConfigurationSpace,
+        bus: &PciBus,
+        dev: &PciDevice,
+        val: bool,
+    ) {
+        let mut rval = pci.read_u32(bus.num, dev.dev, self.function, 4);
+        if val {
+            rval |= 4;
+        } else {
+            rval &= !4;
+        }
+        pci.write_u32(bus.num, dev.dev, self.function, 4, rval);
+    }
+
     /// Returns a combination of vendor and device id, to identify a potential driver for the function
     fn get_driver_id(&self, pci: &mut PciConfigurationSpace, bus: &PciBus, dev: &PciDevice) -> u32 {
         pci.read_u32(bus.num, dev.dev, self.function, 0)

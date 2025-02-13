@@ -666,3 +666,11 @@ pub async fn hex_dump_generic_async<T>(data: &T, print_address: bool, print_asci
     let data = unsafe { core::slice::from_raw_parts((data as *const T) as *const u8, len) };
     hex_dump_async(data, print_address, print_ascii).await;
 }
+
+/// prints out a user friendly hex dump of the specified data
+pub async fn hex_dump_generic_slice_async<T>(data: &[T], print_address: bool, print_ascii: bool) {
+    let len = data.len() * core::mem::size_of::<T>();
+    let data =
+        unsafe { core::slice::from_raw_parts((data as *const [T] as *const T) as *const u8, len) };
+    hex_dump_async(data, print_address, print_ascii).await;
+}
