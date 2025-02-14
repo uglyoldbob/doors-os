@@ -209,15 +209,14 @@ pub fn config_check(
         let m = KERNEL_CONFIG.lock().unwrap();
         m.as_ref()
             .map(|a| a.check_field_string(&f.ident.to_string(), &f.val.value()))
-    }.unwrap();
+    }
+    .unwrap();
     if go {
         let item: proc_macro2::TokenStream = item.into();
         quote!(#item).into()
-    }
-    else {
+    } else {
         quote!().into()
     }
-    
 }
 
 /// Retrieve a boolean value from the kernel config and use it to enable a block of code
