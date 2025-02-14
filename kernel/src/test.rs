@@ -6,6 +6,7 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(negative_impls)]
 #![feature(type_alias_impl_trait)]
 #![feature(unboxed_closures)]
 

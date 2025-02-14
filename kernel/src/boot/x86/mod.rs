@@ -145,7 +145,7 @@ pub struct IoPortManager {
 impl Locked<IoPortManager> {
     /// Try to get a single port from the system
     pub fn get_port<T>(&self, base: u16) -> Option<IoPortRef<T>> {
-        let mut manager = self.lock();
+        let mut manager = self.sync_lock();
         let p = base;
         let index = p / core::mem::size_of::<usize>() as u16;
         let shift = p % core::mem::size_of::<usize>() as u16;
@@ -163,7 +163,7 @@ impl Locked<IoPortManager> {
 
     /// Try to get some io ports from the system.
     pub fn get_ports(&self, base: u16, quantity: u16) -> Option<IoPortArray> {
-        let mut manager = self.lock();
+        let mut manager = self.sync_lock();
         let mut possible = true;
         for p in base..base + quantity {
             let index = p / core::mem::size_of::<usize>() as u16;
@@ -191,7 +191,7 @@ impl Locked<IoPortManager> {
 
     /// Returns a list of port previously obtained fromm the manager
     fn return_ports(&self, ports: &mut IoPortArray) {
-        let mut manager = self.lock();
+        let mut manager = self.sync_lock();
         for p in ports.base..ports.base + ports.quantity {
             let index = p / core::mem::size_of::<usize>() as u16;
             let shift = p % core::mem::size_of::<usize>() as u16;
@@ -225,7 +225,7 @@ extern "C" {
 /// Probe and setup all serial ports for x86
 /// This will probably be removed once pci space is further developed
 fn setup_serial() {
-    let mut serials = crate::kernel::SERIAL.lock();
+    let mut serials = crate::kernel::SERIAL.sync_lock();
     for (base, irq) in [(0x3f8, 4), (0x2f8, 3), (0x3e8, 4), (0x2e8, 3)] {
         if let Some(com) = crate::modules::serial::x86::X86SerialPort::new(base, irq) {
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -233,29 +233,31 @@ fn setup_serial() {
                 base
             ));
             let com = crate::modules::serial::Serial::PcComPort(AsyncLockedArc::new(com));
-            crate::modules::serial::SerialTrait::sync_transmit_str(&com, "Serial port test\r\n");
+            use crate::modules::serial::SerialTrait;
+            com.sync_transmit_str("Testing the serial port\r\n");
             serials.register_serial(com);
         }
     }
+}
 
+/// Enable interrupts for the first serial port if it is present
+fn serial_interrupts() {
+    let mut serials = crate::kernel::SERIAL.sync_lock();
     if serials.exists(0) {
         let s = serials.module(0);
         let sys = crate::SYSTEM.sync_lock().as_ref().unwrap().clone();
-        s.lock().enable_interrupts(sys).unwrap();
+        s.sync_lock().enable_async(sys).unwrap();
         let sd = s.make_text_display();
         let mut v = crate::VGA.sync_lock();
         v.replace(sd);
         drop(v);
-        crate::VGA_READY.store(true, Ordering::Relaxed);
-        match log::set_logger(&*crate::VGA) {
-            Ok(_a) => crate::VGA.print_str("logger set\r\n"),
-            Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Logger failed to set {:?}\r\n",
-                e
-            )),
-        }
-        log::set_max_level(log::LevelFilter::Trace);
-        log::error!("This is a test of the log system");
+    }
+    if serials.exists(1) {
+        let s = serials.module(1);
+        let sd = s.make_text_display();
+        let mut v = crate::VGA2.sync_lock();
+        v.replace(sd);
+        drop(v);
     }
 }
 

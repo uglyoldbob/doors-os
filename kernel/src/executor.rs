@@ -92,6 +92,8 @@ pub struct Task<'a> {
     id: TaskId,
     /// The future that the task executes
     future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + Send + 'a>>,
+    /// Number of times it has been polled
+    polled: usize,
 }
 
 impl<'a> Task<'a> {
@@ -100,6 +102,7 @@ impl<'a> Task<'a> {
         Self {
             id: TaskId::new(),
             future: alloc::boxed::Box::pin(future),
+            polled: 0,
         }
     }
 
@@ -168,7 +171,7 @@ impl alloc::task::Wake for TaskListWaker {
 }
 
 /// A list of tasks to be executed
-struct TaskList {
+pub struct TaskList {
     /// The list of task ids associated with the list
     tasks: alloc::sync::Arc<TaskListType<TaskId>>,
 }
@@ -192,11 +195,22 @@ impl TaskList {
         self.tasks.push(taskid).map_err(|_| ())
     }
 
+    /// Copy the number of times that tasks have been polled
+    fn copy_polls(&mut self, taskid: TaskId, task: &Task<'_>, polled: &mut [Option<usize>; 6]) {
+        if taskid.0 < polled.len() {
+            polled[taskid.0] = Some(task.polled);
+        }
+        if task.polled > 1000 {
+            loop {}
+        }
+    }
+
     /// Run tasks in the list
     fn run(
         &mut self,
         all_tasks: &mut alloc::collections::BTreeMap<TaskId, Task>,
         wakers: &mut alloc::collections::BTreeMap<TaskId, Waker>,
+        polled: &mut [Option<usize>; 6],
     ) {
         while let Some(taskid) = self.tasks.pop() {
             let task = all_tasks.get_mut(&taskid);
@@ -205,6 +219,8 @@ impl TaskList {
                     .entry(taskid)
                     .or_insert_with(|| TaskListWaker::new(taskid, self.tasks.clone()));
                 let mut context = core::task::Context::from_waker(waker);
+                task.polled += 1;
+                self.copy_polls(taskid, task, polled);
                 match task.poll(&mut context) {
                     core::task::Poll::Ready(()) => {
                         all_tasks.remove(&taskid);
@@ -228,6 +244,8 @@ pub struct Executor<'a> {
     wakers: alloc::collections::BTreeMap<TaskId, Waker>,
     /// The basic list of tasks for the executor
     basic_tasks: TaskList,
+    /// The number of times that tasks have been polled
+    polled: [Option<usize>; 6],
 }
 
 impl<'a> Executor<'a> {
@@ -271,15 +289,28 @@ impl<'a> Executor<'a> {
 
     /// Runs tasks
     fn run_tasks(&mut self) {
-        self.basic_tasks.run(&mut self.all_tasks, &mut self.wakers);
+        self.basic_tasks
+            .run(&mut self.all_tasks, &mut self.wakers, &mut self.polled);
+    }
+
+    /// Get the polls for all tasks
+    fn get_polls(&mut self) {
+        for p in &mut self.polled {
+            *p = None;
+        }
+        for (id, task) in self.all_tasks.iter() {
+            if id.0 < self.polled.len() {
+                self.polled[id.0] = Some(task.polled);
+            }
+        }
     }
 
     /// Run the executor
     pub fn run(&mut self) -> ! {
-        crate::VGA.print_str("Running the executor\r\n");
         let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
         loop {
             self.run_tasks();
+            self.get_polls();
             use crate::kernel::SystemTrait;
             sys.idle_if(|| self.basic_tasks.is_empty());
         }

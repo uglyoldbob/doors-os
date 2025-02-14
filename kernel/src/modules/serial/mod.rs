@@ -12,7 +12,7 @@ use crate::{AsyncLockedArc, LockedArc};
 #[enum_dispatch::enum_dispatch]
 pub trait SerialTrait {
     /// Enable any required interrupts for async operations
-    fn enable_interrupts(&self, sys: crate::kernel::System) -> Result<(), ()>;
+    fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()>;
     /// Setup the serial port
     fn setup(&self, rate: u32) -> Result<(), ()>;
     /// Transmit some data synchronously. Data may not be fully sent until flush is performed.
@@ -42,7 +42,7 @@ pub enum Serial {
     Dummy(DummySerial),
 }
 
-impl LockedArc<Serial> {
+impl AsyncLockedArc<Serial> {
     /// Create a text display
     pub fn make_text_display(&self) -> super::video::TextDisplay {
         let sd = super::video::VideoOverSerial::new(self.clone());
@@ -58,7 +58,7 @@ impl SerialTrait for DummySerial {
         Err(())
     }
 
-    fn enable_interrupts(&self, _sys: crate::kernel::System) -> Result<(), ()> {
+    fn enable_async(&self, _sys: crate::kernel::System) -> Result<(), ()> {
         Err(())
     }
 

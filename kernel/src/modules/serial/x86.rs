@@ -74,7 +74,7 @@ impl X86SerialPort {
     }
 
     /// Check the transmit fifo to see if it is full
-    fn can_send(&mut self) -> bool {
+    fn can_send(&self) -> bool {
         let a: u8 = self.base.port(5).port_read();
         (a & 0x20) != 0
     }
@@ -110,35 +110,61 @@ impl X86SerialPort {
 
     /// The interrupt handler code
     fn handle_interrupt(s: &AsyncLockedArc<X86SerialPort>) {
-        let mut s2 = s.sync_lock();
+        crate::VGA2.print_str("\tSerial port interrupt handler\r\n");
+        let s2 = s.sync_lock();
+        let stat: u8 = s2.base.port(2).port_read();
         if let Ok(aq) = s2.tx_queue.try_get() {
             if let Some(v) = aq.pop() {
+                while !s2.can_send() {}
+                crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "\tSerial port sending a byte {} now\r\n",
+                    v as char
+                ));
                 s2.base.port(0).port_write(v);
-            }
-            if aq.is_empty() {
-                s2.disable_tx_interrupt();
+            } else {
+                crate::VGA2
+                    .print_str("\tSerial port interrupt handler did not get a byte to send\r\n");
             }
         }
-        let _ = s2.tx_wakers.try_get().map(|a| {
+        if let Ok(a) = s2.tx_wakers.try_get() {
+            crate::VGA2.print_str("\tHandler waking all wakers\r\n");
+            let mut index = 0;
             while let Some(w) = a.pop() {
+                crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "\tWaking waker {}\r\n",
+                    index
+                ));
                 w.wake();
+                index += 1;
             }
-        });
+        }
     }
 
     /// Enable the tx interrupt, used when sending data over the serial port
     /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
     unsafe fn enable_tx_interrupt(&mut self) {
-        if self.interrupts && !self.itx {
+        if self.interrupts {
+            crate::VGA2.print_str("\tSerial port tx interrupt enabled\r\n");
             let v: u8 = self.base.port(1).port_read();
             self.base.port(1).port_write(v | 2);
             self.itx = true;
         }
     }
 
+    /// Return the status of the interrupt enable register
+    fn read_tx_int_status(&self) -> u8 {
+        self.base.port(1).port_read()
+    }
+
+    /// Return the status of the line status register
+    fn read_tx_line_status(&self) -> u8 {
+        self.base.port(5).port_read()
+    }
+
     /// Stop the tx interrupt. Used when a transmission has completed.
     fn disable_tx_interrupt(&mut self) {
-        if self.itx {
+        if self.interrupts {
+            crate::VGA2.print_str("\tSerial port tx interrupt disabled\r\n");
             let v: u8 = self.base.port(1).port_read();
             self.base.port(1).port_write(v & !2);
             self.itx = false;
@@ -169,6 +195,23 @@ impl AsyncLockedArc<X86SerialPort> {
             sys.enable_irq(irqnum);
         }
     }
+
+    /// Synchronous version of enable_tx_interrupt
+    fn sync_enable_tx_interrupt(&self, sys: &crate::kernel::System) {
+        let (ie, flag, irqnum) = {
+            let s = self.sync_lock();
+            (s.interrupts, s.itx, s.irq)
+        };
+        if ie {
+            sys.disable_irq(irqnum);
+            {
+                unsafe {
+                    self.sync_lock().enable_tx_interrupt();
+                }
+            }
+            sys.enable_irq(irqnum);
+        }
+    }
 }
 
 impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
@@ -176,49 +219,108 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
         todo!();
     }
 
-    fn enable_interrupts(&self, sys: crate::kernel::System) -> Result<(), ()> {
+    fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {
+        use crate::kernel::SystemTrait;
         let irqnum = {
             let s = self.sync_lock();
             s.irq
         };
         {
-            use crate::kernel::SystemTrait;
             let s2 = self.clone();
             sys.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
-            sys.enable_irq(irqnum);
         }
         {
             let mut s = self.sync_lock();
             s.base.port(4).port_write(0x03u8 | 8u8);
             s.interrupts = true;
         };
-
+        sys.enable_irq(irqnum);
         Ok(())
     }
 
     fn sync_transmit(&self, data: &[u8]) {
+        if self.sync_lock().irq == 4 {
+            crate::VGA2.print_str("SYNC writing data: ");
+            for b in data {
+                crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!("{}", *b as char));
+            }
+        }
         let mut s = self.sync_lock();
-        for c in data {
-            s.sync_send_byte(*c);
+        if !s.interrupts {
+            for c in data {
+                s.sync_send_byte(*c);
+            }
+        } else {
+            use alloc::borrow::ToOwned;
+            let txq = s.tx_queue.clone();
+            drop(s);
+            let mut ienabled = false;
+            let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
+            for c in data {
+                if let Ok(tx) = txq.try_get() {
+                    while tx.push(*c).is_err() {}
+                    if !ienabled {
+                        self.sync_enable_tx_interrupt(&sys);
+                        ienabled = true;
+                    }
+                }
+            }
         }
     }
 
     fn sync_transmit_str(&self, data: &str) {
+        if self.sync_lock().irq == 4 {
+            crate::VGA2.print_str("SYNC writing string: ");
+            crate::VGA2.print_str(data);
+        }
         let mut s = self.sync_lock();
-        for c in data.bytes() {
-            s.sync_send_byte(c);
+        if !s.interrupts {
+            for c in data.bytes() {
+                s.sync_send_byte(c);
+            }
+        } else {
+            use alloc::borrow::ToOwned;
+            let txq = s.tx_queue.clone();
+            drop(s);
+            let mut ienabled = false;
+            let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
+            for c in data.bytes() {
+                if let Ok(tx) = txq.try_get() {
+                    while tx.push(c).is_err() {}
+                    if !ienabled {
+                        self.sync_enable_tx_interrupt(&sys);
+                        ienabled = true;
+                    }
+                }
+            }
         }
     }
 
-    fn sync_flush(&self) {}
+    fn sync_flush(&self) {
+        let (i, txq) = {
+            let s = self.sync_lock();
+            (s.interrupts, s.tx_queue.clone())
+        };
+        if i {
+            if let Ok(tx) = txq.try_get() {
+                while !tx.is_empty() {}
+            }
+        }
+    }
 
     async fn transmit(&self, data: &[u8]) {
         use alloc::borrow::ToOwned;
+        crate::VGA2.print_str("Async writing data: ");
+        for b in data {
+            crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!("{}", *b as char));
+        }
         AsyncWriter::new(self, data, crate::SYSTEM.sync_lock().to_owned().unwrap()).await
     }
 
     async fn transmit_str(&self, data: &str) {
         use alloc::borrow::ToOwned;
+        crate::VGA2.print_str("Async writing string: ");
+        crate::VGA2.print_str(data);
         AsyncWriter::new(
             self,
             data.as_bytes(),
@@ -238,7 +340,6 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
 }
 
 /// The async struct for serial port sending
-#[pin_project::pin_project]
 struct AsyncWriter<'a> {
     /// The array queue to write into
     s: &'a AsyncLockedArc<X86SerialPort>,
@@ -246,13 +347,8 @@ struct AsyncWriter<'a> {
     index: usize,
     /// The data reference
     data: &'a [u8],
-    /// Waiting on interrupt enable
-    interrupt_enable: bool,
     /// The system
     sys: crate::kernel::System,
-    /// The interrupt enable future
-    #[pin]
-    ienable: futures::future::BoxFuture<'a, ()>,
 }
 
 impl<'a> AsyncWriter<'a> {
@@ -266,9 +362,7 @@ impl<'a> AsyncWriter<'a> {
             s,
             index: 0,
             data,
-            interrupt_enable: false,
             sys: sys.clone(),
-            ienable: Box::pin(s.enable_tx_interrupt(sys)),
         }
     }
 }
@@ -279,58 +373,70 @@ impl Future for AsyncWriter<'_> {
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
-        if !self.interrupt_enable {
-            let mut newindex = self.index;
-            let this = self.s.sync_lock();
-            if !this.interrupts {
-                panic!("interrupts not enabled for future");
-            }
-            let r2 = if let Some(q) = this.tx_queue.get() {
-                loop {
-                    if !q.is_full() {
-                        if newindex < self.data.len() {
-                            if q.push(self.data[newindex]).is_ok() {
-                                newindex += 1;
-                                if !self.interrupt_enable {
-                                    self.interrupt_enable = true;
-                                    self.ienable =
-                                        Box::pin(self.s.enable_tx_interrupt(self.sys.clone()));
-                                }
-                            } else {
-                                let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
-                                break core::task::Poll::Pending;
-                            }
-                        } else if self.interrupt_enable {
-                            if self.ienable.as_mut().poll(cx).is_ready() {
-                                self.interrupt_enable = false;
-                                break core::task::Poll::Ready(());
-                            } else {
-                                let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
-                                break core::task::Poll::Pending;
+        crate::VGA2.print_str("Polling the x86 serial port\r\n");
+        let mut newindex = self.index;
+        let mut interrupt_enable = false;
+        let this = self.s.sync_lock();
+        if !this.interrupts {
+            panic!("interrupts not enabled for future");
+        }
+        let tx_wakers = this.tx_wakers.clone();
+        let queue = this.tx_queue.clone();
+        drop(this);
+        let r2 = if let Some(q) = queue.get() {
+            loop {
+                if !q.is_full() {
+                    if newindex < self.data.len() {
+                        if q.push(self.data[newindex]).is_ok() {
+                            newindex += 1;
+                            if !interrupt_enable {
+                                interrupt_enable = true;
                             }
                         } else {
-                            break core::task::Poll::Ready(());
+                            let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+                            crate::VGA2.print_str("Pending 3\r\n");
+                            break core::task::Poll::Pending;
                         }
-                    } else if self.interrupt_enable {
-                        let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
-                        if self.ienable.as_mut().poll(cx).is_ready() {
-                            self.interrupt_enable = false;
-                        }
-                        break core::task::Poll::Pending;
+                    } else if interrupt_enable {
+                        self.s.sync_enable_tx_interrupt(&self.sys);
+                        break core::task::Poll::Ready(());
+                    } else {
+                        break core::task::Poll::Ready(());
                     }
+                } else if interrupt_enable {
+                    let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+                    self.s.sync_enable_tx_interrupt(&self.sys);
+                    crate::VGA2.print_str("Pending 2\r\n");
+                    break core::task::Poll::Pending;
+                } else {
+                    crate::VGA2.print_str("Queue is full?\r\n");
                 }
-            } else {
-                let _ = this.tx_wakers.get().unwrap().push(cx.waker().clone());
-                core::task::Poll::Pending
-            };
-            drop(this);
-            self.index = newindex;
-            r2
-        } else {
-            if self.ienable.as_mut().poll(cx).is_ready() {
-                self.interrupt_enable = false;
             }
+        } else {
+            let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+            crate::VGA2.print_str("Pending 1\r\n");
             core::task::Poll::Pending
+        };
+        self.index = newindex;
+        crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!(
+            "TX QUEUE IS EMPTY? -> {}\r\n",
+            queue.get().unwrap().is_empty()
+        ));
+        crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!(
+            "TX QUEUE VAL1 -> 0x{:x}\r\n",
+            self.s.sync_lock().read_tx_int_status()
+        ));
+        crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!(
+            "TX QUEUE VAL2 -> 0x{:x}\r\n",
+            self.s.sync_lock().read_tx_line_status()
+        ));
+        if r2.is_pending() {
+            crate::VGA2.print_str("Polling the x86 serial port is pending\r\n");
         }
+        if r2.is_ready() {
+            self.s.sync_lock().disable_tx_interrupt();
+            crate::VGA2.print_str("Polling the x86 serial port is ready\r\n");
+        }
+        r2
     }
 }

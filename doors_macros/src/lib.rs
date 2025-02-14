@@ -61,6 +61,26 @@ pub fn todo_item(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     quote!().into()
 }
 
+/// Insert a todo list entry into the todolist and also emit a todo macro
+#[proc_macro]
+pub fn todo(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item2 = item.clone();
+    let f = parse_macro_input!(item2 as Option<syn::LitStr>).unwrap_or(syn::LitStr::new(
+        "TODO",
+        proc_macro::Span::call_site().into(),
+    ));
+    let mut list = TODOLIST.lock().unwrap();
+    let list = list.as_mut().unwrap();
+    let ds = proc_macro::Span::call_site();
+    list.items.push(format!(
+        "{} @ {:?} line {}",
+        f.value(),
+        ds.source_file().path(),
+        ds.start().line()
+    ));
+    quote!(todo!(#f)).into()
+}
+
 /// Insert a todo list entry into the todolist and also panic
 #[proc_macro]
 pub fn todo_item_panic(item: proc_macro::TokenStream) -> proc_macro::TokenStream {

@@ -7,6 +7,7 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(negative_impls)]
 #![feature(type_alias_impl_trait)]
 #![feature(unboxed_closures)]
 
@@ -95,15 +96,15 @@ async fn net_test() {
     crate::VGA
         .print_str_async("Waiting for first rng\r\n")
         .await;
-    while !kernel::RNGS.lock().exists(0) {
+    while !kernel::RNGS.lock().await.exists(0) {
         executor::Task::yield_now().await;
     }
     crate::VGA
         .print_str_async("About to do some stuff with a network card net0\r\n")
         .await;
     if let Some(na) = crate::modules::network::get_network_adapter("net0").await {
-        let rng = kernel::RNGS.lock().module(0);
-        let mut na = na.lock();
+        let rng = kernel::RNGS.sync_lock().module(0);
+        let mut na = na.lock().await;
         crate::VGA
             .print_str_async("About to do some stuff with a network card\r\n")
             .await;
@@ -118,7 +119,7 @@ async fn net_test() {
                 .await;
             let mut packet = [0; 64];
             {
-                let rng = rng.lock();
+                let rng = rng.sync_lock();
                 rng.generate_iter(packet.iter_mut());
             }
             na.send_packet(&packet).await.unwrap();
@@ -131,32 +132,31 @@ fn main() -> ! {
         let sys = SYSTEM.sync_lock().to_owned().unwrap();
         sys.enable_interrupts();
         sys.init();
-        crate::VGA.print_str("DoorsOs Booting now\r\n");
-
         {
-            let mut d = kernel::DISPLAYS.lock();
+            let mut d = kernel::DISPLAYS.sync_lock();
             if d.exists(0) {
                 let e = d.module(0);
-                let mut f = e.lock();
+                let mut f = e.sync_lock();
                 if let Some(fb) = f.try_get_pixel_buffer() {
                     crate::VGA.print_str("Writing random data to framebuffer\r\n");
-                    let mut rng = kernel::RNGS.lock();
+                    let mut rng = kernel::RNGS.sync_lock();
                     let rngm = rng.module(0);
-                    let rng = rngm.lock();
+                    let rng = rngm.sync_lock();
                     loop {
                         rng.generate_iter(fb.iter_bytes());
                     }
                 }
             }
         }
-        crate::VGA.print_str("About to start the executor\r\n");
         let mut executor = Executor::default();
         executor
             .spawn_closure(async || {
+                crate::VGA.print_str_async("DUMMY STUFF\r\n").await;
                 crate::VGA.print_str_async("Registering LFSR rng\r\n").await;
                 let rng = rng::RngLfsr::new();
                 kernel::RNGS
                     .lock()
+                    .await
                     .register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
             })
             .unwrap();

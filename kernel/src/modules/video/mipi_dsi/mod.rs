@@ -454,7 +454,7 @@ impl OrisetechOtm8009a {
 
 impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
     fn get_resolutions(&self, resout: &mut Vec<ScreenResolution>) {
-        let s = self.lock();
+        let s = self.sync_lock();
         resout.clear();
         resout.push(s.resolution.clone());
     }
@@ -464,7 +464,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         dsi: &mut MipiDsiDcs,
         resolution: &ScreenResolution,
     ) -> Result<(), PanelSetupError> {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         if let Some(backlight) = &mut s.backlight {
             backlight.set_output();
             backlight.write_output(true);
@@ -476,10 +476,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
 
             {
                 use crate::modules::timer::TimerTrait;
-                let mut timers = crate::kernel::TIMERS.lock();
+                let mut timers = crate::kernel::TIMERS.sync_lock();
                 let tp = timers.module(0);
                 drop(timers);
-                let mut tpl = tp.lock();
+                let mut tpl = tp.sync_lock();
                 let timer = tpl.get_timer(0).unwrap();
                 drop(tpl);
                 crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 40);
@@ -489,10 +489,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
 
             {
                 use crate::modules::timer::TimerTrait;
-                let mut timers = crate::kernel::TIMERS.lock();
+                let mut timers = crate::kernel::TIMERS.sync_lock();
                 let tp = timers.module(0);
                 drop(timers);
-                let mut tpl = tp.lock();
+                let mut tpl = tp.sync_lock();
                 let timer = tpl.get_timer(0).unwrap();
                 drop(tpl);
                 crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
@@ -507,10 +507,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         s.write_command(dsi, 0xc480, &[0x30])?;
         {
             use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
+            let mut timers = crate::kernel::TIMERS.sync_lock();
             let tp = timers.module(0);
             drop(timers);
-            let mut tpl = tp.lock();
+            let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
@@ -519,10 +519,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         s.write_command(dsi, 0xc48a, &[0x40])?;
         {
             use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
+            let mut timers = crate::kernel::TIMERS.sync_lock();
             let tp = timers.module(0);
             drop(timers);
-            let mut tpl = tp.lock();
+            let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
@@ -647,10 +647,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
 
         {
             use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
+            let mut timers = crate::kernel::TIMERS.sync_lock();
             let tp = timers.module(0);
             drop(timers);
-            let mut tpl = tp.lock();
+            let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 120);
@@ -682,10 +682,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
 
         {
             use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
+            let mut timers = crate::kernel::TIMERS.sync_lock();
             let tp = timers.module(0);
             drop(timers);
-            let mut tpl = tp.lock();
+            let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);

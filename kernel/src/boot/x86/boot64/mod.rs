@@ -16,6 +16,8 @@ use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
@@ -100,17 +102,49 @@ pub extern "C" fn divide_by_zero() {
     }
 }
 
-/// The test irq4 handler
+/// The irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
     if let Ok(h) = IRQ_HANDLERS.try_get() {
-        let mut h = h.lock();
+        let mut h = h.sync_lock();
         if let Some(h2) = &mut h[4] {
             h2();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.lock();
+    let mut p = INTERRUPT_CONTROLLER.sync_lock();
     if let Some(p) = p.as_mut() {
         p.end_of_interrupt(4)
+    }
+    drop(p);
+}
+
+/// The irq7 handler
+pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
+    if let Ok(h) = IRQ_HANDLERS.try_get() {
+        let mut h = h.sync_lock();
+        if let Some(h2) = &mut h[7] {
+            h2();
+        }
+    }
+    let mut p = INTERRUPT_CONTROLLER.sync_lock();
+    if let Some(p) = p.as_mut() {
+        p.end_of_interrupt(7)
+    }
+    drop(p);
+}
+
+/// The irq11 handler
+pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
+    if let Ok(h) = IRQ_HANDLERS.try_get() {
+        let mut h = h.sync_lock();
+        if let Some(h2) = &mut h[11] {
+            h2();
+        } else {
+            panic!();
+        }
+    }
+    let mut p = INTERRUPT_CONTROLLER.sync_lock();
+    if let Some(p) = p.as_mut() {
+        p.end_of_interrupt(11)
     }
 }
 
@@ -276,7 +310,7 @@ impl acpi::AcpiHandler for &Acpi<'_> {
                 buf.len()
             ));
 
-            let mut p = self.pageman.lock();
+            let mut p = self.pageman.sync_lock();
             let e = p.map_addresses_read_only(bufaddr, start, realsize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
@@ -311,7 +345,7 @@ impl acpi::AcpiHandler for &Acpi<'_> {
     fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
         if region.physical_start() >= (1 << 22) {
             let acpi = acpi::PhysicalMapping::handler(region);
-            let mut p = region.handler().pageman.lock();
+            let mut p = region.handler().pageman.sync_lock();
             let s = region.virtual_start().as_ptr() as usize;
             let s = s - s % core::mem::size_of::<memory::Page>();
             let length = region.region_length();
@@ -426,7 +460,7 @@ fn handle_acpi(
                 v.length
             ));
             PAGING_MANAGER
-                .lock()
+                .sync_lock()
                 .map_addresses_read_only(v.address, v.address, v.length as usize)
                 .unwrap();
             let table: &[u8] =
@@ -445,7 +479,7 @@ fn handle_acpi(
                 v.length
             ));
             PAGING_MANAGER
-                .lock()
+                .sync_lock()
                 .map_addresses_read_only(v.address, v.address, v.length as usize)
                 .unwrap();
             let table: &[u8] =
@@ -701,7 +735,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
     fn enable_irq(&self, irq: u8) {
         self.disable_interrupts();
         {
-            let mut p = INTERRUPT_CONTROLLER.lock();
+            let mut p = INTERRUPT_CONTROLLER.sync_lock();
             if let Some(p) = p.as_mut() {
                 p.enable_irq(irq)
             }
@@ -712,13 +746,13 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
     fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
         if let Ok(ih) = IRQ_HANDLERS.try_get() {
-            let mut irqs = ih.lock();
+            let mut irqs = ih.sync_lock();
             irqs[irq as usize] = Some(a);
         }
     }
 
     fn disable_irq(&self, irq: u8) {
-        let mut p = INTERRUPT_CONTROLLER.lock();
+        let mut p = INTERRUPT_CONTROLLER.sync_lock();
         if let Some(p) = p.as_mut() {
             p.disable_irq(irq)
         }
@@ -741,34 +775,20 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System>>> {
         super::setup_serial();
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-        if aml.initialize_objects().is_ok() {
-            crate::VGA.print_str("AML READY\r\n");
-        }
+        aml.initialize_objects().unwrap();
         {
-            let this = self.lock();
+            let this = self.sync_lock();
             let cap = this.cpuid.get_processor_capacity_feature_info().unwrap();
             {
-                let mut p = PAGING_MANAGER.lock();
+                let mut p = PAGING_MANAGER.sync_lock();
                 p.set_physical_address_size(cap.physical_address_bits());
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "CPUID MAXADDR is {:?}\r\n",
-                    cap.physical_address_bits()
-                ));
             }
         }
 
         doors_macros::config_check_bool!(acpi, {
-            crate::VGA.print_fixed_str("About to open acpi stuff\r\n");
             handle_acpi(&self.boot_info, &self.acpi_handler, &mut aml);
-            crate::VGA.print_fixed_str("Done with acpi handling\r\n");
         });
-
-        if let Ok(h) = IRQ_HANDLERS.try_get() {
-            let h = h.lock();
-            if h[4].is_none() {
-                panic!("NOT WORKING?");
-            }
-        }
+        super::serial_interrupts();
     }
 }
 
@@ -924,20 +944,20 @@ pub extern "C" fn start64() -> ! {
         .unwrap()
     };
 
-    crate::VGA_READY.store(false, core::sync::atomic::Ordering::Relaxed);
-
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
     VIRTUAL_MEMORY_ALLOCATOR
-        .lock()
+        .sync_lock()
         .relocate(start_kernel, end_kernel);
-    VIRTUAL_MEMORY_ALLOCATOR.lock().start_allocating(unsafe {
-        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
-    });
+    VIRTUAL_MEMORY_ALLOCATOR
+        .sync_lock()
+        .start_allocating(unsafe {
+            &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
+        });
 
     if let Some(mm) = boot_info.memory_map_tag() {
-        let mut pal = PAGE_ALLOCATOR.lock();
+        let mut pal = PAGE_ALLOCATOR.sync_lock();
         pal.init(mm);
         for area in mm
             .memory_areas()
@@ -952,22 +972,24 @@ pub extern "C" fn start64() -> ! {
         panic!("Physical memory manager unavailable\r\n");
     };
 
-    VIRTUAL_MEMORY_ALLOCATOR.lock().stop_allocating(0x3fffff);
+    VIRTUAL_MEMORY_ALLOCATOR
+        .sync_lock()
+        .stop_allocating(0x3fffff);
 
     let apic: Box<LocalApicRegister, &Locked<memory::BumpAllocator>> =
         unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
 
-    PAGING_MANAGER.lock().init();
+    PAGING_MANAGER.sync_lock().init();
 
     {
         let stack_end = unsafe { INITIAL_STACK as usize };
         let stack_size = 8 * 1024;
         PAGE_ALLOCATOR
-            .lock()
+            .sync_lock()
             .set_area_used(stack_end - stack_size, stack_size);
     }
 
-    if false {
+    if true {
         if true {
             let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();
             let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
@@ -990,7 +1012,7 @@ pub extern "C" fn start64() -> ! {
     let apic_address = apic_msr_value & 0xFFFFF000;
 
     PAGING_MANAGER
-        .lock()
+        .sync_lock()
         .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
         .unwrap();
 
@@ -1006,12 +1028,14 @@ pub extern "C" fn start64() -> ! {
     }
 
     {
-        let mut idt = INTERRUPT_DESCRIPTOR_TABLE.lock();
+        let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
         unsafe {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 divide_by_zero_asm as *const (),
             ));
             idt[0x24].set_handler_fn(irq4);
+            idt[0x27].set_handler_fn(irq7);
+            idt[0x2b].set_handler_fn(irq11);
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 segment_not_present_asm as *const (),
@@ -1041,7 +1065,7 @@ pub extern "C" fn start64() -> ! {
     let sys = X86System::new(cpuid);
 
     unsafe {
-        INTERRUPT_DESCRIPTOR_TABLE.lock().load_unsafe();
+        INTERRUPT_DESCRIPTOR_TABLE.sync_lock().load_unsafe();
     }
 
     crate::SYSTEM.replace(Some(kernel::System::X86_64(LockedArc::new(sys))));

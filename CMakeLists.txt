@@ -13,6 +13,20 @@ add_custom_target(
     COMMAND strip ./kerneltest64
 )
 
+add_custom_target(
+    disassemble
+    BYPRODUCTS ./disassemble.txt
+    COMMAND cargo objdump --release --bin kernel -q -- -d > disassemble.txt
+)
+
+add_custom_target(
+    symbols_bochs
+    DEPENDS kernel64
+    BYPRODUCTS ./symbols_bochs ./kernel64.sym
+    COMMAND cargo objdump -q --bin kernel --release -- -t > ./objdump_output
+    COMMAND tail -n +5 objdump_output > symbols_bochs
+)
+
 if (WIN32)
     set(VIRTUALBOX "C:\\Program Files\\Oracle\\VirtualBox\\VirtualBoxVM.exe")
     set(VIRTUALBOX_MANAGE "C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe")
@@ -46,7 +60,7 @@ add_custom_target(
 
 add_custom_target(
     bochs64
-    DEPENDS image_cd64
+    DEPENDS image_cd64 symbols_bochs disassemble
     COMMAND ${BOCHS} -f bochsrc64_windows.txt -q
 )
 endif (WIN32)
@@ -76,8 +90,14 @@ add_custom_target(
 
 add_custom_target(
     bochs64
-    DEPENDS image_cd64
+    DEPENDS image_cd64 symbols_bochs disassemble
     COMMAND ${BOCHS} -f bochsrc64.txt -q
+)
+
+add_custom_target(
+    bochs64gdb
+    DEPENDS image_cd64 symbols_bochs
+    COMMAND ./bochs -f bochsrc64gdb.txt -q
 )
 
 add_custom_target(

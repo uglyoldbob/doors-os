@@ -2,7 +2,7 @@
 
 use core::pin::Pin;
 
-use crate::{Locked, LockedArc};
+use crate::{AsyncLocked, AsyncLockedArc, Locked, LockedArc};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
@@ -32,7 +32,7 @@ impl GpioHandler {
 /// Tracks all of the serial ports in the system
 pub struct SerialHandler {
     /// The individual devices
-    devs: Vec<LockedArc<crate::modules::serial::Serial>>,
+    devs: Vec<AsyncLockedArc<crate::modules::serial::Serial>>,
 }
 
 impl SerialHandler {
@@ -43,7 +43,7 @@ impl SerialHandler {
 
     /// Add a serial module to the system
     pub fn register_serial(&mut self, m: crate::modules::serial::Serial) {
-        self.devs.push(LockedArc::new(m));
+        self.devs.push(AsyncLockedArc::new(m));
     }
 
     /// Does the module index exist?
@@ -52,12 +52,12 @@ impl SerialHandler {
     }
 
     /// Get a serial module
-    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::serial::Serial> {
+    pub fn module(&mut self, i: usize) -> AsyncLockedArc<crate::modules::serial::Serial> {
         self.devs[i].clone()
     }
 
     /// Iterate over all serial ports
-    pub fn iter(&mut self) -> core::slice::Iter<LockedArc<crate::modules::serial::Serial>> {
+    pub fn iter(&mut self) -> core::slice::Iter<AsyncLockedArc<crate::modules::serial::Serial>> {
         self.devs.iter()
     }
 }
@@ -163,8 +163,8 @@ lazy_static! {
     pub static ref DISPLAYS : Locked<DisplayHandler> =
         Locked::new(DisplayHandler::new());
     /// The list of rng devices for the kernel
-    pub static ref RNGS : Locked<RngHandler> =
-        Locked::new(RngHandler::new());
+    pub static ref RNGS : AsyncLocked<RngHandler> =
+        AsyncLocked::new(RngHandler::new());
 }
 
 /// This trait defines system specific elements

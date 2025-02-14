@@ -4,7 +4,7 @@ vgaromimage: file ="/usr/share/seabios/vgabios-bochs-display.bin"
 ata0-slave: type=cdrom, path=cd64.iso, status=inserted
 e1000: enabled=1, mac=52:54:00:12:34:56
 com1: enabled=1, mode=file, dev=serial.log
-com2: enabled=1, mode=term, dev=/dev/pts/3
 boot: cdrom
 debug_symbols: file=symbols_bochs
+gdbstub: enabled=1, port=1234, text_base=0, data_base=0, bss_base=0
 magic_break: enabled=1

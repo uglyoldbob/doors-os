@@ -2,7 +2,7 @@
 
 use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String};
 
-use crate::{AsyncLocked, LockedArc};
+use crate::{AsyncLocked, AsyncLockedArc, LockedArc};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -12,7 +12,7 @@ doors_macros2::enum_reexport!(intel);
 
 lazy_static::lazy_static! {
     /// Represents all network adapters for the kernel
-    static ref NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, LockedArc<NetworkAdapter>>> =
+    static ref NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, AsyncLockedArc<NetworkAdapter>>> =
         AsyncLocked::new(BTreeMap::new());
 }
 
@@ -28,11 +28,11 @@ pub async fn register_network_adapter(na: NetworkAdapter) {
             name
         ))
         .await;
-    nal.insert(name, LockedArc::new(na));
+    nal.insert(name, AsyncLockedArc::new(na));
 }
 
 /// Grab a network adapter by name
-pub async fn get_network_adapter(s: &str) -> Option<LockedArc<NetworkAdapter>> {
+pub async fn get_network_adapter(s: &str) -> Option<AsyncLockedArc<NetworkAdapter>> {
     let nal = NETWORK_ADAPTERS.lock().await;
     if nal.contains_key(s) {
         Some(nal.get(s).unwrap().to_owned())

@@ -1,6 +1,6 @@
 //! Code for the pci bus
 
-use crate::LockedArc;
+use crate::{AsyncLockedArc, LockedArc};
 use alloc::{collections::BTreeMap, format};
 use lazy_static::lazy_static;
 
@@ -9,8 +9,8 @@ pub mod x86;
 
 lazy_static! {
     /// The entire list of gpios for the kernel
-    pub static ref PCI_DRIVERS: LockedArc<BTreeMap<u32, PciFunctionDriver>> =
-        LockedArc::new(BTreeMap::new());
+    pub static ref PCI_DRIVERS: AsyncLockedArc<BTreeMap<u32, PciFunctionDriver>> =
+        AsyncLockedArc::new(BTreeMap::new());
 }
 
 /// Represents an invalid value for a pci vendor
@@ -101,6 +101,11 @@ impl From<[u32; 60]> for ConfigurationSpaceStandard {
 }
 
 impl ConfigurationSpaceStandard {
+    /// Get the interrupt line
+    pub fn get_interrupt_line(&self) -> u8 {
+        self.interrupt_line
+    }
+
     /// Dump the configuration data contents
     pub async fn dump(&self, linestart: &str) {
         for i in 0..6 {
@@ -884,10 +889,6 @@ impl BarSpace {
                         flags: *flags,
                         index: *index,
                     };
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "Writing bar with address {:x}\r\n",
-                        pcim.phys()
-                    ));
                     newbar.write_to_pci(pci, bus, dev, function, config);
                     *self = newbar;
                 }
@@ -978,7 +979,7 @@ impl BarSpace {
     }
 
     /// Print the bar for analysis
-    pub fn print(&self) {
+    pub async fn print(&self) {
         match self {
             BarSpace::Memory32 {
                 base,
@@ -986,12 +987,12 @@ impl BarSpace {
                 flags,
                 index: _,
             } => {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "BAR32: {:x} x {:x} flags {:x}\r\n",
-                    base,
-                    size,
-                    flags
-                ));
+                crate::VGA
+                    .print_str_async(&format!(
+                        "BAR32: {:x} x {:x} flags {:x}\r\n",
+                        base, size, flags
+                    ))
+                    .await;
             }
             BarSpace::Memory64 {
                 base,
@@ -999,26 +1000,24 @@ impl BarSpace {
                 flags,
                 index: _,
             } => {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "BAR64: {:x} x {:x} flags {:x}\r\n",
-                    base,
-                    size,
-                    flags
-                ));
+                crate::VGA
+                    .print_str_async(&format!(
+                        "BAR64: {:x} x {:x} flags {:x}\r\n",
+                        base, size, flags
+                    ))
+                    .await;
             }
             BarSpace::IO {
                 base,
                 size,
                 index: _,
             } => {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "BARIO: {:x} x {:x}\r\n",
-                    base,
-                    size
-                ));
+                crate::VGA
+                    .print_str_async(&format!("BARIO: {:x} x {:x}\r\n", base, size))
+                    .await;
             }
             BarSpace::Invalid { index: _ } => {
-                crate::VGA.print_str("BAR INVALID\r\n");
+                crate::VGA.print_str_async("BAR INVALID\r\n").await;
             }
         }
     }
@@ -1300,10 +1299,9 @@ impl PciBus {
         for d in &self.devices {
             for f in &d.functions {
                 let id = f.get_driver_id(pci, self, d);
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "Checking pci device {:x}\r\n",
-                    id
-                ));
+                crate::VGA
+                    .print_str_async(&format!("Checking pci device {:x}\r\n", id))
+                    .await;
                 if map.contains_key(&id) {
                     let config = f.get_all_configuration(pci, self, d);
                     let code = map.get_mut(&id).unwrap();
@@ -1312,10 +1310,9 @@ impl PciBus {
                     code.parse_bars(pci, self, d, f, &config.get_space().unwrap(), bars)
                         .await;
                 } else {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "Unknown PCI FUNCTION: {:X}\r\n",
-                        id
-                    ));
+                    crate::VGA
+                        .print_str_async(&format!("Unknown PCI FUNCTION: {:X}\r\n", id))
+                        .await;
                     let config = f.get_all_configuration(pci, self, d);
                     config.dump("\t").await;
                 }
@@ -1335,7 +1332,7 @@ pub enum Pci {
 impl Pci {
     /// Run all drivers for this pci system
     pub async fn driver_setup(&mut self) {
-        let mut d = PCI_DRIVERS.lock();
+        let mut d = PCI_DRIVERS.sync_lock();
         self.driver_run(&mut d).await;
     }
 }
@@ -1363,7 +1360,7 @@ pub enum PciConfigurationSpace {
 #[enum_dispatch::enum_dispatch]
 pub trait PciFunctionDriverTrait: Clone + Default {
     /// Register the driver in the given map, must check to see if the driver is already registered
-    fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
+    async fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
 
     /// Parse a bar register for the device
     async fn parse_bars(
@@ -1378,14 +1375,18 @@ pub trait PciFunctionDriverTrait: Clone + Default {
 }
 
 /// Register all pci drivers with the driver map
-pub fn pci_register_drivers() {
-    let mut drivers = PCI_DRIVERS.lock();
+pub async fn pci_register_drivers() {
+    let mut drivers = PCI_DRIVERS.lock().await;
 
-    crate::VGA.print_str("Registering pci drivers\r\n");
+    crate::VGA
+        .print_str_async("Registering pci drivers\r\n")
+        .await;
     for d in PCI_CODE {
-        d.register(&mut drivers);
+        d.register(&mut drivers).await;
     }
-    crate::VGA.print_str("Done registering pci drivers\r\n");
+    crate::VGA
+        .print_str_async("Done registering pci drivers\r\n")
+        .await;
 }
 
 /// Represents a device driver for a pci function
@@ -1415,8 +1416,10 @@ static PCI_CODE: &[PciFunctionDriver] = &[
 pub struct DummyPciFunctionDriver {}
 
 impl PciFunctionDriverTrait for DummyPciFunctionDriver {
-    fn register(&self, _m: &mut BTreeMap<u32, PciFunctionDriver>) {
-        crate::VGA.print_str("Register dummy pci driver\r\n");
+    async fn register(&self, _m: &mut BTreeMap<u32, PciFunctionDriver>) {
+        crate::VGA
+            .print_str_async("Register dummy pci driver\r\n")
+            .await;
     }
 
     async fn parse_bars(
@@ -1438,7 +1441,7 @@ pub async fn setup_pci() {
     if let Some(pci) = pci {
         let mut pci = crate::modules::pci::Pci::X86Pci(pci);
         pci.setup().await;
-        crate::modules::pci::pci_register_drivers();
+        crate::modules::pci::pci_register_drivers().await;
         pci.driver_setup().await;
     }
 }

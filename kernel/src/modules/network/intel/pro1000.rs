@@ -4,6 +4,7 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
 
+use crate::kernel::System;
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
 use crate::modules::video::{hex_dump_async, hex_dump_generic_async, hex_dump_generic_slice_async};
 use crate::modules::{
@@ -11,7 +12,7 @@ use crate::modules::{
         BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
         PciFunctionDriver, PciFunctionDriverTrait,
     },
-    video::{hex_dump, hex_dump_generic},
+    video::hex_dump_generic,
 };
 use crate::IoReadWrite;
 
@@ -112,14 +113,14 @@ impl TryFrom<u16> for Model {
 
 impl MemoryOrIo {
     /// Dump the contents of the data as hex
-    fn hex_dump(&self) {
+    async fn hex_dump(&self) {
         match self {
             MemoryOrIo::Memory(_m) => {
                 let mut buffer = [0u32; 32];
                 for (i, b) in buffer.iter_mut().enumerate() {
                     *b = self.read(i as u16);
                 }
-                hex_dump_generic(&buffer, true, false);
+                hex_dump_generic_async(&buffer, true, false).await;
             }
             MemoryOrIo::Io(_io_port_array) => todo!(),
         }
@@ -692,6 +693,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                     break;
                 }
             }
+            self.check_for_received_packets().await;
             Ok(())
         } else {
             doors_macros::todo_item_panic!("Packets larger than 8192 bytes not yet handled");
@@ -700,6 +702,14 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
 }
 
 impl IntelPro1000Device {
+    /// Check for received packets
+    async fn check_for_received_packets(&mut self) {
+        crate::VGA
+            .print_str_async(&format!("Checking for received packets\r\n"))
+            .await;
+        self.dump_registers().await;
+    }
+
     /// Detect the presence of an eeprom and store the result
     fn detect_eeprom(&mut self) -> bool {
         if self.eeprom_present.is_none() {
@@ -708,11 +718,6 @@ impl IntelPro1000Device {
             for _i in 0..10000 {
                 let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
                 let val2 = val & 0x10;
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "EEPROM DETECT: {:x} {:x}\r\n",
-                    val,
-                    val2
-                ));
                 if (val2) != 0 {
                     self.eeprom_present = Some(true);
                     break;
@@ -728,6 +733,8 @@ impl IntelPro1000Device {
             IntelPro1000Registers::CTRL,
             IntelPro1000Registers::STATUS,
             IntelPro1000Registers::Rctrl,
+            IntelPro1000Registers::RxDescLow,
+            IntelPro1000Registers::RxDescHigh,
             IntelPro1000Registers::RxDescLen,
             IntelPro1000Registers::RxDescHead,
             IntelPro1000Registers::RxDescTail,
@@ -860,7 +867,7 @@ impl IntelPro1000Device {
     }
 
     /// Initialize the rx buffers for the device
-    fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
+    async fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
             let ra = ReceiveAddress::new(*mac, 0, true);
             self.set_receive_mac_address(0, &ra);
@@ -868,9 +875,9 @@ impl IntelPro1000Device {
             // Interrupts will be enabled later on
             let rxbuf = RxBuffers::new(32, 8192)?;
             let rxaddr = rxbuf.bufs.phys();
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Writing RX stuff to network card\r\n"
-            ));
+            crate::VGA
+                .print_str_async(&format!("Writing RX stuff to network card\r\n"))
+                .await;
             self.bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
                 (rxaddr & 0xFFFFFFFF) as u32,
@@ -898,27 +905,13 @@ impl IntelPro1000Device {
                     .bits(),
             );
             self.rxbufindex = Some(0);
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "RX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
-                rxbuf.bufs.virt(),
-                rxaddr,
-                rxbuf.bufs.size()
-            ));
-            for r in rxbuf.dmas.iter() {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "\tIndividual buffer addr is virtual {:x} physical {:x}, size {}\r\n",
-                    r.virt(),
-                    r.phys(),
-                    r.size()
-                ));
-            }
             self.rxbufs = Some(rxbuf);
         }
         Ok(())
     }
 
     /// Initialize the tx buffers for the device
-    fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
+    async fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
             let txbuf = TxBuffers::new(8, 8192)?;
             let txaddr = txbuf.bufs.phys();
@@ -931,19 +924,10 @@ impl IntelPro1000Device {
                 (txaddr >> 32) as u32,
             );
             let desclen = core::mem::size_of::<TxBuffer>() as u32 * txbuf.bufs.len() as u32;
-            crate::VGA.print_str(&format!("Tx descriptor length is {} bytes\r\n", desclen));
             self.bar0
                 .write(IntelPro1000Registers::TxDescLen as u16, desclen);
             self.bar0.write(IntelPro1000Registers::TxDescHead as u16, 0);
             self.bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
-
-            self.bar0
-                .write(IntelPro1000Registers::TIPG as u16, 10 | 8 << 10 | 6 << 20);
-            let v = self.bar0.read(IntelPro1000Registers::TIPG as u16);
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Need to SET TIPG, it is currently {:x}\r\n",
-                v
-            ));
 
             self.bar0.write(
                 IntelPro1000Registers::Tctrl as u16,
@@ -953,33 +937,26 @@ impl IntelPro1000Device {
             );
 
             self.txbufindex = Some(0);
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "TX BUFFER ARRAY IS AT virtual {:x} physical {:x}, size {}\r\n",
-                txbuf.bufs.virt(),
-                txaddr,
-                txbuf.bufs.size()
-            ));
-            for r in txbuf.dmas.iter() {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "\tIndividual buffer addr is virtual {:x} physical {:x}, size {}\r\n",
-                    r.virt(),
-                    r.phys(),
-                    r.size()
-                ));
-            }
             self.txbufs = Some(txbuf);
         }
         Ok(())
     }
 
     /// Enable interrupts for the network card
-    fn enable_interrupts(&mut self) {
+    fn enable_interrupts(&mut self, sys: &System, irqnum: u8) {
+        use crate::kernel::SystemTrait;
         doors_macros::todo_item!(
             "Replace the constant with named values by defining a bitfield for the register"
         );
-        self.bar0.write(IntelPro1000Registers::IMS as u16, 0x1f6fc);
+        let val = 0x1f6fd;
+        while self.bar0.read(IntelPro1000Registers::IMS as u16) != val {
+            self.bar0.write(IntelPro1000Registers::IMS as u16, val);
+            self.bar0.read(IntelPro1000Registers::STATUS as u16);
+        }
+
         // Read the interrupt register to clear it
         let _ = self.bar0.read(IntelPro1000Registers::ICR as u16);
+        sys.enable_irq(irqnum);
     }
 
     /// Read a word from the eeprom at the specified address
@@ -1018,8 +995,10 @@ impl IntelPro1000 {
 }
 
 impl PciFunctionDriverTrait for IntelPro1000 {
-    fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
-        crate::VGA.print_str("Register intel pro/1000 pci driver\r\n");
+    async fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
+        crate::VGA
+            .print_str_async("Register intel pro/1000 pci driver\r\n")
+            .await;
         for dev in [
             0x100e, 0x100f, 0x1011, 0x1015, 0x1019, 0x101a, 0x1010, 0x1012, 0x1013, 0x1016, 0x1017,
             0x1018, 0x101d, 0x1026, 0x1027, 0x1028, 0x1076, 0x1077, 0x1078, 0x1079, 0x107a, 0x107b,
@@ -1046,7 +1025,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     crate::VGA
                         .print_str_async(&format!("PCI PARSE BAR {}\r\n", bar.get_index()))
                         .await;
-                    bar.print();
+                    bar.print().await;
                     let d = bar.get_memory(cs, bus, dev, f, config);
                     if let Some(d) = d {
                         crate::VGA
@@ -1075,7 +1054,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         if let Some(m) = bar0 {
             if let Some(i) = io {
                 for b in bars.iter().flatten() {
-                    b.print();
+                    b.print().await;
                 }
                 let model = Model::try_from(configspace.get_device_id()).unwrap();
                 let mut d = IntelPro1000Device {
@@ -1089,7 +1068,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     txbufindex: None,
                     model,
                 };
-                d.bar0.hex_dump();
+                d.bar0.hex_dump().await;
                 crate::VGA
                     .print_str_async(&format!("Detected model as {:?}\r\n", d.model))
                     .await;
@@ -1104,18 +1083,36 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 let mac = d.get_mac_address();
                 d.general_config();
                 hex_dump_async(&mac.address, false, false).await;
-                if let Err(e) = d.init_rx(&mac) {
+                if let Err(e) = d.init_rx(&mac).await {
                     crate::VGA
                         .print_str_async(&format!("RX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
-                if let Err(e) = d.init_tx() {
+                if let Err(e) = d.init_tx().await {
                     crate::VGA
                         .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
                 f.set_bus_mastering(cs, bus, dev, true);
-                //d.enable_interrupts();
+                {
+                    let irqnum = match config {
+                        ConfigurationSpaceEnum::Standard(configuration_space_standard) => {
+                            configuration_space_standard.get_interrupt_line()
+                        }
+                        ConfigurationSpaceEnum::Bridge(_configuration_space_bridge) => {
+                            doors_macros::todo!()
+                        }
+                        ConfigurationSpaceEnum::Cardbus(_configuration_space_cardbus) => {
+                            doors_macros::todo!()
+                        }
+                    };
+                    crate::VGA
+                        .print_str_async(&format!("The irq line is {}\r\n", irqnum))
+                        .await;
+                    let sysl = crate::SYSTEM.lock().await;
+                    let sys = sysl.as_ref().unwrap();
+                    d.enable_interrupts(sys, irqnum);
+                }
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {
                         crate::VGA

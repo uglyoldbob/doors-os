@@ -49,20 +49,20 @@ impl RngLfsr {
 
 impl RngTrait for LockedArc<RngLfsr> {
     fn setup(&self) -> Result<(), ()> {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         s.next = 1;
         Ok(())
     }
 
     fn generate(&self, data: &mut [u8]) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         for a in data {
             *a = (s.advance() & 0xFF) as u8;
         }
     }
 
     fn generate_iter(&self, i: core::slice::IterMut<u8>) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         for a in i {
             *a = (s.advance() & 0xFF) as u8;
         }

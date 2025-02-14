@@ -173,7 +173,7 @@ impl<'a> HeapManager<'a> {
         let new_section = self.vmm.allocate(layout).map_err(|_| ())?;
 
         let sa = new_section.as_ptr() as *mut u8 as usize;
-        let mut mm = self.mm.lock();
+        let mut mm = self.mm.sync_lock();
         for i in (sa..sa + a * core::mem::size_of::<Page>()).step_by(core::mem::size_of::<Page>()) {
             mm.map_new_page(i)?;
         }
@@ -202,7 +202,6 @@ impl<'a> HeapManager<'a> {
                 .expand_with_physical_memory(layout.size() + layout.align())
                 .is_err()
         {
-            crate::VGA.print_str("OUT OF MEMORY 0\r\n");
             return core::ptr::null_mut();
         }
 
@@ -264,34 +263,12 @@ impl<'a> HeapManager<'a> {
                         (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                     }
                 } else {
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "Alloc layout size {:x} alignment {:x}\r\n",
-                        layout.size(),
-                        layout.align()
-                    ));
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "A free node size {:x} will exist before the placement\r\n",
-                        ha.pre_align
-                    ));
                     let b = unsafe { best.as_ref() };
                     if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
-                        if crate::VGA_READY.load(Ordering::Relaxed) {
-                            self.print();
-                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                                "The end of the block will be used\r\n"
-                            ));
-                        }
                         let c = HeapNode {
                             next: b.next,
                             size: ha.pre_align,
                         };
-                        if crate::VGA_READY.load(Ordering::Relaxed) {
-                            c.print();
-                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                                "Done printing new nodes"
-                            ));
-                            self.print();
-                        }
                         todo!();
                     } else {
                         let newblock = crate::address(b) + ha.pre_align + b.size;
@@ -315,18 +292,10 @@ impl<'a> HeapManager<'a> {
                     .expand_with_physical_memory(layout.size() + layout.align())
                     .is_err()
                 {
-                    if crate::VGA_READY.load(Ordering::Relaxed) {
-                        crate::VGA.print_str("OUT OF MEMORY 1\r\n");
-                        self.print();
-                    }
                     return core::ptr::null_mut();
                 }
             }
             if times == 2 {
-                if crate::VGA_READY.load(Ordering::Relaxed) {
-                    crate::VGA.print_str("OUT OF MEMORY 2\r\n");
-                    self.print();
-                }
                 return core::ptr::null_mut();
             }
         }
@@ -377,12 +346,12 @@ impl<'a> HeapManager<'a> {
 
 unsafe impl core::alloc::GlobalAlloc for Locked<HeapManager<'_>> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         let layout2 = layout.align_to(HeapNode::NODEALIGN).unwrap();
         alloc.run_alloc(layout2)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         let layout2 = layout.align_to(HeapNode::NODEALIGN).unwrap();
         alloc.run_dealloc(ptr, layout2);
     }

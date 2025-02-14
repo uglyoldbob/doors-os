@@ -189,12 +189,12 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
         &self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         alloc.run_allocation(layout)
     }
 
     unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         alloc.run_deallocation(ptr, layout);
     }
 }
@@ -353,7 +353,7 @@ impl<'a> SimpleMemoryManager<'a> {
 
     /// Assumes memory currently allocated by the bump allocator, as ram currently in use and marks it appropriately
     pub fn set_kernel_memory_used(&mut self) {
-        let mml = self.mm.lock();
+        let mml = self.mm.sync_lock();
 
         if let Some(bitmaps) = &mut self.bitmaps {
             for i in (mml.start..mml.end).step_by(core::mem::size_of::<Bitmap<Page>>()) {
@@ -424,7 +424,7 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
         &self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         if let Some(bitmaps) = &mut alloc.bitmaps {
             if layout.size() <= core::mem::size_of::<Page>() {
                 for bitmap in bitmaps.iter_mut() {
@@ -439,12 +439,11 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
                 }
             }
         }
-        crate::VGA.print_str("Error allocating\r\n");
         Err(core::alloc::AllocError)
     }
 
     unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         if let Some(bitmaps) = &mut alloc.bitmaps {
             for bitmap in bitmaps.iter_mut() {
                 if bitmap.page_exists(ptr) {
@@ -459,19 +458,14 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
 impl memory::PciMemory {
     /// Allocate some pci memory with the given size. TODO implement a 32-bit restricted version of this function.
     pub fn new(size: usize) -> Result<Self, core::alloc::AllocError> {
-        let mut t = super::PAGE_ALLOCATOR.lock();
+        let mut t = super::PAGE_ALLOCATOR.sync_lock();
         let phys = t.extra_mem.allocate_nonram_memory(size, size)?;
         let layout =
             core::alloc::Layout::from_size_align(size, core::mem::size_of::<Page>()).unwrap();
         let virt = super::VIRTUAL_MEMORY_ALLOCATOR.allocate(layout)?;
-        let mut mm = super::PAGING_MANAGER.lock();
+        let mut mm = super::PAGING_MANAGER.sync_lock();
         let va = unsafe { virt.as_ref() }.as_ptr() as usize;
         let pa = unsafe { phys.as_ref() }.as_ptr() as usize;
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "PCI: virtual {:x} physical {:x}\r\n",
-            va,
-            pa
-        ));
         match mm.map_addresses_read_write(va, pa, layout.size()) {
             Ok(()) => Ok(unsafe { Self::build_with(va, pa, size) }),
             Err(()) => Err(core::alloc::AllocError),
@@ -481,7 +475,7 @@ impl memory::PciMemory {
 
 impl Drop for memory::PciMemory {
     fn drop(&mut self) {
-        let mut t = super::PAGE_ALLOCATOR.lock();
+        let mut t = super::PAGE_ALLOCATOR.sync_lock();
         let layout = core::alloc::Layout::from_size_align(self.size(), self.size()).unwrap();
         t.extra_mem.deallocate_nonram_memory(
             unsafe { core::ptr::NonNull::new_unchecked(self.phys() as *mut u8) },
@@ -496,7 +490,7 @@ impl Drop for memory::PciMemory {
                 layout,
             )
         };
-        let mut mm = super::PAGING_MANAGER.lock();
+        let mut mm = super::PAGING_MANAGER.sync_lock();
         mm.unmap_mapped_pages(self.virt(), self.size());
     }
 }
@@ -507,7 +501,7 @@ impl<T: Default> memory::DmaMemory<T> {
         let b: alloc::boxed::Box<T> = alloc::boxed::Box::default();
         let va = crate::address(b.as_ref());
         let phys = super::PAGING_MANAGER
-            .lock()
+            .sync_lock()
             .lookup_physical_address(va)
             .ok_or(core::alloc::AllocError)?;
         let s = unsafe { Self::build_with(va, phys, core::mem::size_of::<T>(), b) };
@@ -527,7 +521,7 @@ impl<T> memory::DmaMemorySlice<T> {
         }
         let va = crate::slice_address(b.as_ref());
         let phys = super::PAGING_MANAGER
-            .lock()
+            .sync_lock()
             .lookup_physical_address(va)
             .ok_or(core::alloc::AllocError)?;
         let s = unsafe { Self::build_with(va, phys, quantity * core::mem::size_of::<T>(), b) };
@@ -698,7 +692,7 @@ impl<'a> PagingTableManager<'a> {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64();
 
-        let mut mm = self.mm.lock();
+        let mut mm = self.mm.sync_lock();
         let pml4_window = mm.get_complete_virtual_page();
         let pdpt_window = mm.get_complete_virtual_page();
         let page_directory_window = mm.get_complete_virtual_page();
@@ -818,12 +812,6 @@ impl<'a> PagingTableManager<'a> {
             {
                 // already mapped to what we want it to be, do nothing
             } else {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "ADDRESS {:x} is already mapped to {:x} {:x}?\r\n",
-                    virtual_address,
-                    unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index],
-                    newval
-                ));
                 return Err(());
             }
         }
@@ -892,8 +880,6 @@ impl<'a> PagingTableManager<'a> {
             Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
             Ok(())
         } else {
-            crate::VGA
-                .print_fixed_str(doors_macros2::fixed_string_format!("ERROR {:x}\r\n", value));
             Err(())
         }
     }

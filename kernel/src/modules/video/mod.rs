@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use fonts::VariableWidthFont;
 use pixels::FullColor;
 
-use crate::LockedArc;
+use crate::{AsyncLockedArc, LockedArc};
 
 use super::serial::SerialTrait;
 
@@ -467,43 +467,43 @@ pub enum TextDisplay {
 /// Enables sending video text over a serial port
 pub struct VideoOverSerial {
     /// The serial port to send data over
-    port: LockedArc<super::serial::Serial>,
+    port: AsyncLockedArc<super::serial::Serial>,
 }
 
 impl VideoOverSerial {
     /// Build a new video over serial device
-    pub fn new(s: LockedArc<super::serial::Serial>) -> Self {
+    pub fn new(s: AsyncLockedArc<super::serial::Serial>) -> Self {
         Self { port: s }
     }
 }
 
 impl TextDisplayTrait for VideoOverSerial {
     fn print_char(&mut self, d: char) {
-        let port = self.port.lock();
+        let port = self.port.sync_lock();
         let mut c = [0; 4];
         let s = d.encode_utf8(&mut c);
         port.sync_transmit_str(s);
     }
 
     fn print_str(&mut self, d: &str) {
-        let port = self.port.lock();
+        let port = self.port.sync_lock();
         port.sync_transmit_str(d);
     }
 
     async fn print_char_async(&mut self, d: char) {
-        let port = self.port.lock();
+        let port = self.port.lock().await;
         let mut c = [0; 4];
         let s = d.encode_utf8(&mut c);
         port.transmit_str(s).await;
     }
 
     async fn print_str_async(&mut self, d: &str) {
-        let port = self.port.lock();
+        let port = self.port.lock().await;
         port.transmit_str(d).await;
     }
 
     async fn flush(&mut self) {
-        let port = self.port.lock();
+        let port = self.port.lock().await;
         port.flush().await;
     }
 }

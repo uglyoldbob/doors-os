@@ -58,13 +58,13 @@ impl<A> LockedArc<A> {
     }
 
     /// Lock the contained mutex, returning a protected instance of the contained object
-    pub fn lock(&self) -> spin::MutexGuard<A> {
-        self.inner.lock()
+    pub fn sync_lock(&self) -> MutexGuard<A> {
+        self.inner.sync_lock()
     }
 
     /// Replace the contents of the protected instance with another instance of the thing
     pub fn replace(&self, r: A) {
-        let mut s = self.inner.lock();
+        let mut s = self.inner.sync_lock();
         *s = r;
     }
 }
@@ -185,7 +185,7 @@ impl<A> AsyncLocked<A> {
         loop {
             if self
                 .lock
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
                 .is_ok()
             {
                 break AsyncLockedMutexGuard {
@@ -252,6 +252,33 @@ pub struct Locked<A> {
     inner: spin::Mutex<A>,
 }
 
+/// A blank nonsend structure
+struct PhantomNonSend {}
+
+impl !Send for PhantomNonSend {}
+impl !Sync for PhantomNonSend {}
+
+/// A mutex guard for the Locked structure
+pub struct MutexGuard<'a, T> {
+    /// The inner mutex
+    guard: spin::MutexGuard<'a, T>,
+    /// A struct to make the mutex guard non-send
+    _dummy: PhantomNonSend,
+}
+
+impl<'a, T> Deref for MutexGuard<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.guard.deref()
+    }
+}
+
+impl<'a, T> DerefMut for MutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.guard.deref_mut()
+    }
+}
+
 impl<A> Locked<A> {
     /// Create a new protected thing
     pub const fn new(inner: A) -> Self {
@@ -261,8 +288,11 @@ impl<A> Locked<A> {
     }
 
     /// Lock the mutex and return a protected instance of the thing
-    pub fn lock(&self) -> spin::MutexGuard<A> {
-        self.inner.lock()
+    pub fn sync_lock(&self) -> MutexGuard<A> {
+        MutexGuard {
+            guard: self.inner.lock(),
+            _dummy: PhantomNonSend {},
+        }
     }
 
     /// Replace the contents of the protected instance with another instance of the thing
@@ -280,10 +310,9 @@ lazy_static::lazy_static! {
     pub static ref SYSTEM: AsyncLocked<Option<kernel::System>> = AsyncLocked::new(None);
     /// The VGA instance used for x86 kernel printing
     pub static ref VGA: AsyncLockedArc<Option<crate::TextDisplay>> = AsyncLockedArc::new(None);
+    /// The VGA2 instance used for x86 kernel printing
+    pub static ref VGA2: AsyncLockedArc<Option<crate::TextDisplay>> = AsyncLockedArc::new(None);
 }
-
-/// Indicates that the VGA is ready
-pub static VGA_READY: AtomicBool = AtomicBool::new(false);
 
 impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
