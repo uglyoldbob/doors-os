@@ -498,19 +498,19 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
     fn handle_acpi(&self, aml: &mut aml::AmlContext) {
         let this = self.sync_lock();
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of acpi::fadt::Fadt is {:x}\r\n",
+            "Size of Fadt is {:x}\r\n",
             core::mem::size_of::<acpi::fadt::Fadt>()
         ));
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of acpi::hpet::HpetTable is {:x}\r\n",
+            "Size of HpetTable is {:x}\r\n",
             core::mem::size_of::<acpi::hpet::HpetTable>()
         ));
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of acpi::madt::Madt is {:x}\r\n",
+            "Size of Madt is {:x}\r\n",
             core::mem::size_of::<acpi::madt::Madt>()
         ));
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of acpi::rsdp::Rsdp is {:x}\r\n",
+            "Size of Rsdp is {:x}\r\n",
             core::mem::size_of::<acpi::rsdp::Rsdp>()
         ));
 
@@ -763,9 +763,6 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     fn init(&self) {
         super::setup_serial();
-        let aml_handler = Box::new(AmlHandler {});
-        let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-        aml.initialize_objects().unwrap();
         {
             let this = self.sync_lock();
             let cap = this.cpuid.get_processor_capacity_feature_info().unwrap();
@@ -775,10 +772,14 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
             }
         }
 
+        super::serial_interrupts();
+        let aml_handler = Box::new(AmlHandler {});
+        let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
+        aml.initialize_objects().unwrap();
+
         doors_macros::config_check_bool!(acpi, {
             self.handle_acpi(&mut aml);
         });
-        super::serial_interrupts();
     }
 }
 

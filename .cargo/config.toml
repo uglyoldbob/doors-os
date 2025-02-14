@@ -3,7 +3,8 @@ target = ["x86_64-unknown-none"]
 
 [target.x86_64-unknown-none]
 rustflags = ["-C", "relocation-model=pic", 
-    "-C", "link-arg=-no-pie"]
+    "-C", "link-arg=-no-pie",
+    "-C", "force-frame-pointers"]
 
 [target.i386-unknown-none]
 rustflags = ["-C", "relocation-model=pic", 
