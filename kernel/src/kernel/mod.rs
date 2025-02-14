@@ -186,6 +186,8 @@ pub trait SystemTrait {
     fn idle(&self);
     /// Code to conditionally idle the system based on a closure
     fn idle_if(&self, f: impl FnMut() -> bool);
+    /// Print debug stuff for acpi
+    async fn acpi_debug(&self);
 }
 
 /// This struct implements the SystemTrait
@@ -194,5 +196,5 @@ pub trait SystemTrait {
 pub enum System {
     #[cfg(kernel_machine = "pc64")]
     /// The x86 64 system code
-    X86_64(LockedArc<Pin<Box<crate::boot::x86::boot64::X86System>>>),
+    X86_64(LockedArc<Pin<Box<crate::boot::x86::boot64::X86System<'static>>>>),
 }

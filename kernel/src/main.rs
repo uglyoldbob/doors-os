@@ -152,18 +152,26 @@ fn main() -> ! {
         executor
             .spawn_closure(async || {
                 crate::VGA.print_str_async("DUMMY STUFF\r\n").await;
+                crate::VGA.print_str("This is a test of sync printing\r\n");
                 crate::VGA.print_str_async("Registering LFSR rng\r\n").await;
                 let rng = rng::RngLfsr::new();
                 kernel::RNGS
                     .lock()
                     .await
                     .register_rng(rng::Rng::Lfsr(LockedArc::new(rng)));
+                for _ in 0..100 {
+                    crate::VGA.print_str_async("DUMMY STUFF\r\n").await;
+                    crate::VGA.print_str("This is a test of sync printing\r\n");
+                    executor::Task::yield_now().await;
+                }
             })
             .unwrap();
         executor.spawn(executor::Task::new(net_test())).unwrap();
         executor
             .spawn_closure(async || {
                 modules::pci::setup_pci().await;
+                let sys = SYSTEM.sync_lock().to_owned().unwrap();
+                sys.acpi_debug().await;
             })
             .unwrap();
         executor

@@ -156,6 +156,7 @@ impl TaskListWaker {
     /// wakeup the task.
     /// TODO handle error for the push?
     fn wake_task(&self) {
+        crate::VGA2.print_str("Waking a task");
         self.tasks.push(self.id);
     }
 }
@@ -220,6 +221,7 @@ impl TaskList {
                     .or_insert_with(|| TaskListWaker::new(taskid, self.tasks.clone()));
                 let mut context = core::task::Context::from_waker(waker);
                 task.polled += 1;
+                crate::VGA2.print_str(&alloc::format!("Polling a task {}\r\n", taskid.0));
                 self.copy_polls(taskid, task, polled);
                 match task.poll(&mut context) {
                     core::task::Poll::Ready(()) => {
@@ -228,6 +230,8 @@ impl TaskList {
                     }
                     core::task::Poll::Pending => {}
                 }
+            } else {
+                crate::VGA2.print_str(&alloc::format!("Task {} is gone\r\n", taskid.0));
             }
         }
     }

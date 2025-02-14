@@ -165,6 +165,24 @@ pub fn load_config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     quote!().into()
 }
 
+struct ConfigCheckValue {
+    ident: syn::Ident,
+    val: syn::LitStr,
+}
+
+impl syn::parse::Parse for ConfigCheckValue {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let ident = syn::Ident::parse(input)?;
+        syn::token::Comma::parse(input)?;
+        let block = syn::Lit::parse(input)?;
+        Ok(if let syn::Lit::Str(val) = block {
+            Self { ident, val }
+        } else {
+            panic!("Expected a string literal for argument 2");
+        })
+    }
+}
+
 struct ConfigCheckBlock {
     ident: syn::Ident,
     block: syn::Block,
@@ -178,6 +196,21 @@ impl syn::parse::Parse for ConfigCheckBlock {
         let s = Self { ident, block };
         Ok(s)
     }
+}
+
+/// Check a boolean value from the kernel config to enable code
+#[proc_macro_attribute]
+pub fn config_check(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(attr as ConfigCheckValue);
+    {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref()
+            .map(|a| a.check_field_string(&f.ident.to_string(), &f.val.value()))
+    };
+    quote!().into()
 }
 
 /// Retrieve a boolean value from the kernel config and use it to enable a block of code
