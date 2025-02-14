@@ -3,7 +3,6 @@
 use core::future::Future;
 use core::task::Waker;
 
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use crate::executor;
@@ -111,7 +110,7 @@ impl X86SerialPort {
     /// The interrupt handler code
     fn handle_interrupt(s: &AsyncLockedArc<X86SerialPort>) {
         crate::VGA2.print_str("\tSerial port interrupt handler\r\n");
-        let s2 = s.sync_lock();
+        let mut s2 = s.sync_lock();
         let stat: u8 = s2.base.port(2).port_read();
         if let Ok(aq) = s2.tx_queue.try_get() {
             if let Some(v) = aq.pop() {
@@ -124,6 +123,7 @@ impl X86SerialPort {
             } else {
                 crate::VGA2
                     .print_str("\tSerial port interrupt handler did not get a byte to send\r\n");
+                s2.disable_tx_interrupt();
             }
         }
         if let Ok(a) = s2.tx_wakers.try_get() {
@@ -147,7 +147,6 @@ impl X86SerialPort {
             crate::VGA2.print_str("\tSerial port tx interrupt enabled\r\n");
             let v: u8 = self.base.port(1).port_read();
             self.base.port(1).port_write(v | 2);
-            self.itx = true;
         }
     }
 
@@ -167,7 +166,6 @@ impl X86SerialPort {
             crate::VGA2.print_str("\tSerial port tx interrupt disabled\r\n");
             let v: u8 = self.base.port(1).port_read();
             self.base.port(1).port_write(v & !2);
-            self.itx = false;
         }
     }
 
@@ -181,11 +179,11 @@ impl X86SerialPort {
 impl AsyncLockedArc<X86SerialPort> {
     /// Asynchronously enable the tx interrupt.
     async fn enable_tx_interrupt(&self, sys: crate::kernel::System) {
-        let (ie, flag, irqnum) = {
+        let (ie, irqnum) = {
             let s = self.lock().await;
-            (s.interrupts, s.itx, s.irq)
+            (s.interrupts, s.irq)
         };
-        if ie && !flag {
+        if ie {
             sys.disable_irq(irqnum);
             {
                 unsafe {
@@ -198,9 +196,9 @@ impl AsyncLockedArc<X86SerialPort> {
 
     /// Synchronous version of enable_tx_interrupt
     fn sync_enable_tx_interrupt(&self, sys: &crate::kernel::System) {
-        let (ie, flag, irqnum) = {
+        let (ie, irqnum) = {
             let s = self.sync_lock();
-            (s.interrupts, s.itx, s.irq)
+            (s.interrupts, s.irq)
         };
         if ie {
             sys.disable_irq(irqnum);
@@ -314,6 +312,7 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
         for b in data {
             crate::VGA2.print_fixed_str(doors_macros2::fixed_string_format!("{}", *b as char));
         }
+        self.sync_lock().itx = true;
         AsyncWriter::new(self, data, crate::SYSTEM.sync_lock().to_owned().unwrap()).await
     }
 
@@ -321,6 +320,7 @@ impl super::SerialTrait for AsyncLockedArc<X86SerialPort> {
         use alloc::borrow::ToOwned;
         crate::VGA2.print_str("Async writing string: ");
         crate::VGA2.print_str(data);
+        self.sync_lock().itx = true;
         AsyncWriter::new(
             self,
             data.as_bytes(),
@@ -434,7 +434,7 @@ impl Future for AsyncWriter<'_> {
             crate::VGA2.print_str("Polling the x86 serial port is pending\r\n");
         }
         if r2.is_ready() {
-            self.s.sync_lock().disable_tx_interrupt();
+            self.s.sync_lock().itx = false;
             crate::VGA2.print_str("Polling the x86 serial port is ready\r\n");
         }
         r2
