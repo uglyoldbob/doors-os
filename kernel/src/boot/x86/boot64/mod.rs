@@ -718,14 +718,12 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     fn enable_irq(&self, irq: u8) {
-        self.disable_interrupts();
-        {
+        self.disable_interrupts_for(|| {
             let mut p = INTERRUPT_CONTROLLER.sync_lock();
             if let Some(p) = p.as_mut() {
                 p.enable_irq(irq)
             }
-        }
-        self.enable_interrupts();
+        });
     }
 
     fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
@@ -737,10 +735,12 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     fn disable_irq(&self, irq: u8) {
-        let mut p = INTERRUPT_CONTROLLER.sync_lock();
-        if let Some(p) = p.as_mut() {
-            p.disable_irq(irq)
-        }
+        self.disable_interrupts_for(|| {
+            let mut p = INTERRUPT_CONTROLLER.sync_lock();
+            if let Some(p) = p.as_mut() {
+                p.disable_irq(irq)
+            }
+        });
     }
 
     fn idle(&self) {

@@ -151,6 +151,7 @@ impl X86SerialPort {
     unsafe fn enable_tx_interrupt(&mut self) {
         if self.interrupts {
             crate::VGA2.print_str("\tSerial port tx interrupt enabled\r\n");
+            let _: u8 = self.base.port(2).port_read();
             let v: u8 = self.base.port(1).port_read();
             self.base.port(1).port_write(v | 2);
         }

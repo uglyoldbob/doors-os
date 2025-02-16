@@ -174,6 +174,12 @@ pub trait SystemTrait {
     fn enable_interrupts(&self);
     /// Disable interrupts
     fn disable_interrupts(&self);
+    /// Disable interrupts for the given closure
+    fn disable_interrupts_for(&self, mut f: impl FnMut()) {
+        self.disable_interrupts();
+        f();
+        self.enable_interrupts();
+    }
     /// Register a serial port handler
     fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F);
     /// Enable IRQ
