@@ -219,6 +219,23 @@ pub fn config_check(
     }
 }
 
+/// Compare a value from the kernel config to a specified string, and return the result
+#[proc_macro]
+pub fn config_check_equals(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(input as ConfigCheckValue);
+    let check = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref()
+            .map(|a| a.check_field(&f.ident.to_string(), &f.val.value()))
+    };
+    let val = check.unwrap();
+    if val {
+        quote!(true).into()
+    } else {
+        quote!(false).into()
+    }
+}
+
 /// Retrieve a boolean value from the kernel config and use it to enable a block of code
 #[proc_macro]
 pub fn config_check_bool(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

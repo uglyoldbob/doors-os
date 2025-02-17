@@ -2,7 +2,7 @@
 //! The heap is a linked list of memory areas ([HeapNode]).
 //! Memory is organized by blocks that represent free memory.
 
-use core::{alloc::Layout, ptr::NonNull, sync::atomic::Ordering};
+use core::{alloc::Layout, ptr::NonNull};
 
 use crate::Locked;
 

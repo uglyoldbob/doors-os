@@ -253,10 +253,14 @@ fn serial_interrupts() {
         );
         crate::common::VGA.sync_replace(Some(t));
     }
-    if let Some(s) = crate::kernel::SERIAL.take_device(1) {
-        crate::VGA.print_str("Found second serial port");
-        s.enable_async(sys.clone()).unwrap();
-        s.sync_transmit_str("Testing stuff here on second serial port");
+    if doors_macros::config_check_equals!(gdbstub, "true") {
+        crate::VGA.print_str("Setting up second serial port for gdbstub\r\n");
+    } else {
+        if let Some(s) = crate::kernel::SERIAL.take_device(1) {
+            crate::VGA.print_str("Found second serial port\r\n");
+            s.enable_async(sys.clone()).unwrap();
+            s.sync_transmit_str("Testing stuff here on second serial port");
+        }
     }
 }
 
