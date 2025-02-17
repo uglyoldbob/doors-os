@@ -242,22 +242,21 @@ fn setup_serial() {
 
 /// Enable interrupts for the first serial port if it is present
 fn serial_interrupts() {
-    let mut serials = crate::kernel::SERIAL.sync_lock();
-    if serials.exists(0) {
-        let s = serials.module(0);
-        let sys = crate::SYSTEM.sync_lock().as_ref().unwrap().clone();
-        s.sync_lock().enable_async(sys).unwrap();
-        let sd = s.make_text_display();
-        let mut v = crate::VGA.sync_lock();
-        v.replace(sd);
-        drop(v);
+    let sys = crate::SYSTEM.sync_lock().as_ref().unwrap().clone();
+    if let Some(s) = crate::kernel::SERIAL.take_device(0) {
+        s.enable_async(sys.clone()).unwrap();
+        let t = s.convert(
+            |a| a.make_text_display(),
+            move |t| {
+                todo!();
+            },
+        );
+        crate::common::VGA.sync_replace(Some(t));
     }
-    if serials.exists(1) {
-        let s = serials.module(1);
-        let sd = s.make_text_display();
-        let mut v = crate::VGA2.sync_lock();
-        v.replace(sd);
-        drop(v);
+    if let Some(s) = crate::kernel::SERIAL.take_device(1) {
+        crate::VGA.print_str("Found second serial port");
+        s.enable_async(sys.clone()).unwrap();
+        s.sync_transmit_str("Testing stuff here on second serial port");
     }
 }
 

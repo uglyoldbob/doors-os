@@ -309,9 +309,7 @@ lazy_static::lazy_static! {
     /// The system manger for the kernel
     pub static ref SYSTEM: AsyncLocked<Option<kernel::System>> = AsyncLocked::new(None);
     /// The VGA instance used for x86 kernel printing
-    pub static ref VGA: AsyncLockedArc<Option<crate::TextDisplay>> = AsyncLockedArc::new(None);
-    /// The VGA2 instance used for x86 kernel printing
-    pub static ref VGA2: AsyncLockedArc<Option<crate::TextDisplay>> = AsyncLockedArc::new(None);
+    pub static ref VGA: AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> = AsyncLockedArc::new(None);
 }
 
 impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
@@ -342,7 +340,7 @@ impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
     fn flush(&self) {}
 }
 
-impl AsyncLockedArc<Option<crate::TextDisplay>> {
+impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
     /// Print a fixed string. This is intended to be used in panic type situations.
     pub fn print_fixed_str(&self, a: FixedString) {
         let mut v = self.sync_lock();

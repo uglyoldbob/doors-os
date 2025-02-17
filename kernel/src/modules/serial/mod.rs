@@ -42,10 +42,10 @@ pub enum Serial {
     Dummy(DummySerial),
 }
 
-impl AsyncLockedArc<Serial> {
+impl Serial {
     /// Create a text display
-    pub fn make_text_display(&self) -> super::video::TextDisplay {
-        let sd = super::video::VideoOverSerial::new(self.clone());
+    pub fn make_text_display(self) -> super::video::TextDisplay {
+        let sd = super::video::VideoOverSerial::new(self);
         super::video::TextDisplay::SerialDisplay(sd)
     }
 }

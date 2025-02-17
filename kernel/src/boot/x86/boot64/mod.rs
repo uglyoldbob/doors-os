@@ -104,6 +104,20 @@ pub extern "C" fn divide_by_zero() {
 }
 
 /// The irq4 handler
+pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
+    if let Ok(h) = IRQ_HANDLERS.try_get() {
+        let mut h = h.sync_lock();
+        if let Some(h2) = &mut h[3] {
+            h2();
+        }
+    }
+    let p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(3)
+    }
+}
+
+/// The irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
     if let Ok(h) = IRQ_HANDLERS.try_get() {
         let mut h = h.sync_lock();
@@ -111,11 +125,10 @@ pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
             h2();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.read();
+    let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(4)
     }
-    drop(p);
 }
 
 /// The irq7 handler
@@ -126,11 +139,10 @@ pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
             h2();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.read();
+    let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(7)
     }
-    drop(p);
 }
 
 /// The irq11 handler
@@ -143,7 +155,7 @@ pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
             panic!();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.read();
+    let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(11)
     }
@@ -405,7 +417,6 @@ impl Pic {
 
     /// Enable the specified irq
     pub fn enable_irq(&self, irq: u8) {
-        crate::VGA2.print_str("Enable an irq\r\n");
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
             self.pic1.port(1).port_write(data & !(1 << irq));
@@ -751,7 +762,6 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     fn idle_if(&self, mut f: impl FnMut() -> bool) {
         self.disable_interrupts();
         if f() {
-            crate::VGA2.print_str("IDLE NOW\r\n");
             x86_64::instructions::interrupts::enable_and_hlt();
         } else {
             self.enable_interrupts();
@@ -988,13 +998,13 @@ pub extern "C" fn start64() -> ! {
             {
                 let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
                 let mut v = crate::VGA.sync_lock();
-                v.replace(a);
+                v.replace(crate::kernel::OwnedDevice::free_range(a));
             }
         } else {
             let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
             let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
             let mut v = crate::VGA.sync_lock();
-            v.replace(b);
+            v.replace(crate::kernel::OwnedDevice::free_range(b));
             drop(v);
         }
     }
@@ -1025,6 +1035,7 @@ pub extern "C" fn start64() -> ! {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 divide_by_zero_asm as *const (),
             ));
+            idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);
             idt[0x27].set_handler_fn(irq7);
             idt[0x2b].set_handler_fn(irq11);

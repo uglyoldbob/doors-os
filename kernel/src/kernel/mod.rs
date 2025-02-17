@@ -2,9 +2,62 @@
 
 use core::pin::Pin;
 
-use crate::{AsyncLocked, AsyncLockedArc, Locked, LockedArc};
+use crate::{AsyncLocked, Locked, LockedArc};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
+
+/// A container of type T for a device that must be returned to its original container
+pub struct OwnedDevice<T> {
+    /// The module that is contained
+    module: Option<T>,
+    /// The returning code
+    ret: Box<dyn Fn(T) + Send>,
+}
+
+impl<T> OwnedDevice<T> {
+    /// Convert a device from one type of device to another, specifying another level of return functionality
+    pub fn convert<U: 'static>(
+        mut self,
+        conversion: impl FnOnce(T) -> U,
+        retf: impl Fn(U) + Send + 'static,
+    ) -> OwnedDevice<U> {
+        let m = self.module.take();
+        OwnedDevice {
+            module: m.map(conversion),
+            ret: Box::new(retf),
+        }
+    }
+
+    /// Build a self that does not get returned to anywhere, making it a free-range item
+    pub fn free_range(t: T) -> Self {
+        Self {
+            module: Some(t),
+            ret: Box::new(|_| ()),
+        }
+    }
+}
+
+impl<T> core::ops::Deref for OwnedDevice<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.module.as_ref().unwrap()
+    }
+}
+
+impl<T> core::ops::DerefMut for OwnedDevice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.module.as_mut().unwrap()
+    }
+}
+
+impl<T> Drop for OwnedDevice<T> {
+    fn drop(&mut self) {
+        let m = self.module.take();
+        if let Some(m) = m {
+            (self.ret)(m);
+        }
+    }
+}
 
 /// This is the main struct for interacting with the gpio system
 pub struct GpioHandler {
@@ -29,10 +82,40 @@ impl GpioHandler {
     }
 }
 
+/// The handout for code wanting to take a serial module from the collection
+pub struct OwnedSerialModule {
+    /// The module that is contained
+    module: Option<crate::modules::serial::Serial>,
+    /// The index for the serial module in the handler
+    index: usize,
+    /// The handler to return the module to when finished
+    handler: &'static Locked<SerialHandler>,
+}
+
+impl core::ops::Deref for OwnedSerialModule {
+    type Target = crate::modules::serial::Serial;
+    fn deref(&self) -> &Self::Target {
+        self.module.as_ref().unwrap()
+    }
+}
+
+impl core::ops::DerefMut for OwnedSerialModule {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.module.as_mut().unwrap()
+    }
+}
+
+impl Drop for OwnedSerialModule {
+    fn drop(&mut self) {
+        self.handler
+            .return_module(self.index, self.module.take().unwrap());
+    }
+}
+
 /// Tracks all of the serial ports in the system
 pub struct SerialHandler {
     /// The individual devices
-    devs: Vec<AsyncLockedArc<crate::modules::serial::Serial>>,
+    devs: Vec<Option<crate::modules::serial::Serial>>,
 }
 
 impl SerialHandler {
@@ -43,22 +126,52 @@ impl SerialHandler {
 
     /// Add a serial module to the system
     pub fn register_serial(&mut self, m: crate::modules::serial::Serial) {
-        self.devs.push(AsyncLockedArc::new(m));
+        self.devs.push(Some(m));
     }
 
     /// Does the module index exist?
     pub fn exists(&self, i: usize) -> bool {
-        i < self.devs.len()
+        i < self.devs.len() && self.devs[i].is_some()
     }
 
-    /// Get a serial module
-    pub fn module(&mut self, i: usize) -> AsyncLockedArc<crate::modules::serial::Serial> {
-        self.devs[i].clone()
+    /// Borrow a serial module
+    pub fn borrow_module(&mut self, i: usize) -> &mut Option<crate::modules::serial::Serial> {
+        &mut self.devs[i]
     }
 
     /// Iterate over all serial ports
-    pub fn iter(&mut self) -> core::slice::Iter<AsyncLockedArc<crate::modules::serial::Serial>> {
+    pub fn iter(&mut self) -> core::slice::Iter<Option<crate::modules::serial::Serial>> {
         self.devs.iter()
+    }
+}
+
+impl Locked<SerialHandler> {
+    /// Get a serial device
+    pub fn take_device(
+        &'static self,
+        i: usize,
+    ) -> Option<OwnedDevice<crate::modules::serial::Serial>> {
+        let mut s = self.sync_lock();
+        let m = if i < s.devs.len() {
+            s.devs[i].take()
+        } else {
+            None
+        };
+        drop(s);
+        m.map(|a| OwnedDevice {
+            module: Some(a),
+            ret: Box::new(move |t| {
+                self.return_module(i, t);
+            }),
+        })
+    }
+
+    /// Return a serial module
+    fn return_module(&self, i: usize, m: crate::modules::serial::Serial) {
+        let mut s = self.sync_lock();
+        if s.devs[i].is_none() {
+            s.devs[i].replace(m);
+        }
     }
 }
 

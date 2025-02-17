@@ -4,6 +4,7 @@
 pub struct KernelConfig {
     pub machine_name: String,
     pub acpi: bool,
+    pub gdbstub: bool,
 }
 
 impl KernelConfig {
