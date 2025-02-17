@@ -13,7 +13,6 @@ use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use conquer_once::noblock::OnceCell;
-use spin::RwLock;
 use core::alloc::Allocator;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -23,6 +22,7 @@ use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
+use spin::RwLock;
 use x86_64::structures::idt::InterruptStackFrame;
 
 pub mod memory;

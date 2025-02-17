@@ -208,7 +208,7 @@ pub fn config_check(
     let go = {
         let m = KERNEL_CONFIG.lock().unwrap();
         m.as_ref()
-            .map(|a| a.check_field_string(&f.ident.to_string(), &f.val.value()))
+            .map(|a| a.check_field(&f.ident.to_string(), &f.val.value()))
     }
     .unwrap();
     if go {
@@ -225,7 +225,8 @@ pub fn config_check_bool(input: proc_macro::TokenStream) -> proc_macro::TokenStr
     let f = parse_macro_input!(input as ConfigCheckBlock);
     let check = {
         let m = KERNEL_CONFIG.lock().unwrap();
-        m.as_ref().map(|a| a.get_field(&f.ident.to_string()))
+        m.as_ref()
+            .map(|a| a.check_field(&f.ident.to_string(), "true"))
     };
     let val = check.unwrap();
     let block = f.block;
@@ -256,7 +257,7 @@ pub fn config_build_struct(item: proc_macro::TokenStream) -> proc_macro::TokenSt
                         if let syn::Expr::Lit(l) = &n.value {
                             if let syn::Lit::Str(l) = &l.lit {
                                 let name = l.value();
-                                let val: bool = m.get_field(&name);
+                                let val: bool = m.check_field(&name, "true");
                                 Some(val)
                             } else {
                                 panic!("Expected a string literal");
@@ -332,7 +333,7 @@ pub fn config_check_struct(
                         if let syn::Expr::Lit(l) = &n.value {
                             if let syn::Lit::Str(l) = &l.lit {
                                 let name = l.value();
-                                let val: bool = m.get_field(&name);
+                                let val: bool = m.check_field(&name, "true");
                                 Some(val)
                             } else {
                                 panic!("Expected a string literal");

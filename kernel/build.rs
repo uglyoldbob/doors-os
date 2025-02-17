@@ -72,8 +72,6 @@ fn write_font_source(name: String, table: Vec<FontData>) {
 }
 
 fn main() {
-    let target = target_build_utils::TargetInfo::new().expect("could not get target info");
-
     println!("cargo:rerun-if-changed=./src/cmunbtl.ttf");
     let font = include_bytes!("./src/cmunbtl.ttf");
     let fontmap = generate_font_table(font);
@@ -88,14 +86,6 @@ fn main() {
     let config =
         String::from_utf8(config_contents).expect("Invalid contents in kernel configuration");
     let config = toml::from_str::<KernelConfig>(&config).expect("Invalid kernel configuration");
-
-    if config.get_arch() != target.target_arch() {
-        panic!(
-            "Invalid arch {} instead of {} specified for kernel build",
-            target.target_arch(),
-            config.get_arch()
-        );
-    }
 
     println!("cargo::rustc-check-cfg=cfg(kernel_machine, values(\"pc64\", \"stm32f769i-disco\"))");
     println!("cargo:rustc-cfg=kernel_machine=\"{}\"", config.machine_name);

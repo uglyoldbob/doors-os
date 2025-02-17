@@ -151,7 +151,9 @@ fn main() -> ! {
         let mut executor = Executor::default();
         executor
             .spawn_closure(async || {
-                crate::VGA.print_str_async("1234567890123456789012345678901234567890DUMMY STUFF\r\n").await;
+                crate::VGA
+                    .print_str_async("1234567890123456789012345678901234567890DUMMY STUFF\r\n")
+                    .await;
                 crate::VGA.print_str("This is a test of sync printing\r\n");
                 crate::VGA.print_str_async("Registering LFSR rng\r\n").await;
                 let rng = rng::RngLfsr::new();
