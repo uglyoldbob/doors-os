@@ -13,6 +13,7 @@ use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use conquer_once::noblock::OnceCell;
+use spin::RwLock;
 use core::alloc::Allocator;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -110,8 +111,8 @@ pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
             h2();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.sync_lock();
-    if let Some(p) = p.as_mut() {
+    let mut p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
         p.end_of_interrupt(4)
     }
     drop(p);
@@ -125,8 +126,8 @@ pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
             h2();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.sync_lock();
-    if let Some(p) = p.as_mut() {
+    let mut p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
         p.end_of_interrupt(7)
     }
     drop(p);
@@ -142,8 +143,8 @@ pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
             panic!();
         }
     }
-    let mut p = INTERRUPT_CONTROLLER.sync_lock();
-    if let Some(p) = p.as_mut() {
+    let mut p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
         p.end_of_interrupt(11)
     }
 }
@@ -251,7 +252,7 @@ pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
 
 /// The interrupt controller
-static INTERRUPT_CONTROLLER: Locked<Option<Pic>> = Locked::new(None);
+static INTERRUPT_CONTROLLER: RwLock<Option<Pic>> = RwLock::new(None);
 
 #[derive(Clone)]
 /// A structure for mapping and unmapping acpi memory
@@ -388,7 +389,7 @@ impl Pic {
     }
 
     /// Signal end of interrupt for the specified irq
-    pub fn end_of_interrupt(&mut self, irq: u8) {
+    pub fn end_of_interrupt(&self, irq: u8) {
         if irq >= 8 {
             self.pic2.port(0).port_write(0x20u8);
         }
@@ -396,14 +397,14 @@ impl Pic {
     }
 
     /// Disable all interrupts for both pics
-    pub fn disable(&mut self) {
+    pub fn disable(&self) {
         use crate::IoReadWrite;
         self.pic1.port(1).port_write(0xffu8);
         self.pic2.port(1).port_write(0xffu8);
     }
 
     /// Enable the specified irq
-    pub fn enable_irq(&mut self, irq: u8) {
+    pub fn enable_irq(&self, irq: u8) {
         crate::VGA2.print_str("Enable an irq\r\n");
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
@@ -416,7 +417,7 @@ impl Pic {
     }
 
     /// Disable the specified irq
-    pub fn disable_irq(&mut self, irq: u8) {
+    pub fn disable_irq(&self, irq: u8) {
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
             self.pic1.port(1).port_write(data | (1 << irq));
@@ -431,7 +432,7 @@ impl Pic {
     /// # Arguments
     /// * offset1 - The amount to offset pic1 vectors by
     /// * offset2 - The amount to offset pic2 vectors by
-    pub fn remap(&mut self, offset1: u8, offset2: u8) {
+    pub fn remap(&self, offset1: u8, offset2: u8) {
         use crate::IoReadWrite;
         let mut delay: super::IoPortRef<u8> = super::IOPORTS.get_port(0x80).unwrap();
 
@@ -719,8 +720,8 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     fn enable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let mut p = INTERRUPT_CONTROLLER.sync_lock();
-            if let Some(p) = p.as_mut() {
+            let mut p = INTERRUPT_CONTROLLER.read();
+            if let Some(p) = p.as_ref() {
                 p.enable_irq(irq)
             }
         });
@@ -736,8 +737,8 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     fn disable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let mut p = INTERRUPT_CONTROLLER.sync_lock();
-            if let Some(p) = p.as_mut() {
+            let mut p = INTERRUPT_CONTROLLER.read();
+            if let Some(p) = p.as_ref() {
                 p.disable_irq(irq)
             }
         });
@@ -1015,7 +1016,7 @@ pub extern "C" fn start64() -> ! {
         let mut pic = Pic::new().unwrap();
         pic.disable();
         pic.remap(0x20, 0x28);
-        INTERRUPT_CONTROLLER.replace(Some(pic));
+        INTERRUPT_CONTROLLER.write().replace(pic);
     }
 
     {
