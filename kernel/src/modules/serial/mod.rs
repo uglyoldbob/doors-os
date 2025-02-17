@@ -6,7 +6,10 @@ pub mod stm32f769;
 #[cfg(kernel_machine = "pc64")]
 pub mod x86;
 
-use crate::{AsyncLockedArc, LockedArc};
+use crate::Arc;
+use futures::Stream;
+
+use crate::{kernel::OwnedDevice, AsyncLockedArc, LockedArc};
 
 /// The standard trait for serial ports
 #[enum_dispatch::enum_dispatch]
@@ -27,6 +30,8 @@ pub trait SerialTrait {
     async fn transmit_str(&self, data: &str);
     /// Flush the output data, asynchronously
     async fn flush(&self);
+    /// Retrieve a read stream for the serial port
+    fn read_stream(&self) -> impl Stream<Item = u8>;
 }
 
 /// An enumeration of all the types of serial controllers
@@ -37,9 +42,7 @@ pub enum Serial {
     Stm32f769(LockedArc<stm32f769::Usart>),
     /// X86 serial port
     #[cfg(kernel_machine = "pc64")]
-    PcComPort(AsyncLockedArc<x86::X86SerialPort>),
-    /// The dummy implementation
-    Dummy(DummySerial),
+    PcComPort(x86::X86SerialPort),
 }
 
 impl Serial {
@@ -48,29 +51,4 @@ impl Serial {
         let sd = super::video::VideoOverSerial::new(self);
         super::video::TextDisplay::SerialDisplay(sd)
     }
-}
-
-/// A dummy serial port that does nothing
-pub struct DummySerial {}
-
-impl SerialTrait for DummySerial {
-    fn setup(&self, _rate: u32) -> Result<(), ()> {
-        Err(())
-    }
-
-    fn enable_async(&self, _sys: crate::kernel::System) -> Result<(), ()> {
-        Err(())
-    }
-
-    fn sync_transmit(&self, _data: &[u8]) {}
-
-    fn sync_transmit_str(&self, _data: &str) {}
-
-    fn sync_flush(&self) {}
-
-    async fn flush(&self) {}
-
-    async fn transmit(&self, _data: &[u8]) {}
-
-    async fn transmit_str(&self, _data: &str) {}
 }

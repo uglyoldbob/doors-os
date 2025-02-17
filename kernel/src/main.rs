@@ -23,6 +23,7 @@ pub use common::*;
 
 pub mod boot;
 pub use boot::mem2::*;
+pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
 
@@ -59,9 +60,10 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
     let msg = info.message();
     if let Some(s) = msg.as_str() {
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", s));
+        crate::VGA.print_str(s);
     }
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", info));
+    crate::VGA.print_str(&alloc::format!("{}\r\n", info));
     crate::VGA.print_str("PANIC SOMEWHERE ELSE!\r\n");
     loop {}
 }
@@ -149,6 +151,29 @@ fn main() -> ! {
             }
         }
         let mut executor = Executor::default();
+        executor
+            .spawn_closure(async || {
+                crate::VGA
+                    .print_str_async("Waiting for data from second serial port\r\n")
+                    .await;
+                let ser = crate::kernel::SERIAL.take_device(1).unwrap();
+                use crate::modules::serial::SerialTrait;
+                use futures::StreamExt;
+                let mut receiver = ser.read_stream();
+                for i in 0..1000 {
+                    ser.transmit_str(&alloc::format!("Testing {}\r\n", i)).await;
+                }
+                while let Some(b) = receiver.next().await {
+                    crate::VGA
+                        .print_str_async(&alloc::format!("Received a {} from serial1\r\n", b))
+                        .await;
+                    ser.transmit_str("X").await;
+                }
+            })
+            .unwrap();
+        if doors_macros::config_check_equals!(gdbstub, "true") {
+            executor.spawn(executor::Task::new(gdbstub::run())).unwrap();
+        }
         executor
             .spawn_closure(async || {
                 crate::VGA

@@ -15,6 +15,7 @@ doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }
 enum_dispatch = "0.3.13"
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 gdbstub = { version = "0.7.3", default-features = false, features = ["alloc"] }
+gdbstub_arch = "0.3.1"
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
 log = "0.4.20"
 pin-project = "1.1.9"

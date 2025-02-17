@@ -13,7 +13,28 @@ use core::{
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
 
-use alloc::sync::Arc;
+/// A definition for an Arc. This allows traits to be defined for Arc.
+pub struct Arc<T>(alloc::sync::Arc<T>);
+
+impl<T> Deref for Arc<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<T> Clone for Arc<T> {
+    fn clone(&self) -> Self {
+        Arc(self.0.clone())
+    }
+}
+
+impl<T> Arc<T> {
+    /// Creates a new arc
+    pub fn new(v: T) -> Self {
+        Self(alloc::sync::Arc::new(v))
+    }
+}
 
 use crate::kernel;
 
@@ -38,7 +59,7 @@ pub trait IoReadWrite<T> {
 /// A wrapper that allows for traits to be implemented on an Arc<Mutex<A>>
 pub struct LockedArc<A> {
     /// The arc with the contained object
-    inner: Arc<Locked<A>>,
+    inner: alloc::sync::Arc<Locked<A>>,
 }
 
 impl<A> Clone for LockedArc<A> {
@@ -53,7 +74,7 @@ impl<A> LockedArc<A> {
     /// Create a new locked arc object.
     pub fn new(inner: A) -> Self {
         Self {
-            inner: Arc::new(Locked::new(inner)),
+            inner: alloc::sync::Arc::new(Locked::new(inner)),
         }
     }
 
@@ -72,7 +93,7 @@ impl<A> LockedArc<A> {
 /// A wrapper that allows for traits to be implemented on an Arc<Mutex<A>>
 pub struct AsyncLockedArc<A> {
     /// The arc with the contained object
-    inner: Arc<AsyncLocked<A>>,
+    inner: alloc::sync::Arc<AsyncLocked<A>>,
 }
 
 impl<A> Clone for AsyncLockedArc<A> {
@@ -87,7 +108,7 @@ impl<A> AsyncLockedArc<A> {
     /// Create a new locked arc object.
     pub fn new(inner: A) -> Self {
         Self {
-            inner: Arc::new(AsyncLocked::new(inner)),
+            inner: alloc::sync::Arc::new(AsyncLocked::new(inner)),
         }
     }
 
@@ -119,7 +140,7 @@ pub struct AsyncLocked<A: ?Sized> {
     /// The lock
     lock: core::sync::atomic::AtomicBool,
     /// Wakers for the lock
-    wakers: Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
+    wakers: alloc::sync::Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
     /// The protected data
     data: UnsafeCell<A>,
 }
@@ -131,7 +152,7 @@ pub struct AsyncLockedMutexGuard<'a, A: ?Sized> {
     /// The unlocked data
     data: *mut A,
     /// The wakers for the mutex
-    wakers: Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
+    wakers: alloc::sync::Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
 }
 
 unsafe impl<A: ?Sized + Send> Sync for AsyncLocked<A> {}
@@ -175,7 +196,7 @@ impl<A> AsyncLocked<A> {
     pub fn new(data: A) -> Self {
         Self {
             lock: core::sync::atomic::AtomicBool::new(false),
-            wakers: Arc::new(ArrayQueue::new(32)),
+            wakers: alloc::sync::Arc::new(ArrayQueue::new(32)),
             data: UnsafeCell::new(data),
         }
     }

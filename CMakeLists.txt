@@ -134,11 +134,11 @@ add_custom_target(
 add_custom_target(
     qemucd64
     DEPENDS image_cd64
-    COMMAND ${QEMU_X64} -cdrom cd64.iso -m 8 -serial file:serial.log -serial file:serial2.log -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=dump.dat -monitor telnet:127.0.0.1:55555,server,nowait;
+    COMMAND ${QEMU_X64} -cdrom cd64.iso -m 8 -serial file:serial.log -serial pty -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=dump.dat -monitor telnet:127.0.0.1:55555,server,nowait;
 )
 
 add_custom_target(
     qemucd64test
     DEPENDS image_cd64
-    COMMAND ${QEMU_X64} -cdrom cd64test.iso -m 8 -serial file:test.log -serial file:serial2.log -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=dump.dat
+    COMMAND ${QEMU_X64} -cdrom cd64test.iso -m 8 -serial file:test.log -serial pty -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=dump.dat
 )

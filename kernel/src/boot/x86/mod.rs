@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
 use crate::modules::serial::SerialTrait;
+use crate::Arc;
 use crate::AsyncLockedArc;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -232,7 +233,7 @@ fn setup_serial() {
                 "Registered serial port {:x}\r\n",
                 base
             ));
-            let com = crate::modules::serial::Serial::PcComPort(AsyncLockedArc::new(com));
+            let com = crate::modules::serial::Serial::PcComPort(com);
             use crate::modules::serial::SerialTrait;
             com.sync_transmit_str("Testing the serial port\r\n");
             serials.register_serial(com);
@@ -253,14 +254,9 @@ fn serial_interrupts() {
         );
         crate::common::VGA.sync_replace(Some(t));
     }
-    if doors_macros::config_check_equals!(gdbstub, "true") {
-        crate::VGA.print_str("Setting up second serial port for gdbstub\r\n");
-    } else {
-        if let Some(s) = crate::kernel::SERIAL.take_device(1) {
-            crate::VGA.print_str("Found second serial port\r\n");
-            s.enable_async(sys.clone()).unwrap();
-            s.sync_transmit_str("Testing stuff here on second serial port");
-        }
+    if let Some(s) = crate::kernel::SERIAL.take_device(1) {
+        s.enable_async(sys.clone()).unwrap();
+        s.sync_transmit_str("Testing stuff here on second serial port");
     }
 }
 

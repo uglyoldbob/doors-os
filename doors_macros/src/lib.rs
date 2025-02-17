@@ -236,6 +236,27 @@ pub fn config_check_equals(input: proc_macro::TokenStream) -> proc_macro::TokenS
     }
 }
 
+/// Conditionally enable an item with an equals comparision from the kernel config
+#[proc_macro_attribute]
+pub fn config_check_equals_attr(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(attr as ConfigCheckValue);
+    let check = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref()
+            .map(|a| a.check_field(&f.ident.to_string(), &f.val.value()))
+    };
+    let val = check.unwrap();
+    if val {
+        let item: proc_macro2::TokenStream = item.into();
+        quote!(#item).into()
+    } else {
+        quote!().into()
+    }
+}
+
 /// Retrieve a boolean value from the kernel config and use it to enable a block of code
 #[proc_macro]
 pub fn config_check_bool(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -326,7 +347,7 @@ pub fn config_build_struct(item: proc_macro::TokenStream) -> proc_macro::TokenSt
     quote!(#f).into()
 }
 
-/// Check a boolean value from the kernel config to enable code
+/// Check a boolean value from the kernel config to conditionally disable items in a structure
 #[proc_macro_attribute]
 pub fn config_check_struct(
     attr: proc_macro::TokenStream,
