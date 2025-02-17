@@ -235,7 +235,9 @@ fn setup_serial() {
             ));
             let com = crate::modules::serial::Serial::PcComPort(com);
             use crate::modules::serial::SerialTrait;
-            com.sync_transmit_str("Testing the serial port\r\n");
+            for i in 0..100 {
+                com.sync_transmit_str(&alloc::format!("Testing the serial port {}\r\n", i));
+            }
             serials.register_serial(com);
         }
     }
@@ -245,18 +247,25 @@ fn setup_serial() {
 fn serial_interrupts() {
     let sys = crate::SYSTEM.sync_lock().as_ref().unwrap().clone();
     if let Some(s) = crate::kernel::SERIAL.take_device(0) {
+        s.sync_transmit_str("About to enable async mode for serial port 0\r\n");
         s.enable_async(sys.clone()).unwrap();
-        let t = s.convert(
+        s.sync_transmit_str("Async mode enabled\r\n");
+        let mut t = s.convert(
             |a| a.make_text_display(),
             move |t| {
                 todo!();
             },
         );
+        use crate::modules::video::TextDisplayTrait;
+        for i in 0..100 {
+            t.print_str(&alloc::format!("Testing the text display {}\r\n", i));
+        }
         crate::common::VGA.sync_replace(Some(t));
     }
     if let Some(s) = crate::kernel::SERIAL.take_device(1) {
         s.enable_async(sys.clone()).unwrap();
-        s.sync_transmit_str("Testing stuff here on second serial port");
+        x86_64::instructions::bochs_breakpoint();
+        s.sync_transmit_str("XTesting stuff here on second serial port");
     }
 }
 

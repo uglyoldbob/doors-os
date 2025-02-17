@@ -121,36 +121,49 @@ impl X86SerialPort {
 
     /// The interrupt handler code
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
-        let stat: u8 = s.base.port(2).port_read();
-        match (stat >> 1) & 3 {
-            1 => {
-                if let Ok(aq) = s.tx_queue.try_get() {
-                    if let Some(v) = aq.pop() {
-                        s.base.port(0).port_write(v);
-                    } else {
-                        s.disable_tx_interrupt();
+        loop {
+            let stat: u8 = s.base.port(2).port_read();
+            if (stat & 1) == 0 {
+                match (stat >> 1) & 7 {
+                    0 => {
+                        let _: u8 = s.base.port(3).port_read();
                     }
-                }
-                if let Ok(a) = s.tx_wakers.try_get() {
-                    while let Some(w) = a.pop() {
-                        w.wake();
+                    1 => {
+                        if let Ok(aq) = s.tx_queue.try_get() {
+                            if let Some(v) = aq.pop() {
+                                s.base.port(0).port_write(v);
+                            } else {
+                                s.disable_tx_interrupt();
+                            }
+                        }
+                        if let Ok(a) = s.tx_wakers.try_get() {
+                            while let Some(w) = a.pop() {
+                                w.wake();
+                            }
+                        }
                     }
-                }
-            }
-            2 => {
-                if let Ok(rq) = s.rx_queue.try_get() {
-                    if let Some(a) = s.receive() {
-                        let _ = rq.push(a);
+                    2 => {
+                        let recvd = s.force_receive();
+                        if let Ok(rq) = s.rx_queue.try_get() {
+                            if rq.push(recvd).is_err() {
+                                x86_64::instructions::bochs_breakpoint();
+                            }
+                        }
                         if let Ok(a) = s.rx_wakers.try_get() {
                             while let Some(w) = a.pop() {
                                 w.wake();
                             }
                         }
                     }
+                    3 => {
+                        let _: u8 = s.base.port(5).port_read();
+                    }
+                    _ => {
+                        x86_64::instructions::bochs_breakpoint();
+                    }
                 }
-            }
-            _ => {
-                x86_64::instructions::bochs_breakpoint();
+            } else {
+                break;
             }
         }
     }
@@ -159,7 +172,6 @@ impl X86SerialPort {
     /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
     unsafe fn enable_rx_interrupt(&self) {
         if *self.0.interrupts.read() {
-            let _: u8 = self.0.base.port(2).port_read();
             let mut ie = self.0.ienable.lock();
             let v: u8 = ie.port_read();
             ie.port_write(v | 1);
@@ -245,7 +257,12 @@ impl Arc<X86SerialPortInternal> {
                 return None;
             }
         }
-        Some(self.base.port(0).port_read())
+        Some(self.force_receive())
+    }
+
+    /// Receive a byte without checking
+    fn force_receive(&self) -> u8 {
+        self.base.port(0).port_read()
     }
 
     /// Check to see if there is a byte available
@@ -324,8 +341,9 @@ impl super::SerialTrait for X86SerialPort {
             let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
             for (i, c) in data.iter().enumerate() {
                 if let Ok(tx) = txq.try_get() {
-                    while tx.push(*c).is_err() {}
-                    if i >= 8 {
+                    while tx.is_full() {}
+                    tx.push(*c).unwrap();
+                    if i >= 1 {
                         self.0.sync_enable_tx_interrupt(&sys);
                         ienabled = true;
                     }
