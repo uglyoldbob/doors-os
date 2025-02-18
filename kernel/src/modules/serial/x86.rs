@@ -188,20 +188,6 @@ impl X86SerialPort {
     fn force_send_byte(&self, c: u8) {
         self.0.base.port(0).port_write(c);
     }
-
-    /// Asynchronously enable the tx interrupt.
-    async fn enable_tx_interrupt(&self, sys: crate::kernel::System) {
-        let (ie, irqnum) = { (*self.0.interrupts.read(), self.0.irq) };
-        if ie {
-            sys.disable_irq(irqnum);
-            {
-                unsafe {
-                    self.0.internal_enable_tx_interrupt();
-                }
-            }
-            sys.enable_irq(irqnum);
-        }
-    }
 }
 
 impl Arc<X86SerialPortInternal> {
@@ -232,9 +218,9 @@ impl Arc<X86SerialPortInternal> {
     /// Stop the tx interrupt. Used when a transmission has completed.
     fn disable_tx_interrupt(&self) {
         if *self.interrupts.read() {
-            let mut p = self.ienable.lock();
+            let mut p = self.base.port(1);
             let v: u8 = p.port_read();
-            p.port_write(v & !2);
+            p.port_write(1 | (v & !2));
         }
     }
 
