@@ -307,7 +307,7 @@ impl<'a> Executor<'a> {
 
     /// Run the executor
     pub fn run(&mut self) -> ! {
-        let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
+        let sys = crate::SYSTEM.read();
         loop {
             self.run_tasks();
             self.get_polls();

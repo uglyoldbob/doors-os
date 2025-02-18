@@ -1089,6 +1089,6 @@ pub extern "C" fn start64() -> ! {
         INTERRUPT_DESCRIPTOR_TABLE.sync_lock().load_unsafe();
     }
 
-    crate::SYSTEM.replace(Some(kernel::System::X86_64(LockedArc::new(sys))));
+    *crate::SYSTEM.write() = kernel::System::X86_64(LockedArc::new(sys));
     super::main_boot();
 }

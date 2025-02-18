@@ -131,9 +131,11 @@ async fn net_test() {
 
 fn main() -> ! {
     {
-        let sys = SYSTEM.sync_lock().to_owned().unwrap();
-        sys.enable_interrupts();
-        sys.init();
+        {
+            let sys = SYSTEM.read();
+            sys.enable_interrupts();
+            sys.init();
+        }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
             if d.exists(0) {
@@ -197,7 +199,7 @@ fn main() -> ! {
         executor
             .spawn_closure(async || {
                 modules::pci::setup_pci().await;
-                let sys = SYSTEM.sync_lock().to_owned().unwrap();
+                let sys = SYSTEM.read();
                 sys.acpi_debug().await;
             })
             .unwrap();

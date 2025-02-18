@@ -1109,9 +1109,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     crate::VGA
                         .print_str_async(&format!("The irq line is {}\r\n", irqnum))
                         .await;
-                    let sysl = crate::SYSTEM.lock().await;
-                    let sys = sysl.as_ref().unwrap();
-                    d.enable_interrupts(sys, irqnum);
+                    let sys = crate::SYSTEM.read();
+                    d.enable_interrupts(&sys, irqnum);
                 }
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {

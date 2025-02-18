@@ -96,7 +96,7 @@ fn main() -> ! {
         if false {
             doors_macros::todo_item_panic!("This should never happen");
         }
-        let sys = SYSTEM.sync_lock().to_owned().unwrap();
+        let sys = SYSTEM.read();
         sys.enable_interrupts();
         sys.init();
         crate::VGA.print_str("DoorsOs Booting now\r\n");

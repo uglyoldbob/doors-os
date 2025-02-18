@@ -316,4 +316,35 @@ pub enum System {
     #[cfg(kernel_machine = "pc64")]
     /// The x86 64 system code
     X86_64(LockedArc<Pin<Box<crate::boot::x86::boot64::X86System<'static>>>>),
+    /// A dummy do nothing system
+    NullSys(NullSystem),
+}
+
+impl Default for System {
+    fn default() -> Self {
+        System::NullSys(NullSystem {})
+    }
+}
+
+/// A system that only will be used on startup
+#[derive(Clone)]
+pub struct NullSystem {}
+
+impl NullSystem {
+    /// Create a new system. This is a const fn so it can be done at compile time. Into functions are not constant yet.
+    pub const fn new_sys() -> System {
+        System::NullSys(Self {})
+    }
+}
+
+impl SystemTrait for NullSystem {
+    fn enable_interrupts(&self) {}
+    fn disable_interrupts(&self) {}
+    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, _irq: u8, _handler: F) {}
+    fn enable_irq(&self, _irq: u8) {}
+    fn disable_irq(&self, _irq: u8) {}
+    fn init(&self) {}
+    fn idle(&self) {}
+    fn idle_if(&self, _f: impl FnMut() -> bool) {}
+    async fn acpi_debug(&self) {}
 }

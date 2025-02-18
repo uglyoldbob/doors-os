@@ -12,6 +12,7 @@ use core::{
 
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
+use spin::RwLock;
 
 /// A definition for an Arc. This allows traits to be defined for Arc.
 pub struct Arc<T>(alloc::sync::Arc<T>);
@@ -326,9 +327,10 @@ impl<A> Locked<A> {
 /// A fixed string type that allows for strings of up to 80 characters.
 pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 
+/// The system manger for the kernel
+pub static SYSTEM: RwLock<kernel::System> = RwLock::new(kernel::NullSystem::new_sys());
+
 lazy_static::lazy_static! {
-    /// The system manger for the kernel
-    pub static ref SYSTEM: AsyncLocked<Option<kernel::System>> = AsyncLocked::new(None);
     /// The VGA instance used for x86 kernel printing
     pub static ref VGA: AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> = AsyncLockedArc::new(None);
 }
