@@ -338,7 +338,7 @@ impl super::SerialTrait for X86SerialPort {
             let txq = self.0.tx_queue.clone();
             *self.0.itx.write() = true;
             let mut ienabled = false;
-            let sys = crate::SYSTEM.sync_lock().to_owned().unwrap();
+            let sys = crate::SYSTEM.read();
             for (i, c) in data.iter().enumerate() {
                 if let Ok(tx) = txq.try_get() {
                     while tx.is_full() {}
@@ -370,23 +370,21 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     async fn transmit(&self, data: &[u8]) {
-        use alloc::borrow::ToOwned;
         *self.0.itx.write() = true;
         AsyncWriter::new(
             self.0.clone(),
             data,
-            crate::SYSTEM.sync_lock().to_owned().unwrap(),
+            crate::SYSTEM.read().clone(),
         )
         .await
     }
 
     async fn transmit_str(&self, data: &str) {
-        use alloc::borrow::ToOwned;
         *self.0.itx.write() = true;
         AsyncWriter::new(
             self.0.clone(),
             data.as_bytes(),
-            crate::SYSTEM.sync_lock().to_owned().unwrap(),
+            crate::SYSTEM.read().clone(),
         )
         .await;
     }
