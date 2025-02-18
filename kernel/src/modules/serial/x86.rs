@@ -142,7 +142,7 @@ impl X86SerialPort {
                             }
                         }
                     }
-                    2 => {
+                    2 | 6 => {
                         let recvd = s.force_receive();
                         if let Ok(rq) = s.rx_queue.try_get() {
                             if rq.push(recvd).is_err() {
@@ -178,16 +178,6 @@ impl X86SerialPort {
         }
     }
 
-    /// Return the status of the interrupt enable register
-    fn read_tx_int_status(&self) -> u8 {
-        self.0.base.port(1).port_read()
-    }
-
-    /// Return the status of the line status register
-    fn read_tx_line_status(&self) -> u8 {
-        self.0.base.port(5).port_read()
-    }
-
     /// synchronously send a byte
     fn sync_send_byte(&self, c: u8) {
         while !self.can_send() {}
@@ -219,7 +209,6 @@ impl Arc<X86SerialPortInternal> {
     /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
     unsafe fn internal_enable_tx_interrupt(&self) {
         if *self.interrupts.read() {
-            let _: u8 = self.base.port(2).port_read();
             let mut ie = self.ienable.lock();
             let v: u8 = ie.port_read();
             ie.port_write(v | 2);
@@ -243,8 +232,9 @@ impl Arc<X86SerialPortInternal> {
     /// Stop the tx interrupt. Used when a transmission has completed.
     fn disable_tx_interrupt(&self) {
         if *self.interrupts.read() {
-            let v: u8 = self.base.port(1).port_read();
-            self.base.port(1).port_write(v & !2);
+            let mut p = self.ienable.lock();
+            let v: u8 = p.port_read();
+            p.port_write(v & !2);
         }
     }
 
@@ -323,7 +313,7 @@ impl super::SerialTrait for X86SerialPort {
             self.0.base.port(4).port_write(0x03u8 | 8u8);
             *self.0.interrupts.write() = true;
         };
-        unsafe { self.enable_rx_interrupt() };
+        //unsafe { self.enable_rx_interrupt() };
         sys.enable_irq(irqnum);
         Ok(())
     }
@@ -334,7 +324,6 @@ impl super::SerialTrait for X86SerialPort {
                 self.sync_send_byte(*c);
             }
         } else {
-            use alloc::borrow::ToOwned;
             let txq = self.0.tx_queue.clone();
             *self.0.itx.write() = true;
             let mut ienabled = false;
@@ -343,7 +332,7 @@ impl super::SerialTrait for X86SerialPort {
                 if let Ok(tx) = txq.try_get() {
                     while tx.is_full() {}
                     tx.push(*c).unwrap();
-                    if i >= 1 {
+                    if !ienabled {
                         self.0.sync_enable_tx_interrupt(&sys);
                         ienabled = true;
                     }
@@ -371,12 +360,7 @@ impl super::SerialTrait for X86SerialPort {
 
     async fn transmit(&self, data: &[u8]) {
         *self.0.itx.write() = true;
-        AsyncWriter::new(
-            self.0.clone(),
-            data,
-            crate::SYSTEM.read().clone(),
-        )
-        .await
+        AsyncWriter::new(self.0.clone(), data, crate::SYSTEM.read().clone()).await
     }
 
     async fn transmit_str(&self, data: &str) {
@@ -408,16 +392,20 @@ struct AsyncWriter<'a> {
     data: &'a [u8],
     /// The system
     sys: crate::kernel::System,
+    /// Irq number
+    irq: u8,
 }
 
 impl<'a> AsyncWriter<'a> {
     /// Construct a new object for asynchronous serial port writing
     fn new(s: Arc<X86SerialPortInternal>, data: &'a [u8], sys: crate::kernel::System) -> Self {
+        let i = s.irq;
         Self {
             s,
             index: 0,
             data,
             sys: sys.clone(),
+            irq: i,
         }
     }
 }

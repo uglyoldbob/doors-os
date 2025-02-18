@@ -249,28 +249,21 @@ fn serial_interrupts() {
     if let Some(s) = crate::kernel::SERIAL.take_device(0) {
         s.sync_transmit_str("About to enable async mode for serial port 0\r\n");
         s.enable_async(sys.clone()).unwrap();
-        s.sync_transmit_str("Async mode enabled\r\n");
-        let mut t = s.convert(
+        s.sync_flush();
+        let t = s.convert(
             |a| a.make_text_display(),
             move |t| {
                 todo!();
             },
         );
-        use crate::modules::video::TextDisplayTrait;
-        for i in 0..100 {
-            t.print_str(&alloc::format!("Testing the text display {}\r\n", i));
-        }
         crate::common::VGA.sync_replace(Some(t));
     }
     if let Some(s) = crate::kernel::SERIAL.take_device(1) {
         s.enable_async(sys.clone()).unwrap();
-        x86_64::instructions::bochs_breakpoint();
-        s.sync_transmit_str("XTesting stuff here on second serial port");
     }
 }
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
-    crate::VGA.print_str("This is a test\r\n");
     crate::main()
 }

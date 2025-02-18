@@ -340,7 +340,12 @@ impl NullSystem {
 impl SystemTrait for NullSystem {
     fn enable_interrupts(&self) {}
     fn disable_interrupts(&self) {}
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, _irq: u8, _handler: F) {}
+    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(
+        &self,
+        _irq: u8,
+        _handler: F,
+    ) {
+    }
     fn enable_irq(&self, _irq: u8) {}
     fn disable_irq(&self, _irq: u8) {}
     fn init(&self) {}
