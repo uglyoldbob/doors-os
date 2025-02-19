@@ -100,7 +100,7 @@ impl X86SerialPort {
     fn setup(&mut self) {
         self.0
             .tx_queue
-            .try_init_once(|| crossbeam::queue::ArrayQueue::new(32))
+            .try_init_once(|| crossbeam::queue::ArrayQueue::new(1024))
             .unwrap();
         self.0
             .tx_wakers
@@ -108,7 +108,7 @@ impl X86SerialPort {
             .unwrap();
         self.0
             .rx_queue
-            .try_init_once(|| crossbeam::queue::ArrayQueue::new(32))
+            .try_init_once(|| crossbeam::queue::ArrayQueue::new(1024))
             .unwrap();
         self.0
             .rx_wakers

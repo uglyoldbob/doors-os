@@ -937,6 +937,9 @@ impl IntelPro1000Device {
     /// Initialize the tx buffers for the device
     async fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
+            crate::VGA
+                .print_str_async(&format!("Writing TX stuff to network card\r\n"))
+                .await;
             let txbuf = TxBuffers::new(8, 8192)?;
             let txaddr = txbuf.bufs.phys();
             self.bar0.write(
@@ -1146,5 +1149,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 super::super::register_network_adapter(d.into()).await;
             }
         }
+        let configspace = f.get_all_configuration(cs, bus, dev);
+        configspace.dump("\t*").await;
     }
 }
