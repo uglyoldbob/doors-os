@@ -263,11 +263,16 @@ impl futures::Stream for X86SerialStream {
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
         if let Ok(q) = self.queue.try_get() {
-            if let Some(b) = q.pop() {
+            crate::SYSTEM.read().disable_interrupts();
+            let a = q.pop();
+            crate::SYSTEM.read().enable_interrupts();
+            if let Some(b) = a {
                 core::task::Poll::Ready(Some(b))
             } else {
-                let ws = self.wakers.get().unwrap();
-                ws.push(cx.waker().clone()).unwrap();
+                crate::SYSTEM.read().disable_interrupts_for(|| {
+                    let ws = self.wakers.get().unwrap();
+                    ws.push(cx.waker().clone()).unwrap();
+                });
                 core::task::Poll::Pending
             }
         } else {
@@ -434,13 +439,17 @@ impl Future for AsyncWriter<'_> {
                         break core::task::Poll::Ready(());
                     }
                 } else {
-                    let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+                    crate::SYSTEM.read().disable_interrupts_for(|| {
+                        let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+                    });
                     self.s.sync_enable_tx_interrupt(&self.sys);
                     break core::task::Poll::Pending;
                 }
             }
         } else {
-            let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+            crate::SYSTEM.read().disable_interrupts_for(|| {
+                let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+            });
             core::task::Poll::Pending
         };
         self.index = newindex;
