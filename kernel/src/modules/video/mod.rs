@@ -333,6 +333,9 @@ impl<P: Send + Sync> FontTrait<P> for Font<P> {
 /// This trait is used for text only video output hardware
 #[enum_dispatch::enum_dispatch]
 pub trait TextDisplayTrait: Sync + Send {
+    /// Stop all interrupt and async operations
+    fn stop_async(&mut self);
+
     /// Write a single character to the video hardware
     fn print_char(&mut self, d: char);
 
@@ -414,6 +417,8 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
     }
 
     async fn flush(&mut self) {}
+
+    fn stop_async(&mut self) {}
 }
 
 impl<P> TextDisplayTrait for FramebufferTextMode<pixels::FullColor<P>>
@@ -447,6 +452,8 @@ where
     }
 
     async fn flush(&mut self) {}
+
+    fn stop_async(&mut self) {}
 }
 
 /// An enumeration of all the types of text display options
@@ -500,6 +507,10 @@ impl TextDisplayTrait for VideoOverSerial {
 
     async fn flush(&mut self) {
         self.port.flush().await;
+    }
+
+    fn stop_async(&mut self) {
+        self.port.stop_async();
     }
 }
 

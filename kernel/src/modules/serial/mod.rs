@@ -32,6 +32,8 @@ pub trait SerialTrait {
     async fn flush(&self);
     /// Retrieve a read stream for the serial port
     fn read_stream(&self) -> impl Stream<Item = u8>;
+    /// Stop async and interrupt operations
+    fn stop_async(&self);
 }
 
 /// An enumeration of all the types of serial controllers

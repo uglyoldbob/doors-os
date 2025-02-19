@@ -193,15 +193,15 @@ extern "x86-interrupt" fn page_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: x86_64::structures::idt::PageFaultErrorCode,
 ) {
+    let a = x86_64::registers::control::Cr2::read().unwrap();
+    crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "Page fault {:x} @ 0x{:X}\r\n",
+        "PF {:x} @ 0x{:X}, ",
         error_code,
-        sf.instruction_pointer
+        sf.instruction_pointer,
     ));
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "Fault address 0x{:X}\r\n",
-        x86_64::registers::control::Cr2::read().unwrap()
-    ));
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{:X}\r\n", a.as_u64(),));
+    crate::VGA.sync_flush();
     loop {
         x86_64::instructions::hlt();
     }
@@ -281,10 +281,20 @@ impl acpi::AcpiHandler for Acpi<'_> {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
+        let size = if size < core::mem::size_of::<T>() {
+            core::mem::size_of::<T>()
+        } else {
+            size
+        };
         if physical_address == 0 {
             log::error!("Received a null pointer request size {:x}", size);
             panic!("Received a null pointer request size");
         }
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "sizeof T is {:x} ({:x})\r\n",
+            core::mem::size_of::<T>(),
+            size
+        ));
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -338,7 +348,10 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 self.clone(),
             );
             crate::VGA.print_str("Dumping mapped structure\r\n");
-            hex_dump_generic(r.virtual_start().as_ref(), true, true);
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "sizeof T is {:x}\r\n",
+                core::mem::size_of::<T>()
+            ));
             let _a: usize = r.virtual_start().addr().into();
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
@@ -347,10 +360,7 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 r.region_length(),
                 r.mapped_length()
             ));
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "sizeof T is {:x}\r\n",
-                core::mem::size_of::<T>()
-            ));
+
             r
         }
     }
@@ -504,7 +514,6 @@ pub struct X86System<'a> {
 }
 
 impl LockedArc<Pin<Box<X86System<'_>>>> {
-    doors_macros::todo_item!("Create an attribute macro conditionally compile functions");
     /// Perform processing necessary for acpi functionality
     #[doors_macros::config_check(acpi, "true")]
     fn handle_acpi(&self, aml: &mut aml::AmlContext) {
@@ -989,6 +998,7 @@ pub extern "C" fn start64() -> ! {
         PAGE_ALLOCATOR
             .sync_lock()
             .set_area_used(stack_end - stack_size, stack_size);
+        PAGE_ALLOCATOR.sync_lock().set_area_used(0, 0x100000);
     }
 
     if true {

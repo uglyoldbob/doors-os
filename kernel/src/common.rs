@@ -364,6 +364,16 @@ impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
 }
 
 impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
+    /// Stop any async processing for the device if necessary
+    pub fn stop_async(&self) {
+        let mut v = self.sync_lock();
+        let vga = v.as_mut();
+        if let core::option::Option::Some(vga) = vga {
+            use crate::modules::video::TextDisplayTrait;
+            vga.stop_async();
+        }
+    }
+
     /// Print a fixed string. This is intended to be used in panic type situations.
     pub fn print_fixed_str(&self, a: FixedString) {
         let mut v = self.sync_lock();
@@ -391,6 +401,16 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
         if let core::option::Option::Some(vga) = vga {
             use crate::modules::video::TextDisplayTrait;
             vga.print_str_async(a).await;
+        }
+    }
+
+    /// Flush all output
+    pub fn sync_flush(&self) {
+        let mut v = self.sync_lock();
+        let vga = v.as_mut();
+        if let core::option::Option::Some(vga) = vga {
+            use crate::modules::video::TextDisplayTrait;
+            vga.flush();
         }
     }
 }

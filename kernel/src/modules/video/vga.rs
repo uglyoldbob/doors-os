@@ -104,6 +104,8 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
     }
 
     async fn flush(&mut self) {}
+
+    fn stop_async(&mut self) {}
 }
 
 /// The default palette for vga operations

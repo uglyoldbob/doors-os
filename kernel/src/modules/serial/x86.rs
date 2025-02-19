@@ -291,6 +291,16 @@ impl super::SerialTrait for X86SerialPort {
         }
     }
 
+    fn stop_async(&self) {
+        use crate::kernel::SystemTrait;
+        let irqnum = { self.0.irq };
+        {
+            *self.0.interrupts.write() = false;
+        };
+        crate::SYSTEM.read().disable_irq(irqnum);
+        self.0.base.port(1).port_write(0u8);
+    }
+
     fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {
         use crate::kernel::SystemTrait;
         let irqnum = { self.0.irq };
