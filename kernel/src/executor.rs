@@ -200,9 +200,6 @@ impl TaskList {
         if taskid.0 < polled.len() {
             polled[taskid.0] = Some(task.polled);
         }
-        if task.polled > 1000 {
-            loop {}
-        }
     }
 
     /// Run tasks in the list

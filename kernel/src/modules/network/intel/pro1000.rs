@@ -688,6 +688,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                 .write(IntelPro1000Registers::TxDescTail as u16, newindex as u32);
             self.txbufindex = Some(newindex as u8);
             loop {
+                core::hint::black_box(&descriptor.status);
                 let stat = unsafe { core::ptr::read_volatile(&descriptor.status) };
                 if (stat & 1) == 1 {
                     break;

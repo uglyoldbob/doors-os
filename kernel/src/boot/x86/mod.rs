@@ -246,7 +246,7 @@ fn setup_serial() {
 /// Enable interrupts for the first serial port if it is present
 fn serial_interrupts() {
     let sys = crate::SYSTEM.read().clone();
-    if let Some(s) = crate::kernel::SERIAL.take_device(0) {
+    if let Some(mut s) = crate::kernel::SERIAL.take_device(0) {
         s.sync_transmit_str("About to enable async mode for serial port 0\r\n");
         s.enable_async(sys.clone()).unwrap();
         s.sync_flush();
@@ -258,7 +258,7 @@ fn serial_interrupts() {
         );
         crate::common::VGA.sync_replace(Some(t));
     }
-    if let Some(s) = crate::kernel::SERIAL.take_device(1) {
+    if let Some(mut s) = crate::kernel::SERIAL.take_device(1) {
         s.enable_async(sys.clone()).unwrap();
     }
 }

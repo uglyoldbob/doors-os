@@ -317,7 +317,9 @@ impl super::SerialTrait for X86SerialPort {
             for (i, c) in data.iter().enumerate() {
                 if let Ok(tx) = txq.try_get() {
                     while tx.is_full() {}
+                    crate::SYSTEM.read().disable_interrupts();
                     tx.push(*c).unwrap();
+                    crate::SYSTEM.read().enable_interrupts();
                     if !ienabled {
                         self.0.sync_enable_tx_interrupt(&sys);
                         ienabled = true;
@@ -414,6 +416,7 @@ impl Future for AsyncWriter<'_> {
             loop {
                 if !q.is_full() {
                     if newindex < self.data.len() {
+                        crate::SYSTEM.read().disable_interrupts();
                         if q.push(self.data[newindex]).is_ok() {
                             newindex += 1;
                             if !interrupt_enable {
@@ -421,6 +424,7 @@ impl Future for AsyncWriter<'_> {
                             }
                         } else {
                             let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
+                            crate::SYSTEM.read().enable_interrupts();
                             break core::task::Poll::Pending;
                         }
                     } else if interrupt_enable {
