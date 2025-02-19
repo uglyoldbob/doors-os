@@ -430,7 +430,7 @@ impl TxBuffer {
             length: 0,
             cso: 0,
             cmd: 0,
-            status: 1,
+            status: 0,
             css: 1,
             special: 0,
         }
@@ -687,11 +687,34 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
             self.bar0
                 .write(IntelPro1000Registers::TxDescTail as u16, newindex as u32);
             self.txbufindex = Some(newindex as u8);
-            loop {
+            let mut tries = 0;
+            let a = loop {
                 core::hint::black_box(&descriptor.status);
                 let stat = unsafe { core::ptr::read_volatile(&descriptor.status) };
                 if (stat & 1) == 1 {
-                    break;
+                    break Ok(());
+                }
+                tries += 1;
+                crate::executor::Task::yield_now().await;
+                if tries >= 1000 {
+                    break Err(());
+                }
+            };
+            match a {
+                Ok(_) => {
+                    crate::VGA
+                        .print_str_async("Success sending packet\r\n")
+                        .await;
+                }
+                Err(_) => {
+                    crate::VGA
+                        .print_str_async("Failure sending packet\r\n")
+                        .await;
+                    {
+                        let txb = self.txbufs.as_ref().unwrap();
+                        let descriptor = &txb.bufs[txindex];
+                        hex_dump_generic_async(descriptor, false, true).await;
+                    }
                 }
             }
             self.check_for_received_packets().await;
@@ -1110,8 +1133,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     crate::VGA
                         .print_str_async(&format!("The irq line is {}\r\n", irqnum))
                         .await;
-                    let sys = crate::SYSTEM.read();
-                    d.enable_interrupts(&sys, irqnum);
+                    //let sys = crate::SYSTEM.read();
+                    //d.enable_interrupts(&sys, irqnum);
                 }
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {

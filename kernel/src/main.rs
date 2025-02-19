@@ -105,7 +105,7 @@ async fn net_test() {
         .print_str_async("About to do some stuff with a network card net0\r\n")
         .await;
     if let Some(na) = crate::modules::network::get_network_adapter("net0").await {
-        let rng = kernel::RNGS.sync_lock().module(0);
+        let rng = kernel::RNGS.lock().await.module(0);
         let mut na = na.lock().await;
         crate::VGA
             .print_str_async("About to do some stuff with a network card\r\n")
@@ -121,7 +121,7 @@ async fn net_test() {
                 .await;
             let mut packet = [0; 64];
             {
-                let rng = rng.sync_lock();
+                let rng = rng.lock().await;
                 rng.generate_iter(packet.iter_mut());
             }
             na.send_packet(&packet).await.unwrap();
@@ -153,28 +153,30 @@ fn main() -> ! {
             }
         }
         let mut executor = Executor::default();
-        executor
-            .spawn_closure(async || {
-                crate::VGA
-                    .print_str_async("Waiting for data from second serial port\r\n")
-                    .await;
-                let ser = crate::kernel::SERIAL.take_device(1).unwrap();
-                use crate::modules::serial::SerialTrait;
-                use futures::StreamExt;
-                let mut receiver = ser.read_stream();
-                for i in 0..1000 {
-                    ser.transmit_str(&alloc::format!("Testing {}\r\n", i)).await;
-                }
-                while let Some(b) = receiver.next().await {
-                    crate::VGA
-                        .print_str_async(&alloc::format!("Received a {} from serial1\r\n", b))
-                        .await;
-                    ser.transmit_str("X").await;
-                }
-            })
-            .unwrap();
         if doors_macros::config_check_equals!(gdbstub, "true") {
             executor.spawn(executor::Task::new(gdbstub::run())).unwrap();
+        } else {
+            executor
+                .spawn_closure(async || {
+                    crate::VGA
+                        .print_str_async("Waiting for data from second serial port\r\n")
+                        .await;
+                    let ser = crate::kernel::SERIAL.take_device(1).unwrap();
+                    use crate::modules::serial::SerialTrait;
+                    use futures::StreamExt;
+                    let mut receiver = ser.read_stream();
+                    for i in 0..1000 {
+                        ser.transmit_str(&alloc::format!("Testing {}\r\n", i)).await;
+                    }
+                    while let Some(b) = receiver.next().await {
+                        crate::VGA
+                            .print_str_async(&alloc::format!("Received a {} from serial1\r\n", b))
+                            .await;
+                        ser.transmit_str(&alloc::format!("Received a {}\r\n", b as char))
+                            .await;
+                    }
+                })
+                .unwrap();
         }
         executor
             .spawn_closure(async || {

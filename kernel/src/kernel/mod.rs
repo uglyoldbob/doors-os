@@ -2,7 +2,7 @@
 
 use core::pin::Pin;
 
-use crate::{AsyncLocked, Locked, LockedArc};
+use crate::{AsyncLocked, AsyncLockedArc, Locked, LockedArc};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
@@ -237,7 +237,7 @@ impl DisplayHandler {
 /// Tracks all rng devices in the kernel
 pub struct RngHandler {
     /// The timer providers
-    rng: Vec<LockedArc<crate::modules::rng::Rng>>,
+    rng: Vec<AsyncLockedArc<crate::modules::rng::Rng>>,
 }
 
 impl RngHandler {
@@ -248,7 +248,7 @@ impl RngHandler {
 
     /// Add a serial module to the system
     pub fn register_rng(&mut self, m: crate::modules::rng::Rng) {
-        self.rng.push(LockedArc::new(m));
+        self.rng.push(AsyncLockedArc::new(m));
     }
 
     /// Does the module index exist?
@@ -257,7 +257,7 @@ impl RngHandler {
     }
 
     /// Get a rng module
-    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::rng::Rng> {
+    pub fn module(&mut self, i: usize) -> AsyncLockedArc<crate::modules::rng::Rng> {
         self.rng[i].clone()
     }
 }
@@ -288,10 +288,11 @@ pub trait SystemTrait {
     /// Disable interrupts
     fn disable_interrupts(&self);
     /// Disable interrupts for the given closure
-    fn disable_interrupts_for(&self, mut f: impl FnMut()) {
+    fn disable_interrupts_for<T>(&self, mut f: impl FnMut() -> T) -> T {
         self.disable_interrupts();
-        f();
+        let r = f();
         self.enable_interrupts();
+        r
     }
     /// Register a serial port handler
     fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F);

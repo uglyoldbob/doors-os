@@ -263,9 +263,7 @@ impl futures::Stream for X86SerialStream {
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
         if let Ok(q) = self.queue.try_get() {
-            crate::SYSTEM.read().disable_interrupts();
-            let a = q.pop();
-            crate::SYSTEM.read().enable_interrupts();
+            let a = crate::SYSTEM.read().disable_interrupts_for(|| q.pop());
             if let Some(b) = a {
                 core::task::Poll::Ready(Some(b))
             } else {
@@ -322,9 +320,9 @@ impl super::SerialTrait for X86SerialPort {
             for (i, c) in data.iter().enumerate() {
                 if let Ok(tx) = txq.try_get() {
                     while tx.is_full() {}
-                    crate::SYSTEM.read().disable_interrupts();
-                    tx.push(*c).unwrap();
-                    crate::SYSTEM.read().enable_interrupts();
+                    crate::SYSTEM.read().disable_interrupts_for(|| {
+                        tx.push(*c).unwrap();
+                    });
                     if !ienabled {
                         self.0.sync_enable_tx_interrupt(&sys);
                         ienabled = true;
@@ -421,15 +419,16 @@ impl Future for AsyncWriter<'_> {
             loop {
                 if !q.is_full() {
                     if newindex < self.data.len() {
-                        crate::SYSTEM.read().disable_interrupts();
-                        if q.push(self.data[newindex]).is_ok() {
+                        let a = crate::SYSTEM
+                            .read()
+                            .disable_interrupts_for(|| q.push(self.data[newindex]));
+                        if a.is_ok() {
                             newindex += 1;
                             if !interrupt_enable {
                                 interrupt_enable = true;
                             }
                         } else {
                             let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
-                            crate::SYSTEM.read().enable_interrupts();
                             break core::task::Poll::Pending;
                         }
                     } else if interrupt_enable {
@@ -456,9 +455,6 @@ impl Future for AsyncWriter<'_> {
         doors_macros::todo_item!("Remove this conditional code");
         if r2.is_ready() {
             *self.s.itx.write() = false;
-            if queue.get().unwrap().is_empty() {
-                self.s.disable_tx_interrupt();
-            }
         }
         r2
     }
