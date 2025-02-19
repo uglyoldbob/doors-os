@@ -57,8 +57,8 @@ add_custom_target(
     image_cd64
     DEPENDS kernel64
     BYPRODUCTS cd64.iso cd64test.iso
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel64
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64test.iso --name-setup=iso9660 ./boot/kernel=./kerneltest64
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel64 --volid="Doors OS"
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64test.iso --name-setup=iso9660 ./boot/kernel=./kerneltest64 --volid="Doors OS TEST"
 )
 
 add_custom_target(
@@ -85,9 +85,9 @@ add_custom_target(
     COMMAND mkdir -p build/iso/boot/grub
     COMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg
     COMMAND cp ./kernel64 ./build/iso/boot/kernel
-    COMMAND grub-mkrescue -o ./cd64.iso build/iso
+    COMMAND grub-mkrescue -o ./cd64.iso build/iso -- -volid "Doors OS"
     COMMAND cp ./kerneltest64 ./build/iso/boot/kernel
-    COMMAND grub-mkrescue -o ./cd64test.iso build/iso
+    COMMAND grub-mkrescue -o ./cd64test.iso build/iso -- -volid "Doors OS TEST"
     COMMAND rm -rf ./build/iso
 )
 
