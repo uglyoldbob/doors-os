@@ -15,6 +15,7 @@ use crate::modules::{
     video::hex_dump_generic,
 };
 use crate::{Arc, IoReadWrite, IrqGuarded};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Holds either memory or io space
 enum MemoryOrIo {
@@ -487,12 +488,14 @@ impl TxBuffers {
 struct IntelPro1000DeviceInternal {
     /// The main way to access the device
     bar0: crate::IrqGuarded<MemoryOrIo>,
+    /// The link is up
+    up: AtomicBool,
 }
 
 impl IntelPro1000DeviceInternal {
     /// Create a new Self
-    fn new(bar0: crate::IrqGuarded<MemoryOrIo>) -> Self {
-        Self { bar0 }
+    fn new(bar0: crate::IrqGuarded<MemoryOrIo>, up: AtomicBool) -> Self {
+        Self { bar0, up }
     }
 }
 
@@ -716,6 +719,9 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     }
 
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
+        while !self.internal.up.load(Ordering::Relaxed) {
+            crate::executor::Task::yield_now().await;
+        }
         hex_dump_async(packet, true, true).await;
         let len = packet.len();
         if len < 8192 {
@@ -1048,7 +1054,9 @@ impl IntelPro1000Device {
         let bar0 = this.bar0.interrupt_acess();
         let reason = bar0.read(IntelPro1000Registers::ICR as u16);
         let reason = InterruptCauseRegister(reason);
-        crate::VGA.print_str(&alloc::format!("NETWORK INTERRUPT {:?}\r\n", reason));
+        if reason.LSC() {
+            this.up.store(true, Ordering::Relaxed);
+        }
     }
 
     /// Enable interrupts for the network card
@@ -1191,8 +1199,9 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     }
                 };
                 let m = IrqGuarded::new(irqnum, false, m, |_i| {}, |_i| {});
+                let up = AtomicBool::new(false);
                 let mut d = IntelPro1000Device {
-                    internal: Arc::new(IntelPro1000DeviceInternal::new(m)),
+                    internal: Arc::new(IntelPro1000DeviceInternal::new(m, up)),
                     _bars: bars,
                     _io: i,
                     eeprom_present: None,
