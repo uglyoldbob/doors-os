@@ -8,7 +8,7 @@ version = "5.1.0"
 source = "git+https://github.com/rust-osdev/acpi.git#97cf8d85b27fdb0798227406214ddc5acd752268"
 dependencies = [
  "bit_field",
- "bitflags 2.5.0",
+ "bitflags 2.8.0",
  "log",
 ]
 
@@ -92,9 +92,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.5.0"
+version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
+checksum = "8f68f53c83ab957f72c32642f3868eec03eb974d1fb82e453128456482613d36"
 
 [[package]]
 name = "bitvec"
@@ -179,6 +179,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "derive_more"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
+dependencies = [
+ "derive_more-impl",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.98",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -298,7 +319,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31c683a9f13de31432e6097131d5f385898c7f0635c0f392b9d0fa165063c8ac"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.8.0",
  "cfg-if",
  "log",
  "managed",
@@ -344,7 +365,7 @@ dependencies = [
  "aml",
  "arraystring",
  "bitfield",
- "bitflags 2.5.0",
+ "bitflags 2.8.0",
  "cfg-if",
  "conquer-once",
  "crossbeam",
@@ -357,7 +378,8 @@ dependencies = [
  "gdbstub_arch",
  "lazy_static",
  "log",
- "multiboot2",
+ "multiboot2 0.19.0",
+ "multiboot2 0.23.1",
  "pin-project",
  "raw-cpuid 11.0.1",
  "serde",
@@ -411,11 +433,35 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be7a13d71fc2f7747af3ce60e5eccb638acd687b3a580d0bd579c6d0f7b9d010"
 dependencies = [
- "bitflags 2.5.0",
- "derive_more",
+ "bitflags 2.8.0",
+ "derive_more 0.99.17",
  "log",
  "ptr_meta",
- "uefi-raw",
+ "uefi-raw 0.3.0",
+]
+
+[[package]]
+name = "multiboot2"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43fcee184de68e344a888bc4f2b9d6b2f2f527cae8cedbb4d62a4df727d1ceae"
+dependencies = [
+ "bitflags 2.8.0",
+ "derive_more 1.0.0",
+ "log",
+ "multiboot2-common",
+ "ptr_meta",
+ "uefi-raw 0.8.0",
+]
+
+[[package]]
+name = "multiboot2-common"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbabf8d9980d55576ba487924fa0b9a467fc0012b996b93d2319904f168ed8ab"
+dependencies = [
+ "derive_more 1.0.0",
+ "ptr_meta",
 ]
 
 [[package]]
@@ -530,7 +576,7 @@ version = "11.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d86a7c4638d42c44551f4791a20e687dbb4c3de1f33c43dd71e355cd429def1"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.8.0",
 ]
 
 [[package]]
@@ -678,7 +724,18 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62642516099c6441a5f41b0da8486d5fc3515a0603b0fdaea67b31600e22082e"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.8.0",
+ "ptr_meta",
+ "uguid",
+]
+
+[[package]]
+name = "uefi-raw"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b463030b802e1265a3800fab24df95d3229c202c2e408832a206f05b4d1496ca"
+dependencies = [
+ "bitflags 2.8.0",
  "ptr_meta",
  "uguid",
 ]
@@ -694,6 +751,12 @@ name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+
+[[package]]
+name = "unicode-xid"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "version_check"
@@ -742,7 +805,7 @@ version = "0.15.1"
 source = "git+https://github.com/rust-osdev/x86_64.git#615248fe06f8347544f0fff29b70908a64a35f02"
 dependencies = [
  "bit_field",
- "bitflags 2.5.0",
+ "bitflags 2.8.0",
  "rustversion",
  "volatile",
 ]
