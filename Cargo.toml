@@ -2,6 +2,9 @@
 [workspace]
 
 members = [
+    "network_test",
+]
+exclude = [
     "kernel",
 ]
 

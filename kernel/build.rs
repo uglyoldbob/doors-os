@@ -91,8 +91,8 @@ fn main() {
     println!("cargo:rustc-cfg=kernel_machine=\"{}\"", config.machine_name);
 
     let linker_script = match config.machine_name.as_str() {
-        "stm32f769i-disco" => Some("kernel/src/boot/arm/stm32f769i-disco.ld"),
-        "pc64" => Some("kernel/src/boot/x86/linker.ld"),
+        "stm32f769i-disco" => Some("src/boot/arm/stm32f769i-disco.ld"),
+        "pc64" => Some("src/boot/x86/linker.ld"),
         _ => {
             panic!("Unknown machine name {}", config.machine_name);
         }
@@ -100,7 +100,7 @@ fn main() {
 
     let linker_script = linker_script.expect("Failed to get linker script definition");
 
-    if !std::path::PathBuf::from(format!("../{}", linker_script)).exists() {
+    if !std::path::PathBuf::from(format!("{}", linker_script)).exists() {
         panic!("Linker script {} does not exist", linker_script);
     }
 

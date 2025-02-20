@@ -149,6 +149,20 @@ pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
     }
 }
 
+/// The irq9 handler
+pub extern "x86-interrupt" fn irq9(_isf: InterruptStackFrame) {
+    if let Ok(h) = IRQ_HANDLERS[9].try_get() {
+        let mut h = h.sync_lock();
+        if let Some(h2) = h.as_mut() {
+            h2();
+        }
+    }
+    let p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(9)
+    }
+}
+
 /// The irq10 handler
 pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
     if let Ok(h) = IRQ_HANDLERS[10].try_get() {
@@ -1079,11 +1093,6 @@ pub extern "C" fn start64() -> ! {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 divide_by_zero_asm as *const (),
             ));
-            idt[0x23].set_handler_fn(irq3);
-            idt[0x24].set_handler_fn(irq4);
-            idt[0x27].set_handler_fn(irq7);
-            idt[0x2a].set_handler_fn(irq10);
-            idt[0x2b].set_handler_fn(irq11);
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 segment_not_present_asm as *const (),
@@ -1107,6 +1116,12 @@ pub extern "C" fn start64() -> ! {
                 invalid_opcode as *const (),
             ));
             idt.invalid_opcode = entry;
+            idt[0x23].set_handler_fn(irq3);
+            idt[0x24].set_handler_fn(irq4);
+            idt[0x27].set_handler_fn(irq7);
+            idt[0x29].set_handler_fn(irq9);
+            idt[0x2a].set_handler_fn(irq10);
+            idt[0x2b].set_handler_fn(irq11);
         }
     }
 

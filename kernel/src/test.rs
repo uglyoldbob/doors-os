@@ -17,7 +17,6 @@ extern crate alloc;
 doors_macros::use_doors_test!();
 
 mod common;
-use alloc::borrow::ToOwned;
 pub use common::*;
 
 pub mod boot;

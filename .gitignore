@@ -11,3 +11,7 @@ CMakeCache.txt
 CMakeFiles
 doors-os-64
 Win32
+Makefile
+*.iso
+*.dat
+*.log
