@@ -504,6 +504,8 @@ pub struct IntelPro1000Device {
     txbufindex: Option<u8>,
     /// The specific model of the device
     model: Model,
+    /// The mac address
+    mac_address: MacAddress,
 }
 
 bitflags::bitflags! {
@@ -673,6 +675,9 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                 let txb = self.txbufs.as_mut().unwrap();
                 let dest = &mut txb.dmas[txindex];
                 dest[..len].clone_from_slice(packet);
+                let ma: u64 = self.mac_address.into();
+                let ma: [u8; 8] = ma.to_le_bytes();
+                dest[6..12].clone_from_slice(&ma[0..6]);
                 {
                     let descriptor = &mut txb.bufs[txindex];
                     descriptor.length = len as u16;
@@ -680,6 +685,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                     descriptor.cmd = 0x0b;
                     descriptor.status = 0;
                     descriptor.css = 0;
+                    descriptor.special = 0;
                     hex_dump_generic_async(descriptor, false, true).await;
                 }
             }
@@ -696,7 +702,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                 }
                 tries += 1;
                 crate::executor::Task::yield_now().await;
-                if tries >= 1000 {
+                if tries >= 100000 {
                     break Err(());
                 }
             };
@@ -888,11 +894,15 @@ impl IntelPro1000Device {
             todo!("Configure LED behavior");
             todo!("Clear statistics counters");
         }
+        let mut ctrl = self.bar0.read(IntelPro1000Registers::CTRL as u16);
+        ctrl = (ctrl & !(1 << 6)) | 0x40;
+        self.bar0.write(IntelPro1000Registers::CTRL as u16, ctrl);
     }
 
     /// Initialize the rx buffers for the device
     async fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
         if self.rxbufs.is_none() {
+            self.mac_address = *mac;
             let ra = ReceiveAddress::new(*mac, 0, true);
             self.set_receive_mac_address(0, &ra);
             self.clear_multicast_table_array();
@@ -969,20 +979,32 @@ impl IntelPro1000Device {
         Ok(())
     }
 
+    /// The interrupt handler for the network card
+    fn handle_interrupt() {
+        x86_64::instructions::bochs_breakpoint();
+    }
+
     /// Enable interrupts for the network card
-    fn enable_interrupts(&mut self, sys: &System, irqnum: u8) {
+    async fn enable_interrupts(&mut self, sys: &System, irqnum: u8) {
+        crate::VGA
+            .print_str_async(&alloc::format!("Enabling interrupts on IRQ {}\r\n", irqnum))
+            .await;
         use crate::kernel::SystemTrait;
         doors_macros::todo_item!(
             "Replace the constant with named values by defining a bitfield for the register"
         );
-        let val = 0x1f6fd;
+        let val = 0x1f6fc;
         while self.bar0.read(IntelPro1000Registers::IMS as u16) != val {
             self.bar0.write(IntelPro1000Registers::IMS as u16, val);
             self.bar0.read(IntelPro1000Registers::STATUS as u16);
         }
+        let val = 0xff & !4;
+        self.bar0.write(IntelPro1000Registers::IMS as u16, val);
+        self.bar0.read(IntelPro1000Registers::STATUS as u16);
 
         // Read the interrupt register to clear it
         let _ = self.bar0.read(IntelPro1000Registers::ICR as u16);
+        sys.register_irq_handler(irqnum, move || IntelPro1000Device::handle_interrupt());
         sys.enable_irq(irqnum);
     }
 
@@ -1094,6 +1116,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     txbufs: None,
                     txbufindex: None,
                     model,
+                    mac_address: MacAddress::default(),
                 };
                 d.bar0.hex_dump().await;
                 crate::VGA
@@ -1108,7 +1131,6 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 }
                 hex_dump_generic_async(&data, true, false).await;
                 let mac = d.get_mac_address();
-                d.general_config();
                 hex_dump_async(&mac.address, false, false).await;
                 if let Err(e) = d.init_rx(&mac).await {
                     crate::VGA
@@ -1120,6 +1142,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
+                d.general_config();
                 f.set_bus_mastering(cs, bus, dev, true);
                 {
                     let irqnum = match config {
@@ -1136,8 +1159,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     crate::VGA
                         .print_str_async(&format!("The irq line is {}\r\n", irqnum))
                         .await;
-                    //let sys = crate::SYSTEM.read();
-                    //d.enable_interrupts(&sys, irqnum);
+                    let sys = crate::SYSTEM.read();
+                    d.enable_interrupts(&sys, irqnum).await;
                 }
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r) {

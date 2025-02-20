@@ -1,7 +1,9 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
+use crate::modules::video::hex_dump;
 use crate::modules::video::hex_dump_generic;
+use crate::modules::video::hex_dump_generic_slice;
 use crate::IoReadWrite;
 use crate::Locked;
 use crate::LockedArc;
@@ -91,23 +93,25 @@ lazy_static! {
 }
 
 /// The irq handlers registered by the system
-static IRQ_HANDLERS: OnceCell<LockedArc<[Option<Box<dyn FnMut() + Send + Sync>>; 256]>> =
-    OnceCell::uninit();
+static IRQ_HANDLERS: [OnceCell<LockedArc<Option<Box<dyn FnMut() + Send + Sync>>>>; 256] =
+    [const { OnceCell::uninit() }; 256];
 
 /// The divide by zero handler
 #[interrupt_64]
 pub extern "C" fn divide_by_zero() {
+    crate::VGA.stop_async();
     crate::VGA.print_str("Divide by zero\r\n");
     loop {
         x86_64::instructions::hlt();
     }
 }
 
+doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 /// The irq4 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS.try_get() {
+    if let Ok(h) = IRQ_HANDLERS[3].try_get() {
         let mut h = h.sync_lock();
-        if let Some(h2) = &mut h[3] {
+        if let Some(h2) = h.as_mut() {
             h2();
         }
     }
@@ -119,9 +123,9 @@ pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
 
 /// The irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS.try_get() {
+    if let Ok(h) = IRQ_HANDLERS[4].try_get() {
         let mut h = h.sync_lock();
-        if let Some(h2) = &mut h[4] {
+        if let Some(h2) = h.as_mut() {
             h2();
         }
     }
@@ -133,9 +137,9 @@ pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
 
 /// The irq7 handler
 pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS.try_get() {
+    if let Ok(h) = IRQ_HANDLERS[7].try_get() {
         let mut h = h.sync_lock();
-        if let Some(h2) = &mut h[7] {
+        if let Some(h2) = h.as_mut() {
             h2();
         }
     }
@@ -145,14 +149,26 @@ pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
     }
 }
 
+/// The irq10 handler
+pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
+    if let Ok(h) = IRQ_HANDLERS[10].try_get() {
+        let mut h = h.sync_lock();
+        if let Some(h2) = h.as_mut() {
+            h2();
+        }
+    }
+    let p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(10)
+    }
+}
+
 /// The irq11 handler
 pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS.try_get() {
+    if let Ok(h) = IRQ_HANDLERS[11].try_get() {
         let mut h = h.sync_lock();
-        if let Some(h2) = &mut h[11] {
+        if let Some(h2) = h.as_mut() {
             h2();
-        } else {
-            panic!();
         }
     }
     let p = INTERRUPT_CONTROLLER.read();
@@ -164,10 +180,19 @@ pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
 ///The handler for segment not present
 #[interrupt_arg_64]
 pub extern "C" fn segment_not_present(arg: u32) {
+    crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Segment not present {:x}\r\n",
         arg
     ));
+    let table = (arg >> 1) & 3;
+    match table {
+        0 => crate::VGA.print_str("GDT, "),
+        2 => crate::VGA.print_str("LDT, "),
+        _ => crate::VGA.print_str("IDT, "),
+    }
+    let index = (arg >> 3) & 0x1FFF;
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("0x{:x}\r\n", index));
     loop {
         x86_64::instructions::hlt();
     }
@@ -178,6 +203,7 @@ extern "x86-interrupt" fn double_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: u64,
 ) -> ! {
+    crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Double fault {:x} @ 0x{:X}\r\n",
         error_code,
@@ -209,6 +235,7 @@ extern "x86-interrupt" fn page_fault_handler(
 
 /// Handles the invalid opcode exception
 extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
+    crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Invalid opcode {:p}\r\n",
         &sf
@@ -225,6 +252,7 @@ extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
 /// A test interrupt handler
 #[interrupt_arg_64]
 pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
+    crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Invalid opcode {:x}\r\n",
         sf.instruction_pointer.as_u64()
@@ -237,6 +265,7 @@ pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
 /// A test interrupt handler
 #[interrupt_64]
 pub extern "C" fn unknown_interrupt() {
+    crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Unknown interrupt fired\r\n"
     ));
@@ -352,7 +381,10 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 "sizeof T is {:x}\r\n",
                 core::mem::size_of::<T>()
             ));
-            let _a: usize = r.virtual_start().addr().into();
+            let a: usize = r.virtual_start().addr().into();
+            let p = unsafe { core::slice::from_raw_parts(a as *const u8, size) };
+            hex_dump_generic_slice(p, false, true);
+
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
                 r.virtual_start().as_ptr() as usize,
@@ -483,6 +515,7 @@ impl Pic {
 
         pic1_data.port_write(mask1);
         pic2_data.port_write(mask2);
+        self.enable_irq(2); //enable the interrupt for the second pic
     }
 }
 
@@ -534,7 +567,7 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
             "Size of Rsdp is {:x}\r\n",
             core::mem::size_of::<acpi::rsdp::Rsdp>()
         ));
-
+        x86_64::instructions::bochs_breakpoint();
         let acpi = if let Some(rsdp2) = this.boot_info.rsdp_v2_tag() {
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "rsdpv2 at {:X} {:x} revision {}\r\n",
@@ -747,11 +780,12 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         });
     }
 
+    doors_macros::todo_item!("Add code for unregistering an irq handler");
     fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
-        if let Ok(ih) = IRQ_HANDLERS.try_get() {
+        if let Ok(ih) = IRQ_HANDLERS[irq as usize].try_get() {
             let mut irqs = ih.sync_lock();
-            irqs[irq as usize] = Some(a);
+            irqs.replace(a);
         }
     }
 
@@ -1028,12 +1062,12 @@ pub extern "C" fn start64() -> ! {
         .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
         .unwrap();
 
-    IRQ_HANDLERS
-        .try_init_once(|| LockedArc::new([const { None }; 256]))
-        .unwrap();
+    for ih in &IRQ_HANDLERS {
+        ih.try_init_once(|| LockedArc::new(None));
+    }
 
     {
-        let mut pic = Pic::new().unwrap();
+        let pic = Pic::new().unwrap();
         pic.disable();
         pic.remap(0x20, 0x28);
         INTERRUPT_CONTROLLER.write().replace(pic);
@@ -1048,6 +1082,7 @@ pub extern "C" fn start64() -> ! {
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);
             idt[0x27].set_handler_fn(irq7);
+            idt[0x2a].set_handler_fn(irq10);
             idt[0x2b].set_handler_fn(irq11);
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(

@@ -48,6 +48,12 @@ pub struct MacAddress {
     address: [u8; 6],
 }
 
+impl Default for MacAddress {
+    fn default() -> Self {
+        Self { address: [0; 6] }
+    }
+}
+
 impl From<u64> for MacAddress {
     fn from(value: u64) -> Self {
         let a = value.to_le_bytes();
