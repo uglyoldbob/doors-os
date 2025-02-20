@@ -9,15 +9,12 @@ use acpi::fadt::Fadt;
 use acpi::hpet::HpetTable;
 use acpi::madt::Madt;
 use acpi::sdt::SdtHeader;
-use acpi::AcpiHandler;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
 use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::sync::atomic::AtomicBool;
-use core::sync::atomic::Ordering;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
@@ -196,7 +193,7 @@ extern "x86-interrupt" fn page_fault_handler(
     let a = x86_64::registers::control::Cr2::read().unwrap();
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "PF {:x} @ 0x{:X}, ",
+        "Page fault {:x} @ 0x{:X}, ",
         error_code,
         sf.instruction_pointer,
     ));
@@ -353,6 +350,7 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 core::mem::size_of::<T>()
             ));
             let _a: usize = r.virtual_start().addr().into();
+            hex_dump_generic(r.virtual_start().as_ref(), true, true);
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
                 r.virtual_start().as_ptr() as usize,
@@ -797,6 +795,24 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
         aml.initialize_objects().unwrap();
 
+        {
+            let this = self.sync_lock();
+            crate::VGA.print_str(&alloc::format!("Boot information header is at {:x}, size {:x}\r\n", 
+                this.boot_info.start_address(),
+                this.boot_info.total_size(),
+            ));
+            crate::VGA.print_str(&alloc::format!("Command line tag: {:?}\r\n", this.boot_info.command_line_tag()));
+
+            if let Some(mm) = this.boot_info.memory_map_tag() {
+                for area in mm
+                    .memory_areas()
+                    .iter()
+                {
+                    crate::VGA.print_str(&alloc::format!("Memory area {:x?}\r\n", area));
+                }
+            }
+        }
+
         doors_macros::config_check_bool!(acpi, {
             self.handle_acpi(&mut aml);
         });
@@ -978,6 +994,12 @@ pub extern "C" fn start64() -> ! {
             pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
+
+        let stack_end = unsafe { INITIAL_STACK as usize };
+        let stack_size = 8 * 1024;
+        pal.set_area_used(stack_end - stack_size, stack_size);
+        pal.set_area_used(0, 0x100000);
+        pal.set_area_used(boot_info.start_address(), boot_info.total_size());
         pal.done_adding_memory_areas();
     } else {
         panic!("Physical memory manager unavailable\r\n");
@@ -991,15 +1013,6 @@ pub extern "C" fn start64() -> ! {
         unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
 
     PAGING_MANAGER.sync_lock().init();
-
-    {
-        let stack_end = unsafe { INITIAL_STACK as usize };
-        let stack_size = 8 * 1024;
-        PAGE_ALLOCATOR
-            .sync_lock()
-            .set_area_used(stack_end - stack_size, stack_size);
-        PAGE_ALLOCATOR.sync_lock().set_area_used(0, 0x100000);
-    }
 
     if true {
         if true {
@@ -1033,7 +1046,7 @@ pub extern "C" fn start64() -> ! {
         .unwrap();
 
     {
-        let mut pic = Pic::new().unwrap();
+        let pic = Pic::new().unwrap();
         pic.disable();
         pic.remap(0x20, 0x28);
         INTERRUPT_CONTROLLER.write().replace(pic);
