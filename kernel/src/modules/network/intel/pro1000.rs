@@ -661,6 +661,43 @@ bitfield::bitfield! {
     error, _: 30;
 }
 
+bitfield::bitfield! {
+    /// The interrupt cause register
+    struct InterruptCauseRegister(u32);
+    impl Debug;
+    impl new;
+    /// Transmit descriptor write back
+    TXDW, _: 0;
+    /// Transmit queue empty
+    TXQE, _: 1;
+    /// link status change
+    LSC, _: 2;
+    /// receive sequence error
+    RXSEQ, _: 3;
+    /// receive descriptor minimum threshold reached
+    RXDMT0, _: 4;
+    /// receiver overrun
+    RXO, _: 6;
+    /// receiver timer interrupt
+    RXTO, _: 7;
+    /// mdio access complete
+    MDAC, _: 9;
+    /// receiving ordered sets
+    RXCFG, _: 10;
+    /// phy interrupt
+    PHYINT, _: 12;
+    /// general interrupt on SPD6[2]
+    GPI_SDP6, _: 13;
+    /// general interrupt in SDP7[3]
+    GPI_SDP7, _: 14;
+    /// general purpose interrupt (bit 1 not used)
+    u8, GPI, _: 14, 11;
+    /// transmit descriptor low threshold
+    TXD_LOW, _: 15;
+    /// small receive packet
+    SRPD, _: 16;
+}
+
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     async fn get_mac_address(&mut self) -> MacAddress {
         if self.detect_eeprom().await {
@@ -718,7 +755,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                 }
                 tries += 1;
                 crate::executor::Task::yield_now().await;
-                if tries >= 100000 {
+                if tries >= 1000000 {
                     break Err(());
                 }
             };
@@ -920,7 +957,7 @@ impl IntelPro1000Device {
         }
         let mut bar0 = self.internal.bar0.access().await;
         let mut ctrl = bar0.read(IntelPro1000Registers::CTRL as u16);
-        ctrl = (ctrl & !(1 << 6)) | 0x40;
+        ctrl = ctrl | 0x40;
         bar0.write(IntelPro1000Registers::CTRL as u16, ctrl);
     }
 
@@ -1009,7 +1046,9 @@ impl IntelPro1000Device {
     fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
         x86_64::instructions::bochs_breakpoint();
         let bar0 = this.bar0.interrupt_acess();
-        let _reason = bar0.read(IntelPro1000Registers::ICR as u16);
+        let reason = bar0.read(IntelPro1000Registers::ICR as u16);
+        let reason = InterruptCauseRegister(reason);
+        crate::VGA.print_str(&alloc::format!("NETWORK INTERRUPT {:?}\r\n", reason));
     }
 
     /// Enable interrupts for the network card
