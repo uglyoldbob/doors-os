@@ -10,6 +10,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use alloc::boxed::Box;
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
 use spin::RwLock;
@@ -37,7 +38,7 @@ impl<T> Arc<T> {
     }
 }
 
-use crate::kernel;
+use crate::kernel::{self, SystemTrait};
 
 /// Get the address of the specified variable
 pub fn address<T>(v: &T) -> usize {
@@ -411,6 +412,114 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
         if let core::option::Option::Some(vga) = vga {
             use crate::modules::video::TextDisplayTrait;
             vga.flush();
+        }
+    }
+}
+
+/// A wrapper around a structure that should be guarded by disabling interrupts
+pub struct IrqGuarded<T> {
+    /// The guard value
+    value: IrqGuardedInner,
+    /// The item being guarded
+    inner: AsyncLocked<T>,
+}
+
+/// The inner information for an [IrqGuarded] structure
+struct IrqGuardedInner {
+    /// The irq number used to guard the item
+    irqnum: u8,
+    /// The unlock function
+    unlock: Box<dyn Fn(u8) + Send + Sync>,
+    /// The lock function
+    lock: Box<dyn Fn(u8) + Send + Sync>,
+    /// True when all interrupts should be disabled
+    disable_all_interrupts: bool,
+}
+
+impl<T> IrqGuarded<T> {
+    /// Construct a new self.
+    /// #Arguments
+    /// * disable_all_interrupts: Set to true when all interrupts should be disabled to protect the data
+    /// * inner: The data to protect
+    /// * lock: The device specific function to disable the desired interrupt for what is being protected
+    /// * unlock: The opposite of lock
+    pub fn new(
+        irqnum: u8,
+        disable_all_interrupts: bool,
+        inner: T,
+        lock: impl Fn(u8) + Send + Sync + 'static,
+        unlock: impl Fn(u8) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            value: IrqGuardedInner {
+                irqnum,
+                unlock: Box::new(unlock),
+                lock: Box::new(lock),
+                disable_all_interrupts,
+            },
+            inner: AsyncLocked::new(inner),
+        }
+    }
+
+    /// Use the inner value from a non-interrupt context
+    pub async fn access(&self) -> IrqGuardedUse<T> {
+        let sys = crate::SYSTEM.read();
+        if self.value.disable_all_interrupts {
+            sys.disable_interrupts();
+        }
+        sys.disable_irq(self.value.irqnum);
+        (self.value.lock)(self.value.irqnum);
+        IrqGuardedUse {
+            r: &self.value,
+            val: Some(self.inner.lock().await),
+            enable_interrupts: true,
+        }
+    }
+
+    /// Use the inner value from an interrupt context
+    pub fn interrupt_acess(&self) -> IrqGuardedUse<T> {
+        IrqGuardedUse {
+            r: &self.value,
+            val: Some(self.inner.sync_lock()),
+            enable_interrupts: false,
+        }
+    }
+}
+
+/// The usable instance of the [IrqGuarded] struct
+pub struct IrqGuardedUse<'a, T> {
+    /// The reference to the inner struct
+    r: &'a IrqGuardedInner,
+    /// The unlocked data
+    val: Option<AsyncLockedMutexGuard<'a, T>>,
+    /// Indicates true when run outside an interrupt context
+    enable_interrupts: bool,
+}
+
+impl<'a, T> Deref for IrqGuardedUse<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.val.as_ref().unwrap().deref()
+    }
+}
+
+impl<'a, T> DerefMut for IrqGuardedUse<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.val.as_mut().unwrap().deref_mut()
+    }
+}
+
+impl<'a, T> Drop for IrqGuardedUse<'a, T> {
+    fn drop(&mut self) {
+        let sys = crate::SYSTEM.read();
+        let a = self.val.take();
+        drop(a);
+        (self.r.unlock)(self.r.irqnum);
+        if self.enable_interrupts {
+            sys.enable_irq(self.r.irqnum);
+            if self.r.disable_all_interrupts {
+                sys.enable_interrupts();
+            }
         }
     }
 }

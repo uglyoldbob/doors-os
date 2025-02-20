@@ -14,7 +14,7 @@ use crate::modules::{
     },
     video::hex_dump_generic,
 };
-use crate::IoReadWrite;
+use crate::{Arc, IoReadWrite, IrqGuarded};
 
 /// Holds either memory or io space
 enum MemoryOrIo {
@@ -483,13 +483,26 @@ impl TxBuffers {
     }
 }
 
+/// The internal data for the network card, used in interrupt and non-interrupt contexts
+struct IntelPro1000DeviceInternal {
+    /// The main way to access the device
+    bar0: crate::IrqGuarded<MemoryOrIo>,
+}
+
+impl IntelPro1000DeviceInternal {
+    /// Create a new Self
+    fn new(bar0: crate::IrqGuarded<MemoryOrIo>) -> Self {
+        Self { bar0 }
+    }
+}
+
 #[doors_macros::enum_variant(NetworkAdapter)]
 /// The actual intel pro/1000 device
 pub struct IntelPro1000Device {
+    /// The internal structure used in interrupt handler and regular code
+    internal: Arc<IntelPro1000DeviceInternal>,
     /// The base address registers
     _bars: [Option<BarSpace>; 6],
-    /// The memory allocated by bar0
-    bar0: MemoryOrIo,
     /// the io space allocated for the device
     _io: crate::IoPortArray<'static>,
     /// Is the eeprom present?
@@ -649,11 +662,11 @@ bitfield::bitfield! {
 }
 
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
-    fn get_mac_address(&mut self) -> MacAddress {
-        if self.detect_eeprom() {
-            let v = self.read_from_eeprom(0);
-            let v2 = self.read_from_eeprom(1);
-            let v3 = self.read_from_eeprom(2);
+    async fn get_mac_address(&mut self) -> MacAddress {
+        if self.detect_eeprom().await {
+            let v = self.read_from_eeprom(0).await;
+            let v2 = self.read_from_eeprom(1).await;
+            let v3 = self.read_from_eeprom(2).await;
             let v = v.to_le_bytes();
             let v2 = v2.to_le_bytes();
             let v3 = v3.to_le_bytes();
@@ -690,7 +703,10 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                 }
             }
             let descriptor = &self.txbufs.as_ref().unwrap().bufs[txindex];
-            self.bar0
+            self.internal
+                .bar0
+                .access()
+                .await
                 .write(IntelPro1000Registers::TxDescTail as u16, newindex as u32);
             self.txbufindex = Some(newindex as u8);
             let mut tries = 0;
@@ -741,17 +757,19 @@ impl IntelPro1000Device {
     }
 
     /// Detect the presence of an eeprom and store the result
-    fn detect_eeprom(&mut self) -> bool {
+    async fn detect_eeprom(&mut self) -> bool {
         if self.eeprom_present.is_none() {
-            self.bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
+            let mut bar0 = self.internal.bar0.access().await;
+            bar0.write(IntelPro1000Registers::Eeprom as u16, 1);
             self.eeprom_present = Some(false);
             for _i in 0..10000 {
-                let val = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+                let val = bar0.read(IntelPro1000Registers::Eeprom as u16);
                 let val2 = val & 0x10;
                 if (val2) != 0 {
                     self.eeprom_present = Some(true);
                     break;
                 }
+                crate::executor::Task::yield_now().await;
             }
         }
         self.eeprom_present.unwrap()
@@ -774,12 +792,13 @@ impl IntelPro1000Device {
             IntelPro1000Registers::TxDescHead,
             IntelPro1000Registers::TxDescTail,
         ];
+        let bar0 = self.internal.bar0.access().await;
         for r in regs {
             crate::VGA
                 .print_str_async(&format!(
                     "{:?} register is {:x}\r\n",
                     r,
-                    self.bar0.read(*r as u16)
+                    bar0.read(*r as u16)
                 ))
                 .await;
         }
@@ -825,52 +844,57 @@ impl IntelPro1000Device {
     }
 
     /// Set the receive address of the specified index
-    fn set_receive_mac_address(&mut self, index: u8, ra: &ReceiveAddress) {
+    async fn set_receive_mac_address(&mut self, index: u8, ra: &ReceiveAddress) {
         let (low, high) = Self::receive_mac_address_registers(index);
-        self.bar0.write(low as u16, ra.low());
-        self.bar0.write(high as u16, ra.high());
+        let mut bar0 = self.internal.bar0.access().await;
+        bar0.write(low as u16, ra.low());
+        bar0.write(high as u16, ra.high());
     }
 
     /// Clear the receive address at the specified index
-    fn clear_receive_mac_address(&mut self, index: u8) {
+    async fn clear_receive_mac_address(&mut self, index: u8) {
         let (low, high) = Self::receive_mac_address_registers(index);
-        self.bar0.write(high as u16, 0u32);
-        self.bar0.write(low as u16, 0u32);
+        let mut bar0 = self.internal.bar0.access().await;
+        bar0.write(high as u16, 0u32);
+        bar0.write(low as u16, 0u32);
     }
 
     /// Retrieve the existing receive address at the specified index from the device
-    fn get_receive_mac_address(&mut self, index: u8) -> ReceiveAddress {
+    async fn get_receive_mac_address(&mut self, index: u8) -> ReceiveAddress {
         let (low, high) = Self::receive_mac_address_registers(index);
-        let ral = self.bar0.read(low as u16);
-        let rah = self.bar0.read(high as u16);
+        let bar0 = self.internal.bar0.access().await;
+        let ral = bar0.read(low as u16);
+        let rah = bar0.read(high as u16);
         let combined: u64 = ((rah as u64) << 32) | (ral as u64);
         ReceiveAddress(combined)
     }
 
     /// Clear the multicast table array
-    fn clear_multicast_table_array(&mut self) {
+    async fn clear_multicast_table_array(&mut self) {
         let base = IntelPro1000Registers::MTA_BASE as u16;
         let end = base + 0x200;
+        let mut bar0 = self.internal.bar0.access().await;
         for r in (base..end).step_by(4) {
-            self.bar0.write(r, 0u32);
+            bar0.write(r, 0u32);
         }
     }
 
     /// Read a u16 from the specified phy
-    fn read_from_phy(&mut self, phy: u8, index: u8) -> Option<u16> {
-        self.bar0.write(
+    async fn read_from_phy(&mut self, phy: u8, index: u8) -> Option<u16> {
+        let mut bar0 = self.internal.bar0.access().await;
+        bar0.write(
             IntelPro1000Registers::MDIC as u16,
             MdicRegister::new(0, index, phy, 2, false).0,
         );
 
         loop {
-            let v = self.bar0.read(IntelPro1000Registers::MDIC as u16);
+            let v = bar0.read(IntelPro1000Registers::MDIC as u16);
             let mdic = MdicRegister(v);
             if mdic.ready() {
                 break;
             }
         }
-        let v = self.bar0.read(IntelPro1000Registers::MDIC as u16);
+        let v = bar0.read(IntelPro1000Registers::MDIC as u16);
         let mdic = MdicRegister(v);
         if mdic.error() {
             None
@@ -880,7 +904,7 @@ impl IntelPro1000Device {
     }
 
     /// Perform a general configuration of the device, to be performed after power-up or after reset.
-    fn general_config(&mut self) {
+    async fn general_config(&mut self) {
         if matches!(
             self.model,
             Model::Model82541EI_A0_or_Model82541EI_B0_Copper
@@ -894,9 +918,10 @@ impl IntelPro1000Device {
             todo!("Configure LED behavior");
             todo!("Clear statistics counters");
         }
-        let mut ctrl = self.bar0.read(IntelPro1000Registers::CTRL as u16);
+        let mut bar0 = self.internal.bar0.access().await;
+        let mut ctrl = bar0.read(IntelPro1000Registers::CTRL as u16);
         ctrl = (ctrl & !(1 << 6)) | 0x40;
-        self.bar0.write(IntelPro1000Registers::CTRL as u16, ctrl);
+        bar0.write(IntelPro1000Registers::CTRL as u16, ctrl);
     }
 
     /// Initialize the rx buffers for the device
@@ -904,33 +929,34 @@ impl IntelPro1000Device {
         if self.rxbufs.is_none() {
             self.mac_address = *mac;
             let ra = ReceiveAddress::new(*mac, 0, true);
-            self.set_receive_mac_address(0, &ra);
-            self.clear_multicast_table_array();
+            self.set_receive_mac_address(0, &ra).await;
+            self.clear_multicast_table_array().await;
+            let mut bar0 = self.internal.bar0.access().await;
             // Interrupts will be enabled later on
             let rxbuf = RxBuffers::new(32, 8192)?;
             let rxaddr = rxbuf.bufs.phys();
             crate::VGA
                 .print_str_async(&format!("Writing RX stuff to network card\r\n"))
                 .await;
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
                 (rxaddr & 0xFFFFFFFF) as u32,
             );
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::RxDescHigh as u16,
                 (rxaddr >> 32) as u32,
             );
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::RxDescLen as u16,
                 core::mem::size_of::<RxBuffer>() as u32 * rxbuf.bufs.len() as u32,
             );
-            self.bar0.write(IntelPro1000Registers::RxDescHead as u16, 0);
+            bar0.write(IntelPro1000Registers::RxDescHead as u16, 0);
             // This might be off by 1, as the manual states tail should point to the element after the last valid descriptor
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::RxDescTail as u16,
                 rxbuf.bufs.len() as u32 - 1,
             );
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::Rctrl as u16,
                 (RctrlFlags::EN
                     | RctrlFlags::BAM
@@ -947,26 +973,26 @@ impl IntelPro1000Device {
     /// Initialize the tx buffers for the device
     async fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
+            let mut bar0 = self.internal.bar0.access().await;
             crate::VGA
                 .print_str_async(&format!("Writing TX stuff to network card\r\n"))
                 .await;
             let txbuf = TxBuffers::new(8, 8192)?;
             let txaddr = txbuf.bufs.phys();
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::TxDescLow as u16,
                 (txaddr & 0xFFFFFFFF) as u32,
             );
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::TxDescHigh as u16,
                 (txaddr >> 32) as u32,
             );
             let desclen = core::mem::size_of::<TxBuffer>() as u32 * txbuf.bufs.len() as u32;
-            self.bar0
-                .write(IntelPro1000Registers::TxDescLen as u16, desclen);
-            self.bar0.write(IntelPro1000Registers::TxDescHead as u16, 0);
-            self.bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
+            bar0.write(IntelPro1000Registers::TxDescLen as u16, desclen);
+            bar0.write(IntelPro1000Registers::TxDescHead as u16, 0);
+            bar0.write(IntelPro1000Registers::TxDescTail as u16, 0);
 
-            self.bar0.write(
+            bar0.write(
                 IntelPro1000Registers::Tctrl as u16,
                 (TctrlFlags::EN | TctrlFlags::PSP | TctrlFlags::RTLC).bits()
                     | (15 << TctrlFlags::CT_SHIFT.bits())
@@ -980,8 +1006,10 @@ impl IntelPro1000Device {
     }
 
     /// The interrupt handler for the network card
-    fn handle_interrupt() {
+    fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
         x86_64::instructions::bochs_breakpoint();
+        let bar0 = this.bar0.interrupt_acess();
+        let _reason = bar0.read(IntelPro1000Registers::ICR as u16);
     }
 
     /// Enable interrupts for the network card
@@ -994,40 +1022,46 @@ impl IntelPro1000Device {
             "Replace the constant with named values by defining a bitfield for the register"
         );
         let val = 0x1f6fc;
-        while self.bar0.read(IntelPro1000Registers::IMS as u16) != val {
-            self.bar0.write(IntelPro1000Registers::IMS as u16, val);
-            self.bar0.read(IntelPro1000Registers::STATUS as u16);
+        // Marked as interrupt access becuase interrupts are not fully setup yet
+        let mut bar0 = self.internal.bar0.interrupt_acess();
+        while bar0.read(IntelPro1000Registers::IMS as u16) != val {
+            bar0.write(IntelPro1000Registers::IMS as u16, val);
+            bar0.read(IntelPro1000Registers::STATUS as u16);
         }
         let val = 0xff & !4;
-        self.bar0.write(IntelPro1000Registers::IMS as u16, val);
-        self.bar0.read(IntelPro1000Registers::STATUS as u16);
+        bar0.write(IntelPro1000Registers::IMS as u16, val);
+        bar0.read(IntelPro1000Registers::STATUS as u16);
 
         // Read the interrupt register to clear it
-        let _ = self.bar0.read(IntelPro1000Registers::ICR as u16);
-        sys.register_irq_handler(irqnum, move || IntelPro1000Device::handle_interrupt());
+        let _ = bar0.read(IntelPro1000Registers::ICR as u16);
+        let c = self.internal.clone();
+        sys.register_irq_handler(irqnum, move || IntelPro1000Device::handle_interrupt(&c));
+        drop(bar0);
         sys.enable_irq(irqnum);
     }
 
     /// Read a word from the eeprom at the specified address
-    fn read_from_eeprom(&mut self, addr: u8) -> u16 {
-        if self.detect_eeprom() {
-            self.bar0.write(
+    async fn read_from_eeprom(&mut self, addr: u8) -> u16 {
+        if self.detect_eeprom().await {
+            let mut bar0 = self.internal.bar0.access().await;
+            bar0.write(
                 IntelPro1000Registers::Eeprom as u16,
                 1 | ((addr as u32) << 8),
             );
             loop {
-                let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+                let a = bar0.read(IntelPro1000Registers::Eeprom as u16);
                 if (a & (0x10)) != 0 {
                     return (a >> 16) as u16;
                 }
             }
         } else {
-            self.bar0.write(
+            let mut bar0 = self.internal.bar0.access().await;
+            bar0.write(
                 IntelPro1000Registers::Eeprom as u16,
                 1 | ((addr as u32) << 2),
             );
             loop {
-                let a = self.bar0.read(IntelPro1000Registers::Eeprom as u16);
+                let a = bar0.read(IntelPro1000Registers::Eeprom as u16);
                 if (a & (0x2)) != 0 {
                     return (a >> 16) as u16;
                 }
@@ -1106,9 +1140,21 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     b.print().await;
                 }
                 let model = Model::try_from(configspace.get_device_id()).unwrap();
+                let irqnum = match config {
+                    ConfigurationSpaceEnum::Standard(configuration_space_standard) => {
+                        configuration_space_standard.get_interrupt_line()
+                    }
+                    ConfigurationSpaceEnum::Bridge(_configuration_space_bridge) => {
+                        doors_macros::todo!()
+                    }
+                    ConfigurationSpaceEnum::Cardbus(_configuration_space_cardbus) => {
+                        doors_macros::todo!()
+                    }
+                };
+                let m = IrqGuarded::new(irqnum, false, m, |_i| {}, |_i| {});
                 let mut d = IntelPro1000Device {
+                    internal: Arc::new(IntelPro1000DeviceInternal::new(m)),
                     _bars: bars,
-                    bar0: m,
                     _io: i,
                     eeprom_present: None,
                     rxbufs: None,
@@ -1118,19 +1164,26 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     model,
                     mac_address: MacAddress::default(),
                 };
-                d.bar0.hex_dump().await;
+                {
+                    crate::VGA
+                        .print_str_async(&format!("The irq line is {}\r\n", irqnum))
+                        .await;
+                    let sys = crate::SYSTEM.read();
+                    d.enable_interrupts(&sys, irqnum).await;
+                }
+                d.internal.bar0.access().await.hex_dump().await;
                 crate::VGA
                     .print_str_async(&format!("Detected model as {:?}\r\n", d.model))
                     .await;
                 crate::VGA
-                    .print_str_async(&format!("EEPROM DETECTED: {}\r\n", d.detect_eeprom()))
+                    .print_str_async(&format!("EEPROM DETECTED: {}\r\n", d.detect_eeprom().await))
                     .await;
                 let mut data = [0u16; 256];
                 for (i, data) in data.iter_mut().enumerate() {
-                    *data = d.read_from_eeprom(i as u8);
+                    *data = d.read_from_eeprom(i as u8).await;
                 }
                 hex_dump_generic_async(&data, true, false).await;
-                let mac = d.get_mac_address();
+                let mac = d.get_mac_address().await;
                 hex_dump_async(&mac.address, false, false).await;
                 if let Err(e) = d.init_rx(&mac).await {
                     crate::VGA
@@ -1142,28 +1195,10 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
-                d.general_config();
+                d.general_config().await;
                 f.set_bus_mastering(cs, bus, dev, true);
-                {
-                    let irqnum = match config {
-                        ConfigurationSpaceEnum::Standard(configuration_space_standard) => {
-                            configuration_space_standard.get_interrupt_line()
-                        }
-                        ConfigurationSpaceEnum::Bridge(_configuration_space_bridge) => {
-                            doors_macros::todo!()
-                        }
-                        ConfigurationSpaceEnum::Cardbus(_configuration_space_cardbus) => {
-                            doors_macros::todo!()
-                        }
-                    };
-                    crate::VGA
-                        .print_str_async(&format!("The irq line is {}\r\n", irqnum))
-                        .await;
-                    let sys = crate::SYSTEM.read();
-                    d.enable_interrupts(&sys, irqnum).await;
-                }
                 for r in 0..32 {
-                    if let Some(v) = d.read_from_phy(1, r) {
+                    if let Some(v) = d.read_from_phy(1, r).await {
                         crate::VGA
                             .print_str_async(&format!("PHY 1 reg {} is {:x}\r\n", r, v))
                             .await;

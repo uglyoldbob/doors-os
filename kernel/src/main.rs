@@ -109,7 +109,7 @@ async fn net_test() {
         crate::VGA
             .print_str_async("About to do some stuff with a network card\r\n")
             .await;
-        let ma = na.get_mac_address();
+        let ma = na.get_mac_address().await;
         hex_dump_generic_async(&ma, false, false).await;
         crate::VGA
             .print_str_async("Done doing stuff with network card\r\n")

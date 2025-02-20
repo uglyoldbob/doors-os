@@ -96,7 +96,7 @@ fn mac_address_conversion_test() -> Result<(), ()> {
 #[enum_dispatch::enum_dispatch]
 pub trait NetworkAdapterTrait {
     /// Retrieve the mac address for the network adapter
-    fn get_mac_address(&mut self) -> MacAddress;
+    async fn get_mac_address(&mut self) -> MacAddress;
     /// Send a packet over the network interface
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()>;
 }

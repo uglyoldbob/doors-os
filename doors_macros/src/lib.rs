@@ -35,29 +35,29 @@ impl TodoList {
 /// The todo list for the kernel
 static TODOLIST: Mutex<Option<TodoList>> = Mutex::new(Some(TodoList::new()));
 
-lazy_static::lazy_static! {
-    /// The number of test functions in the kernel
-    static ref TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
-    /// The enum builder data
-    static ref ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::new());
-    /// The kernel config
-    static ref KERNEL_CONFIG: Mutex<Option<KernelConfig>> = Mutex::new(None);
-}
+/// The number of test functions in the kernel
+static TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
+/// The enum builder data
+static ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::new());
+/// The kernel config
+static KERNEL_CONFIG: Mutex<Option<KernelConfig>> = Mutex::new(None);
 
 /// Insert a todo list entry into the todolist and do nothing else
 #[proc_macro]
 pub fn todo_item(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let item2 = item.clone();
     let f = parse_macro_input!(item2 as syn::LitStr);
-    let mut list = TODOLIST.lock().unwrap();
-    let list = list.as_mut().unwrap();
-    let ds = proc_macro::Span::call_site();
-    list.items.push(format!(
-        "{} @ {:?} line {}",
-        f.value(),
-        ds.source_file().path(),
-        ds.start().line()
-    ));
+    let mut list = TODOLIST.lock().expect("Unable to lock todolist");
+    let list = list.as_mut();
+    if let Some(list) = list {
+        let ds = proc_macro::Span::call_site();
+        list.items.push(format!(
+            "{} @ {:?} line {}",
+            f.value(),
+            ds.source_file().path(),
+            ds.start().line()
+        ));
+    }
     quote!().into()
 }
 
@@ -69,15 +69,17 @@ pub fn todo(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         "TODO",
         proc_macro::Span::call_site().into(),
     ));
-    let mut list = TODOLIST.lock().unwrap();
-    let list = list.as_mut().unwrap();
-    let ds = proc_macro::Span::call_site();
-    list.items.push(format!(
-        "{} @ {:?} line {}",
-        f.value(),
-        ds.source_file().path(),
-        ds.start().line()
-    ));
+    let mut list = TODOLIST.lock().expect("Unable to lock todo list");
+    let list = list.as_mut();
+    if let Some(list) = list {
+        let ds = proc_macro::Span::call_site();
+        list.items.push(format!(
+            "{} @ {:?} line {}",
+            f.value(),
+            ds.source_file().path(),
+            ds.start().line()
+        ));
+    }
     quote!(todo!(#f)).into()
 }
 
@@ -86,15 +88,17 @@ pub fn todo(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn todo_item_panic(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let item2 = item.clone();
     let f = parse_macro_input!(item2 as syn::LitStr);
-    let mut list = TODOLIST.lock().unwrap();
-    let list = list.as_mut().unwrap();
-    let ds = proc_macro::Span::call_site();
-    list.items.push(format!(
-        "{} @ {:?} line {}",
-        f.value(),
-        ds.source_file().path(),
-        ds.start().line()
-    ));
+    let mut list = TODOLIST.lock().expect("Unable to lock todo list");
+    let list = list.as_mut();
+    if let Some(list) = list {
+        let ds = proc_macro::Span::call_site();
+        list.items.push(format!(
+            "{} @ {:?} line {}",
+            f.value(),
+            ds.source_file().path(),
+            ds.start().line()
+        ));
+    }
     quote!(
         panic!(#f);
     )
@@ -105,19 +109,23 @@ pub fn todo_item_panic(item: proc_macro::TokenStream) -> proc_macro::TokenStream
 #[proc_macro]
 pub fn populate_todo_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     assert!(input.is_empty());
-    let list = TODOLIST.lock().unwrap().take().unwrap();
-    let things = list.items.iter().map(|i| {
-        let msg = format!("* {}", i);
-        quote! {
-            #[doc = #msg]
-        }
-    });
-    quote!(
-        /// The todo list. This is a list of things that need to be done.
-        #(#things)*
-        struct TodoList {}
-    )
-    .into()
+    let list = TODOLIST.lock().expect("Unable to lock todo list").take();
+    if let Some(list) = list {
+        let things = list.items.iter().map(|i| {
+            let msg = format!("* {}", i);
+            quote! {
+                #[doc = #msg]
+            }
+        });
+        quote!(
+            /// The todo list. This is a list of things that need to be done.
+            #(#things)*
+            struct TodoList {}
+        )
+        .into()
+    } else {
+        quote!().into()
+    }
 }
 
 /// Define the kernel config for the kernel build script
@@ -473,7 +481,9 @@ pub fn enum_variant(
     let item2 = item.clone();
     let i = parse_macro_input!(item2 as syn::ItemStruct);
     let varname = {
-        let mut e = ENUM_BUILDER.lock().unwrap();
+        let mut e = ENUM_BUILDER
+            .lock()
+            .expect("Unable to lock the enum builder");
         let entry = e.get_mut(&f.to_string());
         if let Some(entry) = entry {
             let index = entry.variants.len();
@@ -493,17 +503,23 @@ pub fn enum_variant(
         } else {
             Err(())
         }
-    }
-    .unwrap();
+    };
     let item: proc_macro2::TokenStream = item.into();
-    quote! {
-        #item
-        /// A module for making variants accessible
-        pub mod doors_enum_variants {
-            pub use super::#varname;
+    if let Ok(varname) = varname {
+        quote! {
+            #item
+            /// A module for making variants accessible
+            pub mod doors_enum_variants {
+                pub use super::#varname;
+            }
         }
+        .into()
+    } else {
+        quote! {
+            #item
+        }
+        .into()
     }
-    .into()
 }
 
 /// A macro that adds the previously defined variants into the enum, adding an enum_dispatch for a given trait
