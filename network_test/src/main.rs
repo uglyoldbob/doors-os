@@ -33,18 +33,24 @@ fn main() {
     }
     for d in interfaces {
         let e = d.open();
+        let mut mac_address = [0u8; 6];
         match e {
             Ok(mut e) => {
                 for _ in 0..args.listen_count {
                     let p = e.next_packet();
-                    if let Ok(p) = p {
-                        println!("Got packet {:x?}", p);
+                    match p {
+                        Ok(p) => {
+                            println!("Got packet {:x?}", p);
+                            mac_address.copy_from_slice(&p.data[6..12]);
+                        }
+                        Err(e) => println!("Error receiving packet {:?}", e),
                     }
                 }
                 for _ in 0..args.random_count {
                     let mut buf = vec![0;64];
                     let mut rng = rand::rng();
                     rng.fill_bytes(&mut buf);
+                    (&mut buf[0..6]).copy_from_slice(&mac_address);;
                     e.sendpacket(buf).unwrap();
                 }
             }

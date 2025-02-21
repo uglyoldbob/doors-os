@@ -746,15 +746,13 @@ impl<'a> PagingTableManager<'a> {
         let pt1 = match pt1 {
             Some(e) => e,
             None => {
-                let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
-                    Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::new_in(
-                        PageTable::new(),
-                        self.mm,
-                    );
-                let entry = Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
+                let layout = core::alloc::Layout::new::<PageTable>();
+                layout.align_to(core::mem::align_of::<PageTable>()).unwrap();
+                let e = self.mm.allocate(layout).unwrap();
+                let eaddr = crate::slice_address(unsafe { e.as_ref() });
                 unsafe { &mut *self.pt2.as_mut_ptr() }.table.entries[pt2_index] =
-                    crate::address(entry) as u64 | 1;
-                crate::address(entry) as u64
+                    eaddr as u64 | 1;
+                eaddr as u64
             }
         };
         unsafe { &mut *self.pt1.as_mut_ptr() }.update(pt1);
