@@ -1,8 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
-use crate::modules::video::hex_dump;
-use crate::modules::video::hex_dump_generic;
 use crate::modules::video::hex_dump_generic_slice;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -718,6 +716,7 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
                         e
                     )),
                     Ok(madt) => {
+                        let madt = madt.get();
                         for e in madt.entries() {
                             match e {
                                 acpi::madt::MadtEntry::LocalApic(lapic) => {
@@ -783,7 +782,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     fn enable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let mut p = INTERRUPT_CONTROLLER.read();
+            let p = INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.enable_irq(irq)
             }
@@ -801,7 +800,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     fn disable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let mut p = INTERRUPT_CONTROLLER.read();
+            let p = INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.disable_irq(irq)
             }
