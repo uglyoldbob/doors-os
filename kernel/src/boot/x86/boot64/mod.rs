@@ -797,17 +797,22 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
         {
             let this = self.sync_lock();
-            crate::VGA.print_str(&alloc::format!("Boot information header is at {:x}, size {:x}\r\n", 
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "Kernel end is at {:x}\r\n",
+                unsafe { &super::END_OF_KERNEL } as *const u8 as usize
+            ));
+            crate::VGA.print_str(&alloc::format!(
+                "Boot information header is at {:x}, size {:x}\r\n",
                 this.boot_info.start_address(),
                 this.boot_info.total_size(),
             ));
-            crate::VGA.print_str(&alloc::format!("Command line tag: {:?}\r\n", this.boot_info.command_line_tag()));
+            crate::VGA.print_str(&alloc::format!(
+                "Command line tag: {:?}\r\n",
+                this.boot_info.command_line_tag()
+            ));
 
             if let Some(mm) = this.boot_info.memory_map_tag() {
-                for area in mm
-                    .memory_areas()
-                    .iter()
-                {
+                for area in mm.memory_areas().iter() {
                     crate::VGA.print_str(&alloc::format!("Memory area {:x?}\r\n", area));
                 }
             }
@@ -964,15 +969,44 @@ impl aml::Handler for AmlHandler {
 pub extern "C" fn start64() -> ! {
     let cpuid = raw_cpuid::CpuId::new();
 
-    let boot_info = unsafe {
-        multiboot2::BootInformation::load(
-            MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
-        )
-        .unwrap()
-    };
-
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
+
+    //Copy the boot information header to the end of the kernel, update the end of the kernel variable to reflect the new data
+    let bi_size = {
+        let boot_info = unsafe {
+            multiboot2::BootInformation::load(
+                MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
+            )
+            .unwrap()
+        };
+        let size = boot_info.total_size();
+        let dest = unsafe { core::slice::from_raw_parts_mut(end_kernel as *mut u8, size) };
+        let source =
+            unsafe { core::slice::from_raw_parts_mut(boot_info.start_address() as *mut u8, size) };
+        if crate::slice_address(dest) < crate::slice_address(source) {
+            let di = dest.iter_mut();
+            let si = source.iter();
+            let a = si.zip(di);
+            for (s, d) in a {
+                *d = *s;
+            }
+        } else {
+            let di = dest.iter_mut();
+            let si = source.iter();
+            let a = si.zip(di);
+            for (s, d) in a.rev() {
+                *d = *s;
+            }
+        }
+        size
+    };
+
+    let boot_info = unsafe {
+        multiboot2::BootInformation::load(end_kernel as *const multiboot2::BootInformationHeader)
+            .unwrap()
+    };
+    let end_kernel = end_kernel + bi_size;
 
     VIRTUAL_MEMORY_ALLOCATOR
         .sync_lock()
@@ -999,7 +1033,6 @@ pub extern "C" fn start64() -> ! {
         let stack_size = 8 * 1024;
         pal.set_area_used(stack_end - stack_size, stack_size);
         pal.set_area_used(0, 0x100000);
-        pal.set_area_used(boot_info.start_address(), boot_info.total_size());
         pal.done_adding_memory_areas();
     } else {
         panic!("Physical memory manager unavailable\r\n");
