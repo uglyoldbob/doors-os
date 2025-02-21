@@ -42,6 +42,15 @@ add_custom_target(
 endif (WIN32)
 
 if (UNIX)
+
+file(GENERATE OUTPUT ./fix_network_test INPUT ./fnt FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+
+add_custom_target(
+    net_test
+    COMMAND cargo build --bin network_test --release
+    COMMAND ./fix_network_test
+)
+
 add_custom_target(
     grub-skeleton
     BYPRODUCTS grub-skeleton.iso

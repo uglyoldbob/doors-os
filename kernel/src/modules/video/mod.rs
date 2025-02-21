@@ -594,7 +594,7 @@ pub fn hex_dump(data: &[u8], print_address: bool, print_ascii: bool) {
                 let c = *d as char;
                 if c.is_ascii() {
                     match *d {
-                        32..128 => {
+                        32..127 => {
                             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}", c))
                         }
                         _ => crate::VGA.print_str("?"),
@@ -662,7 +662,7 @@ pub async fn hex_dump_async(data: &[u8], print_address: bool, print_ascii: bool)
                 let c = *d as char;
                 if c.is_ascii() {
                     match *d {
-                        32..128 => crate::VGA.print_str_async(&alloc::format!("{}", c)).await,
+                        32..127 => crate::VGA.print_str_async(&alloc::format!("{}", c)).await,
                         _ => crate::VGA.print_str_async("?").await,
                     }
                 } else {
