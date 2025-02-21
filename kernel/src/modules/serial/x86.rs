@@ -181,7 +181,7 @@ impl X86SerialPort {
 
     /// Send a byte because we already know the port is ready
     fn force_send_byte(&self, c: u8) {
-        self.0.base.access().port(0).port_write(c);
+        self.0.base.interrupt_access().port(0).port_write(c);
     }
 }
 
@@ -320,15 +320,10 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_flush(&self) {
-        let (i, txq) = {
-            (
-                self.0.interrupts.load(Ordering::Relaxed),
-                self.0.tx_queue.clone(),
-            )
-        };
+        let i = self.0.interrupts.load(Ordering::Relaxed);
         if i {
             loop {
-                let empty = txq.access().is_empty();
+                let empty = self.0.tx_queue.access().is_empty();
                 if empty {
                     x86_64::instructions::bochs_breakpoint();
                     break;

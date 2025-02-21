@@ -472,6 +472,8 @@ pub struct IrqGuardedSimpleUse<'a, T> {
     enable_interrupts: bool,
 }
 
+impl<'a, T> !Send for IrqGuardedSimpleUse<'a, T> {}
+
 impl<'a, T> Deref for IrqGuardedSimpleUse<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {

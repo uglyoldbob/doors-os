@@ -741,9 +741,13 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     }
 
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
+        crate::VGA.print_str_async("Waiting for link up\r\n").await;
         while !self.internal.up.load(Ordering::Relaxed) {
             crate::executor::Task::yield_now().await;
         }
+        crate::VGA
+            .print_str_async("Done waiting for link up\r\n")
+            .await;
         hex_dump_async(packet, true, true).await;
         let len = packet.len();
         if len < 8192 {
@@ -818,7 +822,6 @@ impl IntelPro1000Device {
         crate::VGA
             .print_str_async(&format!("Checking for received packets\r\n"))
             .await;
-        self.dump_registers().await;
     }
 
     /// Detect the presence of an eeprom and store the result
@@ -1073,8 +1076,10 @@ impl IntelPro1000Device {
     /// The interrupt handler for the network card
     fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
         x86_64::instructions::bochs_breakpoint();
-        let bar0 = this.bar0.interrupt_access();
-        let reason = bar0.read(IntelPro1000Registers::ICR as u16);
+        let reason = this
+            .bar0
+            .interrupt_access()
+            .read(IntelPro1000Registers::ICR as u16);
         let reason = InterruptCauseRegister(reason);
         if reason.LSC() {
             this.update_link_status_interrupt();
