@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 project(doors-os)
 
 add_custom_target(
+    format
+    COMMAND cargo fmt
+)
+
+add_custom_target(
     kernel64
     BYPRODUCTS ./kernel64.debug ./kernel64 ./target ./kerneltest64
     COMMAND cargo build --release --target x86_64-unknown-none

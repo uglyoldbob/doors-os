@@ -1,7 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
-use crate::modules::video::hex_dump_generic_slice;
+use crate::modules::video::hex_dump;
 use crate::IoReadWrite;
 use crate::Locked;
 use crate::LockedArc;
@@ -326,6 +326,8 @@ impl acpi::AcpiHandler for Acpi<'_> {
         };
         if physical_address == 0 {
             log::error!("Received a null pointer request size {:x}", size);
+            crate::VGA.sync_flush();
+            x86_64::instructions::bochs_breakpoint();
             panic!("Received a null pointer request size");
         }
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -356,7 +358,7 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 0
             };
             let start = physical_address - size_before_allocation;
-            let realsize = size_before_allocation + size + size_after_allocation;
+            let realsize = size_before_allocation + size + size_after_allocation + 0x1000;
 
             let layout = core::alloc::Layout::from_size_align(
                 realsize,
@@ -381,8 +383,8 @@ impl acpi::AcpiHandler for Acpi<'_> {
             let r = acpi::PhysicalMapping::new(
                 physical_address,
                 NonNull::new((vstart) as *mut T).unwrap(),
-                realsize,
                 size,
+                size + size_after_allocation + 0x1000,
                 self.clone(),
             );
             crate::VGA.print_str("Dumping mapped structure\r\n");
@@ -392,7 +394,7 @@ impl acpi::AcpiHandler for Acpi<'_> {
             ));
             let a: usize = r.virtual_start().addr().into();
             let p = unsafe { core::slice::from_raw_parts(a as *const u8, size) };
-            hex_dump_generic_slice(p, false, true);
+            hex_dump(p, false, true);
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
                 r.virtual_start().as_ptr() as usize,
@@ -400,7 +402,7 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 r.region_length(),
                 r.mapped_length()
             ));
-
+            crate::VGA.sync_flush();
             r
         }
     }
@@ -411,13 +413,13 @@ impl acpi::AcpiHandler for Acpi<'_> {
             let mut p = region.handler().pageman.sync_lock();
             let s = region.virtual_start().as_ptr() as usize;
             let s = s - s % core::mem::size_of::<memory::Page>();
-            let length = region.region_length();
+            let length = region.mapped_length();
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "ACPI UNMAP virtual {:x} physical {:x} size {:x} {:x}\r\n",
                 region.virtual_start().as_ptr() as usize,
                 region.physical_start(),
                 length,
-                region.mapped_length()
+                region.region_length()
             ));
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "sizeof T is {:x}\r\n",
@@ -559,23 +561,6 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
     #[doors_macros::config_check(acpi, "true")]
     fn handle_acpi(&self, aml: &mut aml::AmlContext) {
         let this = self.sync_lock();
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of Fadt is {:x}\r\n",
-            core::mem::size_of::<acpi::fadt::Fadt>()
-        ));
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of HpetTable is {:x}\r\n",
-            core::mem::size_of::<acpi::hpet::HpetTable>()
-        ));
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of Madt is {:x}\r\n",
-            core::mem::size_of::<acpi::madt::Madt>()
-        ));
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "Size of Rsdp is {:x}\r\n",
-            core::mem::size_of::<acpi::rsdp::Rsdp>()
-        ));
-        x86_64::instructions::bochs_breakpoint();
         let acpi = if let Some(rsdp2) = this.boot_info.rsdp_v2_tag() {
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "rsdpv2 at {:X} {:x} revision {}\r\n",
@@ -669,6 +654,7 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
                 let table: &[u8] = unsafe {
                     core::slice::from_raw_parts(v.address as *const u8, v.length as usize)
                 };
+                hex_dump(table, false, false);
                 match aml.parse_table(table) {
                     Ok(()) => crate::VGA.print_str("SSDT PARSED OK\r\n"),
                     Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -1120,7 +1106,7 @@ pub extern "C" fn start64() -> ! {
         .unwrap();
 
     for ih in &IRQ_HANDLERS {
-        ih.try_init_once(|| LockedArc::new(None));
+        ih.try_init_once(|| LockedArc::new(None)).unwrap();
     }
 
     {

@@ -354,7 +354,15 @@ impl super::SerialTrait for X86SerialPort {
         let (i, txq) = { (*self.0.interrupts.read(), self.0.tx_queue.clone()) };
         if i {
             if let Ok(tx) = txq.try_get() {
-                while !tx.is_empty() {}
+                loop {
+                    let empty = crate::SYSTEM
+                        .read()
+                        .disable_interrupts_for(|| tx.is_empty());
+                    if empty {
+                        x86_64::instructions::bochs_breakpoint();
+                        break;
+                    }
+                }
             }
         }
     }
