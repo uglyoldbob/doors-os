@@ -1,19 +1,29 @@
 //! Serial port code for x86 serial ports
 
 use core::future::Future;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
 use core::task::Waker;
 
 use spin::Mutex;
 use spin::RwLock;
 
+use crate::common;
 use crate::Arc;
 
 use crate::executor;
 use crate::kernel::SystemTrait;
 use crate::IoPortArray;
-use crate::IoPortRef;
 use crate::IoReadWrite;
+use crate::IrqGuardedSimple;
 use crate::IO_PORT_MANAGER;
+
+/// The number of elements to store in the tx queue for each serial port
+const TX_BUFFER_SIZE: usize = 1024;
+/// The number of elements to store in the rx queue for each serial port
+const RX_BUFFER_SIZE: usize = 1024;
+/// the number of wakers to store for each queue
+const NUM_WAKERS: usize = 32;
 
 /// An x86 serial port
 pub struct X86SerialPort(Arc<X86SerialPortInternal>);
@@ -21,23 +31,21 @@ pub struct X86SerialPort(Arc<X86SerialPortInternal>);
 /// A serial port (COM) for x86
 pub struct X86SerialPortInternal {
     /// The io ports
-    base: IoPortArray<'static>,
+    base: crate::IrqGuardedSimple<IoPortArray<'static>>,
     /// The transmit queue
-    tx_queue: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
+    tx_queue: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
     /// The transmit wakers
-    tx_wakers: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<Waker>>>,
+    tx_wakers: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
     /// The receive queue
-    rx_queue: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
+    rx_queue: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
     /// The receive wakers
-    rx_wakers: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<Waker>>>,
+    rx_wakers: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
     /// Are interrupts enabled?
-    interrupts: RwLock<bool>,
+    interrupts: AtomicBool,
     /// Is an interrupt driven transmission currently in progress?
-    itx: RwLock<bool>,
+    itx: AtomicBool,
     /// Irq number for interrupts
     irq: u8,
-    /// Interrupt enable port
-    ienable: Mutex<IoPortRef<u8>>,
 }
 
 impl X86SerialPort {
@@ -63,18 +71,29 @@ impl X86SerialPort {
         let testval = 0x55u8;
         ports.port(0).port_write(testval);
 
-        let ienable = Mutex::new(ports.port(1));
+        let com = common::IrqGuardedInner::new(irq, false, |_| {}, |_| {});
 
         let i = Arc::new(X86SerialPortInternal {
-            base: ports,
-            tx_queue: Arc::new(conquer_once::spin::OnceCell::uninit()),
-            tx_wakers: Arc::new(conquer_once::spin::OnceCell::uninit()),
-            rx_queue: Arc::new(conquer_once::spin::OnceCell::uninit()),
-            rx_wakers: Arc::new(conquer_once::spin::OnceCell::uninit()),
-            interrupts: RwLock::new(false),
-            itx: RwLock::new(false),
+            base: IrqGuardedSimple::new(ports, &com),
+            tx_queue: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(TX_BUFFER_SIZE),
+                &com,
+            )),
+            tx_wakers: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(NUM_WAKERS),
+                &com,
+            )),
+            rx_queue: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(RX_BUFFER_SIZE),
+                &com,
+            )),
+            rx_wakers: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(NUM_WAKERS),
+                &com,
+            )),
+            interrupts: AtomicBool::new(false),
+            itx: AtomicBool::new(false),
             irq,
-            ienable,
         });
         let mut s = Self(i);
         let a = s.0.receive();
@@ -92,71 +111,47 @@ impl X86SerialPort {
 
     /// Check the transmit fifo to see if it is full
     fn can_send(&self) -> bool {
-        let a: u8 = self.0.base.port(5).port_read();
+        let a: u8 = self.0.base.access().port(5).port_read();
         (a & 0x20) != 0
     }
 
     /// Setup the serial port
     fn setup(&mut self) {
-        self.0
-            .tx_queue
-            .try_init_once(|| crossbeam::queue::ArrayQueue::new(1024))
-            .unwrap();
-        self.0
-            .tx_wakers
-            .try_init_once(|| crossbeam::queue::ArrayQueue::new(32))
-            .unwrap();
-        self.0
-            .rx_queue
-            .try_init_once(|| crossbeam::queue::ArrayQueue::new(1024))
-            .unwrap();
-        self.0
-            .rx_wakers
-            .try_init_once(|| crossbeam::queue::ArrayQueue::new(32))
-            .unwrap();
         // Enable interrupts for receiving data
-        self.0.base.port(1).port_write(1u8);
-        self.0.base.port(4).port_write(0x03u8);
+        self.0.base.access().port(1).port_write(1u8);
+        self.0.base.access().port(4).port_write(0x03u8);
     }
 
     /// The interrupt handler code
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
-            let stat: u8 = s.base.port(2).port_read();
+            let stat: u8 = s.base.interrupt_access().port(2).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
                     0 => {
-                        let _: u8 = s.base.port(3).port_read();
+                        let _: u8 = s.base.interrupt_access().port(3).port_read();
                     }
                     1 => {
-                        if let Ok(aq) = s.tx_queue.try_get() {
-                            if let Some(v) = aq.pop() {
-                                s.base.port(0).port_write(v);
-                            } else {
-                                s.disable_tx_interrupt();
-                            }
+                        if let Some(v) = s.tx_queue.interrupt_access().pop() {
+                            s.base.interrupt_access().port(0).port_write(v);
+                        } else {
+                            s.disable_tx_interrupt();
                         }
-                        if let Ok(a) = s.tx_wakers.try_get() {
-                            while let Some(w) = a.pop() {
-                                w.wake();
-                            }
+                        while let Some(w) = s.tx_wakers.interrupt_access().pop() {
+                            w.wake();
                         }
                     }
                     2 | 6 => {
-                        let recvd = s.force_receive();
-                        if let Ok(rq) = s.rx_queue.try_get() {
-                            if rq.push(recvd).is_err() {
-                                x86_64::instructions::bochs_breakpoint();
-                            }
+                        let recvd = s.base.interrupt_access().port(0).port_read();
+                        if s.rx_queue.interrupt_access().push(recvd).is_err() {
+                            x86_64::instructions::bochs_breakpoint();
                         }
-                        if let Ok(a) = s.rx_wakers.try_get() {
-                            while let Some(w) = a.pop() {
-                                w.wake();
-                            }
+                        while let Some(w) = s.tx_wakers.interrupt_access().pop() {
+                            w.wake();
                         }
                     }
                     3 => {
-                        let _: u8 = s.base.port(5).port_read();
+                        let _: u8 = s.base.interrupt_access().port(5).port_read();
                     }
                     _ => {
                         x86_64::instructions::bochs_breakpoint();
@@ -169,10 +164,10 @@ impl X86SerialPort {
     }
 
     /// Enable the rx interrupt, used when receiving data over the serial port
-    /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
-    unsafe fn enable_rx_interrupt(&self) {
-        if *self.0.interrupts.read() {
-            let mut ie = self.0.ienable.lock();
+    fn enable_rx_interrupt(&self) {
+        if self.0.interrupts.load(Ordering::Relaxed) {
+            let p = self.0.base.access();
+            let mut ie = p.port(1);
             let v: u8 = ie.port_read();
             ie.port_write(v | 1);
         }
@@ -186,41 +181,27 @@ impl X86SerialPort {
 
     /// Send a byte because we already know the port is ready
     fn force_send_byte(&self, c: u8) {
-        self.0.base.port(0).port_write(c);
+        self.0.base.access().port(0).port_write(c);
     }
 }
 
 impl Arc<X86SerialPortInternal> {
     /// Enable the tx interrupt, used when sending data over the serial port
-    /// * Safety: The irq should be disable when calling this function, otherwise the irq can happen before the object gets unlocked.
-    unsafe fn internal_enable_tx_interrupt(&self) {
-        if *self.interrupts.read() {
-            let mut ie = self.ienable.lock();
+    fn enable_tx_interrupt(&self) {
+        if self.interrupts.load(Ordering::Relaxed) {
+            let p = self.base.access();
+            let mut ie = p.port(1);
             let v: u8 = ie.port_read();
             ie.port_write(v | 2);
         }
     }
 
-    /// Synchronous version of enable_tx_interrupt
-    fn sync_enable_tx_interrupt(&self, sys: &crate::kernel::System) {
-        let (ie, irqnum) = { (*self.interrupts.read(), self.irq) };
-        if ie {
-            sys.disable_irq(irqnum);
-            {
-                unsafe {
-                    self.internal_enable_tx_interrupt();
-                }
-            }
-            sys.enable_irq(irqnum);
-        }
-    }
-
-    /// Stop the tx interrupt. Used when a transmission has completed.
+    /// Stop the tx interrupt. Used when a transmission has completed. Only to be called from the interrupt handler!
     fn disable_tx_interrupt(&self) {
-        if *self.interrupts.read() {
-            let mut p = self.base.port(1);
-            let v: u8 = p.port_read();
-            p.port_write(1 | (v & !2));
+        if self.interrupts.load(Ordering::Relaxed) {
+            let p = self.base.interrupt_access();
+            let v: u8 = p.port(1).port_read();
+            p.port(1).port_write(1 | (v & !2));
         }
     }
 
@@ -238,12 +219,12 @@ impl Arc<X86SerialPortInternal> {
 
     /// Receive a byte without checking
     fn force_receive(&self) -> u8 {
-        self.base.port(0).port_read()
+        self.base.access().port(0).port_read()
     }
 
     /// Check to see if there is a byte available
     fn can_receive(&self) -> bool {
-        let a: u8 = self.base.port(5).port_read();
+        let a: u8 = self.base.access().port(5).port_read();
         (a & 0x01) != 0
     }
 }
@@ -251,9 +232,9 @@ impl Arc<X86SerialPortInternal> {
 /// A stream struct for receiving serial data
 struct X86SerialStream {
     /// The data queue for the rx stream
-    queue: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<u8>>>,
+    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
     /// The wakers for the rx stream
-    wakers: Arc<conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<Waker>>>,
+    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
 }
 
 impl futures::Stream for X86SerialStream {
@@ -262,19 +243,12 @@ impl futures::Stream for X86SerialStream {
         self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<Self::Item>> {
-        if let Ok(q) = self.queue.try_get() {
-            let a = crate::SYSTEM.read().disable_interrupts_for(|| q.pop());
-            if let Some(b) = a {
-                core::task::Poll::Ready(Some(b))
-            } else {
-                crate::SYSTEM.read().disable_interrupts_for(|| {
-                    let ws = self.wakers.get().unwrap();
-                    ws.push(cx.waker().clone()).unwrap();
-                });
-                core::task::Poll::Pending
-            }
+        let a = self.queue.access().pop();
+        if let Some(b) = a {
+            core::task::Poll::Ready(Some(b))
         } else {
-            panic!();
+            self.wakers.access().push(cx.waker().clone()).unwrap();
+            core::task::Poll::Pending
         }
     }
 }
@@ -295,10 +269,10 @@ impl super::SerialTrait for X86SerialPort {
         use crate::kernel::SystemTrait;
         let irqnum = { self.0.irq };
         {
-            *self.0.interrupts.write() = false;
+            self.0.interrupts.store(false, Ordering::Relaxed);
         };
         crate::SYSTEM.read().disable_irq(irqnum);
-        self.0.base.port(1).port_write(0u8);
+        self.0.base.access().port(1).port_write(0u8);
     }
 
     fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {
@@ -309,8 +283,8 @@ impl super::SerialTrait for X86SerialPort {
             sys.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
         }
         {
-            self.0.base.port(4).port_write(0x03u8 | 8u8);
-            *self.0.interrupts.write() = true;
+            self.0.base.access().port(4).port_write(0x03u8 | 8u8);
+            self.0.interrupts.store(true, Ordering::Relaxed);
         };
         //unsafe { self.enable_rx_interrupt() };
         sys.enable_irq(irqnum);
@@ -318,31 +292,26 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_transmit(&self, data: &[u8]) {
-        if !*self.0.interrupts.read() {
+        if !self.0.interrupts.load(Ordering::Relaxed) {
             for c in data {
                 self.sync_send_byte(*c);
             }
         } else {
             let txq = self.0.tx_queue.clone();
-            *self.0.itx.write() = true;
+            self.0.itx.store(true, Ordering::Relaxed);
             let mut ienabled = false;
-            let sys = crate::SYSTEM.read();
-            for (i, c) in data.iter().enumerate() {
-                if let Ok(tx) = txq.try_get() {
-                    while tx.is_full() {}
-                    crate::SYSTEM.read().disable_interrupts_for(|| {
-                        tx.push(*c).unwrap();
-                    });
-                    if !ienabled {
-                        self.0.sync_enable_tx_interrupt(&sys);
-                        ienabled = true;
-                    }
+            for c in data.iter() {
+                while txq.interrupt_access().is_full() {}
+                txq.access().push(*c).unwrap();
+                if !ienabled {
+                    self.0.enable_tx_interrupt();
+                    ienabled = true;
                 }
             }
             if !ienabled {
-                self.0.sync_enable_tx_interrupt(&sys);
+                self.0.enable_tx_interrupt();
             }
-            *self.0.itx.write() = false;
+            self.0.itx.store(false, Ordering::Relaxed);
         }
     }
 
@@ -351,29 +320,30 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_flush(&self) {
-        let (i, txq) = { (*self.0.interrupts.read(), self.0.tx_queue.clone()) };
+        let (i, txq) = {
+            (
+                self.0.interrupts.load(Ordering::Relaxed),
+                self.0.tx_queue.clone(),
+            )
+        };
         if i {
-            if let Ok(tx) = txq.try_get() {
-                loop {
-                    let empty = crate::SYSTEM
-                        .read()
-                        .disable_interrupts_for(|| tx.is_empty());
-                    if empty {
-                        x86_64::instructions::bochs_breakpoint();
-                        break;
-                    }
+            loop {
+                let empty = txq.access().is_empty();
+                if empty {
+                    x86_64::instructions::bochs_breakpoint();
+                    break;
                 }
             }
         }
     }
 
     async fn transmit(&self, data: &[u8]) {
-        *self.0.itx.write() = true;
+        self.0.itx.store(true, Ordering::Relaxed);
         AsyncWriter::new(self.0.clone(), data, crate::SYSTEM.read().clone()).await
     }
 
     async fn transmit_str(&self, data: &str) {
-        *self.0.itx.write() = true;
+        self.0.itx.store(true, Ordering::Relaxed);
         AsyncWriter::new(
             self.0.clone(),
             data.as_bytes(),
@@ -383,10 +353,8 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     async fn flush(&self) {
-        if let Some(q) = self.0.tx_queue.get() {
-            while !q.is_empty() {
-                executor::Task::yield_now().await;
-            }
+        while !self.0.tx_queue.access().is_empty() {
+            executor::Task::yield_now().await;
         }
     }
 }
@@ -428,51 +396,43 @@ impl Future for AsyncWriter<'_> {
         let mut newindex = self.index;
         let mut interrupt_enable = false;
         let this = &self.s;
-        if !*this.interrupts.read() {
+        if !this.interrupts.load(Ordering::Relaxed) {
             panic!("interrupts not enabled for future");
         }
         let tx_wakers = this.tx_wakers.clone();
         let queue = this.tx_queue.clone();
-        let r2 = if let Some(q) = queue.get() {
-            loop {
-                if !q.is_full() {
-                    if newindex < self.data.len() {
-                        let a = crate::SYSTEM
-                            .read()
-                            .disable_interrupts_for(|| q.push(self.data[newindex]));
-                        if a.is_ok() {
-                            newindex += 1;
-                            if !interrupt_enable {
-                                interrupt_enable = true;
-                            }
-                        } else {
-                            let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
-                            break core::task::Poll::Pending;
+        let r2 = loop {
+            let qfull = queue.access().is_full();
+            if !qfull {
+                if newindex < self.data.len() {
+                    let a = queue.access().push(self.data[newindex]);
+                    if a.is_ok() {
+                        newindex += 1;
+                        if !interrupt_enable {
+                            interrupt_enable = true;
                         }
-                    } else if interrupt_enable {
-                        self.s.sync_enable_tx_interrupt(&self.sys);
-                        break core::task::Poll::Ready(());
                     } else {
-                        break core::task::Poll::Ready(());
+                        tx_wakers.access().push(cx.waker().clone());
+                        break core::task::Poll::Pending;
                     }
+                } else if interrupt_enable {
+                    self.s.enable_tx_interrupt();
+                    break core::task::Poll::Ready(());
                 } else {
-                    crate::SYSTEM.read().disable_interrupts_for(|| {
-                        let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
-                    });
-                    self.s.sync_enable_tx_interrupt(&self.sys);
-                    break core::task::Poll::Pending;
+                    break core::task::Poll::Ready(());
                 }
+            } else {
+                tx_wakers.access().push(cx.waker().clone());
+                self.s.enable_tx_interrupt();
+                break core::task::Poll::Pending;
             }
-        } else {
-            crate::SYSTEM.read().disable_interrupts_for(|| {
-                let _ = tx_wakers.get().unwrap().push(cx.waker().clone());
-            });
-            core::task::Poll::Pending
         };
         self.index = newindex;
         doors_macros::todo_item!("Remove this conditional code");
         if r2.is_ready() {
-            *self.s.itx.write() = false;
+            self.s
+                .itx
+                .store(false, core::sync::atomic::Ordering::Relaxed);
         }
         r2
     }

@@ -140,7 +140,7 @@ impl<A> AsyncLockedArc<A> {
 /// An async mutex
 pub struct AsyncLocked<A: ?Sized> {
     /// The lock
-    lock: core::sync::atomic::AtomicBool,
+    lock: AtomicBool,
     /// Wakers for the lock
     wakers: alloc::sync::Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
     /// The protected data
@@ -150,7 +150,7 @@ pub struct AsyncLocked<A: ?Sized> {
 /// The guard for the async mutex
 pub struct AsyncLockedMutexGuard<'a, A: ?Sized> {
     /// The lock reference
-    lock: &'a core::sync::atomic::AtomicBool,
+    lock: &'a AtomicBool,
     /// The unlocked data
     data: *mut A,
     /// The wakers for the mutex
@@ -197,7 +197,7 @@ impl<A> AsyncLocked<A> {
     /// Construct a new Self
     pub fn new(data: A) -> Self {
         Self {
-            lock: core::sync::atomic::AtomicBool::new(false),
+            lock: AtomicBool::new(false),
             wakers: alloc::sync::Arc::new(ArrayQueue::new(32)),
             data: UnsafeCell::new(data),
         }
@@ -416,7 +416,84 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
     }
 }
 
-/// A wrapper around a structure that should be guarded by disabling interrupts
+/// This is like [IrqGuarded], but for read only types (they don't need a mutex).
+#[derive(Clone)]
+pub struct IrqGuardedSimple<T> {
+    /// The guard value
+    value: IrqGuardedInner,
+    /// The item being guarded
+    inner: T,
+}
+
+impl<T> IrqGuardedSimple<T> {
+    /// Construct a new self.
+    /// #Arguments
+    /// * inner: The data to protect
+    /// * common: A reference to the IrqGuardedInner struct already created
+    pub fn new(inner: T, common: &IrqGuardedInner) -> Self {
+        Self {
+            value: common.clone(),
+            inner,
+        }
+    }
+
+    /// Use the inner value from a non-interrupt context
+    pub fn access(&self) -> IrqGuardedSimpleUse<T> {
+        let sys = crate::SYSTEM.read();
+        if self.value.disable_all_interrupts {
+            sys.disable_interrupts();
+        }
+        sys.disable_irq(self.value.irqnum);
+        (self.value.lock)(self.value.irqnum);
+        IrqGuardedSimpleUse {
+            r: &self.value,
+            val: &self.inner,
+            enable_interrupts: true,
+        }
+    }
+
+    /// Use the inner value from an interrupt context
+    pub fn interrupt_access(&self) -> IrqGuardedSimpleUse<T> {
+        IrqGuardedSimpleUse {
+            r: &self.value,
+            val: &self.inner,
+            enable_interrupts: false,
+        }
+    }
+}
+
+/// The usable instance of the [IrqGuarded] struct.
+pub struct IrqGuardedSimpleUse<'a, T> {
+    /// The reference to the inner struct
+    r: &'a IrqGuardedInner,
+    /// The unlocked data
+    val: &'a T,
+    /// Indicates true when run outside an interrupt context
+    enable_interrupts: bool,
+}
+
+impl<'a, T> Deref for IrqGuardedSimpleUse<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.val
+    }
+}
+
+impl<'a, T> Drop for IrqGuardedSimpleUse<'a, T> {
+    fn drop(&mut self) {
+        let sys = crate::SYSTEM.read();
+        (self.r.unlock)(self.r.irqnum);
+        if self.enable_interrupts {
+            sys.enable_irq(self.r.irqnum);
+            if self.r.disable_all_interrupts {
+                sys.enable_interrupts();
+            }
+        }
+    }
+}
+
+/// A wrapper around a structure that should be guarded by disabling interrupts.
+/// This is intended to be used on structures that need a mutex in addition to irq protection.
 pub struct IrqGuarded<T> {
     /// The guard value
     value: IrqGuardedInner,
@@ -425,15 +502,37 @@ pub struct IrqGuarded<T> {
 }
 
 /// The inner information for an [IrqGuarded] structure
-struct IrqGuardedInner {
+#[derive(Clone)]
+pub struct IrqGuardedInner {
     /// The irq number used to guard the item
     irqnum: u8,
     /// The unlock function
-    unlock: Box<dyn Fn(u8) + Send + Sync>,
+    unlock: Arc<Box<dyn Fn(u8) + Send + Sync>>,
     /// The lock function
-    lock: Box<dyn Fn(u8) + Send + Sync>,
+    lock: Arc<Box<dyn Fn(u8) + Send + Sync>>,
     /// True when all interrupts should be disabled
     disable_all_interrupts: bool,
+}
+
+impl IrqGuardedInner {
+    /// Construct a new self.
+    /// #Arguments
+    /// * disable_all_interrupts: Set to true when all interrupts should be disabled to protect the data
+    /// * lock: The device specific function to disable the desired interrupt for what is being protected
+    /// * unlock: The opposite of lock
+    pub fn new(
+        irqnum: u8,
+        disable_all_interrupts: bool,
+        lock: impl Fn(u8) + Send + Sync + 'static,
+        unlock: impl Fn(u8) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            irqnum,
+            unlock: Arc::new(Box::new(unlock)),
+            lock: Arc::new(Box::new(lock)),
+            disable_all_interrupts,
+        }
+    }
 }
 
 impl<T> IrqGuarded<T> {
@@ -443,20 +542,9 @@ impl<T> IrqGuarded<T> {
     /// * inner: The data to protect
     /// * lock: The device specific function to disable the desired interrupt for what is being protected
     /// * unlock: The opposite of lock
-    pub fn new(
-        irqnum: u8,
-        disable_all_interrupts: bool,
-        inner: T,
-        lock: impl Fn(u8) + Send + Sync + 'static,
-        unlock: impl Fn(u8) + Send + Sync + 'static,
-    ) -> Self {
+    pub fn new(inner: T, common: &IrqGuardedInner) -> Self {
         Self {
-            value: IrqGuardedInner {
-                irqnum,
-                unlock: Box::new(unlock),
-                lock: Box::new(lock),
-                disable_all_interrupts,
-            },
+            value: common.clone(),
             inner: AsyncLocked::new(inner),
         }
     }
@@ -477,7 +565,7 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Use the inner value from an interrupt context
-    pub fn interrupt_acess(&self) -> IrqGuardedUse<T> {
+    pub fn interrupt_access(&self) -> IrqGuardedUse<T> {
         IrqGuardedUse {
             r: &self.value,
             val: Some(self.inner.sync_lock()),
@@ -486,7 +574,7 @@ impl<T> IrqGuarded<T> {
     }
 }
 
-/// The usable instance of the [IrqGuarded] struct
+/// The usable instance of the [IrqGuarded] struct.
 pub struct IrqGuardedUse<'a, T> {
     /// The reference to the inner struct
     r: &'a IrqGuardedInner,

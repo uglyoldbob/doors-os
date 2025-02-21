@@ -14,7 +14,7 @@ use crate::modules::{
     },
     video::hex_dump_generic,
 };
-use crate::{Arc, IoReadWrite, IrqGuarded};
+use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Holds either memory or io space
@@ -490,6 +490,28 @@ struct IntelPro1000DeviceInternal {
     bar0: crate::IrqGuarded<MemoryOrIo>,
     /// The link is up
     up: AtomicBool,
+}
+
+impl Arc<IntelPro1000DeviceInternal> {
+    /// Update the link status from an interrupt context
+    fn update_link_status_interrupt(&self) {
+        let status = self
+            .bar0
+            .interrupt_access()
+            .read(IntelPro1000Registers::STATUS as u16);
+        let linkstat = (status & 2) != 0;
+        self.up.store(linkstat, Ordering::Relaxed);
+    }
+
+    async fn update_link_status(&self) {
+        let status = self
+            .bar0
+            .access()
+            .await
+            .read(IntelPro1000Registers::STATUS as u16);
+        let linkstat = (status & 2) != 0;
+        self.up.store(linkstat, Ordering::Relaxed);
+    }
 }
 
 impl IntelPro1000DeviceInternal {
@@ -1051,11 +1073,11 @@ impl IntelPro1000Device {
     /// The interrupt handler for the network card
     fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
         x86_64::instructions::bochs_breakpoint();
-        let bar0 = this.bar0.interrupt_acess();
+        let bar0 = this.bar0.interrupt_access();
         let reason = bar0.read(IntelPro1000Registers::ICR as u16);
         let reason = InterruptCauseRegister(reason);
         if reason.LSC() {
-            this.up.store(true, Ordering::Relaxed);
+            this.update_link_status_interrupt();
         }
     }
 
@@ -1070,7 +1092,7 @@ impl IntelPro1000Device {
         );
         let val = 0x1f6fc;
         // Marked as interrupt access becuase interrupts are not fully setup yet
-        let mut bar0 = self.internal.bar0.interrupt_acess();
+        let mut bar0 = self.internal.bar0.interrupt_access();
         while bar0.read(IntelPro1000Registers::IMS as u16) != val {
             bar0.write(IntelPro1000Registers::IMS as u16, val);
             bar0.read(IntelPro1000Registers::STATUS as u16);
@@ -1198,7 +1220,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         doors_macros::todo!()
                     }
                 };
-                let m = IrqGuarded::new(irqnum, false, m, |_i| {}, |_i| {});
+                let com = IrqGuardedInner::new(irqnum, false, |_| {}, |_| {});
+                let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
                 let mut d = IntelPro1000Device {
                     internal: Arc::new(IntelPro1000DeviceInternal::new(m, up)),
@@ -1219,6 +1242,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     let sys = crate::SYSTEM.read();
                     d.enable_interrupts(&sys, irqnum).await;
                 }
+                d.internal.update_link_status().await;
                 d.internal.bar0.access().await.hex_dump().await;
                 crate::VGA
                     .print_str_async(&format!("Detected model as {:?}\r\n", d.model))
