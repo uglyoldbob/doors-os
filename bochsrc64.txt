@@ -6,5 +6,5 @@ e1000: enabled=1, mac=52:54:00:12:34:56
 com1: enabled=1, mode=file, dev=serial.log
 com2: enabled=1, mode=file, dev=serial2.log
 boot: cdrom
-debug_symbols: file=symbols_bochs
+debug_symbols: file=./kernel/symbols_bochs
 magic_break: enabled=1
