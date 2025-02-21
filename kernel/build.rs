@@ -105,6 +105,7 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=config.toml");
     println!("cargo:rustc-link-arg=-T{}", linker_script);
     println!("cargo:rerun-if-changed={}", linker_script);
 }
