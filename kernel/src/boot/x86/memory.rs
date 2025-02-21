@@ -37,7 +37,7 @@ impl HeapNode {
     /// Print information for the node
     fn print(&self) {
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "heap node is {:p} {:?}\r\n",
+            "heap node is {:p} {:x?}\r\n",
             self,
             self
         ));
@@ -211,6 +211,7 @@ impl<'a> HeapManager<'a> {
             let mut elem = self.head;
             let mut prev_elem: Option<NonNull<HeapNode>> = None;
             let mut best_fit_link: &mut Option<NonNull<HeapNode>> = &mut None;
+            let mut best_fit_prev: Option<NonNull<HeapNode>> = None;
             let mut best_fit: Option<NonNull<HeapNode>> = None;
             let mut best_fit_ha: Option<HeapNodeAlign> = None;
 
@@ -225,6 +226,7 @@ impl<'a> HeapManager<'a> {
                                 &mut self.head
                             };
                             best_fit = elem;
+                            best_fit_prev = prev_elem;
                             best_fit_ha = Some(ha);
                         }
                     } else {
@@ -234,6 +236,7 @@ impl<'a> HeapManager<'a> {
                             &mut self.head
                         };
                         best_fit = elem;
+                        best_fit_prev = prev_elem;
                         best_fit_ha = Some(ha);
                     }
                 }
@@ -265,11 +268,10 @@ impl<'a> HeapManager<'a> {
                 } else {
                     let b = unsafe { best.as_ref() };
                     if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
-                        let c = HeapNode {
-                            next: b.next,
-                            size: ha.pre_align,
-                        };
-                        todo!();
+                        let mut prev = best_fit_prev.unwrap();
+                        let prev = unsafe { prev.as_mut() };
+                        prev.next = b.next;
+                        (crate::address(b) + ha.pre_align) as *mut u8
                     } else {
                         let newblock = crate::address(b) + ha.pre_align + b.size;
                         let e = unsafe {

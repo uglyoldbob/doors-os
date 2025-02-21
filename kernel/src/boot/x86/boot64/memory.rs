@@ -774,7 +774,7 @@ impl<'a> PagingTableManager<'a> {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
             self.setup_cache(cr3, vaddr);
-            let pt1_index = (vaddr >> 12) & 0x3FF;
+            let pt1_index = (vaddr >> 12) & 0x1FF;
 
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
                 let table = unsafe { &mut *self.pt1.as_mut_ptr() };
