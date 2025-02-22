@@ -542,7 +542,6 @@ struct AmlHandler {}
 /// The system boot structure
 #[doors_macros::config_check_struct]
 pub struct X86System<'a> {
-    #[doorsconfig = "acpi"]
     /// Used for information regarding the bootup of the kernel
     boot_info: multiboot2::BootInformation<'a>,
     #[doorsconfig = "acpi"]
@@ -1157,7 +1156,6 @@ pub extern "C" fn start64() -> ! {
     let sys = {
         let s = doors_macros::config_build_struct! {
             X86System {
-                #[doorsconfig = "acpi"]
                 boot_info: boot_info,
                 #[doorsconfig = "acpi"]
                 acpi_handler: Acpi {
@@ -1170,7 +1168,6 @@ pub extern "C" fn start64() -> ! {
             }
         };
         let b = Box::new(s);
-        doors_macros::todo_item!("Populated acpi stuff here");
         Box::into_pin(b)
     };
 
