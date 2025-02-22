@@ -30,8 +30,8 @@ add_custom_target(
     image_cd64
     DEPENDS kernel64
     BYPRODUCTS cd64.iso cd64test.iso
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel64 --volid="Doors OS"
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64test.iso --name-setup=iso9660 ./boot/kernel=./kerneltest64 --volid="Doors OS TEST"
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel/kernel64 --volid="Doors OS"
+    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64test.iso --name-setup=iso9660 ./boot/kernel=./kernel/kerneltest64 --volid="Doors OS TEST"
 )
 
 add_custom_target(
@@ -39,17 +39,20 @@ add_custom_target(
     DEPENDS image_cd64 symbols_bochs disassemble
     COMMAND ${BOCHS} -f bochsrc64_windows.txt -q
 )
+
+file(GENERATE OUTPUT ./fix_network_test INPUT ./fnt_windows FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+
 endif (WIN32)
-
-if (UNIX)
-
-file(GENERATE OUTPUT ./fix_network_test INPUT ./fnt FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
 
 add_custom_target(
     net_test
     COMMAND cargo build --bin network_test --release
     COMMAND ./fix_network_test
 )
+
+if (UNIX)
+
+file(GENERATE OUTPUT ./fix_network_test INPUT ./fnt FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
 
 add_custom_target(
     grub-skeleton

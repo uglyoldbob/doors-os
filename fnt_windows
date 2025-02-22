@@ -1,0 +1,3 @@
+BINARY_PATH="./target/release/network_test.exe"
+#sudo setcap cap_net_raw,cap_net_admin=eip $BINARY_PATH
+$BINARY_PATH --name \\Device\\NPF_{71D77406-BE0C-491B-974D-8CAE54692A2E} --random-count 1000

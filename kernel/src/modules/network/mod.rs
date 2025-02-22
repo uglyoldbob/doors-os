@@ -2,7 +2,7 @@
 
 use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String};
 
-use crate::{AsyncLocked, AsyncLockedArc, IrqGuardedSimple, LockedArc};
+use crate::{kernel::SystemTrait, AsyncLocked, AsyncLockedArc, IrqGuardedSimple, LockedArc};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -157,12 +157,26 @@ pub fn network_init() {
 pub async fn process_packets_received() {
     loop {
         if let Some(q) = ETHERNET_PACKETS_RECEIVED.get() {
-            if let Some(p) = q.pop() {
-                crate::VGA.print_str(&alloc::format!("Received packet: {:?}\r\n", p));
+            crate::VGA.print_str_async("Waiting for a packet\r\n").await;
+            loop {
+                if crate::SYSTEM.read().disable_interrupts_for(|| q.is_empty()) {
+                    crate::executor::Task::yield_now().await;
+                }
+                else {
+                    break;
+                }
+            }
+            crate::VGA.print_str_async("There is at least one packet\r\n").await;
+            let p = crate::SYSTEM.read().disable_interrupts_for(|| q.pop());
+            if let Some(p) = p {
+                crate::VGA.print_str_async(&alloc::format!("Received packet: {:?}\r\n", p)).await;
             }
             else {
                 crate::executor::Task::yield_now().await;
             }
+        }
+        else {
+            panic!();
         }
     }
 }
