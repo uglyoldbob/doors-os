@@ -2,7 +2,7 @@
 
 use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String};
 
-use crate::{AsyncLocked, AsyncLockedArc, LockedArc};
+use crate::{AsyncLocked, AsyncLockedArc, IrqGuardedSimple, LockedArc};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -104,3 +104,72 @@ pub trait NetworkAdapterTrait {
 /// A network adapter
 #[doors_macros::fill_enum_with_variants(NetworkAdapterTrait)]
 pub enum NetworkAdapter {}
+
+const MAX_RX_PACKET_SIZE: usize = 8192;
+
+/// A raw ethernet packet received from a network card
+pub struct EthernetPacket {
+    /// The contents of the packet
+    data: [u8; MAX_RX_PACKET_SIZE],
+    /// The actual length of the packet
+    length: usize,
+}
+
+impl core::fmt::Debug for EthernetPacket {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for i in 0..self.length {
+            let d = self.data[i];
+            f.write_str(&alloc::format!("{:x} ", d))?;
+        }
+        Ok(())
+    }
+}
+
+impl EthernetPacket {
+    fn new() -> Self {
+        Self {
+            data: [0; MAX_RX_PACKET_SIZE],
+            length: 0,
+        }
+    }
+
+    /// Copy the data into the packet for processing
+    fn copy(&mut self, r: &[u8]) {
+        self.data[0..r.len()].copy_from_slice(r);
+        self.length = r.len();
+    }
+}
+
+lazy_static::lazy_static! {
+    /// The list of received packets
+    pub static ref ETHERNET_PACKETS_RECEIVED: conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<EthernetPacket>> =
+        conquer_once::spin::OnceCell::uninit();
+}
+
+/// Initialize data required for network operations
+pub fn network_init() {
+    ETHERNET_PACKETS_RECEIVED.init_once(|| {
+        crossbeam::queue::ArrayQueue::new(32)
+    });
+}
+
+/// Temporary function to process received ethernet packets
+pub async fn process_packets_received() {
+    loop {
+        if let Some(q) = ETHERNET_PACKETS_RECEIVED.get() {
+            if let Some(p) = q.pop() {
+                crate::VGA.print_str(&alloc::format!("Received packet: {:?}\r\n", p));
+            }
+            else {
+                crate::executor::Task::yield_now().await;
+            }
+        }
+    }
+}
+
+/// Called from an interrupt context to process a received ethernet packet
+fn interrupt_process_received_packet(packet: EthernetPacket) {
+    if let Some(q) = ETHERNET_PACKETS_RECEIVED.get() {
+        let _ = q.push(packet);
+    }
+}

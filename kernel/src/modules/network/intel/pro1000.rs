@@ -490,6 +490,8 @@ struct IntelPro1000DeviceInternal {
     bar0: crate::IrqGuarded<MemoryOrIo>,
     /// The link is up
     up: AtomicBool,
+    /// The rx buffers and the index for the current rx buffer
+    rxbufs: crate::IrqGuarded<Option<(RxBuffers, u8)>>,
 }
 
 impl Arc<IntelPro1000DeviceInternal> {
@@ -516,8 +518,12 @@ impl Arc<IntelPro1000DeviceInternal> {
 
 impl IntelPro1000DeviceInternal {
     /// Create a new Self
-    fn new(bar0: crate::IrqGuarded<MemoryOrIo>, up: AtomicBool) -> Self {
-        Self { bar0, up }
+    fn new(bar0: crate::IrqGuarded<MemoryOrIo>, up: AtomicBool, common: &IrqGuardedInner) -> Self {
+        Self {
+            bar0,
+            up,
+            rxbufs: IrqGuarded::new(None, common),
+        }
     }
 }
 
@@ -532,10 +538,6 @@ pub struct IntelPro1000Device {
     _io: crate::IoPortArray<'static>,
     /// Is the eeprom present?
     eeprom_present: Option<bool>,
-    /// The rx buffers
-    rxbufs: Option<RxBuffers>,
-    /// The current rx buffer
-    rxbufindex: Option<u8>,
     /// The tx buffers
     txbufs: Option<TxBuffers>,
     /// The current tx buffer
@@ -808,7 +810,6 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                     }
                 }
             }
-            self.check_for_received_packets().await;
             Ok(())
         } else {
             doors_macros::todo_item_panic!("Packets larger than 8192 bytes not yet handled");
@@ -817,13 +818,6 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
 }
 
 impl IntelPro1000Device {
-    /// Check for received packets
-    async fn check_for_received_packets(&mut self) {
-        crate::VGA
-            .print_str_async(&format!("Checking for received packets\r\n"))
-            .await;
-    }
-
     /// Detect the presence of an eeprom and store the result
     async fn detect_eeprom(&mut self) -> bool {
         if self.eeprom_present.is_none() {
@@ -994,11 +988,12 @@ impl IntelPro1000Device {
 
     /// Initialize the rx buffers for the device
     async fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
-        if self.rxbufs.is_none() {
+        let ra = ReceiveAddress::new(*mac, 0, true);
+        self.set_receive_mac_address(0, &ra).await;
+        self.clear_multicast_table_array().await;
+        let mut rxbufs = self.internal.rxbufs.access().await;
+        if rxbufs.is_none() {
             self.mac_address = *mac;
-            let ra = ReceiveAddress::new(*mac, 0, true);
-            self.set_receive_mac_address(0, &ra).await;
-            self.clear_multicast_table_array().await;
             let mut bar0 = self.internal.bar0.access().await;
             // Interrupts will be enabled later on
             let rxbuf = RxBuffers::new(32, 8192)?;
@@ -1032,8 +1027,7 @@ impl IntelPro1000Device {
                     | RctrlFlags::BSIZE_8192)
                     .bits(),
             );
-            self.rxbufindex = Some(0);
-            self.rxbufs = Some(rxbuf);
+            rxbufs.replace((rxbuf, 0));
         }
         Ok(())
     }
@@ -1083,6 +1077,26 @@ impl IntelPro1000Device {
         let reason = InterruptCauseRegister(reason);
         if reason.LSC() {
             this.update_link_status_interrupt();
+        }
+        if reason.RXDMT0() {
+            let a = this.rxbufs.interrupt_access();
+            if let Some((buffer, index)) = a.as_ref() {
+                let rxbuf = &buffer.bufs[*index as usize];
+                if rxbuf.status.0 != 0 {
+                    let mut packet = super::super::EthernetPacket::new();
+                    if !rxbuf.status.eop() {
+                        doors_macros::todo!("Process a packet covering more than one descriptor");
+                    }
+                    else {
+                        packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
+                    }
+                    super::super::interrupt_process_received_packet(packet);
+                    let mut bar0 = this.bar0.interrupt_access();
+                    let mut t = bar0.read(IntelPro1000Registers::RxDescTail as u16);
+                    t = (t + 1) % buffer.bufs.len() as u32;
+                    bar0.write(IntelPro1000Registers::RxDescTail as u16, t);
+                }
+            }
         }
     }
 
@@ -1229,12 +1243,10 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
                 let mut d = IntelPro1000Device {
-                    internal: Arc::new(IntelPro1000DeviceInternal::new(m, up)),
+                    internal: Arc::new(IntelPro1000DeviceInternal::new(m, up, &com)),
                     _bars: bars,
                     _io: i,
                     eeprom_present: None,
-                    rxbufs: None,
-                    rxbufindex: None,
                     txbufs: None,
                     txbufindex: None,
                     model,

@@ -134,6 +134,7 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
+            crate::modules::network::network_init();
         }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
@@ -152,6 +153,7 @@ fn main() -> ! {
             }
         }
         let mut executor = Executor::default();
+        executor.spawn(executor::Task::new(crate::modules::network::process_packets_received())).unwrap();
         if doors_macros::config_check_equals!(gdbstub, "true") {
             executor.spawn(executor::Task::new(gdbstub::run())).unwrap();
         } else {
