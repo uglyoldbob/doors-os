@@ -121,6 +121,7 @@ async fn net_test() {
                 rng.generate_iter(packet.iter_mut());
             }
             na.send_packet(&packet).await.unwrap();
+            executor::Task::yield_now().await;
         }
     }
 }

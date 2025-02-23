@@ -2,13 +2,11 @@
 
 use core::num::NonZero;
 
-use alloc::fmt::format;
 use gdbstub::target::ext::base::{
     multithread::{MultiThreadBase, MultiThreadResume},
-    singlethread::SingleThreadBase,
 };
 
-use crate::{kernel::OwnedDevice, modules::serial::Serial, VGA};
+use crate::{kernel::OwnedDevice, modules::serial::Serial};
 
 /// A target for the gdbstub
 struct DoorsTarget {}
@@ -49,16 +47,16 @@ impl gdbstub::target::ext::breakpoints::Breakpoints for DoorsTarget {
 impl gdbstub::target::ext::breakpoints::HwBreakpoint for DoorsTarget {
     fn add_hw_breakpoint(
         &mut self,
-        addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
-        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+        _addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
+        _kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
     ) -> gdbstub::target::TargetResult<bool, Self> {
         todo!()
     }
 
     fn remove_hw_breakpoint(
         &mut self,
-        addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
-        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+        _addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
+        _kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
     ) -> gdbstub::target::TargetResult<bool, Self> {
         todo!()
     }
@@ -75,15 +73,15 @@ impl MultiThreadResume for DoorsTarget {
 
     fn set_resume_action_continue(
         &mut self,
-        tid: gdbstub::common::Tid,
-        signal: Option<gdbstub::common::Signal>,
+        _tid: gdbstub::common::Tid,
+        _signal: Option<gdbstub::common::Signal>,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
 
 impl MultiThreadBase for DoorsTarget {
-    fn is_thread_alive(&mut self, tid: gdbstub::common::Tid) -> Result<bool, Self::Error> {
+    fn is_thread_alive(&mut self, _tid: gdbstub::common::Tid) -> Result<bool, Self::Error> {
         Ok(true)
     }
 

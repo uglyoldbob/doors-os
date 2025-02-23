@@ -5,14 +5,10 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 use core::task::Waker;
 
-use spin::Mutex;
-use spin::RwLock;
-
 use crate::common;
 use crate::Arc;
 
 use crate::executor;
-use crate::kernel::SystemTrait;
 use crate::IoPortArray;
 use crate::IoReadWrite;
 use crate::IrqGuardedSimple;

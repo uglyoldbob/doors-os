@@ -810,6 +810,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                     }
                 }
             }
+            self.dump_registers().await;
             Ok(())
         } else {
             doors_macros::todo_item_panic!("Packets larger than 8192 bytes not yet handled");
@@ -1027,6 +1028,10 @@ impl IntelPro1000Device {
                     | RctrlFlags::BSIZE_8192)
                     .bits(),
             );
+            crate::VGA.print_str_async("RX BUFFERS:\r\n").await;
+            for r in rxbuf.bufs.iter() {
+                hex_dump_generic_async(r, false, false).await;
+            }
             rxbufs.replace((rxbuf, 0));
         }
         Ok(())
@@ -1252,6 +1257,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     model,
                     mac_address: MacAddress::default(),
                 };
+                f.set_bus_mastering(cs, bus, dev, true);
                 {
                     crate::VGA
                         .print_str_async(&format!("The irq line is {}\r\n", irqnum))
@@ -1267,13 +1273,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 crate::VGA
                     .print_str_async(&format!("EEPROM DETECTED: {}\r\n", d.detect_eeprom().await))
                     .await;
-                let mut data = [0u16; 256];
-                for (i, data) in data.iter_mut().enumerate() {
-                    *data = d.read_from_eeprom(i as u8).await;
-                }
-                hex_dump_generic_async(&data, true, false).await;
                 let mac = d.get_mac_address().await;
-                hex_dump_async(&mac.address, false, false).await;
+                crate::VGA.print_str_async(&alloc::format!("The mac address is {:?}\r\n", mac)).await;
                 if let Err(e) = d.init_rx(&mac).await {
                     crate::VGA
                         .print_str_async(&format!("RX buffer allocation error {:?}\r\n", e))
@@ -1284,8 +1285,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         .print_str_async(&format!("TX buffer allocation error {:?}\r\n", e))
                         .await;
                 }
+                d.dump_registers().await;
                 d.general_config().await;
-                f.set_bus_mastering(cs, bus, dev, true);
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r).await {
                         crate::VGA
