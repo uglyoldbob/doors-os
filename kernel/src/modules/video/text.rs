@@ -1,6 +1,6 @@
 //! The kernel module for x86 vga text mode.
 
-use super::VgaChar;
+use super::{TextDisplayTrait, VgaChar};
 
 /// The memory in use for the x86 vga hardware
 pub struct X86VgaTextHardware {
@@ -81,6 +81,8 @@ impl crate::modules::video::TextDisplayTrait for X86VgaTextMode {
     }
 
     async fn flush(&mut self) {}
+
+    fn sync_flush(&mut self) {}
 
     fn stop_async(&mut self) {}
 }

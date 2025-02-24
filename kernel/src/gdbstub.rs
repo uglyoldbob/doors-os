@@ -2,9 +2,7 @@
 
 use core::num::NonZero;
 
-use gdbstub::target::ext::base::{
-    multithread::{MultiThreadBase, MultiThreadResume},
-};
+use gdbstub::target::ext::base::multithread::{MultiThreadBase, MultiThreadResume};
 
 use crate::{kernel::OwnedDevice, modules::serial::Serial};
 

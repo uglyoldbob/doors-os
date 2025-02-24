@@ -249,7 +249,6 @@ fn serial_interrupts() {
     if let Some(mut s) = crate::kernel::SERIAL.take_device(0) {
         s.sync_transmit_str("About to enable async mode for serial port 0\r\n");
         s.enable_async(sys.clone()).unwrap();
-        s.sync_flush();
         let t = s.convert(
             |a| a.make_text_display(),
             move |t| {

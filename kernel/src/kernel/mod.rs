@@ -295,7 +295,11 @@ pub trait SystemTrait {
         r
     }
     /// Register a serial port handler
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F);
+    fn register_irq_handler<F: Fn() -> () + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        irq: u8,
+        handler: F,
+    );
     /// Enable IRQ
     fn enable_irq(&self, irq: u8);
     /// Disable IRQ
@@ -341,7 +345,7 @@ impl NullSystem {
 impl SystemTrait for NullSystem {
     fn enable_interrupts(&self) {}
     fn disable_interrupts(&self) {}
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(
+    fn register_irq_handler<F: Fn() -> () + Send + Sync + crate::Interrupt + 'static>(
         &self,
         _irq: u8,
         _handler: F,

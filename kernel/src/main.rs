@@ -7,6 +7,7 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(auto_traits)]
 #![feature(negative_impls)]
 #![feature(type_alias_impl_trait)]
 #![feature(unboxed_closures)]
@@ -151,7 +152,13 @@ fn main() -> ! {
             }
         }
         let mut executor = Executor::default();
-        executor.spawn(executor::Task::new(crate::modules::network::process_packets_received())).unwrap();
+        if false {
+            executor
+                .spawn(executor::Task::new(
+                    crate::modules::network::process_packets_received(),
+                ))
+                .unwrap();
+        }
         if doors_macros::config_check_equals!(gdbstub, "true") {
             executor.spawn(executor::Task::new(gdbstub::run())).unwrap();
         } else {
@@ -199,7 +206,9 @@ fn main() -> ! {
                 }
             })
             .unwrap();
-        executor.spawn(executor::Task::new(net_test())).unwrap();
+        if false {
+            executor.spawn(executor::Task::new(net_test())).unwrap();
+        }
         executor
             .spawn_closure(async || {
                 modules::pci::setup_pci().await;

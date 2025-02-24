@@ -325,15 +325,8 @@ impl acpi::AcpiHandler for Acpi<'_> {
             size
         };
         if physical_address == 0 {
-            log::error!("Received a null pointer request size {:x}", size);
-            crate::VGA.sync_flush();
             panic!("Received a null pointer request size");
         }
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "sizeof T is {:x} ({:x})\r\n",
-            core::mem::size_of::<T>(),
-            size
-        ));
         if physical_address < (1 << 22) {
             acpi::PhysicalMapping::new(
                 physical_address,
@@ -343,11 +336,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 self.clone(),
             )
         } else {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "ACPI MAP {:x} size {:x}\r\n",
-                physical_address,
-                size
-            ));
             let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
             let end_remainder =
                 (size_before_allocation + size) % core::mem::size_of::<memory::Page>();
@@ -366,11 +354,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
             .unwrap();
             let buf = self.vmm.allocate(layout).unwrap();
             let bufaddr = crate::slice_address(buf.as_ref());
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Got a virtual addres {:x}, size {:x}\r\n",
-                bufaddr,
-                buf.len()
-            ));
 
             let mut p = self.pageman.sync_lock();
             let e = p.map_addresses_read_only(bufaddr, start, realsize);
@@ -386,22 +369,9 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 size + size_after_allocation + 0x1000,
                 self.clone(),
             );
-            crate::VGA.print_str("Dumping mapped structure\r\n");
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "sizeof T is {:x}\r\n",
-                core::mem::size_of::<T>()
-            ));
+
             let a: usize = r.virtual_start().addr().into();
             let p = unsafe { core::slice::from_raw_parts(a as *const u8, size) };
-            hex_dump(p, false, true);
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "ACPI PHYSICAL MAP virtual {:x} to physical {:x} size {:x} {:x}\r\n",
-                r.virtual_start().as_ptr() as usize,
-                r.physical_start(),
-                r.region_length(),
-                r.mapped_length()
-            ));
-            crate::VGA.sync_flush();
             r
         }
     }
@@ -413,17 +383,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
             let s = region.virtual_start().as_ptr() as usize;
             let s = s - s % core::mem::size_of::<memory::Page>();
             let length = region.mapped_length();
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "ACPI UNMAP virtual {:x} physical {:x} size {:x} {:x}\r\n",
-                region.virtual_start().as_ptr() as usize,
-                region.physical_start(),
-                length,
-                region.region_length()
-            ));
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "sizeof T is {:x}\r\n",
-                core::mem::size_of::<T>()
-            ));
             p.unmap_mapped_pages(s, length);
             let ptr = s as *mut u8;
             let layout =
@@ -774,7 +733,11 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     doors_macros::todo_item!("Add code for unregistering an irq handler");
-    fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
+    fn register_irq_handler<F: Fn() + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        irq: u8,
+        handler: F,
+    ) {
         let a = Box::new(handler);
         if let Ok(ih) = IRQ_HANDLERS[irq as usize].try_get() {
             let mut irqs = ih.sync_lock();
@@ -823,29 +786,6 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
         aml.initialize_objects().unwrap();
-
-        {
-            let this = self.sync_lock();
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "Kernel end is at {:x}\r\n",
-                unsafe { &super::END_OF_KERNEL } as *const u8 as usize
-            ));
-            crate::VGA.print_str(&alloc::format!(
-                "Boot information header is at {:x}, size {:x}\r\n",
-                this.boot_info.start_address(),
-                this.boot_info.total_size(),
-            ));
-            crate::VGA.print_str(&alloc::format!(
-                "Command line tag: {:?}\r\n",
-                this.boot_info.command_line_tag()
-            ));
-
-            if let Some(mm) = this.boot_info.memory_map_tag() {
-                for area in mm.memory_areas().iter() {
-                    crate::VGA.print_str(&alloc::format!("Memory area {:x?}\r\n", area));
-                }
-            }
-        }
 
         doors_macros::config_check_bool!(acpi, {
             self.handle_acpi(&mut aml);

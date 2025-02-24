@@ -346,6 +346,8 @@ impl<'a> HeapManager<'a> {
     }
 }
 
+impl !crate::Interrupt for HeapManager<'_> {}
+
 unsafe impl core::alloc::GlobalAlloc for Locked<HeapManager<'_>> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         let mut alloc = self.sync_lock();

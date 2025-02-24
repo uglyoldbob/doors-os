@@ -1090,8 +1090,7 @@ impl IntelPro1000Device {
                     let mut packet = super::super::RawEthernetPacket::new();
                     if !rxbuf.status.eop() {
                         doors_macros::todo!("Process a packet covering more than one descriptor");
-                    }
-                    else {
+                    } else {
                         packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                     }
                     super::super::interrupt_process_received_packet(packet);
@@ -1243,7 +1242,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         doors_macros::todo!()
                     }
                 };
-                let com = IrqGuardedInner::new(irqnum, false, |_| {}, |_| {});
+                let com = IrqGuardedInner::new(irqnum, false, true, |_| {}, |_| {});
                 let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
                 let mut d = IntelPro1000Device {
@@ -1272,7 +1271,9 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     .print_str_async(&format!("EEPROM DETECTED: {}\r\n", d.detect_eeprom().await))
                     .await;
                 let mac = d.get_mac_address().await;
-                crate::VGA.print_str_async(&alloc::format!("The mac address is {:x?}\r\n", mac)).await;
+                crate::VGA
+                    .print_str_async(&alloc::format!("The mac address is {:x?}\r\n", mac))
+                    .await;
                 if let Err(e) = d.init_rx(&mac).await {
                     crate::VGA
                         .print_str_async(&format!("RX buffer allocation error {:?}\r\n", e))
