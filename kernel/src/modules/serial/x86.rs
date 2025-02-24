@@ -272,7 +272,7 @@ impl super::SerialTrait for X86SerialPort {
             self.0.interrupts.store(false, Ordering::Relaxed);
         };
         crate::SYSTEM.read().disable_irq(irqnum);
-        self.0.base.access().port(1).port_write(0u8);
+        self.0.base.interrupt_access().port(1).port_write(0u8);
     }
 
     fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {

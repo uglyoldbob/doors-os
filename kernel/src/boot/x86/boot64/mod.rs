@@ -186,6 +186,18 @@ pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
     }
 }
 
+/// The general protection fault handler
+extern "x86-interrupt" fn general_protection_handler(isf: InterruptStackFrame, c: u64) {
+    crate::VGA.stop_async();
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "General protection fault {:x} @{:x}\r\n",
+        c, isf.instruction_pointer.as_u64()
+    ));
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
 ///The handler for segment not present
 #[interrupt_arg_64]
 pub extern "C" fn segment_not_present(arg: u32) {
@@ -1132,6 +1144,8 @@ pub extern "C" fn start64() -> ! {
                 double_fault_handler as *const (),
             ));
             idt.double_fault = entry;
+
+            idt.general_protection_fault.set_handler_fn(general_protection_handler);
 
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(

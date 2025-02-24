@@ -25,6 +25,7 @@ pub use boot::mem2::*;
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
+pub mod scheduler;
 
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
@@ -134,6 +135,7 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
+            scheduler::Task::test();
         }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
