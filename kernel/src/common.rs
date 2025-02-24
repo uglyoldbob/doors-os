@@ -10,6 +10,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+doors_macros::todo_item!("Implement a Interrupt marker trait for use in marking code as safe to use in interrupt contexts");
+
 use alloc::boxed::Box;
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;

@@ -139,9 +139,7 @@ impl X86SerialPort {
                     }
                     2 | 6 => {
                         let recvd = s.base.interrupt_access().port(0).port_read();
-                        if s.rx_queue.interrupt_access().push(recvd).is_err() {
-                            x86_64::instructions::bochs_breakpoint();
-                        }
+                        let _ = s.rx_queue.interrupt_access().push(recvd);
                         while let Some(w) = s.tx_wakers.interrupt_access().pop() {
                             w.wake();
                         }
@@ -150,7 +148,6 @@ impl X86SerialPort {
                         let _: u8 = s.base.interrupt_access().port(5).port_read();
                     }
                     _ => {
-                        x86_64::instructions::bochs_breakpoint();
                     }
                 }
             } else {
@@ -321,7 +318,6 @@ impl super::SerialTrait for X86SerialPort {
             loop {
                 let empty = self.0.tx_queue.access().is_empty();
                 if empty {
-                    x86_64::instructions::bochs_breakpoint();
                     break;
                 }
             }

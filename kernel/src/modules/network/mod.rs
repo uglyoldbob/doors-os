@@ -1,6 +1,6 @@
 //! Networking code for the kernel
 
-use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String};
+use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String, vec::Vec};
 
 use crate::{kernel::SystemTrait, AsyncLocked, AsyncLockedArc, IrqGuardedSimple, LockedArc};
 
@@ -51,6 +51,14 @@ pub struct MacAddress {
 impl Default for MacAddress {
     fn default() -> Self {
         Self { address: [0; 6] }
+    }
+}
+
+impl From<&[u8]> for MacAddress {
+    fn from(a: &[u8]) -> Self {
+        Self {
+            address: [a[0], a[1], a[2], a[3], a[4], a[5]],
+        }
     }
 }
 
@@ -105,17 +113,57 @@ pub trait NetworkAdapterTrait {
 #[doors_macros::fill_enum_with_variants(NetworkAdapterTrait)]
 pub enum NetworkAdapter {}
 
+/// The maximim amount of data to receive in a single packet
 const MAX_RX_PACKET_SIZE: usize = 8192;
 
+/// An ethernet packet header
+#[derive(Debug)]
+pub struct EthernetFrameHeader {
+    destination: MacAddress,
+    source: MacAddress,
+    vlan: Option<u32>,
+    ethertype: u16,
+}
+
+/// Represents a received ethernet frame
+#[derive(Debug)]
+pub struct EthernetFrame<'a> {
+    header: EthernetFrameHeader,
+    data: &'a [u8],
+    crc: u32,
+}
+
 /// A raw ethernet packet received from a network card
-pub struct EthernetPacket {
+pub struct RawEthernetPacket {
     /// The contents of the packet
     data: [u8; MAX_RX_PACKET_SIZE],
     /// The actual length of the packet
     length: usize,
 }
 
-impl core::fmt::Debug for EthernetPacket {
+impl<'a> From<&'a RawEthernetPacket> for EthernetFrame<'a> {
+    fn from(value: &'a RawEthernetPacket) -> Self {
+        doors_macros::todo_item!("Process 802.1q information present in frame");
+        let d = &value.data[0..6];
+        let s = &value.data[6..12];
+        let header = EthernetFrameHeader {
+            destination: d.into(),
+            source: s.into(),
+            vlan: None,
+            ethertype: u16::from_le_bytes([value.data[12], value.data[13]]),
+        };
+        let l = value.length - 18;
+        let dat = &value.data[14..(14+l)];
+        let crc = u32::from_le_bytes([value.data[14+l], value.data[15+l], value.data[16+l], value.data[17+l]]);
+        Self {
+            header,
+            data: dat,
+            crc,
+        }
+    }
+}
+
+impl core::fmt::Debug for RawEthernetPacket {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         for i in 0..self.length {
             let d = self.data[i];
@@ -125,7 +173,8 @@ impl core::fmt::Debug for EthernetPacket {
     }
 }
 
-impl EthernetPacket {
+impl RawEthernetPacket {
+    /// Construct a new empty packet
     fn new() -> Self {
         Self {
             data: [0; MAX_RX_PACKET_SIZE],
@@ -142,7 +191,7 @@ impl EthernetPacket {
 
 lazy_static::lazy_static! {
     /// The list of received packets
-    pub static ref ETHERNET_PACKETS_RECEIVED: conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<EthernetPacket>> =
+    pub static ref ETHERNET_PACKETS_RECEIVED: conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<RawEthernetPacket>> =
         conquer_once::spin::OnceCell::uninit();
 }
 
@@ -169,7 +218,8 @@ pub async fn process_packets_received() {
             crate::VGA.print_str_async("There is at least one packet\r\n").await;
             let p = crate::SYSTEM.read().disable_interrupts_for(|| q.pop());
             if let Some(p) = p {
-                crate::VGA.print_str_async(&alloc::format!("Received packet: {:?}\r\n", p)).await;
+                let frame: EthernetFrame = (&p).into();
+                crate::VGA.print_str_async(&alloc::format!("Received packet: {:x?}\r\n", frame)).await;
             }
             else {
                 crate::executor::Task::yield_now().await;
@@ -182,7 +232,7 @@ pub async fn process_packets_received() {
 }
 
 /// Called from an interrupt context to process a received ethernet packet
-fn interrupt_process_received_packet(packet: EthernetPacket) {
+fn interrupt_process_received_packet(packet: RawEthernetPacket) {
     if let Some(q) = ETHERNET_PACKETS_RECEIVED.get() {
         let _ = q.push(packet);
     }

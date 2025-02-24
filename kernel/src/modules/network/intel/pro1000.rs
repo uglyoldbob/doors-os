@@ -1074,7 +1074,6 @@ impl IntelPro1000Device {
 
     /// The interrupt handler for the network card
     fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
-        x86_64::instructions::bochs_breakpoint();
         let reason = this
             .bar0
             .interrupt_access()
@@ -1088,7 +1087,7 @@ impl IntelPro1000Device {
             if let Some((buffer, index)) = a.as_ref() {
                 let rxbuf = &buffer.bufs[*index as usize];
                 if rxbuf.status.0 != 0 {
-                    let mut packet = super::super::EthernetPacket::new();
+                    let mut packet = super::super::RawEthernetPacket::new();
                     if !rxbuf.status.eop() {
                         doors_macros::todo!("Process a packet covering more than one descriptor");
                     }
@@ -1265,7 +1264,6 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     let sys = crate::SYSTEM.read();
                     d.enable_interrupts(&sys, irqnum).await;
                 }
-                d.internal.update_link_status().await;
                 d.internal.bar0.access().await.hex_dump().await;
                 crate::VGA
                     .print_str_async(&format!("Detected model as {:?}\r\n", d.model))
@@ -1274,7 +1272,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     .print_str_async(&format!("EEPROM DETECTED: {}\r\n", d.detect_eeprom().await))
                     .await;
                 let mac = d.get_mac_address().await;
-                crate::VGA.print_str_async(&alloc::format!("The mac address is {:?}\r\n", mac)).await;
+                crate::VGA.print_str_async(&alloc::format!("The mac address is {:x?}\r\n", mac)).await;
                 if let Err(e) = d.init_rx(&mac).await {
                     crate::VGA
                         .print_str_async(&format!("RX buffer allocation error {:?}\r\n", e))
@@ -1287,6 +1285,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                 }
                 d.dump_registers().await;
                 d.general_config().await;
+                d.internal.update_link_status().await;
                 for r in 0..32 {
                     if let Some(v) = d.read_from_phy(1, r).await {
                         crate::VGA

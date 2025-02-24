@@ -327,7 +327,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
         if physical_address == 0 {
             log::error!("Received a null pointer request size {:x}", size);
             crate::VGA.sync_flush();
-            x86_64::instructions::bochs_breakpoint();
             panic!("Received a null pointer request size");
         }
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(

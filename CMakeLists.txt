@@ -40,19 +40,34 @@ add_custom_target(
     COMMAND ${BOCHS} -f bochsrc64_windows.txt -q
 )
 
-file(GENERATE OUTPUT ./fix_network_test INPUT ./fnt_windows FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
-
-endif (WIN32)
+add_custom_target(
+    network_test
+    BYPRODUCTS ./target/release/network_test
+    COMMAND cargo build --bin network_test --release
+)
 
 add_custom_target(
     net_test
-    COMMAND cargo build --bin network_test --release
-    COMMAND ./fix_network_test
+    DEPENDS network_test
+    COMMAND ./target/release/network_test.exe --name \\Device\\NPF_{71D77406-BE0C-491B-974D-8CAE54692A2E} --random-count 1000000
 )
+
+endif (WIN32)
 
 if (UNIX)
 
-file(GENERATE OUTPUT ./fix_network_test INPUT ./fnt FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+add_custom_target(
+    network_test
+    BYPRODUCTS ./target/release/network_test
+    COMMAND cargo build --bin network_test --release
+    COMMAND sudo setcap cap_net_raw,cap_net_admin=eip ./target/release/network_test
+)
+
+add_custom_target(
+    net_test
+    DEPENDS network_test
+    COMMAND ./target/release/network_test --name vboxnet0 --random-count 1000000
+)
 
 add_custom_target(
     grub-skeleton
@@ -102,6 +117,7 @@ add_custom_command(
     COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --uart1 0x3f8 4 --uartmode1 file serial.log
     COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --uart2 0x2f8 3 --uartmode2 tcpserver 1234
     COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --nic1 nat
+    COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --macaddress1 525400123456
     COMMAND ${VIRTUALBOX_MANAGE} modifyvm doors-os-64 --nictype1 82540EM
     COMMAND ${VIRTUALBOX_MANAGE} storagectl doors-os-64 --name "IDE Controller" --add ide --controller PIIX4
     COMMAND ${VIRTUALBOX_MANAGE} storageattach doors-os-64 --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ./cd64.iso
