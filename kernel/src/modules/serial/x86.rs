@@ -69,7 +69,7 @@ impl X86SerialPort {
         let testval = 0x55u8;
         ports.port(0).port_write(testval);
 
-        let com = common::IrqGuardedInner::new(irq, false, true, |_| {}, |_| {});
+        let com = common::IrqGuardedInner::new(irq, true, true, |_| {}, |_| {});
 
         let i = Arc::new(X86SerialPortInternal {
             base: IrqGuardedSimple::new(ports, &com),
@@ -124,6 +124,7 @@ impl X86SerialPort {
     /// The interrupt handler code
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
+            x86_64::instructions::bochs_breakpoint();
             let stat: u8 = s.base.interrupt_access().port(2).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
@@ -183,23 +184,25 @@ impl X86SerialPort {
 impl Arc<X86SerialPortInternal> {
     /// Enable the tx interrupt, used when sending data over the serial port
     fn enable_tx_interrupt(&self) {
-        if self.interrupts.load(Ordering::SeqCst) {
-            let p = self.base.access();
-            let mut ie = p.port(1);
-            let v: u8 = ie.port_read();
-            ie.port_write(v | 2);
-            let _: u8 = p.port(2).port_read();
-            self.tx_enabled.store(true, Ordering::SeqCst);
+        if self.interrupts.load(Ordering::Relaxed) {
+            if !self.tx_enabled.load(Ordering::Relaxed) {
+                x86_64::instructions::bochs_breakpoint();
+                let p = self.base.access();
+                let mut ie = p.port(1);
+                let v: u8 = ie.port_read();
+                ie.port_write(v | 2);
+                self.tx_enabled.store(true, Ordering::Relaxed);
+            }
         }
     }
 
     /// Stop the tx interrupt. Used when a transmission has completed. Only to be called from the interrupt handler!
     fn disable_tx_interrupt(&self) {
-        if self.interrupts.load(Ordering::SeqCst) {
+        if self.interrupts.load(Ordering::Relaxed) {
             let p = self.base.interrupt_access();
             let v: u8 = p.port(1).port_read();
             p.port(1).port_write(1 | (v & !2));
-            self.tx_enabled.store(false, Ordering::SeqCst);
+            self.tx_enabled.store(false, Ordering::Relaxed);
         }
     }
 
