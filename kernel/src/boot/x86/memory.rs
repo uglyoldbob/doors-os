@@ -41,6 +41,24 @@ impl HeapNode {
             self,
             self
         ));
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "\t {:?}\r\n",
+            self.check()
+        ));
+    }
+
+    /// Check the validity of the node
+    fn check(&self) -> Result<(), ()> {
+        if self.size == 0 {
+            return Err(());
+        }
+        if let Some(n) = &self.next {
+            let n = unsafe { n.as_ref() };
+            if (self.start() + self.size) > crate::address(n) {
+                return Err(());
+            }
+        }
+        Ok(())
     }
 
     /// Returns the next Self, as an optional reference
@@ -158,6 +176,24 @@ impl<'a> HeapManager<'a> {
         }
     }
 
+    /// Check the heap
+    pub fn check(&self) -> Result<(), ()> {
+        if let Some(r) = self.head {
+            let mut t = unsafe { r.as_ref() };
+            t.check()?;
+            while let Some(a) = t.next() {
+                a.check()?;
+                t = a;
+            }
+            while let Some(t2) = t.next() {
+                t2.check()?;
+            }
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
+
     /// Expand the heap by a certain amount, using real memory.
     fn expand_with_physical_memory(&mut self, amount: usize) -> Result<NonNull<[u8]>, ()> {
         use core::alloc::Allocator as caAlloc;
@@ -195,6 +231,20 @@ impl<'a> HeapManager<'a> {
         Ok(new_section)
     }
 
+    #[inline(never)]
+    fn troubleshoot(&self, val: usize, val2: usize) {
+        if doors_macros::config_check_equals!(mm_debug, "true")
+            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+        {
+            self.print();
+            crate::VGA.sync_flush();
+        }
+        loop {
+            core::hint::black_box(val);
+            core::hint::black_box(val2);
+        }
+    }
+
     /// Perform an actual allocation
     fn run_alloc(&mut self, layout: core::alloc::Layout) -> *mut u8 {
         if self.head.is_none()
@@ -217,7 +267,8 @@ impl<'a> HeapManager<'a> {
 
             while let Some(mut h) = elem {
                 let ha = unsafe { h.as_mut() }.calc_alignment(layout.size(), layout.align());
-                if ha.size_needed <= unsafe { h.as_ref() }.size {
+                let size_really_needed = ha.pre_align + ha.size_needed;
+                if size_really_needed <= unsafe { h.as_ref() }.size {
                     if let Some(b) = best_fit {
                         if unsafe { h.as_ref() }.size < unsafe { b.as_ref() }.size {
                             best_fit_link = if let Some(mut pe) = prev_elem {
@@ -245,48 +296,89 @@ impl<'a> HeapManager<'a> {
             }
 
             if let Some(mut best) = best_fit {
+                let best = unsafe { best.as_mut() };
+                if doors_macros::config_check_equals!(mm_debug, "true")
+                    && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                {
+                    crate::VGA.print_str("BEST IS: ");
+                    best.print();
+                }
                 let ha = best_fit_ha.unwrap();
                 let r = if ha.pre_align < core::mem::size_of::<HeapNode>() {
-                    if (unsafe { best.as_ref() }.size - ha.size_needed)
+                    if (best.size - ha.size_needed - ha.pre_align)
                         < core::mem::size_of::<HeapNode>()
                     {
                         //The entire block will be used
-                        *best_fit_link = unsafe { best.as_ref() }.next;
-                        (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
+                        if doors_macros::config_check_equals!(mm_debug, "true")
+                            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                        {
+                            crate::VGA.print_str("ALLOC1\r\n");
+                        }
+                        *best_fit_link = best.next;
+                        (best.start() + ha.pre_align) as *mut u8
                     } else {
-                        let after_node = unsafe { best.as_ref() }.start() + ha.size_needed;
+                        if doors_macros::config_check_equals!(mm_debug, "true")
+                            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                        {
+                            crate::VGA.print_str("ALLOC2\r\n");
+                        }
+                        let after_node = best.start() + ha.size_needed + ha.pre_align;
                         let mut node = unsafe {
                             NonNull::<HeapNode>::new_unchecked(after_node as *mut HeapNode)
                         };
-                        unsafe { node.as_mut() }.size =
-                            unsafe { best.as_ref() }.size - ha.size_needed;
-                        unsafe { node.as_mut() }.next =
-                            unsafe { best_fit_link.unwrap().as_ref().next };
+                        unsafe { node.as_mut() }.size = best.size - ha.size_needed;
+                        unsafe { node.as_mut() }.next = best.next;
                         *best_fit_link = Some(node);
-                        (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
+                        (best.start() + ha.pre_align) as *mut u8
                     }
                 } else {
-                    let b = unsafe { best.as_ref() };
-                    if (b.size - ha.size_needed) < core::mem::size_of::<HeapNode>() {
+                    if (best.size - ha.size_needed - ha.pre_align)
+                        < core::mem::size_of::<HeapNode>()
+                    {
+                        if doors_macros::config_check_equals!(mm_debug, "true")
+                            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                        {
+                            crate::VGA.print_str("ALLOC3\r\n");
+                        }
                         let mut prev = best_fit_prev.unwrap();
                         let prev = unsafe { prev.as_mut() };
-                        prev.next = b.next;
-                        (crate::address(b) + ha.pre_align) as *mut u8
+                        prev.next = best.next;
+                        (crate::address(best) + ha.pre_align) as *mut u8
                     } else {
-                        let newblock = crate::address(b) + ha.pre_align + b.size;
+                        if doors_macros::config_check_equals!(mm_debug, "true")
+                            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                        {
+                            crate::VGA.print_str("ALLOC4\r\n");
+                        }
+                        let newblock = crate::address(best) + ha.pre_align + ha.size_needed;
+                        if best.size < (ha.size_needed + ha.pre_align) {
+                            self.troubleshoot(best.size, ha.size_needed + ha.pre_align);
+                        }
                         let e = unsafe {
                             HeapNode::with_size(
                                 newblock as *mut u8,
-                                b.size - ha.size_needed,
-                                b.next,
+                                best.size - ha.size_needed - ha.pre_align,
+                                best.next,
                             )
                         };
-                        let c = unsafe { best.as_mut() };
-                        c.next = Some(e);
-                        c.size = ha.pre_align;
-                        (crate::address(b) + ha.pre_align) as *mut u8
+                        best.next = Some(e);
+                        best.size = ha.pre_align;
+                        (crate::address(best) + ha.pre_align) as *mut u8
                     }
                 };
+                if self.check().is_err() {
+                    if doors_macros::config_check_equals!(mm_debug, "true")
+                        && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                    {
+                        crate::VGA.print_str("Failed ALLOC\r\n");
+                    }
+                    self.troubleshoot(42, 43);
+                } else if doors_macros::config_check_equals!(mm_debug, "true")
+                    && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                {
+                    crate::VGA.print_str("Successfully ran ALLOC\r\n");
+                    self.print();
+                }
                 return r;
             }
             if times == 1 {
@@ -341,6 +433,17 @@ impl<'a> HeapManager<'a> {
         } else {
             // heap is empty, now the free node is the heap
             self.head = Some(new_node);
+        }
+        if self.check().is_err() {
+            if crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst) {
+                crate::VGA.print_str("Failed DEALLOC\r\n");
+            }
+            self.troubleshoot(44, 45);
+        } else if doors_macros::config_check_equals!(mm_debug, "true")
+            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+        {
+            crate::VGA.print_str("Successfully ran DEALLOC\r\n");
+            self.print();
         }
         //TODO merge blocks if possible?
     }

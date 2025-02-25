@@ -336,6 +336,9 @@ lazy_static::lazy_static! {
     pub static ref VGA: AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> = AsyncLockedArc::new(None);
 }
 
+/// Temporary variable to enable extra kernel logging
+pub static DEBUG_PRINT: AtomicBool = AtomicBool::new(false);
+
 impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true

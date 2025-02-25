@@ -136,6 +136,7 @@ fn main() -> ! {
             sys.enable_interrupts();
             sys.init();
             scheduler::Task::test();
+            crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
         }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
