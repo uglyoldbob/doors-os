@@ -73,8 +73,8 @@ impl Context {
     }
 
     /// Experimental code to restore a thread context
-    pub fn restore(self) {
-        unsafe { thread_restore(&self) };
+    pub fn restore(&self) {
+        unsafe { thread_restore(self) };
     }
 }
 
@@ -100,7 +100,11 @@ impl Task {
     pub fn test() {
         let mut c = Context::new();
         Context::save(&mut c);
-        crate::VGA.print_str(&alloc::format!("The context stored is {:p} {:x?}\r\n", &c, c));
+        crate::VGA.print_str(&alloc::format!(
+            "The context stored is {:p} {:x?}\r\n",
+            &c,
+            c
+        ));
         crate::VGA.sync_flush();
         c.restore();
     }

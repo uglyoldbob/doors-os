@@ -11,6 +11,7 @@ use acpi::madt::Madt;
 use acpi::sdt::SdtHeader;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
+use aml::value::Args;
 use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
 use core::pin::Pin;
@@ -191,7 +192,8 @@ extern "x86-interrupt" fn general_protection_handler(isf: InterruptStackFrame, c
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "General protection fault {:x} @{:x}\r\n",
-        c, isf.instruction_pointer.as_u64()
+        c,
+        isf.instruction_pointer.as_u64()
     ));
     loop {
         x86_64::instructions::hlt();
@@ -199,8 +201,10 @@ extern "x86-interrupt" fn general_protection_handler(isf: InterruptStackFrame, c
 }
 
 ///The handler for segment not present
-#[interrupt_arg_64]
-pub extern "C" fn segment_not_present(arg: u32) {
+extern "x86-interrupt" fn segment_not_present(
+    sf: x86_64::structures::idt::InterruptStackFrame,
+    arg: u64,
+) {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Segment not present {:x}\r\n",
@@ -1133,11 +1137,7 @@ pub extern "C" fn start64() -> ! {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 divide_by_zero_asm as *const (),
             ));
-            let mut entry = x86_64::structures::idt::Entry::missing();
-            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
-                segment_not_present_asm as *const (),
-            ));
-            idt.segment_not_present = entry;
+            idt.segment_not_present.set_handler_fn(segment_not_present);
 
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
@@ -1145,7 +1145,8 @@ pub extern "C" fn start64() -> ! {
             ));
             idt.double_fault = entry;
 
-            idt.general_protection_fault.set_handler_fn(general_protection_handler);
+            idt.general_protection_fault
+                .set_handler_fn(general_protection_handler);
 
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(

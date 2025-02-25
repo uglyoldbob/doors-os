@@ -411,7 +411,7 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
         let vga = v.as_mut();
         if let core::option::Option::Some(vga) = vga {
             use crate::modules::video::TextDisplayTrait;
-            vga.flush();
+            vga.sync_flush();
         }
     }
 }

@@ -750,8 +750,7 @@ impl<'a> PagingTableManager<'a> {
                 layout.align_to(core::mem::align_of::<PageTable>()).unwrap();
                 let e = self.mm.allocate(layout).unwrap();
                 let eaddr = crate::slice_address(unsafe { e.as_ref() });
-                unsafe { &mut *self.pt2.as_mut_ptr() }.table.entries[pt2_index] =
-                    eaddr as u64 | 1;
+                unsafe { &mut *self.pt2.as_mut_ptr() }.table.entries[pt2_index] = eaddr as u64 | 1;
                 eaddr as u64
             }
         };

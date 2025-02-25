@@ -323,11 +323,11 @@ impl super::SerialTrait for X86SerialPort {
         let i = self.0.interrupts.load(Ordering::Relaxed);
         if i {
             loop {
-                let empty = self.0.tx_queue.access().is_empty();
+                let empty = self.0.tx_queue.interrupt_access().is_empty();
                 if empty {
-                    x86_64::instructions::bochs_breakpoint();
                     break;
                 }
+                self.0.enable_tx_interrupt();
             }
         }
     }

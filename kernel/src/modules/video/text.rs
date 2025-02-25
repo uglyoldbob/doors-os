@@ -82,5 +82,7 @@ impl crate::modules::video::TextDisplayTrait for X86VgaTextMode {
 
     async fn flush(&mut self) {}
 
+    fn sync_flush(&mut self) {}
+
     fn stop_async(&mut self) {}
 }

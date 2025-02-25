@@ -365,6 +365,9 @@ pub trait TextDisplayTrait: Sync + Send {
 
     /// Asynchrouously flush all data
     async fn flush(&mut self);
+
+    /// Synchronously flush all data
+    fn sync_flush(&mut self);
 }
 
 /// Draws text onto a framebuffer
@@ -418,6 +421,8 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
 
     async fn flush(&mut self) {}
 
+    fn sync_flush(&mut self) {}
+
     fn stop_async(&mut self) {}
 }
 
@@ -452,6 +457,8 @@ where
     }
 
     async fn flush(&mut self) {}
+
+    fn sync_flush(&mut self) {}
 
     fn stop_async(&mut self) {}
 }
@@ -507,6 +514,10 @@ impl TextDisplayTrait for VideoOverSerial {
 
     async fn flush(&mut self) {
         self.port.flush().await;
+    }
+
+    fn sync_flush(&mut self) {
+        self.port.sync_flush();
     }
 
     fn stop_async(&mut self) {

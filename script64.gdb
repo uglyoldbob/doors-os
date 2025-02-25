@@ -5,7 +5,6 @@ define exit
     quit
 end
 
-break start64
 break segment_not_present_asm
 disp /i $pc
 target remote | qemu-system-x86_64 -serial file:serial.log -serial file:serial2.log -cdrom cd64.iso -m 8 -gdb stdio -monitor unix:/tmp/qemusock,server,nowait
