@@ -223,6 +223,12 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
+fn setup_timers() {
+    let mut timers = crate::kernel::TIMERS.sync_lock();
+    let pit = crate::modules::timer::x86::Pit::new();
+    timers.register_timer(pit.into());
+}
+
 /// Probe and setup all serial ports for x86
 /// This will probably be removed once pci space is further developed
 fn setup_serial() {

@@ -103,7 +103,22 @@ pub extern "C" fn divide_by_zero() {
 }
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
-/// The irq4 handler
+
+/// The irq0 handler
+pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
+    if let Ok(h) = IRQ_HANDLERS[0].try_get() {
+        let mut h = h.sync_lock();
+        if let Some(h2) = h.as_mut() {
+            h2();
+        }
+    }
+    let p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(0)
+    }
+}
+
+/// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
     if let Ok(h) = IRQ_HANDLERS[3].try_get() {
         let mut h = h.sync_lock();
@@ -484,6 +499,7 @@ impl Pic {
     }
 
     /// Enable the specified irq
+    #[inline(never)]
     pub fn enable_irq(&self, irq: u8) {
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
@@ -496,6 +512,7 @@ impl Pic {
     }
 
     /// Disable the specified irq
+    #[inline(never)]
     pub fn disable_irq(&self, irq: u8) {
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
@@ -826,6 +843,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     fn init(&self) {
+        super::setup_timers();
         super::setup_serial();
         {
             let this = self.sync_lock();
@@ -1159,6 +1177,7 @@ pub extern "C" fn start64() -> ! {
                 invalid_opcode as *const (),
             ));
             idt.invalid_opcode = entry;
+            idt[0x20].set_handler_fn(irq0);
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);
             idt[0x27].set_handler_fn(irq7);

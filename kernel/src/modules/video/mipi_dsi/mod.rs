@@ -2,7 +2,10 @@
 
 use alloc::vec::Vec;
 
-use crate::{modules::gpio::GpioPinTrait, LockedArc};
+use crate::{
+    modules::{gpio::GpioPinTrait, timer::TimerInstanceInnerTrait},
+    LockedArc,
+};
 
 use super::ScreenResolution;
 
@@ -482,7 +485,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
                 let mut tpl = tp.sync_lock();
                 let timer = tpl.get_timer(0).unwrap();
                 drop(tpl);
-                crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 40);
+                timer.sync_use().delay_ms(40);
             }
 
             r.write_output(true);
@@ -495,7 +498,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
                 let mut tpl = tp.sync_lock();
                 let timer = tpl.get_timer(0).unwrap();
                 drop(tpl);
-                crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 240);
+                timer.sync_use().delay_ms(240);
             }
         }
 
@@ -513,7 +516,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+            timer.sync_use().delay_ms(10);
         }
         //unknown
         s.write_command(dsi, 0xc48a, &[0x40])?;
@@ -525,7 +528,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+            timer.sync_use().delay_ms(10);
         }
         //power control 4 setting, sets te level, ledon level, vcom sample
         s.write_command(dsi, 0xc5b1, &[0xa9])?;
@@ -653,7 +656,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 120);
+            timer.sync_use().delay_ms(120);
         }
 
         let data = [DcsCommandType::SetAddressMode as u8, 0];
@@ -688,7 +691,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
             let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 10);
+            timer.sync_use().delay_ms(10);
         }
         Ok(())
     }

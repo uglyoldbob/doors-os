@@ -178,7 +178,7 @@ impl<'a, A> core::future::Future for AsyncLockedMutexGuardFuture<'a, A> {
         if self
             .inner
             .lock
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::SeqCst)
             .is_ok()
         {
             core::task::Poll::Ready(AsyncLockedMutexGuard {
@@ -208,7 +208,7 @@ impl<A> AsyncLocked<A> {
         loop {
             if self
                 .lock
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::SeqCst)
                 .is_ok()
             {
                 break AsyncLockedMutexGuard {
@@ -262,7 +262,7 @@ impl<T: ?Sized> DerefMut for AsyncLockedMutexGuard<'_, T> {
 impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
-        self.lock.store(false, Ordering::Release);
+        self.lock.store(false, Ordering::SeqCst);
         while let Some(w) = self.wakers.pop() {
             w.wake();
         }
@@ -554,6 +554,11 @@ impl<T> IrqGuarded<T> {
         }
     }
 
+    /// Return the irq number for the user
+    pub fn irq(&self) -> u8 {
+        self.value.irqnum
+    }
+
     /// Use the inner value from a non-interrupt context
     pub async fn access(&self) -> IrqGuardedUse<T> {
         let sys = crate::SYSTEM.read();
@@ -565,6 +570,21 @@ impl<T> IrqGuarded<T> {
         IrqGuardedUse {
             r: &self.value,
             val: Some(self.inner.lock().await),
+            enable_interrupts: true,
+        }
+    }
+
+    /// Use the inner value from a synchronous non-interrupt context
+    pub fn sync_access(&self) -> IrqGuardedUse<T> {
+        let sys = crate::SYSTEM.read();
+        if self.value.disable_all_interrupts {
+            sys.disable_interrupts();
+        }
+        sys.disable_irq(self.value.irqnum);
+        (self.value.lock)(self.value.irqnum);
+        IrqGuardedUse {
+            r: &self.value,
+            val: Some(self.inner.sync_lock()),
             enable_interrupts: true,
         }
     }
