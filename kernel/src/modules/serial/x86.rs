@@ -301,7 +301,11 @@ impl super::SerialTrait for X86SerialPort {
             self.0.itx.store(true, Ordering::Relaxed);
             let mut ienabled = false;
             for c in data.iter() {
-                while txq.interrupt_access().is_full() {}
+                while txq.interrupt_access().is_full() {
+                    for _ in 0..1000000 {
+                        x86_64::instructions::nop();
+                    }
+                }
                 txq.access().push(*c).unwrap();
                 if !ienabled {
                     self.0.enable_tx_interrupt();

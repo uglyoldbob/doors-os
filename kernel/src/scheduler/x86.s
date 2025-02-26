@@ -20,6 +20,7 @@ thread_save:
     mov [rdi+112], r15
     pushfq
     pop [rdi+120]
+    mov [rdi+128], rsp
     ret
 
 thread_restore:
@@ -39,6 +40,7 @@ thread_restore:
     mov r15, [rdi+112]
     push [rdi+120]
     popfq
+    mov rsp, [rdi+128]
     mov rdi, [rdi+48]
     
     

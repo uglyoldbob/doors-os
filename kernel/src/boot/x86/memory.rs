@@ -231,6 +231,7 @@ impl<'a> HeapManager<'a> {
         Ok(new_section)
     }
 
+    /// A function to provide some troubleshooting for memory management functions
     #[inline(never)]
     fn troubleshoot(&self, val: usize, val2: usize) {
         if doors_macros::config_check_equals!(mm_debug, "true")

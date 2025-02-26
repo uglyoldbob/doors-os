@@ -1,7 +1,13 @@
 //! Code for the task/thread scheduler of the kernel.
 
+use core::{ops::Deref, pin::Pin};
+
+use alloc::{boxed::Box, vec::Vec};
+
+use crate::Locked;
+
 /// The saved context for a thread
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[repr(C)]
 pub struct Context {
     /// rbp register
@@ -36,6 +42,8 @@ pub struct Context {
     pub r15: u64,
     /// rflags register
     pub rflags: u64,
+    /// rsp register
+    pub rsp: u64,
 }
 
 core::arch::global_asm!(include_str!("x86.s"));
@@ -46,6 +54,7 @@ extern "C" {
 }
 
 impl Context {
+    /// Construct an empty context
     fn new() -> Self {
         Self {
             rbp: 0,
@@ -64,6 +73,7 @@ impl Context {
             r14: 0,
             r15: 0,
             rflags: 0,
+            rsp: 0,
         }
     }
 
@@ -78,23 +88,88 @@ impl Context {
     }
 }
 
-/// The status of a task in the kernel
-pub enum TaskStatus {
-    /// The thread is not currently executing and there is a saved context
-    WithContext(Context),
-    /// The thread is running so there is no context
-    WithoutContext(),
-    /// The thread is brand new and has not run yet
-    New(),
+doors_macros::todo_item!("Create a guard page for stack");
+
+/// Stack storage for a task
+struct Stack {
+    /// The actual stack
+    data: Vec<u64>,
+    /// The index into the stack
+    index: usize,
+}
+
+impl Stack {
+    /// Construct a new Self
+    fn new(size: usize) -> Self {
+        let mut s = Vec::with_capacity(size);
+        for _ in 0..size {
+            s.push(0);
+        }
+        Self {
+            data: s,
+            index: size,
+        }
+    }
+
+    /// Set the rsp value to the end of the stack
+    fn set_rsp(&self, rsp: &mut u64) {
+        *rsp = (crate::slice_address(&self.data) + self.data.len() * core::mem::size_of::<u64>())
+            as u64;
+    }
+
+    /// Push a value onto the stack
+    fn push(&mut self, rsp: &mut u64, val: u64) {
+        *rsp = *rsp - core::mem::size_of::<u64>() as u64;
+        self.index -= 1;
+        self.data[self.index] = val;
+    }
 }
 
 /// A general purpose task or thread in the kernel
 pub struct Task {
-    /// The status of the task    
-    status: TaskStatus,
+    /// The context of the task    
+    context: Option<Context>,
+    /// The initial function of the task
+    f: Option<fn()>,
+    /// The thread stack
+    _stack: Option<Stack>,
 }
 
+doors_macros::todo_item!("Figure out a way to lock a task onto a specific processor?");
+
+/// The size of the stack for new tasks, in number of stack entries, not bytes.
+const STACK_SIZE: usize = 1024;
+
 impl Task {
+    /// Print the task
+    pub fn print(&self) {
+        crate::VGA.print_str(&alloc::format!("Context is {:x?}\r\n", self.context));
+    }
+
+    /// Create a new task
+    pub fn new(f: fn()) -> Self {
+        let mut s = Stack::new(STACK_SIZE);
+        let mut c = Context::new();
+        s.set_rsp(&mut c.rsp);
+        let start_eip = f as *const () as u64;
+        s.push(&mut c.rsp, start_eip as u64);
+        let s = Self {
+            context: Some(c),
+            f: Some(f),
+            _stack: Some(s),
+        };
+        s
+    }
+
+    /// Construct a new task from the currently running function
+    const fn running() -> Self {
+        Self {
+            context: None,
+            f: None,
+            _stack: None,
+        }
+    }
+
     /// A test function for checking the operation of context saving and restoring
     #[inline(never)]
     pub fn test() {
@@ -107,5 +182,94 @@ impl Task {
         ));
         crate::VGA.sync_flush();
         c.restore();
+    }
+}
+
+/// The scheduler object
+pub static SCHEDULER: Scheduler = Scheduler::new();
+
+/// The actual contents of a scheduler
+pub struct InnerScheduler {
+    /// The list of tasks local to the scheduler
+    local_tasks: Vec<Task>,
+    /// The currently executing task
+    cur_task: Task,
+}
+
+impl InnerScheduler {
+    /// Create a new scheduler
+    pub const fn new() -> Self {
+        Self {
+            local_tasks: Vec::new(),
+            cur_task: Task::running(),
+        }
+    }
+
+    /// Print all tasks
+    pub fn print(&self) {
+        crate::VGA.print_str(&alloc::format!(
+            "There are {} tasks\r\n",
+            self.local_tasks.len()
+        ));
+        for t in &self.local_tasks {
+            t.print();
+        }
+        crate::VGA.sync_flush();
+    }
+}
+
+/// The thread scheduler for the kernel
+pub struct Scheduler {
+    /// The protected data
+    i: Locked<InnerScheduler>,
+}
+
+impl Scheduler {
+    /// Construct a new scheduler
+    pub const fn new() -> Self {
+        Self {
+            i: Locked::new(InnerScheduler::new()),
+        }
+    }
+
+    /// Add a task
+    pub fn add_task(&self, task: Task) {
+        let mut this = self.i.sync_lock();
+        this.local_tasks.push(task);
+    }
+
+    /// Print all tasks
+    pub fn print(&self) {
+        let this = self.i.sync_lock();
+        this.print();
+    }
+
+    /// Schedule the next task to run
+    pub fn schedule(&self) {
+        let mut this = self.i.sync_lock();
+        if let Some(mut task) = this.local_tasks.pop() {
+            let new_context = match task.context.take() {
+                Some(c) => c,
+                None => {
+                    todo!();
+                }
+            };
+            core::mem::swap(&mut this.cur_task, &mut task);
+            let mut old_context = Context::new();
+            Context::save(&mut old_context);
+            if let Some(c) = task.context.replace(old_context) {
+                crate::VGA.print_str(&alloc::format!(
+                    "The context stored is {:p} {:x?}\r\n",
+                    &c,
+                    c
+                ));
+                crate::VGA.sync_flush();
+                panic!();
+            }
+            this.local_tasks.push(task);
+            this.print();
+            drop(this);
+            new_context.restore();
+        }
     }
 }

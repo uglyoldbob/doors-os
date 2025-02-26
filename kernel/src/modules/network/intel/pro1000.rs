@@ -503,6 +503,7 @@ impl Arc<IntelPro1000DeviceInternal> {
         self.up.store(linkstat, Ordering::Relaxed);
     }
 
+    /// Update the status of the link from a non-interrupt context
     async fn update_link_status(&self) {
         let status = self
             .bar0

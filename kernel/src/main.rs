@@ -129,14 +129,26 @@ async fn net_test() {
     }
 }
 
+/// A test function for the kernel
+fn test_function() {
+    for _ in 0..10 {
+        crate::VGA.print_str("Testing function\r\n");
+    }
+    scheduler::SCHEDULER.schedule();
+}
+
 fn main() -> ! {
     {
         {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
-            scheduler::Task::test();
             crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
+            scheduler::Task::test();
+            let t = scheduler::Task::new(test_function);
+            scheduler::SCHEDULER.add_task(t);
+            scheduler::SCHEDULER.print();
+            scheduler::SCHEDULER.schedule();
         }
         {
             let mut d = kernel::DISPLAYS.sync_lock();

@@ -7,6 +7,11 @@ add_custom_target(
 )
 
 add_custom_target(
+    kernel_clippy
+    COMMAND cargo clippy
+)
+
+add_custom_target(
     kernel64
     BYPRODUCTS ./kernel64.debug ./kernel64 ./target ./kerneltest64
     COMMAND cargo build --release --target x86_64-unknown-none
@@ -20,6 +25,7 @@ add_custom_target(
 
 add_custom_target(
     disassemble
+    DEPENDS kernel64
     BYPRODUCTS ./disassemble.txt
     COMMAND cargo objdump --release --bin kernel -q -- -d > disassemble.txt
 )
