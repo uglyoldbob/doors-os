@@ -1076,7 +1076,6 @@ impl IntelPro1000Device {
 
     /// The interrupt handler for the network card
     fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
-        x86_64::instructions::bochs_breakpoint();
         let reason = this
             .bar0
             .interrupt_access()

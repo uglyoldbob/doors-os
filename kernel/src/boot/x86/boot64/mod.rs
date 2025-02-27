@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
+use crate::kernel::SystemTrait;
 use crate::modules::video::hex_dump;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -14,6 +15,7 @@ use alloc::boxed::Box;
 use aml::value::Args;
 use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
+use core::arch::naked_asm;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use doors_macros::interrupt_64;
@@ -104,9 +106,38 @@ pub extern "C" fn divide_by_zero() {
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 
-/// The ending portion of an irq handler
-pub fn finish_irq(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Send + Sync>>>) {
+#[no_mangle]
+fn irq_dropper(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Send + Sync>>>) {
     drop(handle);
+    let p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(irqnum)
+    }
+}
+
+/// The finishing function for irq handlers
+#[naked]
+pub (crate) unsafe extern "C" fn irq_finisher(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Send + Sync>>>) -> ! {
+    naked_asm!("\
+        call irq_dropper;
+        pop rax;\
+        pop rax;\
+        pop rcx;\
+        pop rdx;\
+        pop rsi;\
+        pop rdi;\
+        pop r8;\
+        pop r9;\
+        pop r10;\
+        pop r11;\
+        pop rbp;\
+        pop rbp;\
+        iretq;");
+}
+
+/// The ending portion of an irq handler
+#[inline(never)]
+pub fn finish_irq(irqnum: u8) {
     let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(irqnum)
@@ -115,20 +146,22 @@ pub fn finish_irq(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Se
 
 /// The irq0 handler
 pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[0].sync_lock();
-    if let Some(h2) = handle.as_ref() {
+    let handle = IRQ_HANDLERS[3].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap()};
+    if let Some(h2) = h3 {
         h2();
     }
-    finish_irq(0, handle);
+    finish_irq(0);
 }
 
 /// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[3].sync_lock();
+    let handle = IRQ_HANDLERS[4].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
-    finish_irq(3, handle);
+    finish_irq(3);
 }
 
 /// The irq4 handler
@@ -137,7 +170,7 @@ pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
     if let Some(h2) = handle.as_ref() {
         h2();
     }
-    finish_irq(4, handle);
+    finish_irq(4);
 }
 
 /// The irq7 handler
@@ -146,7 +179,7 @@ pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
     if let Some(h2) = handle.as_ref() {
         h2();
     }
-    finish_irq(7, handle);
+    finish_irq(7);
 }
 
 /// The irq9 handler
@@ -155,7 +188,7 @@ pub extern "x86-interrupt" fn irq9(_isf: InterruptStackFrame) {
     if let Some(h2) = handle.as_ref() {
         h2();
     }
-    finish_irq(9, handle);
+    finish_irq(9);
 }
 
 /// The irq10 handler
@@ -164,7 +197,7 @@ pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
     if let Some(h2) = handle.as_ref() {
         h2();
     }
-    finish_irq(10, handle);
+    finish_irq(10);
 }
 
 /// The irq11 handler
@@ -173,7 +206,7 @@ pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
     if let Some(h2) = handle.as_ref() {
         h2();
     }
-    finish_irq(11, handle);
+    finish_irq(11);
 }
 
 /// The general protection fault handler

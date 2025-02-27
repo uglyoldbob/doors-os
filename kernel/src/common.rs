@@ -13,7 +13,7 @@ use core::{
 use alloc::boxed::Box;
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
-use spin::RwLock;
+use spin::{Mutex, RwLock};
 
 /// A definition for an Arc. This allows traits to be defined for Arc.
 pub struct Arc<T>(alloc::sync::Arc<T>);
@@ -271,34 +271,56 @@ impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
 
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
 pub struct Locked<A> {
-    /// The contained thing
-    inner: spin::Mutex<A>,
+    /// The lock for protecting the data
+    lock: AtomicBool,
+    /// The inner data
+    inner: UnsafeCell<A>,
 }
 
 /// A blank nonsend structure
-struct PhantomNonSend {}
+#[repr(C)]
+struct PhantomNonSend;
 
 impl !Send for PhantomNonSend {}
 impl !Sync for PhantomNonSend {}
 
 /// A mutex guard for the Locked structure
+#[repr(C)]
 pub struct MutexGuard<'a, T> {
     /// The inner mutex
-    guard: spin::MutexGuard<'a, T>,
-    /// A struct to make the mutex guard non-send
-    _dummy: PhantomNonSend,
+    guard: &'a AtomicBool,
+    /// The data
+    data: *mut T,
 }
+
+impl<'a, T> MutexGuard<'a, T> {
+    /// Unsafe destroy the lock and return the inner contents
+    pub unsafe fn unsafe_destroy(self) -> *mut T {
+        self.data
+    }
+}
+
+impl<'a, T> !Send for MutexGuard<'a, T> {}
+
+impl<'a, T> Drop for MutexGuard<'a, T> {
+    fn drop(&mut self) {
+        self.guard.store(false, Ordering::Release);
+    }
+}
+
+unsafe impl<T> Send for Locked<T> {}
+unsafe impl<T> Sync for Locked<T> {}
 
 impl<'a, T> Deref for MutexGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        self.guard.deref()
+        unsafe { & *self.data}
     }
 }
 
 impl<'a, T> DerefMut for MutexGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.guard.deref_mut()
+        unsafe { &mut *self.data}
     }
 }
 
@@ -306,21 +328,31 @@ impl<A> Locked<A> {
     /// Create a new protected thing
     pub const fn new(inner: A) -> Self {
         Locked {
-            inner: spin::Mutex::new(inner),
+            lock: AtomicBool::new(false),
+            inner: UnsafeCell::new(inner),
         }
     }
 
     /// Lock the mutex and return a protected instance of the thing
     pub fn sync_lock(&self) -> MutexGuard<A> {
-        MutexGuard {
-            guard: self.inner.lock(),
-            _dummy: PhantomNonSend {},
+        loop {
+            if self
+                .lock
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                break MutexGuard {
+                    guard: &self.lock,
+                    data: unsafe { &mut *self.inner.get() },
+                };
+            }
+            doors_macros::todo_item!("Do something with the thread scheduler here");
         }
     }
 
     /// Replace the contents of the protected instance with another instance of the thing
     pub fn replace(&self, r: A) {
-        let mut s = self.inner.lock();
+        let mut s = self.sync_lock();
         *s = r;
     }
 }

@@ -7,9 +7,9 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(naked_functions)]
 #![feature(negative_impls)]
 #![feature(type_alias_impl_trait)]
-#![feature(unboxed_closures)]
 
 doors_macros::load_config!();
 
@@ -147,7 +147,6 @@ fn main() -> ! {
             sys.enable_interrupts();
             sys.init();
             crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
-            scheduler::Task::test();
             let t = scheduler::Task::new(test_function);
             scheduler::SCHEDULER.read().as_ref().unwrap().timer_setup();
             scheduler::SCHEDULER.read().as_ref().unwrap().add_task(t);
