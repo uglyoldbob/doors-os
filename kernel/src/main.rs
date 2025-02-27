@@ -133,7 +133,9 @@ async fn net_test() {
 fn test_function() {
     for _ in 0..10 {
         crate::VGA.print_str("Testing function\r\n");
+        crate::VGA.sync_flush();
     }
+    loop {}
 }
 
 fn main() -> ! {

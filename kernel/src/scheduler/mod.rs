@@ -62,23 +62,23 @@ impl Context {
     /// Construct an empty context
     fn new() -> Self {
         Self {
-            rbp: 0,
-            rax: 0,
-            rbx: 0,
-            rcx: 0,
-            rdx: 0,
-            rsi: 0,
-            rdi: 0,
-            r8: 0,
-            r9: 0,
-            r10: 0,
-            r11: 0,
-            r12: 0,
-            r13: 0,
-            r14: 0,
-            r15: 0,
-            rflags: 0,
-            rsp: 0,
+            rbp: 17,
+            rax: 1,
+            rbx: 2,
+            rcx: 3,
+            rdx: 4,
+            rsi: 5,
+            rdi: 6,
+            r8: 7,
+            r9: 8,
+            r10: 10,
+            r11: 11,
+            r12: 12,
+            r13: 13,
+            r14: 14,
+            r15: 15,
+            rflags: 18,
+            rsp: 16,
         }
     }
 
@@ -164,6 +164,7 @@ impl Task {
         s.push(&mut c.rsp, 0x8);
         s.push(&mut c.rsp, start_eip as u64);
         s.push(&mut c.rsp, c.rbp);
+        s.push(&mut c.rsp, 9);
         s.push(&mut c.rsp, c.r11);
         s.push(&mut c.rsp, c.r10);
         s.push(&mut c.rsp, c.r9);
@@ -172,9 +173,9 @@ impl Task {
         s.push(&mut c.rsp, c.rsi);
         s.push(&mut c.rsp, c.rdx);
         s.push(&mut c.rsp, c.rcx);
-        s.push(&mut c.rsp, c.rax);
-        s.push(&mut c.rsp, 42);
-        s.push(&mut c.rsp, 42);
+        for _ in 0..(0x10/8) {
+            s.push(&mut c.rsp, 42);
+        }
         let t = crate::boot::x86::boot64::irq_finisher as *const() as u64;
         s.push(&mut c.rsp, t); // mocked end of the irq handler
         s.push(&mut c.rsp, c.rbp);
