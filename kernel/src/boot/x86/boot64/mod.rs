@@ -146,7 +146,7 @@ pub fn finish_irq(irqnum: u8) {
 
 /// The irq0 handler
 pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[3].sync_lock();
+    let handle = IRQ_HANDLERS[0].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_ref().unwrap()};
     if let Some(h2) = h3 {

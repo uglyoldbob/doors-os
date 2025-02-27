@@ -77,7 +77,7 @@ impl Context {
             r13: 0,
             r14: 0,
             r15: 0,
-            rflags: 1 << 9,
+            rflags: 0,
             rsp: 0,
         }
     }
@@ -160,7 +160,7 @@ impl Task {
         s.push(&mut c.rsp, 0x10);
         let saved_rsp = c.rsp;
         s.push(&mut c.rsp, saved_rsp);
-        s.push(&mut c.rsp, c.rflags);
+        s.push(&mut c.rsp, c.rflags | 1<<9);
         s.push(&mut c.rsp, 0x8);
         s.push(&mut c.rsp, start_eip as u64);
         s.push(&mut c.rsp, c.rbp);
@@ -172,17 +172,21 @@ impl Task {
         s.push(&mut c.rsp, c.rsi);
         s.push(&mut c.rsp, c.rdx);
         s.push(&mut c.rsp, c.rcx);
-        s.push(&mut c.rsp, c.rbx);
         s.push(&mut c.rsp, c.rax);
         s.push(&mut c.rsp, 42);
         s.push(&mut c.rsp, 42);
-        s.push(&mut c.rsp, thread_wrapper2 as *const () as u64); // mocked end of the irq handler
+        let t = crate::boot::x86::boot64::irq_finisher as *const() as u64;
+        s.push(&mut c.rsp, t); // mocked end of the irq handler
         s.push(&mut c.rsp, c.rbp);
+        s.push(&mut c.rsp, c.r15);
         s.push(&mut c.rsp, c.r14);
+        s.push(&mut c.rsp, c.r13);
+        s.push(&mut c.rsp, c.r12);
         s.push(&mut c.rsp, c.rbx);
-        for _ in 0..12 {
+        for _ in 0..(0x208/8) {
             s.push(&mut c.rsp, 42);
         }
+        
         s.push(&mut c.rsp, thread_wrapper1 as *const () as u64); // the mocked return for the scheduler
         c.rbp = c.rsp;
         let s = Self {
@@ -200,20 +204,6 @@ impl Task {
             f: None,
             stack: None,
         }
-    }
-
-    /// A test function for checking the operation of context saving and restoring
-    #[inline(never)]
-    pub fn test() {
-        let mut c = Context::new();
-        Context::save(&mut c);
-        crate::VGA.print_str(&alloc::format!(
-            "The context stored is {:p} {:x?}\r\n",
-            &c,
-            c
-        ));
-        crate::VGA.sync_flush();
-        c.restore();
     }
 }
 
@@ -296,9 +286,11 @@ impl Scheduler {
             this.local_tasks.push(task);
             drop(this);
             timer.start_oneshot();
+            drop(timer);
             new_context.restore();
         } else {
             timer.start_oneshot();
+            drop(timer);
         }
     }
 
@@ -315,7 +307,7 @@ impl Scheduler {
             let mut t2 = timer.sync_lock();
             let mut t3 = t2.get_timer(0).unwrap();
             t3.register_handler(move |timer| Self::handle_interrupt(&s2, timer));
-            crate::SYSTEM.read().disable_irq(irqnum);
+            //crate::SYSTEM.read().disable_irq(irqnum);
             this.timer.replace(t3);
         }
         crate::SYSTEM.read().enable_irq(irqnum);

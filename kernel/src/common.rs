@@ -296,6 +296,7 @@ pub struct MutexGuard<'a, T> {
 impl<'a, T> MutexGuard<'a, T> {
     /// Unsafe destroy the lock and return the inner contents
     pub unsafe fn unsafe_destroy(self) -> *mut T {
+        self.guard.store(false, Ordering::Release);
         self.data
     }
 }

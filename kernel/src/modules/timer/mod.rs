@@ -107,7 +107,7 @@ impl TimerInstance {
         use crate::kernel::SystemTrait;
         self.callback.replace(Arc::new(Box::new(f)));
         let s2 = self.inner.clone();
-        let mut cb = self.callback.clone();
+        let cb = self.callback.clone();
         crate::SYSTEM
             .read()
             .register_irq_handler(self.inner.irq(), move || Self::handle_interrupt(&s2, &cb));

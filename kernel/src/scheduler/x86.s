@@ -2,7 +2,6 @@
 .global thread_save
 .global thread_restore
 .global thread_wrapper1
-.global thread_wrapper2
 .code64
 thread_save:
     mov [rdi+0], rbp
@@ -20,8 +19,6 @@ thread_save:
     mov [rdi+96], r13
     mov [rdi+104], r14
     mov [rdi+112], r15
-    pushfq
-    pop [rdi+120]
     mov [rdi+128], rsp
     ret
 
@@ -47,26 +44,11 @@ thread_restore:
     ret
 
 thread_wrapper1:
-    add rsp, 0x60
+    add rsp, 0x208
     pop rbx
+    pop r12
+    pop r13
     pop r14
+    pop r15
     pop rbp
     ret
-
-thread_wrapper2:
-    add rsp, 0x10
-    mov al, 0x20
-    mov dx, 0x20
-    out dx, al
-    pop rax
-    pop rbx
-    pop rcx
-    pop rdx
-    pop rsi
-    pop rdi
-    pop r8
-    pop r9
-    pop r10
-    pop r11
-    pop rbp
-    iretq
