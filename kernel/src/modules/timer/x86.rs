@@ -1,8 +1,6 @@
 //! Code for x86 timers
 
-use crate::{
-    boot::IOPORTS, IoPortRef, IoReadWrite, IrqGuardedInner,
-};
+use crate::{boot::IOPORTS, IoPortRef, IoReadWrite, IrqGuardedInner};
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
 

@@ -85,7 +85,10 @@ impl TimerInstance {
     }
 
     #[inline(never)]
-    fn handle_interrupt(this: &IrqGuarded<TimerInstanceInner>, cb: &mut Option<Arc<Box<dyn Fn(IrqGuardedUse<TimerInstanceInner>) + Send + Sync + 'static>>>) {
+    fn handle_interrupt(
+        this: &IrqGuarded<TimerInstanceInner>,
+        cb: &Option<Arc<Box<dyn Fn(IrqGuardedUse<TimerInstanceInner>) + Send + Sync + 'static>>>,
+    ) {
         let s = this.interrupt_access();
         let _channel = s.hardware_interrupt();
         doors_macros::todo_item!("Do something with the indicated channel");
@@ -107,7 +110,7 @@ impl TimerInstance {
         let mut cb = self.callback.clone();
         crate::SYSTEM
             .read()
-            .register_irq_handler(self.inner.irq(), move || Self::handle_interrupt(&s2, &mut cb));
+            .register_irq_handler(self.inner.irq(), move || Self::handle_interrupt(&s2, &cb));
     }
 }
 

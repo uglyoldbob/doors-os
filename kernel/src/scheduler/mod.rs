@@ -1,11 +1,12 @@
 //! Code for the task/thread scheduler of the kernel.
 
-
 use alloc::vec::Vec;
 use spin::RwLock;
 
 use crate::{
-    kernel::SystemTrait, modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait}, Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse,
+    kernel::SystemTrait,
+    modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse,
 };
 
 /// The saved context for a thread
@@ -53,6 +54,8 @@ core::arch::global_asm!(include_str!("x86.s"));
 extern "C" {
     fn thread_save(m: &mut Context);
     fn thread_restore(m: &Context);
+    fn thread_wrapper1();
+    fn thread_wrapper2();
 }
 
 impl Context {
@@ -74,7 +77,7 @@ impl Context {
             r13: 0,
             r14: 0,
             r15: 0,
-            rflags: 0,
+            rflags: 1 << 9,
             rsp: 0,
         }
     }
@@ -134,7 +137,7 @@ pub struct Task {
     /// The initial function of the task
     f: Option<fn()>,
     /// The thread stack
-    _stack: Option<Stack>,
+    stack: Option<Stack>,
 }
 
 doors_macros::todo_item!("Figure out a way to lock a task onto a specific processor?");
@@ -154,11 +157,38 @@ impl Task {
         let mut c = Context::new();
         s.set_rsp(&mut c.rsp);
         let start_eip = f as *const () as u64;
+        s.push(&mut c.rsp, 0x10);
+        let saved_rsp = c.rsp;
+        s.push(&mut c.rsp, saved_rsp);
+        s.push(&mut c.rsp, c.rflags);
+        s.push(&mut c.rsp, 0x8);
         s.push(&mut c.rsp, start_eip as u64);
+        s.push(&mut c.rsp, c.rbp);
+        s.push(&mut c.rsp, c.r11);
+        s.push(&mut c.rsp, c.r10);
+        s.push(&mut c.rsp, c.r9);
+        s.push(&mut c.rsp, c.r8);
+        s.push(&mut c.rsp, c.rdi);
+        s.push(&mut c.rsp, c.rsi);
+        s.push(&mut c.rsp, c.rdx);
+        s.push(&mut c.rsp, c.rcx);
+        s.push(&mut c.rsp, c.rbx);
+        s.push(&mut c.rsp, c.rax);
+        s.push(&mut c.rsp, 42);
+        s.push(&mut c.rsp, 42);
+        s.push(&mut c.rsp, thread_wrapper2 as *const () as u64); // mocked end of the irq handler
+        s.push(&mut c.rsp, c.rbp);
+        s.push(&mut c.rsp, c.r14);
+        s.push(&mut c.rsp, c.rbx);
+        for _ in 0..12 {
+            s.push(&mut c.rsp, 42);
+        }
+        s.push(&mut c.rsp, thread_wrapper1 as *const () as u64); // the mocked return for the scheduler
+        c.rbp = c.rsp;
         let s = Self {
             context: Some(c),
             f: Some(f),
-            _stack: Some(s),
+            stack: Some(s),
         };
         s
     }
@@ -168,7 +198,7 @@ impl Task {
         Self {
             context: None,
             f: None,
-            _stack: None,
+            stack: None,
         }
     }
 
@@ -267,8 +297,7 @@ impl Scheduler {
             drop(this);
             timer.start_oneshot();
             new_context.restore();
-        }
-        else {
+        } else {
             timer.start_oneshot();
         }
     }
@@ -279,7 +308,7 @@ impl Scheduler {
         let s2 = self.i.clone();
         let irqnum = self.i.0.irq();
         crate::SYSTEM.read().disable_irq(irqnum);
-        {        
+        {
             let mut this = self.i.0.interrupt_access();
             let mut t = crate::kernel::TIMERS.sync_lock();
             let timer = t.module(0);

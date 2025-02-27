@@ -89,8 +89,8 @@ lazy_static! {
 }
 
 /// The irq handlers registered by the system
-static IRQ_HANDLERS: [OnceCell<LockedArc<Option<Box<dyn FnMut() + Send + Sync>>>>; 256] =
-    [const { OnceCell::uninit() }; 256];
+static IRQ_HANDLERS: [Locked<Option<Box<dyn Fn() + Send + Sync>>>; 256] =
+    [const { Locked::new(None) }; 256];
 
 /// The divide by zero handler
 #[interrupt_64]
@@ -104,102 +104,76 @@ pub extern "C" fn divide_by_zero() {
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 
-/// The irq0 handler
-pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[0].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
-    }
+/// The ending portion of an irq handler
+pub fn finish_irq(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Send + Sync>>>) {
+    drop(handle);
     let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(0)
+        p.end_of_interrupt(irqnum)
     }
+}
+
+/// The irq0 handler
+pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
+    let handle = IRQ_HANDLERS[0].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
+    }
+    finish_irq(0, handle);
 }
 
 /// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[3].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[3].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(3)
-    }
+    finish_irq(3, handle);
 }
 
 /// The irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[4].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[4].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(4)
-    }
+    finish_irq(4, handle);
 }
 
 /// The irq7 handler
 pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[7].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[7].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(7)
-    }
+    finish_irq(7, handle);
 }
 
 /// The irq9 handler
 pub extern "x86-interrupt" fn irq9(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[9].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[9].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(9)
-    }
+    finish_irq(9, handle);
 }
 
 /// The irq10 handler
 pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[10].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[10].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(10)
-    }
+    finish_irq(10, handle);
 }
 
 /// The irq11 handler
 pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[11].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[11].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(11)
-    }
+    finish_irq(11, handle);
 }
 
 /// The general protection fault handler
@@ -808,12 +782,10 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     doors_macros::todo_item!("Add code for unregistering an irq handler");
-    fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
+    fn register_irq_handler<F: Fn() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
-        if let Ok(ih) = IRQ_HANDLERS[irq as usize].try_get() {
-            let mut irqs = ih.sync_lock();
-            irqs.replace(a);
-        }
+        let mut irqs = IRQ_HANDLERS[irq as usize].sync_lock();
+        irqs.replace(a);
     }
 
     fn disable_irq(&self, irq: u8) {
@@ -1137,10 +1109,6 @@ pub extern "C" fn start64() -> ! {
         .sync_lock()
         .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
         .unwrap();
-
-    for ih in &IRQ_HANDLERS {
-        ih.try_init_once(|| LockedArc::new(None)).unwrap();
-    }
 
     {
         let pic = Pic::new().unwrap();
