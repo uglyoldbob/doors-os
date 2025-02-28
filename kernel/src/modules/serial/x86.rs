@@ -265,7 +265,7 @@ impl super::SerialTrait for X86SerialPort {
             self.0.interrupts.store(false, Ordering::Relaxed);
         };
         crate::SYSTEM.read().disable_irq(irqnum);
-        self.0.base.access().port(1).port_write(0u8);
+        self.0.base.interrupt_access().port(1).port_write(0u8);
     }
 
     fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {
@@ -294,7 +294,11 @@ impl super::SerialTrait for X86SerialPort {
             self.0.itx.store(true, Ordering::Relaxed);
             let mut ienabled = false;
             for c in data.iter() {
-                while txq.interrupt_access().is_full() {}
+                while txq.interrupt_access().is_full() {
+                    for _ in 0..1000000 {
+                        x86_64::instructions::nop();
+                    }
+                }
                 txq.access().push(*c).unwrap();
                 if !ienabled {
                     self.0.enable_tx_interrupt();
@@ -316,10 +320,11 @@ impl super::SerialTrait for X86SerialPort {
         let i = self.0.interrupts.load(Ordering::Relaxed);
         if i {
             loop {
-                let empty = self.0.tx_queue.access().is_empty();
+                let empty = self.0.tx_queue.interrupt_access().is_empty();
                 if empty {
                     break;
                 }
+                self.0.enable_tx_interrupt();
             }
         }
     }

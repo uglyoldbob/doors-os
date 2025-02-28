@@ -1,13 +1,13 @@
-add-symbol-file kernel64.debug
+add-symbol-file ./kernel/kernel64.debug
 
 define exit
     monitor quit
     quit
 end
 
-break start64
-break segment_not_present_asm
+break kernel::boot::x86::boot64::irq0
+break kernel::scheduler::Scheduler::handle_interrupt
+break thread_restore
 disp /i $pc
-target remote | qemu-system-x86_64 -serial file:serial.log -serial file:serial2.log -cdrom cd64.iso -m 8 -gdb stdio -d cpu_reset -d int -monitor unix:/tmp/qemusock,server,nowait
-#-monitor unix:/tmp/qemusock,server,nowait
-#socat -,echo=0,icanon=0 unix-connect:/tmp/qemusock
+target remote | qemu-system-x86_64 -serial file:serial.log -serial file:serial2.log -cdrom cd64.iso -m 8 -gdb stdio
+

@@ -7,9 +7,9 @@
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
+#![feature(naked_functions)]
 #![feature(negative_impls)]
 #![feature(type_alias_impl_trait)]
-#![feature(unboxed_closures)]
 
 doors_macros::load_config!();
 
@@ -25,6 +25,7 @@ pub use boot::mem2::*;
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
+pub mod scheduler;
 
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
@@ -126,12 +127,28 @@ async fn net_test() {
     }
 }
 
+/// A test function for the kernel
+fn test_function() {
+    for _ in 0..10 {
+        crate::VGA.print_str("Testing function\r\n");
+        crate::VGA.sync_flush();
+    }
+}
+
 fn main() -> ! {
     {
+        {
+            let s = scheduler::Scheduler::new();
+            scheduler::SCHEDULER.write().replace(s);
+        }
         {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
+            crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
+            let t = scheduler::Task::new(test_function);
+            scheduler::SCHEDULER.read().as_ref().unwrap().add_task(t);
+            scheduler::SCHEDULER.read().as_ref().unwrap().timer_setup();
             crate::modules::network::network_init();
         }
         {

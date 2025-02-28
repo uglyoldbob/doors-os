@@ -17,6 +17,18 @@ use crossbeam::queue::ArrayQueue;
 pub use executor::*;
 use spin::RwLock;
 
+/// The id for a task
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TaskId(usize);
+
+impl TaskId {
+    /// Construct the next unique task id
+    pub fn new() -> Self {
+        static NEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+        Self(NEXT.fetch_add(1, core::sync::atomic::Ordering::Relaxed))
+    }
+}
+
 /// A definition for an Arc. This allows traits to be defined for Arc.
 pub struct Arc<T>(alloc::sync::Arc<T>);
 
@@ -180,7 +192,7 @@ impl<'a, A> core::future::Future for AsyncLockedMutexGuardFuture<'a, A> {
         if self
             .inner
             .lock
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::SeqCst)
             .is_ok()
         {
             core::task::Poll::Ready(AsyncLockedMutexGuard {
@@ -210,7 +222,7 @@ impl<A> AsyncLocked<A> {
         loop {
             if self
                 .lock
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::SeqCst)
                 .is_ok()
             {
                 break AsyncLockedMutexGuard {
@@ -264,7 +276,7 @@ impl<T: ?Sized> DerefMut for AsyncLockedMutexGuard<'_, T> {
 impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
-        self.lock.store(false, Ordering::Release);
+        self.lock.store(false, Ordering::SeqCst);
         while let Some(w) = self.wakers.pop() {
             w.wake();
         }
@@ -273,34 +285,57 @@ impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
 
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
 pub struct Locked<A> {
-    /// The contained thing
-    inner: spin::Mutex<A>,
+    /// The lock for protecting the data
+    lock: AtomicBool,
+    /// The inner data
+    inner: UnsafeCell<A>,
 }
 
 /// A blank nonsend structure
-struct PhantomNonSend {}
+#[repr(C)]
+struct PhantomNonSend;
 
 impl !Send for PhantomNonSend {}
 impl !Sync for PhantomNonSend {}
 
 /// A mutex guard for the Locked structure
+#[repr(C)]
 pub struct MutexGuard<'a, T> {
     /// The inner mutex
-    guard: spin::MutexGuard<'a, T>,
-    /// A struct to make the mutex guard non-send
-    _dummy: PhantomNonSend,
+    guard: &'a AtomicBool,
+    /// The data
+    data: *mut T,
 }
 
-impl<'a, T> Deref for MutexGuard<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        self.guard.deref()
+impl<'a, T> MutexGuard<'a, T> {
+    /// Unsafe destroy the lock and return the inner contents
+    pub unsafe fn unsafe_destroy(self) -> *mut T {
+        self.guard.store(false, Ordering::Release);
+        self.data
     }
 }
 
-impl<'a, T> DerefMut for MutexGuard<'a, T> {
+impl<T> !Send for MutexGuard<'_, T> {}
+
+impl<T> Drop for MutexGuard<'_, T> {
+    fn drop(&mut self) {
+        self.guard.store(false, Ordering::Release);
+    }
+}
+
+unsafe impl<T> Send for Locked<T> {}
+unsafe impl<T> Sync for Locked<T> {}
+
+impl<T> Deref for MutexGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.data }
+    }
+}
+
+impl<T> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.guard.deref_mut()
+        unsafe { &mut *self.data }
     }
 }
 
@@ -308,21 +343,31 @@ impl<A> Locked<A> {
     /// Create a new protected thing
     pub const fn new(inner: A) -> Self {
         Locked {
-            inner: spin::Mutex::new(inner),
+            lock: AtomicBool::new(false),
+            inner: UnsafeCell::new(inner),
         }
     }
 
     /// Lock the mutex and return a protected instance of the thing
     pub fn sync_lock(&self) -> MutexGuard<A> {
-        MutexGuard {
-            guard: self.inner.lock(),
-            _dummy: PhantomNonSend {},
+        loop {
+            if self
+                .lock
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                break MutexGuard {
+                    guard: &self.lock,
+                    data: unsafe { &mut *self.inner.get() },
+                };
+            }
+            doors_macros::todo_item!("Do something with the thread scheduler here");
         }
     }
 
     /// Replace the contents of the protected instance with another instance of the thing
     pub fn replace(&self, r: A) {
-        let mut s = self.inner.lock();
+        let mut s = self.sync_lock();
         *s = r;
     }
 }
@@ -337,6 +382,9 @@ lazy_static::lazy_static! {
     /// The VGA instance used for x86 kernel printing
     pub static ref VGA: AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> = AsyncLockedArc::new(None);
 }
+
+/// Temporary variable to enable extra kernel logging
+pub static DEBUG_PRINT: AtomicBool = AtomicBool::new(false);
 
 impl log::Log for AsyncLockedArc<Option<crate::TextDisplay>> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
@@ -413,7 +461,7 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
         let vga = v.as_mut();
         if let core::option::Option::Some(vga) = vga {
             use crate::modules::video::TextDisplayTrait;
-            vga.flush();
+            vga.sync_flush();
         }
     }
 }
@@ -553,6 +601,11 @@ impl<T> IrqGuarded<T> {
         }
     }
 
+    /// Return the irq number for the user
+    pub fn irq(&self) -> u8 {
+        self.value.irqnum
+    }
+
     /// Use the inner value from a non-interrupt context
     pub async fn access(&self) -> IrqGuardedUse<T> {
         let sys = crate::SYSTEM.read();
@@ -564,6 +617,21 @@ impl<T> IrqGuarded<T> {
         IrqGuardedUse {
             r: &self.value,
             val: Some(self.inner.lock().await),
+            enable_interrupts: true,
+        }
+    }
+
+    /// Use the inner value from a synchronous non-interrupt context
+    pub fn sync_access(&self) -> IrqGuardedUse<T> {
+        let sys = crate::SYSTEM.read();
+        if self.value.disable_all_interrupts {
+            sys.disable_interrupts();
+        }
+        sys.disable_irq(self.value.irqnum);
+        (self.value.lock)(self.value.irqnum);
+        IrqGuardedUse {
+            r: &self.value,
+            val: Some(self.inner.sync_lock()),
             enable_interrupts: true,
         }
     }

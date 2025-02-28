@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
+use crate::kernel::SystemTrait;
 use crate::modules::video::hex_dump;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -11,8 +12,10 @@ use acpi::madt::Madt;
 use acpi::sdt::SdtHeader;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
+use aml::value::Args;
 use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
+use core::arch::naked_asm;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use doors_macros::interrupt_64;
@@ -88,8 +91,8 @@ lazy_static! {
 }
 
 /// The irq handlers registered by the system
-static IRQ_HANDLERS: [OnceCell<LockedArc<Option<Box<dyn FnMut() + Send + Sync>>>>; 256] =
-    [const { OnceCell::uninit() }; 256];
+static IRQ_HANDLERS: [Locked<Option<Box<dyn Fn() + Send + Sync>>>; 256] =
+    [const { Locked::new(None) }; 256];
 
 /// The divide by zero handler
 #[interrupt_64]
@@ -102,93 +105,127 @@ pub extern "C" fn divide_by_zero() {
 }
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
-/// The irq4 handler
-pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[3].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
-    }
+
+/// Signals end of interrupt
+fn irq_ender(irqnum: u8) {
     let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(3)
+        p.end_of_interrupt(irqnum)
     }
+}
+
+/// The finishing function for irq handlers
+#[naked]
+pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
+    naked_asm!(
+        "\
+        add rsp, 8;\
+        pop rax;\
+        pop rcx;\
+        pop rdx;\
+        pop rsi;\
+        pop rdi;\
+        pop r8;\
+        pop r9;\
+        pop r10;\
+        pop r11;\
+        pop rbp;\
+        iretq;"
+    );
+}
+
+/// The ending portion of an irq handler
+#[inline(never)]
+pub fn finish_irq(irqnum: u8) {
+    let p = INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(irqnum)
+    }
+}
+
+/// The irq0 handler
+pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
+    let handle = IRQ_HANDLERS[0].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    irq_ender(0);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq3 handler
+pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
+    let handle = IRQ_HANDLERS[4].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
+    }
+    finish_irq(3);
 }
 
 /// The irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[4].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[4].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(4)
-    }
+    finish_irq(4);
 }
 
 /// The irq7 handler
 pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[7].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[7].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(7)
-    }
+    finish_irq(7);
 }
 
 /// The irq9 handler
 pub extern "x86-interrupt" fn irq9(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[9].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[9].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(9)
-    }
+    finish_irq(9);
 }
 
 /// The irq10 handler
 pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[10].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[10].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(10)
-    }
+    finish_irq(10);
 }
 
 /// The irq11 handler
 pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
-    if let Ok(h) = IRQ_HANDLERS[11].try_get() {
-        let mut h = h.sync_lock();
-        if let Some(h2) = h.as_mut() {
-            h2();
-        }
+    let handle = IRQ_HANDLERS[11].sync_lock();
+    if let Some(h2) = handle.as_ref() {
+        h2();
     }
-    let p = INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(11)
+    finish_irq(11);
+}
+
+/// The general protection fault handler
+extern "x86-interrupt" fn general_protection_handler(isf: InterruptStackFrame, c: u64) {
+    crate::VGA.stop_async();
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "General protection fault {:x} @{:x}\r\n",
+        c,
+        isf.instruction_pointer.as_u64()
+    ));
+    loop {
+        x86_64::instructions::hlt();
     }
 }
 
 ///The handler for segment not present
-#[interrupt_arg_64]
-pub extern "C" fn segment_not_present(arg: u32) {
+extern "x86-interrupt" fn segment_not_present(
+    sf: x86_64::structures::idt::InterruptStackFrame,
+    arg: u64,
+) {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Segment not present {:x}\r\n",
@@ -467,6 +504,7 @@ impl Pic {
     }
 
     /// Enable the specified irq
+    #[inline(never)]
     pub fn enable_irq(&self, irq: u8) {
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
@@ -479,6 +517,7 @@ impl Pic {
     }
 
     /// Disable the specified irq
+    #[inline(never)]
     pub fn disable_irq(&self, irq: u8) {
         if irq < 8 {
             let data: u8 = self.pic1.port(1).port_read();
@@ -774,12 +813,10 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     doors_macros::todo_item!("Add code for unregistering an irq handler");
-    fn register_irq_handler<F: FnMut() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
+    fn register_irq_handler<F: Fn() + Send + Sync + 'static>(&self, irq: u8, handler: F) {
         let a = Box::new(handler);
-        if let Ok(ih) = IRQ_HANDLERS[irq as usize].try_get() {
-            let mut irqs = ih.sync_lock();
-            irqs.replace(a);
-        }
+        let mut irqs = IRQ_HANDLERS[irq as usize].sync_lock();
+        irqs.replace(a);
     }
 
     fn disable_irq(&self, irq: u8) {
@@ -809,6 +846,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     }
 
     fn init(&self) {
+        super::setup_timers();
         super::setup_serial();
         {
             let this = self.sync_lock();
@@ -1103,10 +1141,6 @@ pub extern "C" fn start64() -> ! {
         .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
         .unwrap();
 
-    for ih in &IRQ_HANDLERS {
-        ih.try_init_once(|| LockedArc::new(None)).unwrap();
-    }
-
     {
         let pic = Pic::new().unwrap();
         pic.disable();
@@ -1120,17 +1154,16 @@ pub extern "C" fn start64() -> ! {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 divide_by_zero_asm as *const (),
             ));
-            let mut entry = x86_64::structures::idt::Entry::missing();
-            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
-                segment_not_present_asm as *const (),
-            ));
-            idt.segment_not_present = entry;
+            idt.segment_not_present.set_handler_fn(segment_not_present);
 
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
                 double_fault_handler as *const (),
             ));
             idt.double_fault = entry;
+
+            idt.general_protection_fault
+                .set_handler_fn(general_protection_handler);
 
             let mut entry = x86_64::structures::idt::Entry::missing();
             entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
@@ -1143,6 +1176,7 @@ pub extern "C" fn start64() -> ! {
                 invalid_opcode as *const (),
             ));
             idt.invalid_opcode = entry;
+            idt[0x20].set_handler_fn(irq0);
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);
             idt[0x27].set_handler_fn(irq7);

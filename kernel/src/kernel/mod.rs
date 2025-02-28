@@ -294,8 +294,8 @@ pub trait SystemTrait {
         self.enable_interrupts();
         r
     }
-    /// Register a serial port handler
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F);
+    /// Register an irq handler with a Fn
+    fn register_irq_handler<F: Fn() -> () + Send + Sync + 'static>(&self, irq: u8, handler: F);
     /// Enable IRQ
     fn enable_irq(&self, irq: u8);
     /// Disable IRQ

@@ -5,19 +5,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
-use alloc::borrow::ToOwned;
-
-/// The id for a task
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct TaskId(usize);
-
-impl TaskId {
-    /// Construct the next unique task id
-    fn new() -> Self {
-        static NEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
-        Self(NEXT.fetch_add(1, core::sync::atomic::Ordering::Relaxed))
-    }
-}
+use crate::TaskId;
 
 /// An example struct that is non sendable
 pub struct NonSendable {
