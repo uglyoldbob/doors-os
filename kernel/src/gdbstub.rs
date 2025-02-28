@@ -139,37 +139,35 @@ impl MultiThreadBase for DoorsTarget {
         let s = s.as_ref().unwrap().sync_access();
         let task = s.lookup(tid.into());
         if let Some(task) = task {
-            if let Some(context) = task.examine_context() {
-                regs.eflags = (context.rflags & 0xFFFFFFFF) as u32;
+            if let Some((context, scontext)) = task.examine_stack() {
+                regs.eflags = (scontext.rflags & 0xFFFFFFFF) as u32;
                 regs.segments.cs = 8;
                 regs.segments.ds = 8;
                 regs.segments.es = 8;
                 regs.segments.fs = 8;
                 regs.segments.gs = 8;
                 regs.segments.ss = 16;
-                regs.regs[0] = context.rax;
+                regs.regs[0] = scontext.rax;
                 regs.regs[1] = context.rbx;
-                regs.regs[2] = context.rcx;
-                regs.regs[3] = context.rdx;
-                regs.regs[4] = context.rsi;
-                regs.regs[5] = context.rdi;
-                regs.regs[6] = context.rbp;
+                regs.regs[2] = scontext.rcx;
+                regs.regs[3] = scontext.rdx;
+                regs.regs[4] = scontext.rsi;
+                regs.regs[5] = scontext.rdi;
+                regs.regs[6] = scontext.rbp;
                 regs.regs[7] = context.rsp;
-                regs.regs[8] = context.r8;
-                regs.regs[9] = context.r9;
-                regs.regs[10] = context.r10;
-                regs.regs[11] = context.r11;
-                regs.regs[12] = context.r12;
-                regs.regs[13] = context.r13;
-                regs.regs[14] = context.r14;
-                regs.regs[15] = context.r15;
+                regs.regs[8] = scontext.r8;
+                regs.regs[9] = scontext.r9;
+                regs.regs[10] = scontext.r10;
+                regs.regs[11] = scontext.r11;
+                regs.regs[12] = scontext.r12;
+                regs.regs[13] = scontext.r13;
+                regs.regs[14] = scontext.r14;
+                regs.regs[15] = scontext.r15;
                 Ok(())
-            }
-            else {
+            } else {
                 Err(gdbstub::target::TargetError::NonFatal)
             }
-        }
-        else {
+        } else {
             Err(gdbstub::target::TargetError::NonFatal)
         }
     }

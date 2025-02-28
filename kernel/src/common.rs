@@ -3,7 +3,12 @@
 #[path = "executor.rs"]
 pub mod executor;
 use core::{
-    cell::UnsafeCell, fmt, marker::PhantomData, ops::{Deref, DerefMut}, pin::Pin, sync::atomic::{AtomicBool, Ordering}
+    cell::UnsafeCell,
+    fmt,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    pin::Pin,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 /// This trait is implemented for things safe to use in an interrupt context

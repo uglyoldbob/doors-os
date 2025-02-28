@@ -184,7 +184,12 @@ impl TaskList {
     }
 
     /// Copy the number of times that tasks have been polled
-    fn copy_polls(&mut self, taskid: TaskId, task: &AsyncTask<'_>, polled: &mut [Option<usize>; 6]) {
+    fn copy_polls(
+        &mut self,
+        taskid: TaskId,
+        task: &AsyncTask<'_>,
+        polled: &mut [Option<usize>; 6],
+    ) {
         if taskid.0 < polled.len() {
             polled[taskid.0] = Some(task.polled);
         }

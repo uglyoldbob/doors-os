@@ -26,8 +26,7 @@ pub use boot::mem2::*;
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
-mod scheduler;
-pub use scheduler::*;
+pub mod scheduler;
 
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
@@ -131,10 +130,7 @@ async fn net_test() {
 
 /// A test function for the kernel
 fn test_function() {
-    for _ in 0..10 {
-        crate::VGA.print_str("Testing function\r\n");
-        crate::VGA.sync_flush();
-    }
+    loop {}
 }
 
 fn main() -> ! {
@@ -230,7 +226,9 @@ fn main() -> ! {
             })
             .unwrap();
         if true {
-            executor.spawn(executor::AsyncTask::new(net_test())).unwrap();
+            executor
+                .spawn(executor::AsyncTask::new(net_test()))
+                .unwrap();
         }
         executor
             .spawn_closure(async || {
