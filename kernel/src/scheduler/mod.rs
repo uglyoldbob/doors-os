@@ -1,12 +1,12 @@
 //! Code for the task/thread scheduler of the kernel.
 
-use alloc::vec::Vec;
+use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, vec::Vec};
 use spin::RwLock;
 
 use crate::{
     kernel::SystemTrait,
     modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse,
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, TaskId,
 };
 
 /// The saved context for a thread
@@ -160,7 +160,7 @@ impl Task {
         s.push(&mut c.rsp, 0x10);
         let saved_rsp = c.rsp;
         s.push(&mut c.rsp, saved_rsp);
-        s.push(&mut c.rsp, c.rflags | 1<<9);
+        s.push(&mut c.rsp, c.rflags | 1 << 9);
         s.push(&mut c.rsp, 0x8);
         s.push(&mut c.rsp, start_eip as u64);
         s.push(&mut c.rsp, c.rbp);
@@ -173,10 +173,10 @@ impl Task {
         s.push(&mut c.rsp, c.rsi);
         s.push(&mut c.rsp, c.rdx);
         s.push(&mut c.rsp, c.rcx);
-        for _ in 0..(0x10/8) {
-            s.push(&mut c.rsp, 42);
+        for i in 0..(0x10 / 8) {
+            s.push(&mut c.rsp, 42 + i);
         }
-        let t = crate::boot::x86::boot64::irq_finisher as *const() as u64;
+        let t = crate::boot::x86::boot64::irq_finisher as *const () as u64;
         s.push(&mut c.rsp, t); // mocked end of the irq handler
         s.push(&mut c.rsp, c.rbp);
         s.push(&mut c.rsp, c.r15);
@@ -184,10 +184,10 @@ impl Task {
         s.push(&mut c.rsp, c.r13);
         s.push(&mut c.rsp, c.r12);
         s.push(&mut c.rsp, c.rbx);
-        for _ in 0..(0x208/8) {
+        for _ in 0..(0x208 / 8) {
             s.push(&mut c.rsp, 42);
         }
-        
+
         s.push(&mut c.rsp, thread_wrapper1 as *const () as u64); // the mocked return for the scheduler
         c.rbp = c.rsp;
         let s = Self {
@@ -214,9 +214,11 @@ pub static SCHEDULER: RwLock<Option<Scheduler>> = RwLock::new(None);
 /// The actual contents of a scheduler
 pub struct InnerScheduler {
     /// The list of tasks local to the scheduler
-    local_tasks: Vec<Task>,
+    local_tasks: BTreeMap<TaskId, Task>,
     /// The currently executing task
     cur_task: Task,
+    /// The id of the currently executing task
+    cur_task_id: Option<TaskId>,
     /// The timer instance for the scheduler
     timer: Option<TimerInstance>,
 }
@@ -225,8 +227,9 @@ impl InnerScheduler {
     /// Create a new scheduler
     pub const fn new() -> Self {
         Self {
-            local_tasks: Vec::new(),
+            local_tasks: BTreeMap::new(),
             cur_task: Task::running(),
+            cur_task_id: None,
             timer: None,
         }
     }
@@ -237,7 +240,8 @@ impl InnerScheduler {
             "There are {} tasks\r\n",
             self.local_tasks.len()
         ));
-        for t in &self.local_tasks {
+        for (_id, t) in &self.local_tasks {
+            doors_macros::todo_item!("Use the task id in the print function");
             t.print();
         }
         crate::VGA.sync_flush();
@@ -271,7 +275,10 @@ impl Scheduler {
     ) {
         use crate::modules::timer::TimerInstanceInnerTrait;
         let mut this = this.0.interrupt_access();
-        if let Some(mut task) = this.local_tasks.pop() {
+
+        if let Some(taskid) = this.local_tasks.keys().next().cloned() {
+            let (taskid, mut task) = this.local_tasks.remove_entry(&taskid).unwrap();
+
             let new_context = match task.context.take() {
                 Some(c) => c,
                 None => {
@@ -279,12 +286,17 @@ impl Scheduler {
                 }
             };
             core::mem::swap(&mut this.cur_task, &mut task);
+            let mut old_task = this.cur_task_id.replace(taskid);
+            if old_task.is_none() {
+                old_task.replace(TaskId::new());
+            }
+            let taskid = old_task.unwrap();
             let mut old_context = Context::new();
             Context::save(&mut old_context);
             if let Some(_c) = task.context.replace(old_context) {
                 panic!();
             }
-            this.local_tasks.push(task);
+            this.local_tasks.insert(taskid, task);
             drop(this);
             timer.start_oneshot();
             drop(timer);
@@ -321,7 +333,7 @@ impl Scheduler {
     /// Add a task
     pub fn add_task(&self, task: Task) {
         let mut this = self.i.0.sync_access();
-        this.local_tasks.push(task);
+        this.local_tasks.insert(TaskId::new(), task);
     }
 
     /// Print all tasks

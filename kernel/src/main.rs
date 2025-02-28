@@ -150,8 +150,8 @@ fn main() -> ! {
             sys.init();
             crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
             let t = scheduler::Task::new(test_function);
-            scheduler::SCHEDULER.read().as_ref().unwrap().timer_setup();
             scheduler::SCHEDULER.read().as_ref().unwrap().add_task(t);
+            scheduler::SCHEDULER.read().as_ref().unwrap().timer_setup();
             scheduler::SCHEDULER.read().as_ref().unwrap().print();
         }
         {

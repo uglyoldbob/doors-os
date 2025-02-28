@@ -13,7 +13,19 @@ use core::{
 use alloc::boxed::Box;
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
-use spin::{Mutex, RwLock};
+use spin::RwLock;
+
+/// The id for a task
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TaskId(usize);
+
+impl TaskId {
+    /// Construct the next unique task id
+    pub fn new() -> Self {
+        static NEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+        Self(NEXT.fetch_add(1, core::sync::atomic::Ordering::Relaxed))
+    }
+}
 
 /// A definition for an Arc. This allows traits to be defined for Arc.
 pub struct Arc<T>(alloc::sync::Arc<T>);
@@ -301,9 +313,9 @@ impl<'a, T> MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T> !Send for MutexGuard<'a, T> {}
+impl<T> !Send for MutexGuard<'_, T> {}
 
-impl<'a, T> Drop for MutexGuard<'a, T> {
+impl<T> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
         self.guard.store(false, Ordering::Release);
     }
@@ -312,16 +324,16 @@ impl<'a, T> Drop for MutexGuard<'a, T> {
 unsafe impl<T> Send for Locked<T> {}
 unsafe impl<T> Sync for Locked<T> {}
 
-impl<'a, T> Deref for MutexGuard<'a, T> {
+impl<T> Deref for MutexGuard<'_, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        unsafe { & *self.data}
+        unsafe { &*self.data }
     }
 }
 
-impl<'a, T> DerefMut for MutexGuard<'a, T> {
+impl<T> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.data}
+        unsafe { &mut *self.data }
     }
 }
 

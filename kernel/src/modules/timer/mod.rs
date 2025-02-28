@@ -74,7 +74,9 @@ pub enum Timer {
 
 /// An instance of a timer channel
 pub struct TimerInstance {
+    /// The protected inner timer instance
     inner: Arc<IrqGuarded<TimerInstanceInner>>,
+    /// The callback (will be moved to the [TimerInstanceInner] soon)
     callback: Option<Arc<Box<dyn Fn(IrqGuardedUse<TimerInstanceInner>) + Send + Sync + 'static>>>,
 }
 
@@ -84,6 +86,7 @@ impl TimerInstance {
         self.inner.sync_access()
     }
 
+    /// The interrupt handler for timers
     #[inline(never)]
     fn handle_interrupt(
         this: &IrqGuarded<TimerInstanceInner>,

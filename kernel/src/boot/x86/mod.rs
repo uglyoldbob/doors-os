@@ -223,6 +223,7 @@ extern "C" {
     pub static END_OF_KERNEL: u8;
 }
 
+/// Setup timers for the x86 kernel
 fn setup_timers() {
     let mut timers = crate::kernel::TIMERS.sync_lock();
     let pit = crate::modules::timer::x86::Pit::new();
