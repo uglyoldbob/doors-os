@@ -1,6 +1,6 @@
 //! Code for the task/thread scheduler of the kernel.
 
-use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, vec::Vec};
+use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use spin::RwLock;
 
 use crate::{
@@ -55,7 +55,6 @@ extern "C" {
     fn thread_save(m: &mut Context);
     fn thread_restore(m: &Context);
     fn thread_wrapper1();
-    fn thread_wrapper2();
 }
 
 impl Context {
@@ -78,7 +77,7 @@ impl Context {
             r14: 14,
             r15: 15,
             rflags: 18,
-            rsp: 16,
+            rsp: 99,
         }
     }
 
@@ -130,14 +129,24 @@ impl Stack {
     }
 }
 
+enum TaskStatus {
+    /// The task can run
+    Runnable,
+    /// The task has completed
+    Completed,
+}
+
+
 /// A general purpose task or thread in the kernel
 pub struct Task {
-    /// The context of the task    
+    /// The context of the task
     context: Option<Context>,
+    /// The status of the task
+    status: TaskStatus,
     /// The initial function of the task
-    f: Option<fn()>,
+    _f: Option<fn()>,
     /// The thread stack
-    stack: Option<Stack>,
+    _stack: Option<Stack>,
 }
 
 doors_macros::todo_item!("Figure out a way to lock a task onto a specific processor?");
@@ -151,12 +160,20 @@ impl Task {
         crate::VGA.print_str(&alloc::format!("Context is {:x?}\r\n", self.context));
     }
 
+    /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
+    fn task_runner(main_func: fn()) {
+        main_func();
+        SCHEDULER.read().as_ref().unwrap().task_completed();
+        loop {}
+    }
+
     /// Create a new task
     pub fn new(f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
         let mut c = Context::new();
         s.set_rsp(&mut c.rsp);
-        let start_eip = f as *const () as u64;
+        c.rdi = f as *const () as u64;
+        let start_eip = Self::task_runner as *const () as u64;
         s.push(&mut c.rsp, 0x10);
         let saved_rsp = c.rsp;
         s.push(&mut c.rsp, saved_rsp);
@@ -190,8 +207,9 @@ impl Task {
         c.rbp = c.rsp;
         let s = Self {
             context: Some(c),
-            f: Some(f),
-            stack: Some(s),
+            status: TaskStatus::Runnable,
+            _f: Some(f),
+            _stack: Some(s),
         };
         s
     }
@@ -200,8 +218,9 @@ impl Task {
     const fn running() -> Self {
         Self {
             context: None,
-            f: None,
-            stack: None,
+            status: TaskStatus::Runnable,
+            _f: None,
+            _stack: None,
         }
     }
 }
@@ -263,6 +282,12 @@ impl Scheduler {
         Self {
             i: Arc::new(SchedulerProtected(i)),
         }
+    }
+
+    /// Set the status of the current task to completed
+    fn task_completed(&self) {
+        let mut this = self.i.0.sync_access();
+        this.cur_task.status = TaskStatus::Completed;
     }
 
     /// The interrupt handler for the timer
