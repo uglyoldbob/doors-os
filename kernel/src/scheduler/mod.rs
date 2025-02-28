@@ -164,7 +164,6 @@ impl Task {
         s.push(&mut c.rsp, 0x8);
         s.push(&mut c.rsp, start_eip as u64);
         s.push(&mut c.rsp, c.rbp);
-        s.push(&mut c.rsp, 9);
         s.push(&mut c.rsp, c.r11);
         s.push(&mut c.rsp, c.r10);
         s.push(&mut c.rsp, c.r9);
@@ -173,9 +172,8 @@ impl Task {
         s.push(&mut c.rsp, c.rsi);
         s.push(&mut c.rsp, c.rdx);
         s.push(&mut c.rsp, c.rcx);
-        for i in 0..(0x10 / 8) {
-            s.push(&mut c.rsp, 42 + i);
-        }
+        s.push(&mut c.rsp, c.rax);
+        s.push(&mut c.rsp, 43);
         let t = crate::boot::x86::boot64::irq_finisher as *const () as u64;
         s.push(&mut c.rsp, t); // mocked end of the irq handler
         s.push(&mut c.rsp, c.rbp);

@@ -106,10 +106,8 @@ pub extern "C" fn divide_by_zero() {
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 
-/// Drops the irq handle and signals end of interrupt
-#[no_mangle]
-fn irq_dropper(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Send + Sync>>>) {
-    drop(handle);
+/// Signals end of interrupt
+fn irq_ender(irqnum: u8) {
     let p = INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(irqnum)
@@ -118,14 +116,10 @@ fn irq_dropper(irqnum: u8, handle: crate::MutexGuard<Option<Box<dyn Fn() + Send 
 
 /// The finishing function for irq handlers
 #[naked]
-pub(crate) unsafe extern "C" fn irq_finisher(
-    irqnum: u8,
-    handle: crate::MutexGuard<Option<Box<dyn Fn() + Send + Sync>>>,
-) -> ! {
+pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
     naked_asm!(
         "\
-        call irq_dropper;
-        pop rax;\
+        add rsp, 8;\
         pop rax;\
         pop rcx;\
         pop rdx;\
@@ -135,7 +129,6 @@ pub(crate) unsafe extern "C" fn irq_finisher(
         pop r9;\
         pop r10;\
         pop r11;\
-        pop rbp;\
         pop rbp;\
         iretq;"
     );
@@ -155,10 +148,10 @@ pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
     let handle = IRQ_HANDLERS[0].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_ref().unwrap() };
+    irq_ender(0);
     if let Some(h2) = h3 {
         h2();
     }
-    finish_irq(0);
 }
 
 /// The irq3 handler
