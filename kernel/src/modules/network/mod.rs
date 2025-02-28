@@ -153,8 +153,13 @@ impl<'a> From<&'a RawEthernetPacket> for EthernetFrame<'a> {
             ethertype: u16::from_le_bytes([value.data[12], value.data[13]]),
         };
         let l = value.length - 18;
-        let dat = &value.data[14..(14+l)];
-        let crc = u32::from_le_bytes([value.data[14+l], value.data[15+l], value.data[16+l], value.data[17+l]]);
+        let dat = &value.data[14..(14 + l)];
+        let crc = u32::from_le_bytes([
+            value.data[14 + l],
+            value.data[15 + l],
+            value.data[16 + l],
+            value.data[17 + l],
+        ]);
         Self {
             header,
             data: dat,
@@ -197,9 +202,7 @@ lazy_static::lazy_static! {
 
 /// Initialize data required for network operations
 pub fn network_init() {
-    ETHERNET_PACKETS_RECEIVED.init_once(|| {
-        crossbeam::queue::ArrayQueue::new(32)
-    });
+    ETHERNET_PACKETS_RECEIVED.init_once(|| crossbeam::queue::ArrayQueue::new(32));
 }
 
 /// Temporary function to process received ethernet packets
@@ -209,23 +212,27 @@ pub async fn process_packets_received() {
             crate::VGA.print_str_async("Waiting for a packet\r\n").await;
             loop {
                 if crate::SYSTEM.read().disable_interrupts_for(|| q.is_empty()) {
+                    for _ in 0..1000000 {
+                        x86_64::instructions::nop();
+                    }
                     crate::executor::Task::yield_now().await;
-                }
-                else {
+                } else {
                     break;
                 }
             }
-            crate::VGA.print_str_async("There is at least one packet\r\n").await;
+            crate::VGA
+                .print_str_async("There is at least one packet\r\n")
+                .await;
             let p = crate::SYSTEM.read().disable_interrupts_for(|| q.pop());
             if let Some(p) = p {
                 let frame: EthernetFrame = (&p).into();
-                crate::VGA.print_str_async(&alloc::format!("Received packet: {:x?}\r\n", frame)).await;
-            }
-            else {
+                crate::VGA
+                    .print_str_async(&alloc::format!("Received packet: {:x?}\r\n", frame))
+                    .await;
+            } else {
                 crate::executor::Task::yield_now().await;
             }
-        }
-        else {
+        } else {
             panic!();
         }
     }

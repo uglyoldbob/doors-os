@@ -36,6 +36,8 @@ pub struct X86SerialPortInternal {
     rx_queue: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
     /// The receive wakers
     rx_wakers: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
+    /// Is the tx interrupt currently enabled?
+    tx_enabled: AtomicBool,
     /// Are interrupts enabled?
     interrupts: AtomicBool,
     /// Is an interrupt driven transmission currently in progress?
@@ -67,7 +69,7 @@ impl X86SerialPort {
         let testval = 0x55u8;
         ports.port(0).port_write(testval);
 
-        let com = common::IrqGuardedInner::new(irq, false, |_| {}, |_| {});
+        let com = common::IrqGuardedInner::new(irq, true, true, |_| {}, |_| {});
 
         let i = Arc::new(X86SerialPortInternal {
             base: IrqGuardedSimple::new(ports, &com),
@@ -87,6 +89,7 @@ impl X86SerialPort {
                 crossbeam::queue::ArrayQueue::new(NUM_WAKERS),
                 &com,
             )),
+            tx_enabled: AtomicBool::new(false),
             interrupts: AtomicBool::new(false),
             itx: AtomicBool::new(false),
             irq,
@@ -121,6 +124,7 @@ impl X86SerialPort {
     /// The interrupt handler code
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
+            x86_64::instructions::bochs_breakpoint();
             let stat: u8 = s.base.interrupt_access().port(2).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
@@ -147,8 +151,7 @@ impl X86SerialPort {
                     3 => {
                         let _: u8 = s.base.interrupt_access().port(5).port_read();
                     }
-                    _ => {
-                    }
+                    _ => {}
                 }
             } else {
                 break;
@@ -182,10 +185,14 @@ impl Arc<X86SerialPortInternal> {
     /// Enable the tx interrupt, used when sending data over the serial port
     fn enable_tx_interrupt(&self) {
         if self.interrupts.load(Ordering::Relaxed) {
-            let p = self.base.access();
-            let mut ie = p.port(1);
-            let v: u8 = ie.port_read();
-            ie.port_write(v | 2);
+            if !self.tx_enabled.load(Ordering::Relaxed) {
+                x86_64::instructions::bochs_breakpoint();
+                let p = self.base.access();
+                let mut ie = p.port(1);
+                let v: u8 = ie.port_read();
+                ie.port_write(v | 2);
+                self.tx_enabled.store(true, Ordering::Relaxed);
+            }
         }
     }
 
@@ -195,6 +202,7 @@ impl Arc<X86SerialPortInternal> {
             let p = self.base.interrupt_access();
             let v: u8 = p.port(1).port_read();
             p.port(1).port_write(1 | (v & !2));
+            self.tx_enabled.store(false, Ordering::Relaxed);
         }
     }
 
@@ -276,10 +284,14 @@ impl super::SerialTrait for X86SerialPort {
             sys.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
         }
         {
-            self.0.base.access().port(4).port_write(0x03u8 | 8u8);
+            self.0
+                .base
+                .interrupt_access()
+                .port(4)
+                .port_write(0x03u8 | 8u8);
             self.0.interrupts.store(true, Ordering::Relaxed);
         };
-        //unsafe { self.enable_rx_interrupt() };
+        self.enable_rx_interrupt();
         sys.enable_irq(irqnum);
         Ok(())
     }
@@ -300,9 +312,12 @@ impl super::SerialTrait for X86SerialPort {
                     }
                 }
                 txq.access().push(*c).unwrap();
-                if !ienabled {
+                if true {
                     self.0.enable_tx_interrupt();
                     ienabled = true;
+                }
+                for _ in 0..1000000 {
+                    x86_64::instructions::nop();
                 }
             }
             if !ienabled {
@@ -325,6 +340,9 @@ impl super::SerialTrait for X86SerialPort {
                     break;
                 }
                 self.0.enable_tx_interrupt();
+                for _ in 0..1000000 {
+                    x86_64::instructions::nop();
+                }
             }
         }
     }

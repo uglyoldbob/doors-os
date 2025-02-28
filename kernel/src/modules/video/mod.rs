@@ -363,6 +363,9 @@ pub trait TextDisplayTrait: Sync + Send {
         }
     }
 
+    /// Synchronously flush all data
+    fn sync_flush(&mut self);
+
     /// Asynchrouously flush all data
     async fn flush(&mut self);
 
@@ -424,6 +427,8 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
     fn sync_flush(&mut self) {}
 
     fn stop_async(&mut self) {}
+
+    fn sync_flush(&mut self) {}
 }
 
 impl<P> TextDisplayTrait for FramebufferTextMode<pixels::FullColor<P>>

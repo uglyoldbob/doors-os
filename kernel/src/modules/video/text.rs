@@ -1,6 +1,6 @@
 //! The kernel module for x86 vga text mode.
 
-use super::VgaChar;
+use super::{TextDisplayTrait, VgaChar};
 
 /// The memory in use for the x86 vga hardware
 pub struct X86VgaTextHardware {
