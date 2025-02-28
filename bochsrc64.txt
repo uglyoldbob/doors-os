@@ -8,3 +8,4 @@ com2: enabled=1, mode=file, dev=serial2.log
 boot: cdrom
 debug_symbols: file=./kernel/symbols_bochs
 magic_break: enabled=1
+#debug: pic=report
