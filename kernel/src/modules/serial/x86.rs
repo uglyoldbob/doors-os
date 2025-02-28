@@ -367,7 +367,7 @@ impl super::SerialTrait for X86SerialPort {
 
     async fn flush(&self) {
         while !self.0.tx_queue.access().is_empty() {
-            executor::Task::yield_now().await;
+            executor::AsyncTask::yield_now().await;
         }
     }
 }

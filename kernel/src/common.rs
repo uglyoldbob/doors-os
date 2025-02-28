@@ -3,12 +3,7 @@
 #[path = "executor.rs"]
 pub mod executor;
 use core::{
-    cell::UnsafeCell,
-    fmt,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-    pin::Pin,
-    sync::atomic::{AtomicBool, Ordering},
+    cell::UnsafeCell, fmt, marker::PhantomData, ops::{Deref, DerefMut}, pin::Pin, sync::atomic::{AtomicBool, Ordering}
 };
 
 /// This trait is implemented for things safe to use in an interrupt context
@@ -36,8 +31,19 @@ pub struct TaskId(usize);
 impl TaskId {
     /// Construct the next unique task id
     pub fn new() -> Self {
-        static NEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+        static NEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(1);
         Self(NEXT.fetch_add(1, core::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// Get the value
+    pub fn value(&self) -> usize {
+        self.0
+    }
+}
+
+impl Into<TaskId> for core::num::NonZero<usize> {
+    fn into(self) -> TaskId {
+        TaskId(self.get())
     }
 }
 

@@ -25,6 +25,7 @@ pub use boot::mem2::*;
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
+pub mod scheduler;
 
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;

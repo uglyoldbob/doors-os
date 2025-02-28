@@ -28,14 +28,14 @@ impl NonSendable {
 }
 
 /// A task for the kernel
-pub struct LocalTask<'a> {
+pub struct LocalAsyncTask<'a> {
     /// The id for the task. This is unique across all tasks in the system.
     id: TaskId,
     /// The future that the task executes
     future: core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + 'a>>,
 }
 
-impl<'a> LocalTask<'a> {
+impl<'a> LocalAsyncTask<'a> {
     /// Construct a new task with a future.
     pub fn new(future: impl core::future::Future<Output = ()> + 'a) -> Self {
         Self {
@@ -75,7 +75,7 @@ impl<'a> LocalTask<'a> {
 }
 
 /// A task for the kernel
-pub struct Task<'a> {
+pub struct AsyncTask<'a> {
     /// The id for the task. This is unique across all tasks in the system.
     id: TaskId,
     /// The future that the task executes
@@ -84,7 +84,7 @@ pub struct Task<'a> {
     polled: usize,
 }
 
-impl<'a> Task<'a> {
+impl<'a> AsyncTask<'a> {
     /// Construct a new task with a future.
     pub fn new(future: impl core::future::Future<Output = ()> + Send + 'a) -> Self {
         Self {
@@ -184,7 +184,7 @@ impl TaskList {
     }
 
     /// Copy the number of times that tasks have been polled
-    fn copy_polls(&mut self, taskid: TaskId, task: &Task<'_>, polled: &mut [Option<usize>; 6]) {
+    fn copy_polls(&mut self, taskid: TaskId, task: &AsyncTask<'_>, polled: &mut [Option<usize>; 6]) {
         if taskid.0 < polled.len() {
             polled[taskid.0] = Some(task.polled);
         }
@@ -193,7 +193,7 @@ impl TaskList {
     /// Run tasks in the list
     fn run(
         &mut self,
-        all_tasks: &mut alloc::collections::BTreeMap<TaskId, Task>,
+        all_tasks: &mut alloc::collections::BTreeMap<TaskId, AsyncTask>,
         wakers: &mut alloc::collections::BTreeMap<TaskId, Waker>,
         polled: &mut [Option<usize>; 6],
     ) {
@@ -222,9 +222,9 @@ impl TaskList {
 #[derive(Default)]
 pub struct Executor<'a> {
     /// The list of all tasks in the executor
-    all_tasks: alloc::collections::BTreeMap<TaskId, Task<'a>>,
+    all_tasks: alloc::collections::BTreeMap<TaskId, AsyncTask<'a>>,
     /// The list of all tasks specific to this executor
-    local_tasks: alloc::collections::BTreeMap<TaskId, LocalTask<'a>>,
+    local_tasks: alloc::collections::BTreeMap<TaskId, LocalAsyncTask<'a>>,
     /// The list of wakers for all tasks
     wakers: alloc::collections::BTreeMap<TaskId, Waker>,
     /// The basic list of tasks for the executor
@@ -235,7 +235,7 @@ pub struct Executor<'a> {
 
 impl<'a> Executor<'a> {
     /// Spawn a new task that always runs on this executor
-    pub fn spawn_local(&mut self, task: LocalTask<'a>) -> Result<(), ()> {
+    pub fn spawn_local(&mut self, task: LocalAsyncTask<'a>) -> Result<(), ()> {
         let id = task.id;
         if self.local_tasks.insert(id, task).is_some() {
             panic!("Task already spawned");
@@ -249,12 +249,12 @@ impl<'a> Executor<'a> {
         F: AsyncFnOnce() -> (),
         F::CallOnceFuture: 'a,
     {
-        let task = LocalTask::new(c.async_call_once(()));
+        let task = LocalAsyncTask::new(c.async_call_once(()));
         self.spawn_local(task)
     }
 
     /// Spawn a new task
-    pub fn spawn(&mut self, task: Task<'a>) -> Result<(), ()> {
+    pub fn spawn(&mut self, task: AsyncTask<'a>) -> Result<(), ()> {
         let id = task.id;
         if self.all_tasks.insert(id, task).is_some() {
             panic!("Task already spawned");
@@ -268,7 +268,7 @@ impl<'a> Executor<'a> {
         F: AsyncFnOnce() -> (),
         F::CallOnceFuture: Send + 'a,
     {
-        let task = Task::new(c.async_call_once(()));
+        let task = AsyncTask::new(c.async_call_once(()));
         self.spawn(task)
     }
 

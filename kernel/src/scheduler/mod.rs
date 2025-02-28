@@ -4,9 +4,7 @@ use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use spin::RwLock;
 
 use crate::{
-    kernel::SystemTrait,
-    modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, SafeForInterrupts, TaskId,
+    kernel::SystemTrait, modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait}, Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, Locked, NotSafeForInterrupts, SafeForInterrupts, TaskId
 };
 
 /// The saved context for a thread
@@ -161,6 +159,11 @@ impl Task {
         crate::VGA.print_str(&alloc::format!("Context is {:x?}\r\n", self.context));
     }
 
+    /// Look at the context for a task (primarily for a debugger)
+    pub fn examine_context(&self) -> Option<&Context> {
+        self.context.as_ref()
+    }
+
     /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
     fn task_runner(main_func: fn()) {
         main_func();
@@ -249,6 +252,16 @@ impl InnerScheduler {
         }
     }
 
+    /// Create an iterator over all tasks for this scheduler
+    pub fn iter(&self) -> alloc::collections::btree_map::Iter<TaskId, Task> {
+        self.local_tasks.iter()
+    }
+
+    /// Try to get thread details by thread id
+    pub fn lookup(&self, id: TaskId) -> Option<&Task> {
+        self.local_tasks.get(&id)
+    }
+
     /// Print all tasks
     pub fn print(&self) {
         crate::VGA.print_str(&alloc::format!(
@@ -280,6 +293,11 @@ impl Scheduler {
         Self {
             i: Arc::new(SchedulerProtected(i)),
         }
+    }
+
+    /// Access the scheduler data from a synchronous non-interrupt context
+    pub fn sync_access(&self) -> IrqGuardedUse<InnerScheduler, NotSafeForInterrupts> {
+        self.i.0.sync_access()
     }
 
     /// Set the status of the current task to completed
@@ -346,7 +364,6 @@ impl Scheduler {
             let mut t2 = timer.sync_lock();
             let mut t3 = t2.get_timer(0).unwrap();
             t3.register_handler(move |timer| Self::handle_interrupt(&s2, timer));
-            //crate::SYSTEM.read().disable_irq(irqnum);
             this.timer.replace(t3);
         }
         crate::SYSTEM.read().enable_irq(irqnum);

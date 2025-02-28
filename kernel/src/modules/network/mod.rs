@@ -222,7 +222,7 @@ pub async fn process_packets_received() {
                     for _ in 0..1000000 {
                         x86_64::instructions::nop();
                     }
-                    crate::executor::Task::yield_now().await;
+                    crate::executor::AsyncTask::yield_now().await;
                 } else {
                     break;
                 }
@@ -237,7 +237,7 @@ pub async fn process_packets_received() {
                     .print_str_async(&alloc::format!("Received packet: {:x?}\r\n", frame))
                     .await;
             } else {
-                crate::executor::Task::yield_now().await;
+                crate::executor::AsyncTask::yield_now().await;
             }
         } else {
             panic!();

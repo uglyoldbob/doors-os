@@ -26,7 +26,8 @@ pub use boot::mem2::*;
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
-pub mod scheduler;
+mod scheduler;
+pub use scheduler::*;
 
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
@@ -94,13 +95,13 @@ async fn net_test() {
         .await
         .is_none()
     {
-        executor::Task::yield_now().await;
+        executor::AsyncTask::yield_now().await;
     }
     crate::VGA
         .print_str_async("Waiting for first rng\r\n")
         .await;
     while !kernel::RNGS.lock().await.exists(0) {
-        executor::Task::yield_now().await;
+        executor::AsyncTask::yield_now().await;
     }
     crate::VGA
         .print_str_async("About to do some stuff with a network card net0\r\n")
@@ -123,7 +124,7 @@ async fn net_test() {
                 rng.generate_iter(packet.iter_mut());
             }
             na.send_packet(&packet).await.unwrap();
-            executor::Task::yield_now().await;
+            executor::AsyncTask::yield_now().await;
         }
     }
 }
@@ -178,7 +179,7 @@ fn main() -> ! {
         let mut executor = Executor::default();
         if true {
             executor
-                .spawn(executor::Task::new(
+                .spawn(executor::AsyncTask::new(
                     crate::modules::network::process_packets_received(),
                 ))
                 .unwrap();
@@ -224,12 +225,12 @@ fn main() -> ! {
                 for _ in 0..100 {
                     crate::VGA.print_str_async("DUMMY STUFF\r\n").await;
                     crate::VGA.print_str("This is a test of sync printing\r\n");
-                    executor::Task::yield_now().await;
+                    executor::AsyncTask::yield_now().await;
                 }
             })
             .unwrap();
         if true {
-            executor.spawn(executor::Task::new(net_test())).unwrap();
+            executor.spawn(executor::AsyncTask::new(net_test())).unwrap();
         }
         executor
             .spawn_closure(async || {
@@ -244,7 +245,7 @@ fn main() -> ! {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am groot {}\r\n", i))
                         .await;
-                    executor::Task::yield_now().await;
+                    executor::AsyncTask::yield_now().await;
                 }
             })
             .unwrap();
@@ -254,7 +255,7 @@ fn main() -> ! {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am batman {}\r\n", i))
                         .await;
-                    executor::Task::yield_now().await;
+                    executor::AsyncTask::yield_now().await;
                 }
             })
             .unwrap();

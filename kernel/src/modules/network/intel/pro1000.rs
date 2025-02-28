@@ -746,7 +746,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
         crate::VGA.print_str_async("Waiting for link up\r\n").await;
         while !self.internal.up.load(Ordering::Relaxed) {
-            crate::executor::Task::yield_now().await;
+            crate::executor::AsyncTask::yield_now().await;
         }
         crate::VGA
             .print_str_async("Done waiting for link up\r\n")
@@ -789,7 +789,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                     break Ok(());
                 }
                 tries += 1;
-                crate::executor::Task::yield_now().await;
+                crate::executor::AsyncTask::yield_now().await;
                 if tries >= 1000000 {
                     break Err(());
                 }
@@ -833,7 +833,7 @@ impl IntelPro1000Device {
                     self.eeprom_present = Some(true);
                     break;
                 }
-                crate::executor::Task::yield_now().await;
+                crate::executor::AsyncTask::yield_now().await;
             }
         }
         self.eeprom_present.unwrap()

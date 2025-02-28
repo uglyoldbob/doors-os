@@ -2,7 +2,7 @@
 
 use core::num::NonZero;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::ToString};
 use gdbstub::{
     conn::ConnectionExt,
     stub::MultiThreadStopReason,
@@ -87,15 +87,22 @@ impl MultiThreadResume for DoorsTarget {
 }
 
 impl MultiThreadBase for DoorsTarget {
-    fn is_thread_alive(&mut self, _tid: gdbstub::common::Tid) -> Result<bool, Self::Error> {
-        Ok(true)
+    fn is_thread_alive(&mut self, tid: gdbstub::common::Tid) -> Result<bool, Self::Error> {
+        let s = crate::scheduler::SCHEDULER.read();
+        let s = s.as_ref().unwrap().sync_access();
+        let task = s.lookup(tid.into());
+        Ok(task.is_some())
     }
 
     fn list_active_threads(
         &mut self,
         thread_is_active: &mut dyn FnMut(gdbstub::common::Tid),
     ) -> Result<(), Self::Error> {
-        thread_is_active(NonZero::new(1).unwrap());
+        let s = crate::scheduler::SCHEDULER.read();
+        let s = s.as_ref().unwrap().sync_access();
+        for (taskid, _task) in s.iter() {
+            thread_is_active(NonZero::new(taskid.value()).unwrap());
+        }
         Ok(())
     }
 
@@ -128,9 +135,43 @@ impl MultiThreadBase for DoorsTarget {
         regs: &mut <Self::Arch as gdbstub::arch::Arch>::Registers,
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
-        regs.eflags = 43;
-        regs.regs[0] = 42;
-        Ok(())
+        let s = crate::scheduler::SCHEDULER.read();
+        let s = s.as_ref().unwrap().sync_access();
+        let task = s.lookup(tid.into());
+        if let Some(task) = task {
+            if let Some(context) = task.examine_context() {
+                regs.eflags = (context.rflags & 0xFFFFFFFF) as u32;
+                regs.segments.cs = 8;
+                regs.segments.ds = 8;
+                regs.segments.es = 8;
+                regs.segments.fs = 8;
+                regs.segments.gs = 8;
+                regs.segments.ss = 16;
+                regs.regs[0] = context.rax;
+                regs.regs[1] = context.rbx;
+                regs.regs[2] = context.rcx;
+                regs.regs[3] = context.rdx;
+                regs.regs[4] = context.rsi;
+                regs.regs[5] = context.rdi;
+                regs.regs[6] = context.rbp;
+                regs.regs[7] = context.rsp;
+                regs.regs[8] = context.r8;
+                regs.regs[9] = context.r9;
+                regs.regs[10] = context.r10;
+                regs.regs[11] = context.r11;
+                regs.regs[12] = context.r12;
+                regs.regs[13] = context.r13;
+                regs.regs[14] = context.r14;
+                regs.regs[15] = context.r15;
+                Ok(())
+            }
+            else {
+                Err(gdbstub::target::TargetError::NonFatal)
+            }
+        }
+        else {
+            Err(gdbstub::target::TargetError::NonFatal)
+        }
     }
 
     fn write_registers(
