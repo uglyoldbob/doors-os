@@ -4,7 +4,9 @@ use alloc::boxed::Box;
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
 use crate::LockedArc;
-use crate::{Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse};
+use crate::{
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, NotSafeForInterrupts, SafeForInterrupts,
+};
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
@@ -77,12 +79,22 @@ pub struct TimerInstance {
     /// The protected inner timer instance
     inner: Arc<IrqGuarded<TimerInstanceInner>>,
     /// The callback (will be moved to the [TimerInstanceInner] soon)
-    callback: Option<Arc<Box<dyn Fn(IrqGuardedUse<TimerInstanceInner>) + Send + Sync + 'static>>>,
+    callback: Option<
+        Arc<
+            Box<
+                dyn Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
+                    + crate::Interrupt
+                    + Send
+                    + Sync
+                    + 'static,
+            >,
+        >,
+    >,
 }
 
 impl TimerInstance {
     /// Get the inner instance as a reference
-    pub fn sync_use(&self) -> IrqGuardedUse<'_, TimerInstanceInner> {
+    pub fn sync_use(&self) -> IrqGuardedUse<'_, TimerInstanceInner, NotSafeForInterrupts> {
         self.inner.sync_access()
     }
 
@@ -90,7 +102,17 @@ impl TimerInstance {
     #[inline(never)]
     fn handle_interrupt(
         this: &IrqGuarded<TimerInstanceInner>,
-        cb: &Option<Arc<Box<dyn Fn(IrqGuardedUse<TimerInstanceInner>) + Send + Sync + 'static>>>,
+        cb: &Option<
+            Arc<
+                Box<
+                    dyn Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
+                        + crate::Interrupt
+                        + Send
+                        + Sync
+                        + 'static,
+                >,
+            >,
+        >,
     ) {
         let s = this.interrupt_access();
         let _channel = s.hardware_interrupt();
@@ -102,7 +124,11 @@ impl TimerInstance {
 
     /// Register an interrupt handler
     pub fn register_handler<
-        F: Fn(IrqGuardedUse<TimerInstanceInner>) -> () + Send + Sync + 'static,
+        F: Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>) -> ()
+            + crate::Interrupt
+            + Send
+            + Sync
+            + 'static,
     >(
         &mut self,
         f: F,

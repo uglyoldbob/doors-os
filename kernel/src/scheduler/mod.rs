@@ -6,7 +6,7 @@ use spin::RwLock;
 use crate::{
     kernel::SystemTrait,
     modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, TaskId,
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, SafeForInterrupts, TaskId,
 };
 
 /// The saved context for a thread
@@ -275,7 +275,7 @@ pub struct Scheduler {
 impl Scheduler {
     /// Construct a new scheduler
     pub fn new() -> Self {
-        let com = IrqGuardedInner::new(0, false, |_| {}, |_| {});
+        let com = IrqGuardedInner::new(0, false, true, |_| {}, |_| {});
         let i = IrqGuarded::new(InnerScheduler::new(), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),
@@ -292,7 +292,7 @@ impl Scheduler {
     #[inline(never)]
     fn handle_interrupt(
         this: &Arc<SchedulerProtected>,
-        mut timer: IrqGuardedUse<TimerInstanceInner>,
+        mut timer: IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>,
     ) {
         use crate::modules::timer::TimerInstanceInnerTrait;
         let mut this = this.0.interrupt_access();

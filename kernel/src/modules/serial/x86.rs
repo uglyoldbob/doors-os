@@ -124,7 +124,6 @@ impl X86SerialPort {
     /// The interrupt handler code
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
-            x86_64::instructions::bochs_breakpoint();
             let stat: u8 = s.base.interrupt_access().port(2).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
@@ -186,7 +185,6 @@ impl Arc<X86SerialPortInternal> {
     fn enable_tx_interrupt(&self) {
         if self.interrupts.load(Ordering::Relaxed) {
             if !self.tx_enabled.load(Ordering::Relaxed) {
-                x86_64::instructions::bochs_breakpoint();
                 let p = self.base.access();
                 let mut ie = p.port(1);
                 let v: u8 = ie.port_read();
@@ -257,6 +255,11 @@ impl futures::Stream for X86SerialStream {
 impl super::SerialTrait for X86SerialPort {
     fn setup(&self, _rate: u32) -> Result<(), ()> {
         todo!();
+    }
+
+    fn sync_read_byte(&self) -> u8 {
+        while !self.0.can_receive() {}
+        self.0.receive().unwrap()
     }
 
     fn read_stream(&self) -> impl futures::Stream<Item = u8> {

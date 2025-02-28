@@ -264,8 +264,10 @@ fn serial_interrupts() {
         );
         crate::common::VGA.sync_replace(Some(t));
     }
-    if let Some(mut s) = crate::kernel::SERIAL.take_device(1) {
-        s.enable_async(sys.clone()).unwrap();
+    if !doors_macros::config_check_equals!(gdbstub, "true") {
+        if let Some(s) = crate::kernel::SERIAL.take_device(1) {
+            s.enable_async(sys.clone()).unwrap();
+        }
     }
 }
 

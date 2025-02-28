@@ -661,7 +661,7 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Use the inner value from a synchronous non-interrupt context
-    pub fn sync_access(&self) -> IrqGuardedUse<T> {
+    pub fn sync_access(&self) -> IrqGuardedUse<T, NotSafeForInterrupts> {
         let sys = crate::SYSTEM.read();
         if self.value.disable_all_interrupts {
             sys.disable_interrupts();
@@ -672,6 +672,8 @@ impl<T> IrqGuarded<T> {
             r: &self.value,
             val: Some(self.inner.sync_lock()),
             enable_interrupts: true,
+            enable_irq: self.value.disable_irq,
+            _phantom: PhantomData,
         }
     }
 

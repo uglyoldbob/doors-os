@@ -146,10 +146,17 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
-            crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
             let t = scheduler::Task::new(test_function);
             scheduler::SCHEDULER.read().as_ref().unwrap().add_task(t);
+            if doors_macros::config_check_equals!(gdbstub, "true") {
+                scheduler::SCHEDULER
+                    .read()
+                    .as_ref()
+                    .unwrap()
+                    .add_task(scheduler::Task::new(gdbstub::sync_run));
+            }
             scheduler::SCHEDULER.read().as_ref().unwrap().timer_setup();
+            crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
             crate::modules::network::network_init();
         }
         {
@@ -169,16 +176,14 @@ fn main() -> ! {
             }
         }
         let mut executor = Executor::default();
-        if false {
+        if true {
             executor
                 .spawn(executor::Task::new(
                     crate::modules::network::process_packets_received(),
                 ))
                 .unwrap();
         }
-        if doors_macros::config_check_equals!(gdbstub, "true") {
-            executor.spawn(executor::Task::new(gdbstub::run())).unwrap();
-        } else {
+        if !doors_macros::config_check_equals!(gdbstub, "true") {
             executor
                 .spawn_closure(async || {
                     crate::VGA
@@ -223,7 +228,7 @@ fn main() -> ! {
                 }
             })
             .unwrap();
-        if false {
+        if true {
             executor.spawn(executor::Task::new(net_test())).unwrap();
         }
         executor

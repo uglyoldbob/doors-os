@@ -119,17 +119,24 @@ const MAX_RX_PACKET_SIZE: usize = 8192;
 /// An ethernet packet header
 #[derive(Debug)]
 pub struct EthernetFrameHeader {
+    /// The destination for the packet
     destination: MacAddress,
+    /// The source of the packet
     source: MacAddress,
+    /// The optional 802.1q vlan data
     vlan: Option<u32>,
+    /// The type of the packet
     ethertype: u16,
 }
 
 /// Represents a received ethernet frame
 #[derive(Debug)]
 pub struct EthernetFrame<'a> {
+    /// The header
     header: EthernetFrameHeader,
+    /// The actual packet data
     data: &'a [u8],
+    /// The crc of the packet
     crc: u32,
 }
 

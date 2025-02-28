@@ -2,9 +2,17 @@
 
 use core::num::NonZero;
 
-use gdbstub::target::ext::base::multithread::{MultiThreadBase, MultiThreadResume};
+use alloc::boxed::Box;
+use gdbstub::{
+    conn::ConnectionExt,
+    stub::MultiThreadStopReason,
+    target::ext::base::multithread::{MultiThreadBase, MultiThreadResume},
+};
 
-use crate::{kernel::OwnedDevice, modules::serial::Serial};
+use crate::{
+    kernel::OwnedDevice,
+    modules::serial::{Serial, SerialTrait},
+};
 
 /// A target for the gdbstub
 struct DoorsTarget {}
@@ -120,7 +128,6 @@ impl MultiThreadBase for DoorsTarget {
         regs: &mut <Self::Arch as gdbstub::arch::Arch>::Registers,
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
-        crate::VGA.print_str(&alloc::format!("GDBSTUB READ REGISTERS {:?}\r\n", regs));
         regs.eflags = 43;
         regs.regs[0] = 42;
         Ok(())
@@ -131,7 +138,6 @@ impl MultiThreadBase for DoorsTarget {
         regs: &<Self::Arch as gdbstub::arch::Arch>::Registers,
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
-        crate::VGA.print_str(&alloc::format!("GDBSTUB WRITE REGISTERS {:?}\r\n", regs));
         Ok(())
     }
 
@@ -141,11 +147,6 @@ impl MultiThreadBase for DoorsTarget {
         data: &mut [u8],
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<usize, Self> {
-        crate::VGA.print_str(&alloc::format!(
-            "GDBSTUB READ ADDRS {:?} size {:x}\r\n",
-            start_addr,
-            data.len()
-        ));
         Ok(0)
     }
 
@@ -155,12 +156,39 @@ impl MultiThreadBase for DoorsTarget {
         data: &[u8],
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
-        crate::VGA.print_str(&alloc::format!(
-            "GDBSTUB WRITE ADDRS {:?} size {:x}\r\n",
-            start_addr,
-            data.len()
-        ));
         Ok(())
+    }
+}
+
+/// The type for implementing the gdbstub BlockingEventLoop trait
+enum GdbstubBlockingEventLoop {}
+
+impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop {
+    type Target = DoorsTarget;
+    type Connection = OwnedDevice<Serial>;
+
+    type StopReason = MultiThreadStopReason<u64>;
+
+    fn wait_for_stop_reason(
+        target: &mut Self::Target,
+        conn: &mut Self::Connection,
+    ) -> Result<
+        gdbstub::stub::run_blocking::Event<Self::StopReason>,
+        gdbstub::stub::run_blocking::WaitForStopReasonError<
+            <Self::Target as gdbstub::target::Target>::Error,
+            <Self::Connection as gdbstub::conn::Connection>::Error,
+        >,
+    > {
+        todo!();
+    }
+
+    fn on_interrupt(
+        target: &mut Self::Target,
+    ) -> Result<Option<Self::StopReason>, <Self::Target as gdbstub::target::Target>::Error> {
+        todo!();
+        Ok(Some(
+            MultiThreadStopReason::Signal(gdbstub::common::Signal::SIGINT).into(),
+        ))
     }
 }
 
@@ -180,7 +208,27 @@ impl gdbstub::conn::Connection for OwnedDevice<Serial> {
     }
 }
 
-/// asnychonously run the gdb stub over a serial port
+impl gdbstub::conn::ConnectionExt for OwnedDevice<Serial> {
+    fn peek(&mut self) -> Result<Option<u8>, Self::Error> {
+        Err(())
+    }
+
+    fn read(&mut self) -> Result<u8, Self::Error> {
+        Ok(self.sync_read_byte())
+    }
+}
+
+/// synchonously run the gdb stub over a serial port
+pub fn sync_run() {
+    let mut target = DoorsTarget {};
+    loop {
+        let c = crate::kernel::SERIAL.take_device(1).unwrap();
+        let gdbstub = gdbstub::stub::GdbStub::new(c);
+        gdbstub.run_blocking::<GdbstubBlockingEventLoop>(&mut target);
+    }
+}
+
+/// asynchonously run the gdb stub over a serial port
 pub async fn run() {
     crate::VGA.print_str_async("Starting gdb stub\r\n").await;
     let mut target = DoorsTarget {};
