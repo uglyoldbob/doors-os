@@ -44,7 +44,6 @@ thread_restore:
     ret
 
 thread_wrapper1:
-    add rsp, 0x208
     pop rbx
     pop r12
     pop r13

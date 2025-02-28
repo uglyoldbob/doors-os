@@ -200,9 +200,6 @@ impl Task {
         s.push(&mut c.rsp, c.r13);
         s.push(&mut c.rsp, c.r12);
         s.push(&mut c.rsp, c.rbx);
-        for _ in 0..(0x208 / 8) {
-            s.push(&mut c.rsp, 42);
-        }
 
         s.push(&mut c.rsp, thread_wrapper1 as *const () as u64); // the mocked return for the scheduler
         c.rbp = c.rsp;
