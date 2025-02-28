@@ -129,13 +129,14 @@ impl Stack {
     }
 }
 
+/// The current status of a task in the kernel
+#[derive(PartialEq)]
 enum TaskStatus {
     /// The task can run
     Runnable,
     /// The task has completed
     Completed,
 }
-
 
 /// A general purpose task or thread in the kernel
 pub struct Task {
@@ -299,34 +300,39 @@ impl Scheduler {
         use crate::modules::timer::TimerInstanceInnerTrait;
         let mut this = this.0.interrupt_access();
 
-        if let Some(taskid) = this.local_tasks.keys().next().cloned() {
+        loop {
+            if this.local_tasks.is_empty() {
+                timer.start_oneshot();
+                drop(timer);
+                return;
+            }
+            let taskid = this.local_tasks.keys().next().cloned().unwrap();
             let (taskid, mut task) = this.local_tasks.remove_entry(&taskid).unwrap();
-
-            let new_context = match task.context.take() {
-                Some(c) => c,
-                None => {
-                    todo!();
+            if TaskStatus::Runnable == task.status {
+                let new_context = match task.context.take() {
+                    Some(c) => c,
+                    None => {
+                        todo!();
+                    }
+                };
+                core::mem::swap(&mut this.cur_task, &mut task);
+                let mut old_task = this.cur_task_id.replace(taskid);
+                if old_task.is_none() {
+                    old_task.replace(TaskId::new());
                 }
-            };
-            core::mem::swap(&mut this.cur_task, &mut task);
-            let mut old_task = this.cur_task_id.replace(taskid);
-            if old_task.is_none() {
-                old_task.replace(TaskId::new());
+                let taskid = old_task.unwrap();
+                let mut old_context = Context::new();
+                Context::save(&mut old_context);
+                if let Some(_c) = task.context.replace(old_context) {
+                    panic!();
+                }
+                this.local_tasks.insert(taskid, task);
+                drop(this);
+                timer.start_oneshot();
+                drop(timer);
+                new_context.restore();
+                return;
             }
-            let taskid = old_task.unwrap();
-            let mut old_context = Context::new();
-            Context::save(&mut old_context);
-            if let Some(_c) = task.context.replace(old_context) {
-                panic!();
-            }
-            this.local_tasks.insert(taskid, task);
-            drop(this);
-            timer.start_oneshot();
-            drop(timer);
-            new_context.restore();
-        } else {
-            timer.start_oneshot();
-            drop(timer);
         }
     }
 
