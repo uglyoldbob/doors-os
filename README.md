@@ -44,3 +44,14 @@ machine_name = "pc64"
 acpi = false
 gdbstub = true
 ```
+
+**Windows**
+
+*gdb*
+
+These tips for windows to get gdb may be helpful.
+
+* Get mingw installed
+* pacman -Syu (until it is fully up to date)
+* pacman -S gdb
+* Add the (mingw path)/usr/bin to your environment variable PATH
