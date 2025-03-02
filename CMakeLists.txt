@@ -110,6 +110,12 @@ add_custom_target(
 )
 endif (UNIX)
 
+add_custom_target(
+    gdb
+    DEPENDS image_cd64 disassemble
+    COMMAND gdb -x gdb.gdb
+)
+
 add_custom_command(
     OUTPUT doors-os-64/doors-os-64.vbox
     DEPENDS image_cd64
