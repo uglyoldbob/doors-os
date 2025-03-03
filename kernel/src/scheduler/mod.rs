@@ -1,5 +1,7 @@
 //! Code for the task/thread scheduler of the kernel.
 
+use core::arch::naked_asm;
+
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use spin::RwLock;
 
@@ -168,23 +170,29 @@ impl Task {
         if let Some(stack) = &self.stack {
             self.context.as_ref().map(|con| {
                 let mut sc = StackContext::default();
-                let rsp = con.rsp + 0x1c8;
-                sc.rax = stack.reference(rsp + 8);
-                sc.rcx = stack.reference(rsp + 16);
-                sc.rdx = stack.reference(rsp + 24);
-                sc.rsi = stack.reference(rsp + 32);
-                sc.rdi = stack.reference(rsp + 40);
-                sc.rbp = stack.reference(rsp + 48);
-                sc.r8 = stack.reference(rsp + 56);
-                sc.r9 = stack.reference(rsp + 64);
-                sc.r10 = stack.reference(rsp + 72);
-                sc.r11 = stack.reference(rsp + 80);
-                sc.r12 = stack.reference(rsp + 88);
-                sc.r13 = stack.reference(rsp + 96);
-                sc.r14 = stack.reference(rsp + 104);
-                sc.r15 = stack.reference(rsp + 112);
-                sc.rip = stack.reference(rsp + 120);
-                sc.rflags = stack.reference(rsp + 128);
+                let rsp = con.rsp + 0x120;
+                //let rbx = stack.reference(rsp);
+                sc.r12 = stack.reference(rsp + 8);
+                sc.r13 = stack.reference(rsp + 16);
+                sc.r14 = stack.reference(rsp + 24);
+                sc.r15 = stack.reference(rsp + 32);
+                sc.rbp = stack.reference(rsp + 40);
+                let rsp = con.rsp + 0x120 + 56;
+                //let rbx = stack.reference(rsp + 8);
+                sc.rbp = stack.reference(rsp + 16);
+                let rsp = con.rsp + 0x120 + 96 + 56 + 24;
+                sc.rax = stack.reference(rsp);
+                sc.rcx = stack.reference(rsp + 8);
+                sc.rdx = stack.reference(rsp + 16);
+                sc.rsi = stack.reference(rsp + 24);
+                sc.rdi = stack.reference(rsp + 32);
+                sc.r8 = stack.reference(rsp + 40);
+                sc.r9 = stack.reference(rsp + 48);
+                sc.r10 = stack.reference(rsp + 56);
+                sc.r11 = stack.reference(rsp + 64);
+                sc.rbp = stack.reference(rsp + 72);
+                sc.rip = stack.reference(rsp + 128);
+                sc.rflags = stack.reference(rsp + 136);
                 (con, sc)
             })
         } else {
@@ -199,26 +207,46 @@ impl Task {
         loop {}
     }
 
+    /// The finishing function for irq handlers
+    #[naked]
+    pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
+        naked_asm!(
+            "\
+            add rsp, 8;\
+            pop rax;\
+            pop rcx;\
+            pop rdx;\
+            pop rsi;\
+            pop rdi;\
+            pop r8;\
+            pop r9;\
+            pop r10;\
+            pop r11;\
+            pop rbp;\
+            iretq;"
+        );
+    }
+
     /// Create a new task
     pub fn new(f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
         let mut sc = StackContext::default();
         let mut c = Context::new();
         s.set_rsp(&mut c.rsp);
-        sc.rax = 100;
-        sc.rcx = 101;
-        sc.rdx = 102;
-        sc.r8 = 103;
-        sc.r9 = 104;
-        sc.r10 = 105;
-        sc.r11 = 106;
-        sc.r12 = 107;
-        sc.r13 = 108;
-        sc.r14 = 109;
-        sc.r15 = 110;
-        sc.rsi = 111;
-        sc.rdi = 112;
-        sc.rip = 113;
+        sc.rax = 0x64;
+        sc.rcx = 0x65;
+        sc.rdx = 0x66;
+        sc.r8 = 0x67;
+        sc.r9 = 0x68;
+        sc.r10 = 0x69;
+        sc.r11 = 0x6a;
+        sc.r12 = 0x6b;
+        sc.r13 = 0x6c;
+        sc.r14 = 0x6d;
+        sc.r15 = 0x6e;
+        sc.rsi = 0x6f;
+        sc.rdi = 0x70;
+        sc.rip = 0x71;
         sc.rdi = f as *const () as u64;
         let start_eip = Self::task_runner as *const () as u64;
         s.push(&mut c.rsp, 0x10);
@@ -238,7 +266,7 @@ impl Task {
         s.push(&mut c.rsp, sc.rcx);
         s.push(&mut c.rsp, sc.rax);
         s.push(&mut c.rsp, 43);
-        let t = crate::boot::x86::boot64::irq_finisher as *const () as u64;
+        let t = Self::irq_finisher as *const () as u64;
         s.push(&mut c.rsp, t); // mocked end of the irq handler
         s.push(&mut c.rsp, sc.rbp);
         s.push(&mut c.rsp, sc.r15);
@@ -388,8 +416,7 @@ impl Scheduler {
                 drop(this);
                 timer.start_oneshot();
                 drop(timer);
-                new_context.restore();
-                return;
+                return new_context.restore();
             }
         }
     }

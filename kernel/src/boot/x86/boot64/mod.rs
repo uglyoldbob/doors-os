@@ -114,26 +114,6 @@ fn irq_ender(irqnum: u8) {
     }
 }
 
-/// The finishing function for irq handlers
-#[naked]
-pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
-    naked_asm!(
-        "\
-        add rsp, 8;\
-        pop rax;\
-        pop rcx;\
-        pop rdx;\
-        pop rsi;\
-        pop rdi;\
-        pop r8;\
-        pop r9;\
-        pop r10;\
-        pop r11;\
-        pop rbp;\
-        iretq;"
-    );
-}
-
 /// The ending portion of an irq handler
 #[inline(never)]
 pub fn finish_irq(irqnum: u8) {
