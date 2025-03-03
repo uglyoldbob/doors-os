@@ -2,6 +2,7 @@
 [workspace]
 
 members = [
+    "builder",
     "network_test",
 ]
 exclude = [

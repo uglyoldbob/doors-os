@@ -1,0 +1,11 @@
+[package]
+name = "builder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.30", features = ["derive"] }
+doors_macros = { path = "../doors_macros", version = "0.1.0" }
+enum_dispatch = "0.3.13"
+serde = {version = "1.0", features = ["serde_derive"] }
+toml = "0.8.8"

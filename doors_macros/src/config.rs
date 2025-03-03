@@ -1,6 +1,6 @@
 //! This is the configuration module it contains configuration entries for the kernel
 
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct KernelConfig {
     pub machine_name: String,
     pub acpi: bool,

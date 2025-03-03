@@ -2,9 +2,7 @@
 
 use core::num::NonZero;
 
-use alloc::{boxed::Box, string::ToString};
 use gdbstub::{
-    conn::ConnectionExt,
     stub::MultiThreadStopReason,
     target::{
         ext::base::multithread::{MultiThreadBase, MultiThreadResume},

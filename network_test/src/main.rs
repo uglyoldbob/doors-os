@@ -1,6 +1,12 @@
+//! This utility is used to test basic network functionality of the kernel
+
+#![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
+
 use clap::Parser;
 use rand::RngCore;
 
+/// The command line arguments for the tool
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -24,8 +30,8 @@ fn main() {
     if let Ok(list) = d {
         for d in list {
             let m = if let Some(devmatch) = &args.name {
-                &d.name == devmatch }
-            else {
+                &d.name == devmatch
+            } else {
                 true
             };
             if m {
@@ -56,7 +62,7 @@ fn main() {
                             }
                         }
                         if packets_sent < args.random_count {
-                            let mut buf = vec![0;64];
+                            let mut buf = vec![0; 64];
                             let mut rng = rand::rng();
                             rng.fill_bytes(&mut buf);
                             (&mut buf[0..6]).copy_from_slice(&mac_address);
@@ -64,7 +70,8 @@ fn main() {
                                 packets_sent += 1;
                             }
                         }
-                        done = (packets_received >= args.listen_count) && (packets_sent >= args.random_count);
+                        done = (packets_received >= args.listen_count)
+                            && (packets_sent >= args.random_count);
                     }
                 }
                 Err(e) => {

@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-#![feature(proc_macro_span)]
+#![cfg_attr(feature = "todo", feature(proc_macro_span))]
 
 //! This crate defines various macros used in the Doors kernel.
 
@@ -43,6 +43,7 @@ static ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::ne
 static KERNEL_CONFIG: Mutex<Option<KernelConfig>> = Mutex::new(None);
 
 /// Insert a todo list entry into the todolist and do nothing else
+#[cfg(feature = "todo")]
 #[proc_macro]
 pub fn todo_item(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let item2 = item.clone();
@@ -62,6 +63,7 @@ pub fn todo_item(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 /// Insert a todo list entry into the todolist and also emit a todo macro
+#[cfg(feature = "todo")]
 #[proc_macro]
 pub fn todo(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let item2 = item.clone();
@@ -84,6 +86,7 @@ pub fn todo(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 /// Insert a todo list entry into the todolist and also panic
+#[cfg(feature = "todo")]
 #[proc_macro]
 pub fn todo_item_panic(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let item2 = item.clone();
