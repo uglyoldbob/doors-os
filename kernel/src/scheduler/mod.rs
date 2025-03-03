@@ -60,28 +60,32 @@ pub struct StackContext {
     pub rip: u64,
 }
 
-core::arch::global_asm!(include_str!("x86.s"));
-
-extern "C" {
-    fn thread_save(m: &mut Context);
-    fn thread_restore(m: &Context);
-    fn thread_wrapper1();
-}
-
 impl Context {
     /// Construct an empty context
     fn new() -> Self {
         Self { rbx: 98, rsp: 99 }
     }
 
-    /// Experimental code to save a thread context
-    pub fn save(c: &mut Context) {
-        unsafe { thread_save(c) };
+    /// Saves thread context that is not already on the stack, and the thread stack pointer
+    #[naked]
+    pub(crate) unsafe extern "C" fn thread_restore(m: &Context) {
+        naked_asm!(
+            "\
+            mov rsp, [rdi];\
+            mov rbx, [rdi+8];\
+            ret;"
+        );
     }
 
-    /// Experimental code to restore a thread context
-    pub fn restore(&self) {
-        unsafe { thread_restore(self) };
+    /// Restores thread context not on the stack, and the thread stack pointer
+    #[naked]
+    pub(crate) unsafe extern "C" fn thread_save(m: &mut Context) {
+        naked_asm!(
+            "\
+            mov [rdi], rsp;\
+            mov [rdi+8], rbx;\
+            ret;"
+        );
     }
 }
 
@@ -227,6 +231,21 @@ impl Task {
         );
     }
 
+    /// The thread wrapper function for starting a thread
+    #[naked]
+    pub(crate) unsafe extern "C" fn thread_wrapper() -> ! {
+        naked_asm!(
+            "\
+            pop rbx;\
+            pop r12;\
+            pop r13;\
+            pop r14;\
+            pop r15;\
+            pop rbp;\
+            ret;"
+        );
+    }
+
     /// Create a new task
     pub fn new(f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
@@ -275,7 +294,7 @@ impl Task {
         s.push(&mut c.rsp, sc.r12);
         s.push(&mut c.rsp, c.rbx);
 
-        s.push(&mut c.rsp, thread_wrapper1 as *const () as u64); // the mocked return for the scheduler
+        s.push(&mut c.rsp, Self::thread_wrapper as *const () as u64); // the mocked return for the scheduler
         sc.rbp = c.rsp;
         let s = Self {
             context: Some(c),
@@ -408,7 +427,7 @@ impl Scheduler {
                 }
                 let taskid = old_task.unwrap();
                 let mut old_context = Context::new();
-                Context::save(&mut old_context);
+                unsafe { Context::thread_save(&mut old_context) };
                 if let Some(_c) = task.context.replace(old_context) {
                     panic!();
                 }
@@ -416,7 +435,7 @@ impl Scheduler {
                 drop(this);
                 timer.start_oneshot();
                 drop(timer);
-                return new_context.restore();
+                return unsafe { Context::thread_restore(&new_context) };
             }
         }
     }

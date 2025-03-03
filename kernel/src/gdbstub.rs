@@ -188,7 +188,7 @@ impl MultiThreadBase for DoorsTarget {
         data: &mut [u8],
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<usize, Self> {
-        let src = unsafe { core::slice::from_raw_parts(start_addr as *const u8, data.len())};
+        let src = unsafe { core::slice::from_raw_parts(start_addr as *const u8, data.len()) };
         data.copy_from_slice(src);
         Ok(data.len())
     }
