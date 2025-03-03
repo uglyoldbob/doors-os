@@ -6,7 +6,10 @@ use alloc::{boxed::Box, string::ToString};
 use gdbstub::{
     conn::ConnectionExt,
     stub::MultiThreadStopReason,
-    target::ext::base::multithread::{MultiThreadBase, MultiThreadResume},
+    target::{
+        ext::base::multithread::{MultiThreadBase, MultiThreadResume},
+        TargetError,
+    },
 };
 
 use crate::{
@@ -167,10 +170,10 @@ impl MultiThreadBase for DoorsTarget {
                 regs.eflags = (scontext.rflags & 0xFFFFFFFF) as u32;
                 Ok(())
             } else {
-                Err(gdbstub::target::TargetError::NonFatal)
+                Err(gdbstub::target::TargetError::Errno(42))
             }
         } else {
-            Err(gdbstub::target::TargetError::NonFatal)
+            Err(gdbstub::target::TargetError::Errno(43))
         }
     }
 
@@ -179,7 +182,15 @@ impl MultiThreadBase for DoorsTarget {
         regs: &<Self::Arch as gdbstub::arch::Arch>::Registers,
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
-        Ok(())
+        let s = crate::scheduler::SCHEDULER.read();
+        let mut s = s.as_ref().unwrap().sync_access();
+        let task = s.lookup_mut(tid.into());
+        if let Some(task) = task {
+            task.write_registers(regs)
+                .map_err(|_| TargetError::NonFatal)
+        } else {
+            Err(TargetError::NonFatal)
+        }
     }
 
     fn read_addrs(
@@ -199,6 +210,8 @@ impl MultiThreadBase for DoorsTarget {
         data: &[u8],
         tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
+        let dst = unsafe { core::slice::from_raw_parts_mut(start_addr as *mut u8, data.len()) };
+        dst.copy_from_slice(data);
         Ok(())
     }
 }
@@ -267,7 +280,7 @@ pub fn sync_run() {
     loop {
         let c = crate::kernel::SERIAL.take_device(1).unwrap();
         let gdbstub = gdbstub::stub::GdbStub::new(c);
-        gdbstub.run_blocking::<GdbstubBlockingEventLoop>(&mut target);
+        let _ = gdbstub.run_blocking::<GdbstubBlockingEventLoop>(&mut target);
     }
 }
 

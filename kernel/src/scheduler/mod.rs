@@ -3,6 +3,7 @@
 use core::arch::naked_asm;
 
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use gdbstub_arch::x86::reg::X86_64CoreRegs;
 use spin::RwLock;
 
 use crate::{
@@ -95,8 +96,6 @@ doors_macros::todo_item!("Create a guard page for stack");
 struct Stack {
     /// The actual stack
     data: Vec<u64>,
-    /// The index into the stack
-    index: usize,
 }
 
 impl Stack {
@@ -106,16 +105,24 @@ impl Stack {
         for _ in 0..size {
             s.push(0);
         }
-        Self {
-            data: s,
-            index: size,
-        }
+        Self { data: s }
+    }
+
+    /// Construct a stack from an existing stack
+    fn from_existing(data: Vec<u64>) -> Self {
+        Self { data }
     }
 
     /// Retrieve an item from the stack by absolute address
     fn reference(&self, addr: u64) -> u64 {
         let a = addr as *const u64;
         unsafe { *a }
+    }
+
+    /// Update an item on the stack to the given value
+    fn update(&mut self, addr: u64, val: u64) {
+        let a = addr as *mut u64;
+        unsafe { *a = val };
     }
 
     /// Set the rsp value to the end of the stack
@@ -127,8 +134,7 @@ impl Stack {
     /// Push a value onto the stack
     fn push(&mut self, rsp: &mut u64, val: u64) {
         *rsp = *rsp - core::mem::size_of::<u64>() as u64;
-        self.index -= 1;
-        self.data[self.index] = val;
+        self.update(*rsp, val);
     }
 }
 
@@ -164,6 +170,37 @@ impl Task {
         crate::VGA.print_str(&alloc::format!("Context is {:x?}\r\n", self.context));
     }
 
+    /// Update register contents for a thread that is not currently running
+    pub fn write_registers(&mut self, regs: &X86_64CoreRegs) -> Result<(), ()> {
+        if let Some(stack) = &mut self.stack {
+            if let Some(con) = &mut self.context {
+                let rsp = con.rsp + 0x120;
+                stack.update(rsp + 8, regs.regs[12]);
+                stack.update(rsp + 16, regs.regs[13]);
+                stack.update(rsp + 24, regs.regs[14]);
+                stack.update(rsp + 32, regs.regs[15]);
+                let rsp = con.rsp + 0x120 + 96 + 56 + 24;
+                stack.update(rsp, regs.regs[0]);
+                stack.update(rsp + 8, regs.regs[2]);
+                stack.update(rsp + 16, regs.regs[3]);
+                stack.update(rsp + 24, regs.regs[4]);
+                stack.update(rsp + 32, regs.regs[5]);
+                stack.update(rsp + 40, regs.regs[8]);
+                stack.update(rsp + 48, regs.regs[9]);
+                stack.update(rsp + 56, regs.regs[10]);
+                stack.update(rsp + 64, regs.regs[11]);
+                stack.update(rsp + 72, regs.regs[12]);
+                stack.update(rsp + 128, regs.rip);
+                stack.update(rsp + 136, regs.eflags as u64);
+                Ok(())
+            } else {
+                Err(())
+            }
+        } else {
+            Err(())
+        }
+    }
+
     /// Look at the context for a task (primarily for a debugger)
     pub fn examine_context(&self) -> Option<&Context> {
         self.context.as_ref()
@@ -180,10 +217,10 @@ impl Task {
                 sc.r13 = stack.reference(rsp + 16);
                 sc.r14 = stack.reference(rsp + 24);
                 sc.r15 = stack.reference(rsp + 32);
-                sc.rbp = stack.reference(rsp + 40);
-                let rsp = con.rsp + 0x120 + 56;
+                //sc.rbp = stack.reference(rsp + 40);
+                //let rsp = con.rsp + 0x120 + 56;
                 //let rbx = stack.reference(rsp + 8);
-                sc.rbp = stack.reference(rsp + 16);
+                //sc.rbp = stack.reference(rsp + 16);
                 let rsp = con.rsp + 0x120 + 96 + 56 + 24;
                 sc.rax = stack.reference(rsp);
                 sc.rcx = stack.reference(rsp + 8);
@@ -352,6 +389,11 @@ impl InnerScheduler {
         self.local_tasks.get(&id)
     }
 
+    /// Try to get mutable thread details by thread id
+    pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut Task> {
+        self.local_tasks.get_mut(&id)
+    }
+
     /// Print all tasks
     pub fn print(&self) {
         crate::VGA.print_str(&alloc::format!(
@@ -440,14 +482,24 @@ impl Scheduler {
         }
     }
 
-    /// Setup the timer
-    pub fn timer_setup(&self) {
+    /// Setup the timer and start scheduling tasks with the timer
+    pub fn timer_setup(&self, stack_start: u64, stack_size: u64) {
         use crate::modules::timer::TimerInstanceInnerTrait;
         let s2 = self.i.clone();
         let irqnum = self.i.0.irq();
         crate::SYSTEM.read().disable_irq(irqnum);
         {
             let mut this = self.i.0.interrupt_access();
+            {
+                let stack = unsafe {
+                    Vec::from_raw_parts(
+                        stack_start as *mut u64,
+                        stack_size as usize / 8,
+                        stack_size as usize / 8,
+                    )
+                };
+                this.cur_task.stack.replace(Stack::from_existing(stack));
+            }
             let mut t = crate::kernel::TIMERS.sync_lock();
             let timer = t.module(0);
             let mut t2 = timer.sync_lock();

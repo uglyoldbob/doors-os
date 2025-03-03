@@ -312,6 +312,8 @@ pub trait SystemTrait {
     fn idle_if(&self, f: impl FnMut() -> bool);
     /// Print debug stuff for acpi
     async fn acpi_debug(&self);
+    /// Get the details for the boot/main stack of the kernel. Return is in the form of start address and size in bytes
+    fn main_stack(&self) -> (u64, u64);
 }
 
 /// This struct implements the SystemTrait
@@ -357,4 +359,7 @@ impl SystemTrait for NullSystem {
     fn idle(&self) {}
     fn idle_if(&self, _f: impl FnMut() -> bool) {}
     async fn acpi_debug(&self) {}
+    fn main_stack(&self) -> (u64, u64) {
+        (0, 0)
+    }
 }

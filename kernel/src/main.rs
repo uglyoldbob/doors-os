@@ -152,7 +152,12 @@ fn main() -> ! {
                     .unwrap()
                     .add_task(scheduler::Task::new(gdbstub::sync_run));
             }
-            scheduler::SCHEDULER.read().as_ref().unwrap().timer_setup();
+            let main_stack = sys.main_stack();
+            scheduler::SCHEDULER
+                .read()
+                .as_ref()
+                .unwrap()
+                .timer_setup(main_stack.0, main_stack.1);
             crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
             crate::modules::network::network_init();
         }

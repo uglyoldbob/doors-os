@@ -1,8 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
-use crate::kernel::SystemTrait;
-use crate::modules::video::hex_dump;
 use crate::IoReadWrite;
 use crate::Locked;
 use crate::LockedArc;
@@ -15,7 +13,6 @@ use alloc::boxed::Box;
 use aml::value::Args;
 use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
-use core::arch::naked_asm;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use doors_macros::interrupt_64;
@@ -47,6 +44,18 @@ use x86_64::structures::{
 #[no_mangle]
 /// The global descriptor table for initial entry into long mode
 pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
+
+core::arch::global_asm!(include_str!("boot.s"));
+
+extern "C" {
+    /// The pointer to the multiboot data
+    static MULTIBOOT2_DATA: *const usize;
+    /// The pointer to the end of the initial stack for the kernel
+    static INITIAL_STACK: *const usize;
+}
+
+/// The size of the main/boot kernel stack in bytes
+const MAIN_STACK_SIZE: u64 = 8 * 1024;
 
 /// This function is responsible for building a gdt that can be built at compile time.
 const fn make_gdt_table() -> GlobalDescriptorTable {
@@ -80,11 +89,6 @@ pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
         address: &GDT_TABLE,
     },
 };
-
-extern "C" {
-    static MULTIBOOT2_DATA: *const usize;
-    static INITIAL_STACK: *const usize;
-}
 
 lazy_static! {
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
@@ -299,8 +303,6 @@ pub extern "C" fn unknown_interrupt() {
         x86_64::instructions::hlt();
     }
 }
-
-core::arch::global_asm!(include_str!("boot.s"));
 
 /// The virtual memory allocator. Deleted space from this may not be reclaimable.
 pub static VIRTUAL_MEMORY_ALLOCATOR: Locked<memory::BumpAllocator> =
@@ -526,10 +528,8 @@ pub struct X86System<'a> {
     acpi_handler: Acpi<'a>,
     /// Used for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
-    /// Suppress `Unpin` because this is self-referencing
-    _pin: core::marker::PhantomPinned,
-    /// Fake reference
-    _phantom: core::marker::PhantomData<&'a usize>,
+    /// The stack beginning
+    stack_start: u64,
 }
 
 impl LockedArc<Pin<Box<X86System<'_>>>> {
@@ -810,6 +810,11 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
             self.handle_acpi(&mut aml);
         });
     }
+
+    fn main_stack(&self) -> (u64, u64) {
+        let s = self.sync_lock();
+        (s.stack_start, MAIN_STACK_SIZE)
+    }
 }
 
 impl aml::Handler for AmlHandler {
@@ -1005,6 +1010,9 @@ pub extern "C" fn start64() -> ! {
             &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
         });
 
+    let stack_end = unsafe { INITIAL_STACK as usize };
+    let stack_size = MAIN_STACK_SIZE as usize;
+
     if let Some(mm) = boot_info.memory_map_tag() {
         let mut pal = PAGE_ALLOCATOR.sync_lock();
         pal.init(mm);
@@ -1017,8 +1025,6 @@ pub extern "C" fn start64() -> ! {
         }
         pal.set_kernel_memory_used();
 
-        let stack_end = unsafe { INITIAL_STACK as usize };
-        let stack_size = 8 * 1024;
         pal.set_area_used(stack_end - stack_size, stack_size);
         pal.set_area_used(0, 0x100000);
         pal.done_adding_memory_areas();
@@ -1117,8 +1123,7 @@ pub extern "C" fn start64() -> ! {
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
                 },
                 cpuid,
-                _pin: core::marker::PhantomPinned,
-                _phantom: core::marker::PhantomData,
+                stack_start: (stack_end - stack_size) as u64,
             }
         };
         let b = Box::new(s);
