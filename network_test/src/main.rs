@@ -65,7 +65,7 @@ fn main() {
                             let mut buf = vec![0; 64];
                             let mut rng = rand::rng();
                             rng.fill_bytes(&mut buf);
-                            (&mut buf[0..6]).copy_from_slice(&mac_address);
+                            buf[0..6].copy_from_slice(&mac_address);
                             if e.sendpacket(buf).is_ok() {
                                 packets_sent += 1;
                             }

@@ -2,10 +2,16 @@
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct KernelConfig {
+    /// The convenience name of the machine
     pub machine_name: String,
+    /// Should acpi support be compiled into the kernel?
     pub acpi: bool,
+    /// Should gdbstub support be enabled?
     pub gdbstub: bool,
+    /// Should memory management debugging be enabled?
     pub mm_debug: bool,
+    /// Should the kernel test functionality be enabled?
+    pub test: bool,
 }
 
 impl KernelConfig {

@@ -22,7 +22,10 @@ trait EmulationTrait {
     /// Build the config for the emulator
     fn build_config(&self, disk: &Disk);
     /// Run the emulator
-    fn run(&self) -> Result<Option<std::process::Child>, std::io::Error>;
+    fn run(
+        &self,
+        local: &LocalConfiguration,
+    ) -> Result<Option<std::process::Child>, std::io::Error>;
 }
 
 /// An emulation target that does nothing
@@ -32,7 +35,10 @@ struct NoEmulator {}
 impl EmulationTrait for NoEmulator {
     fn build_config(&self, _disk: &Disk) {}
 
-    fn run(&self) -> Result<Option<std::process::Child>, std::io::Error> {
+    fn run(
+        &self,
+        _local: &LocalConfiguration,
+    ) -> Result<Option<std::process::Child>, std::io::Error> {
         Ok(None)
     }
 }
@@ -144,21 +150,28 @@ impl DiskBuilderTrait for CdConfiguration {
             f.write_all(contents.as_bytes()).unwrap();
         }
 
-        let mut g = std::process::Command::new("grub-mkrescue");
-        g.args([
-            "-o",
-            common
-                .output
-                .clone()
-                .into_os_string()
-                .into_string()
-                .unwrap()
-                .as_str(),
-            "build/iso",
-            "--",
-            "-volid",
-            &common.disk_label,
-        ]);
+        let mut g = if cfg!(target_os = "windows") {
+            todo!();
+        } else if cfg!(target_os = "linux") {
+            let mut g = std::process::Command::new("grub-mkrescue");
+            g.args([
+                "-o",
+                common
+                    .output
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap()
+                    .as_str(),
+                "build/iso",
+                "--",
+                "-volid",
+                &common.disk_label,
+            ]);
+            g
+        } else {
+            panic!();
+        };
         let cout = g
             .output()
             .expect("Failed to run command to build the kernel");
@@ -188,6 +201,45 @@ pub struct DoorsConfiguration {
     disk: DiskImageConfiguration,
     /// The target for running the final disk image
     target: Emulation,
+}
+
+/// Configuration specific to the build machine
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct LocalConfiguration {
+    /// The binary for bochs
+    pub bochs_path: Option<std::path::PathBuf>,
+    /// The binary for qemu
+    pub qemu_path: Option<std::path::PathBuf>,
+    /// The binary for virtualbox
+    pub virtualbox_path: Option<std::path::PathBuf>,
+    /// The binary for vboxmanage, to manage virtualbox images
+    pub vboxmanage_path: Option<std::path::PathBuf>,
+    /// The binary for vbox-img, to build images in certain situations
+    pub vboximg_path: Option<std::path::PathBuf>,
+}
+
+impl Default for LocalConfiguration {
+    #[cfg(target_os = "linux")]
+    fn default() -> Self {
+        Self {
+            bochs_path: None,
+            qemu_path: None,
+            virtualbox_path: None,
+            vboxmanage_path: None,
+            vboximg_path: None,
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn default() -> Self {
+        Self {
+            bochs_path: Some("C:\\Program Files\\Bochs-2.8\\bochsdbg.exe".into()),
+            qemu_path: Some("C:\\Program Files\\qemu\\qemu-system-x86_64.exe".into()),
+            virtualbox_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\VirtualBoxVM.exe".into()),
+            vboxmanage_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into()),
+            vboximg_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into()),
+        }
+    }
 }
 
 impl DoorsConfiguration {
@@ -250,16 +302,6 @@ impl DoorsConfiguration {
         })
     }
 
-    /// Build the emulator config
-    pub fn build_emulator_config(&self, disk: &Disk) {
-        self.target.build_config(disk);
-    }
-
-    /// Run the emulator (if applicable)
-    pub fn run_emulator(&self) {
-        self.target.run();
-    }
-
     /// Build a disk image for the operating system
     #[cfg(target_os = "windows")]
     pub fn build_image(&self) -> Result<Disk, String> {
@@ -297,12 +339,57 @@ fn open_config_file(f: std::path::PathBuf) -> Option<DoorsConfiguration> {
         p2.pop();
         let read = p2.as_path().read_dir().unwrap();
         println!("Doors config not found, valid files in same path are as follows:");
-        for f in read {
-            if let Ok(entry) = f {
-                println!("Entry {:?}", entry.path());
-            }
+        for entry in read.flatten() {
+            println!("Entry {:?}", entry.path());
         }
         None
+    }
+}
+
+/// Open the local build machine configuration
+fn open_local_config(f: std::path::PathBuf) -> Option<LocalConfiguration> {
+    use std::io::Read;
+    if f.as_path().exists() {
+        let mut config = std::fs::File::open(&f).expect("Failed to open local configuration");
+        let mut config_contents = Vec::new();
+        config
+            .read_to_end(&mut config_contents)
+            .expect("Failed to read kernel configuration");
+        let config =
+            String::from_utf8(config_contents).expect("Invalid contents in local configuration");
+        let mconfig = toml::from_str::<LocalConfiguration>(&config);
+        if mconfig.is_err() {
+            let mut p2 = f.clone();
+            p2.pop();
+            println!("Need to check in path {:?}", p2);
+        }
+        let config = mconfig.expect("Invalid local configuration");
+        Some(config)
+    } else {
+        let mut p2 = f.clone();
+        p2.pop();
+        let read = p2.as_path().read_dir().unwrap();
+        println!("Local configuration not found, valid files in same path are as follows:");
+        for entry in read.flatten() {
+            println!("Entry {:?}", entry.path());
+        }
+        None
+    }
+}
+
+/// Combined configuration structure of both local and operating system configuration
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+pub struct MasterConfig {
+    /// The local configuration
+    local: LocalConfiguration,
+    /// The operating system config
+    os: DoorsConfiguration,
+}
+
+impl MasterConfig {
+    /// Construct a new Self from its members
+    pub fn build(local: LocalConfiguration, os: DoorsConfiguration) -> Self {
+        Self { local, os }
     }
 }
 
@@ -310,30 +397,47 @@ fn main() {
     use std::io::Write;
     let args = Args::parse();
     println!("I am groot {:?}", args);
-    let mut config: DoorsConfiguration = if let Some(n) = args.name {
+    let config: DoorsConfiguration = if let Some(n) = args.name {
         open_config_file(n).unwrap()
     } else {
         DoorsConfiguration::default()
     };
+    let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
+    let mut config = MasterConfig::build(local, config);
 
     println!("Doors configuration: {:?}", config);
 
     if let Some(f) = args.save {
         config
+            .os
             .disk
             .common
             .config_files
             .push(("asdf".into(), "fdsa".to_string()));
-        let text = toml::to_string_pretty(&config).expect("Failed to create configuration file");
+        let text = toml::to_string_pretty(&config.os).expect("Failed to create configuration file");
         let mut configf =
-            std::fs::File::create(&f).expect("Failed to create operating system configuration");
+            std::fs::File::create(f).expect("Failed to create operating system configuration");
         configf
             .write_all(text.as_bytes())
             .expect("Failed to save configuration file");
     } else {
+        print!("Writing kernel config...");
+        std::io::stdout().flush().unwrap();
+        {
+            let mut configf = std::fs::File::create("./kernel/config.toml")
+                .expect("Failed to create kernel configuration");
+            let text = toml::to_string_pretty(&config.os.kernel_config)
+                .expect("Failed to create kernel configuration file");
+            configf
+                .write_all(text.as_bytes())
+                .expect("Failed to save configuration file");
+        }
+        println!("done");
+
         print!("Building kernel... ");
         std::io::stdout().flush().unwrap();
         config
+            .os
             .build_kernel()
             .inspect_err(|e| {
                 println!("Failed to build the kernel");
@@ -345,6 +449,7 @@ fn main() {
         print!("Producing disassembly for kernel... ");
         std::io::stdout().flush().unwrap();
         let d = config
+            .os
             .build_kernel_disassembly()
             .inspect_err(|e| {
                 println!("Failed to build the kernel disassembly");
@@ -355,11 +460,11 @@ fn main() {
 
         print!("Building disk image... ");
         std::io::stdout().flush().unwrap();
-        let disk = config.build_image(&config.kernel_machine).unwrap();
+        let disk = config.os.build_image(&config.os.kernel_machine).unwrap();
         println!("done");
-        println!("Running disk image on {:?}", config.target);
-        config.target.build_config(&disk);
-        if let Some(mut emulator) = config.target.run().unwrap() {
+        println!("Running disk image on {:?}", config.os.target);
+        config.os.target.build_config(&disk);
+        if let Some(mut emulator) = config.os.target.run(&config.local).unwrap() {
             let _ = emulator.wait();
         }
     }

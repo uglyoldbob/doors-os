@@ -5,6 +5,7 @@ machine_name = "pc64"
 acpi = true
 gdbstub = true
 mm_debug = false
+test = false
 
 [disk.unique.Cd]
 kernel_path = "./build/iso/boot/kernel"

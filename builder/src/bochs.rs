@@ -2,10 +2,7 @@
 
 /// The bochs emulator
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
-pub struct Bochs {
-    /// The optional custom path for the bochs binary
-    binary: Option<std::path::PathBuf>,
-}
+pub struct Bochs {}
 
 impl super::EmulationTrait for Bochs {
     fn build_config(&self, disk: &super::Disk) {
@@ -36,13 +33,16 @@ impl super::EmulationTrait for Bochs {
             .expect("Failed to save configuration file");
     }
 
-    fn run(&self) -> Result<Option<std::process::Child>, std::io::Error> {
-        let mut b = if let Some(p) = &self.binary {
+    fn run(
+        &self,
+        local: &super::LocalConfiguration,
+    ) -> Result<Option<std::process::Child>, std::io::Error> {
+        let mut b = if let Some(p) = &local.bochs_path {
             std::process::Command::new(p)
         } else {
             std::process::Command::new("bochs")
         };
         let b = b.args(["-f", "bochs_config.txt", "-q"]);
-        b.spawn().map(|a| Some(a))
+        b.spawn().map(Some)
     }
 }

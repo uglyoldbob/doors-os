@@ -5,9 +5,12 @@
 pub struct VirtualBox {}
 
 impl super::EmulationTrait for VirtualBox {
-    fn build_config(&self, disk: &crate::Disk) {}
+    fn build_config(&self, _disk: &crate::Disk) {}
 
-    fn run(&self) -> Result<Option<std::process::Child>, std::io::Error> {
+    fn run(
+        &self,
+        _local: &super::LocalConfiguration,
+    ) -> Result<Option<std::process::Child>, std::io::Error> {
         todo!();
     }
 }
