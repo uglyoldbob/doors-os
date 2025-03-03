@@ -47,12 +47,6 @@ name = "kernel"
 test = false
 bench = false
 
-[[bin]]
-name = "kerneltest"
-path = "src/test.rs"
-test = true
-bench = false
-
 [profile.dev]
 opt-level=3
 

@@ -76,6 +76,19 @@ use modules::rng::RngTrait;
 use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
 
+/// This is an example of a future that is non-Send.
+async fn non_send_future() {
+    let mut nonsend = NonSendable::new();
+    crate::VGA.print_str_async("Stuff 1\r\n").await;
+    nonsend.do_thing();
+    crate::VGA.print_str_async("Stuff 2\r\n").await;
+    nonsend.do_thing();
+    crate::VGA.print_str_async("Stuff 3\r\n").await;
+    nonsend.do_thing();
+    crate::VGA.print_str_async("Stuff 4\r\n").await;
+    nonsend.do_thing();
+}
+
 /// This creates the multiboot2 signature that allows the kernel to be booted by a multiboot compliant bootloader such as grub.
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 #[link_section = ".multiboot"]
@@ -133,6 +146,14 @@ fn test_function() {
     loop {}
 }
 
+doors_macros::define_doors_test_runner!();
+
+fn kernel_testing_thread() {
+    if DoorsTester::doors_test_main().is_err() {
+        crate::VGA.print_str("At least one test failed\r\n");
+    }
+}
+
 fn main() -> ! {
     {
         {
@@ -161,6 +182,9 @@ fn main() -> ! {
             crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
             crate::modules::network::network_init();
         }
+        if doors_macros::config_check_equals!(test, "true") {
+            scheduler::SCHEDULER.read().as_ref().unwrap().add_task(scheduler::Task::new(kernel_testing_thread));
+        }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
             if d.exists(0) {
@@ -178,6 +202,9 @@ fn main() -> ! {
             }
         }
         let mut executor = Executor::default();
+        if doors_macros::config_check_equals!(test, "true") {
+            executor.spawn_closure_local(non_send_future).unwrap();
+        }
         if true {
             executor
                 .spawn(executor::AsyncTask::new(

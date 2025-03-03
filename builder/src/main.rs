@@ -456,6 +456,13 @@ fn main() {
                 print!("{}", e);
             })
             .unwrap();
+        {
+            let mut configf = std::fs::File::create("./disassemble.txt")
+                .expect("Failed to create disassembly file");
+            configf
+                .write_all(d.as_bytes())
+                .expect("Failed to save disassembly file");
+        }
         println!("{} bytes generated", d.len());
 
         print!("Building disk image... ");
