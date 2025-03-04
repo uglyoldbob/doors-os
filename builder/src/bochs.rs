@@ -9,21 +9,14 @@ pub struct Bochs {}
 impl super::EmulationTrait for Bochs {
     fn custom_debug_symbols(&self, s: std::path::PathBuf) {
         use std::io::{Read, Write};
-        println!("Checking in {:?} for debug stuff", s.display());
         let mut f = std::fs::File::open(s).unwrap();
         let mut contents = Vec::new();
         f.read_to_end(&mut contents).unwrap();
         let o = object::File::parse(&*contents).unwrap();
         use object::Object;
         use object::ObjectSection;
-        for s in o.sections() {
-            if s.name().unwrap().starts_with(".debug") {
-                println!("Section name {:?}", s);
-            }
-        }
         let d = gimli::Dwarf::load(|id| {
             let secname = id.name();
-            println!("Looking for section {:?}", secname);
             let data = o
                 .section_by_name_bytes(secname.as_bytes())
                 .ok_or(())
@@ -101,7 +94,12 @@ impl super::EmulationTrait for Bochs {
             .expect("Failed to save bochs debug symbols file");
     }
 
-    fn build_config(&self, disk: &super::Disk, local: &super::LocalConfiguration) {
+    fn build_config(
+        &self,
+        disk: &super::Disk,
+        common: &super::EmulatorConfig,
+        local: &super::LocalConfiguration,
+    ) {
         use std::io::Write;
         let mut config: String = String::new();
 
@@ -110,16 +108,26 @@ impl super::EmulationTrait for Bochs {
             config.push_str("romimage: file=\"/usr/share/seabios/bios-256k.bin\"\n");
             config
                 .push_str("vgaromimage: file =\"/usr/share/seabios/vgabios-bochs-display.bin\"\n");
-            config.push_str(
-                "e1000: enabled=1, mac=52:54:00:12:34:56, ethmod=linux, ethdev=vboxnet0\n",
-            );
         }
-        #[cfg(target_os = "windows")]
-        {
-            config.push_str(
-                "e1000: enabled=1, mac=52:54:00:12:34:56, ethmod=win32, ethdev=vboxnet0\n",
-            );
+
+        for nid in &common.net_devs {
+            let net_name = &local.net_devs[*nid];
+            #[cfg(target_os = "linux")]
+            {
+                config.push_str(&format!(
+                    "e1000: enabled=1, mac=52:54:00:12:34:56, ethmod=linux, ethdev={}\n",
+                    net_name
+                ));
+            }
+            #[cfg(target_os = "windows")]
+            {
+                config.push_str(&format!(
+                    "e1000: enabled=1, mac=52:54:00:12:34:56, ethmod=win32, ethdev={}\n",
+                    net_name
+                ));
+            }
         }
+
         config.push_str("com1: enabled=1, mode=file, dev=serial.log\n");
         config.push_str("com2: enabled=1, mode=file, dev=serial2.log\n");
         config.push_str("debug_symbols: file=./symbols_bochs\n");
@@ -143,6 +151,7 @@ impl super::EmulationTrait for Bochs {
 
     fn run(
         &self,
+        common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
     ) -> Result<Option<std::process::Child>, std::io::Error> {
         let mut b = if let Some(p) = &local.bochs_path {

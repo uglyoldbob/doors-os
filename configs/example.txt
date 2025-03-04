@@ -1,0 +1,24 @@
+kernel_machine = ""
+
+[kernel_config]
+machine_name = ""
+acpi = false
+gdbstub = false
+mm_debug = false
+test = false
+
+[disk.unique.Cd]
+kernel_path = ""
+
+[disk.common]
+output = ""
+disk_label = ""
+config_files = [[
+    "asdf",
+    "fdsa",
+]]
+
+[target.emulator.None]
+
+[target.config]
+net_devs = []

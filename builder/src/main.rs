@@ -22,10 +22,11 @@ trait EmulationTrait {
     /// Build any custom debug symbols required
     fn custom_debug_symbols(&self, _s: std::path::PathBuf) {}
     /// Build the config for the emulator
-    fn build_config(&self, disk: &Disk, local: &LocalConfiguration);
+    fn build_config(&self, disk: &Disk, common: &EmulatorConfig, local: &LocalConfiguration);
     /// Run the emulator
     fn run(
         &self,
+        common: &EmulatorConfig,
         local: &LocalConfiguration,
     ) -> Result<Option<std::process::Child>, std::io::Error>;
     /// Get the simple name of the emulator for build purposes
@@ -37,10 +38,11 @@ trait EmulationTrait {
 struct NoEmulator {}
 
 impl EmulationTrait for NoEmulator {
-    fn build_config(&self, _disk: &Disk, local: &LocalConfiguration) {}
+    fn build_config(&self, _disk: &Disk, _common: &EmulatorConfig, _local: &LocalConfiguration) {}
 
     fn run(
         &self,
+        _common: &EmulatorConfig,
         _local: &LocalConfiguration,
     ) -> Result<Option<std::process::Child>, std::io::Error> {
         Ok(None)
@@ -69,6 +71,22 @@ impl Default for Emulation {
     fn default() -> Self {
         Self::None(NoEmulator {})
     }
+}
+
+/// Common config for emulators
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+struct EmulatorConfig {
+    /// The nodes to use for network devices in the emulator
+    pub net_devs: Vec<usize>,
+}
+
+/// The holder of the emulation enum and the common configuration for all emulator types
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+struct EmulatorCommon {
+    /// The actual emulation implementation
+    pub emulator: Emulation,
+    /// Common config for all emulators
+    pub config: EmulatorConfig,
 }
 
 /// The basic modes of operation for this utility
@@ -239,7 +257,7 @@ pub struct DoorsConfiguration {
     /// The configuration required to build a disk image
     disk: DiskImageConfiguration,
     /// The target for running the final disk image
-    target: Emulation,
+    target: EmulatorCommon,
 }
 
 /// Configuration specific to the build machine
@@ -255,6 +273,8 @@ pub struct LocalConfiguration {
     pub vboxmanage_path: Option<std::path::PathBuf>,
     /// The binary for vbox-img, to build images in certain situations
     pub vboximg_path: Option<std::path::PathBuf>,
+    /// Network devices that can be used by emulators
+    pub net_devs: Vec<String>,
 }
 
 impl Default for LocalConfiguration {
@@ -266,6 +286,7 @@ impl Default for LocalConfiguration {
             virtualbox_path: None,
             vboxmanage_path: None,
             vboximg_path: None,
+            net_devs: Vec::new(),
         }
     }
 
@@ -277,6 +298,7 @@ impl Default for LocalConfiguration {
             virtualbox_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\VirtualBoxVM.exe".into()),
             vboxmanage_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into()),
             vboximg_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into()),
+            net_devs: Vec::new(),
         }
     }
 }
@@ -546,16 +568,29 @@ fn run_build(args: &Args, mut config: MasterConfig) {
             .build_image(&config.os.kernel_machine, &config.local)
             .unwrap();
         println!("done");
-        println!("Running disk image on {:?}", config.os.target);
-        config.os.target.custom_debug_symbols(
+        println!(
+            "Running disk image on {}",
+            config.os.target.emulator.simple_name()
+        );
+        config.os.target.emulator.custom_debug_symbols(
             format!(
                 "./kernel/target/{}/release/kernel",
                 &config.os.kernel_machine
             )
             .into(),
         );
-        config.os.target.build_config(&disk, &config.local);
-        if let Some(mut emulator) = config.os.target.run(&config.local).unwrap() {
+        config
+            .os
+            .target
+            .emulator
+            .build_config(&disk, &config.os.target.config, &config.local);
+        if let Some(mut emulator) = config
+            .os
+            .target
+            .emulator
+            .run(&config.os.target.config, &config.local)
+            .unwrap()
+        {
             let _ = emulator.wait();
         }
     }
