@@ -311,7 +311,7 @@ impl super::SerialTrait for X86SerialPort {
             for c in data.iter() {
                 while txq.interrupt_access().is_full() {
                     for _ in 0..1000000 {
-                        x86_64::instructions::nop();
+                        crate::nop();
                     }
                 }
                 txq.access().push(*c).unwrap();
@@ -320,7 +320,7 @@ impl super::SerialTrait for X86SerialPort {
                     ienabled = true;
                 }
                 for _ in 0..1000000 {
-                    x86_64::instructions::nop();
+                    crate::nop();
                 }
             }
             if !ienabled {
@@ -344,7 +344,7 @@ impl super::SerialTrait for X86SerialPort {
                 }
                 self.0.enable_tx_interrupt();
                 for _ in 0..1000000 {
-                    x86_64::instructions::nop();
+                    crate::nop();
                 }
             }
         }

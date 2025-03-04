@@ -233,13 +233,12 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
             <Self::Connection as gdbstub::conn::Connection>::Error,
         >,
     > {
-        todo!();
+        loop {}
     }
 
     fn on_interrupt(
         target: &mut Self::Target,
     ) -> Result<Option<Self::StopReason>, <Self::Target as gdbstub::target::Target>::Error> {
-        todo!();
         Ok(Some(
             MultiThreadStopReason::Signal(gdbstub::common::Signal::SIGINT).into(),
         ))

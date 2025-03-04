@@ -94,10 +94,6 @@ lazy_static! {
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
 }
 
-/// The irq handlers registered by the system
-static IRQ_HANDLERS: [Locked<Option<Box<dyn Fn() + Send + Sync>>>; 256] =
-    [const { Locked::new(None) }; 256];
-
 /// The divide by zero handler
 #[interrupt_64]
 pub extern "C" fn divide_by_zero() {
@@ -112,7 +108,7 @@ doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 
 /// Signals end of interrupt
 fn irq_ender(irqnum: u8) {
-    let p = INTERRUPT_CONTROLLER.read();
+    let p = super::INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(irqnum)
     }
@@ -121,7 +117,7 @@ fn irq_ender(irqnum: u8) {
 /// The ending portion of an irq handler
 #[inline(never)]
 pub fn finish_irq(irqnum: u8) {
-    let p = INTERRUPT_CONTROLLER.read();
+    let p = super::INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(irqnum)
     }
@@ -129,7 +125,7 @@ pub fn finish_irq(irqnum: u8) {
 
 /// The irq0 handler
 pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[0].sync_lock();
+    let handle = super::IRQ_HANDLERS[0].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_ref().unwrap() };
     irq_ender(0);
@@ -140,7 +136,7 @@ pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
 
 /// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[4].sync_lock();
+    let handle = super::IRQ_HANDLERS[4].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
@@ -149,7 +145,7 @@ pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
 
 /// The irq4 handler
 pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[4].sync_lock();
+    let handle = super::IRQ_HANDLERS[4].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
@@ -158,7 +154,7 @@ pub extern "x86-interrupt" fn irq4(_isf: InterruptStackFrame) {
 
 /// The irq7 handler
 pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[7].sync_lock();
+    let handle = super::IRQ_HANDLERS[7].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
@@ -167,7 +163,7 @@ pub extern "x86-interrupt" fn irq7(_isf: InterruptStackFrame) {
 
 /// The irq9 handler
 pub extern "x86-interrupt" fn irq9(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[9].sync_lock();
+    let handle = super::IRQ_HANDLERS[9].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
@@ -176,7 +172,7 @@ pub extern "x86-interrupt" fn irq9(_isf: InterruptStackFrame) {
 
 /// The irq10 handler
 pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[10].sync_lock();
+    let handle = super::IRQ_HANDLERS[10].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
@@ -185,7 +181,7 @@ pub extern "x86-interrupt" fn irq10(_isf: InterruptStackFrame) {
 
 /// The irq11 handler
 pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
-    let handle = IRQ_HANDLERS[11].sync_lock();
+    let handle = super::IRQ_HANDLERS[11].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }
@@ -320,9 +316,6 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
 pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
 
-/// The interrupt controller
-static INTERRUPT_CONTROLLER: RwLock<Option<Pic>> = RwLock::new(None);
-
 #[derive(Clone)]
 /// A structure for mapping and unmapping acpi memory
 struct Acpi<'a> {
@@ -409,102 +402,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
                     .unwrap();
             unsafe { acpi.vmm.deallocate(NonNull::new_unchecked(ptr), layout) };
         }
-    }
-}
-
-/// The programmable interrupt controller
-struct Pic {
-    /// The first pic
-    pic1: super::IoPortArray<'static>,
-    /// The second pic
-    pic2: super::IoPortArray<'static>,
-}
-
-impl Pic {
-    /// Get a pic object.
-    pub fn new() -> Option<Self> {
-        Some(Self {
-            pic1: super::IOPORTS.get_ports(0x20, 2)?,
-            pic2: super::IOPORTS.get_ports(0xa0, 2)?,
-        })
-    }
-
-    /// Signal end of interrupt for the specified irq
-    pub fn end_of_interrupt(&self, irq: u8) {
-        if irq >= 8 {
-            self.pic2.port(0).port_write(0x20u8);
-        }
-        self.pic1.port(0).port_write(0x20u8);
-    }
-
-    /// Disable all interrupts for both pics
-    pub fn disable(&self) {
-        use crate::IoReadWrite;
-        self.pic1.port(1).port_write(0xffu8);
-        self.pic2.port(1).port_write(0xffu8);
-    }
-
-    /// Enable the specified irq
-    #[inline(never)]
-    pub fn enable_irq(&self, irq: u8) {
-        if irq < 8 {
-            let data: u8 = self.pic1.port(1).port_read();
-            self.pic1.port(1).port_write(data & !(1 << irq));
-        } else {
-            let irq = irq - 8;
-            let data: u8 = self.pic2.port(1).port_read();
-            self.pic2.port(1).port_write(data & !(1 << irq));
-        }
-    }
-
-    /// Disable the specified irq
-    #[inline(never)]
-    pub fn disable_irq(&self, irq: u8) {
-        if irq < 8 {
-            let data: u8 = self.pic1.port(1).port_read();
-            self.pic1.port(1).port_write(data | (1 << irq));
-        } else {
-            let irq = irq - 8;
-            let data: u8 = self.pic2.port(1).port_read();
-            self.pic2.port(1).port_write(data | (1 << irq));
-        }
-    }
-
-    /// Perform a remap of the pic interrupts
-    /// # Arguments
-    /// * offset1 - The amount to offset pic1 vectors by
-    /// * offset2 - The amount to offset pic2 vectors by
-    pub fn remap(&self, offset1: u8, offset2: u8) {
-        use crate::IoReadWrite;
-        let mut delay: super::IoPortRef<u8> = super::IOPORTS.get_port(0x80).unwrap();
-
-        let mut pic1_cmd: super::IoPortRef<u8> = self.pic1.port(0);
-        let mut pic1_data: super::IoPortRef<u8> = self.pic1.port(1);
-        let mut pic2_cmd: super::IoPortRef<u8> = self.pic2.port(0);
-        let mut pic2_data: super::IoPortRef<u8> = self.pic2.port(1);
-
-        let mask1 = pic1_data.port_read();
-        let mask2 = pic2_data.port_read();
-        pic1_cmd.port_write(0x11);
-        delay.port_write(0);
-        pic2_cmd.port_write(0x11);
-        delay.port_write(0);
-        pic1_data.port_write(offset1);
-        delay.port_write(0);
-        pic2_data.port_write(offset2);
-        delay.port_write(0);
-        pic1_data.port_write(4);
-        delay.port_write(0);
-        pic2_data.port_write(2);
-        delay.port_write(0);
-        pic1_data.port_write(1);
-        delay.port_write(0);
-        pic2_data.port_write(1);
-        delay.port_write(0);
-
-        pic1_data.port_write(mask1);
-        pic2_data.port_write(mask2);
-        self.enable_irq(2); //enable the interrupt for the second pic
     }
 }
 
@@ -743,7 +640,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     fn enable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let p = INTERRUPT_CONTROLLER.read();
+            let p = super::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.enable_irq(irq)
             }
@@ -758,13 +655,13 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         handler: F,
     ) {
         let a = Box::new(handler);
-        let mut irqs = IRQ_HANDLERS[irq as usize].sync_lock();
+        let mut irqs = super::IRQ_HANDLERS[irq as usize].sync_lock();
         irqs.replace(a);
     }
 
     fn disable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let p = INTERRUPT_CONTROLLER.read();
+            let p = super::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.disable_irq(irq)
             }
@@ -1068,10 +965,10 @@ pub extern "C" fn start64() -> ! {
         .unwrap();
 
     {
-        let pic = Pic::new().unwrap();
+        let pic = super::Pic::new().unwrap();
         pic.disable();
         pic.remap(0x20, 0x28);
-        INTERRUPT_CONTROLLER.write().replace(pic);
+        super::INTERRUPT_CONTROLLER.write().replace(pic);
     }
 
     {

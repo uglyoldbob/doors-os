@@ -4,13 +4,15 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 use alloc::{boxed::Box, vec::Vec};
-use doors_kernel_api::video::TextDisplay;
 use multiboot2::MemoryMapTag;
+
+#[path = "../../memory.rs"]
+pub mod memory;
 
 use crate::Locked;
 
+use crate::FixedString;
 use crate::VGA;
-use doors_kernel_api::FixedString;
 
 /// The page directory pointer table, used for the paging system in PAE paging.
 pub static mut PAGE_DIRECTORY_POINTER_TABLE: PageDirectoryPointerTable =
@@ -52,6 +54,37 @@ impl BumpAllocator {
         }
     }
 
+    /// Allocate some memory not backed by ram, normally used for allocating memory for memory mapped devices like pci bar space
+    pub fn allocate_nonram_memory(
+        &mut self,
+        size: usize,
+        alignment: usize,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let p = self.peek();
+        let start = (alignment - 1) & p;
+        let waste = if start != 0 { alignment - start } else { 0 };
+        if waste != 0 {
+            self.waste_space(waste);
+        }
+        let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+        self.run_allocation(layout)
+    }
+
+    /// Deallocate memory allocated with [allocate_nonram_memory]
+    fn deallocate_nonram_memory(
+        &mut self,
+        ptr: core::ptr::NonNull<u8>,
+        layout: core::alloc::Layout,
+    ) {
+        let layout2 = layout.align_to(layout.size()).unwrap();
+        self.run_deallocation(ptr, layout2);
+    }
+
+    /// Peek at what the next issued address will start at
+    pub fn peek(&mut self) -> usize {
+        self.end + 1
+    }
+
     /// Relocate the bump allocator to a new address, but only if no addresses are currently out
     pub fn relocate(&mut self, newstart: usize, newend: usize) {
         if self.start != self.end {
@@ -76,23 +109,44 @@ impl BumpAllocator {
             self.end = base + mask;
         }
     }
-}
 
-unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
-    fn allocate(
-        &self,
+    /// Add a bumpallocation to self, returning both the old and new end addresses for this allocator
+    fn add_bump_allocation(&mut self, ba: BumpAllocation) -> (usize, usize) {
+        for i in 1..5 {
+            self.last[i] = self.last[i - 1];
+        }
+        self.last[0] = Some(ba);
+        let old_end = self.end;
+        self.end += ba.bumpsize;
+        let new_end = self.end;
+        (old_end, new_end)
+    }
+
+    /// A fake allocation that just wastes space
+    pub fn waste_space(&mut self, size: usize) {
+        let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+        let a = BumpAllocation {
+            bumpsize: layout.size(),
+            addr: self.end + 1,
+        };
+        self.add_bump_allocation(a);
+        self.last[0] = None;
+    }
+
+    /// Run an allocation
+    pub fn run_allocation(
+        &mut self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let mut alloc = self.lock();
         let align_mask = layout.align() - 1;
-        let align_error = (alloc.end + 1) & align_mask;
+        let align_error = (self.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
             layout.align() - align_error
         } else {
             0
         };
         let bumpsize = layout.size() + align_pad;
-        let allocstart = alloc.end + 1 + align_pad;
+        let allocstart = self.end + 1 + align_pad;
 
         let ptr = unsafe {
             core::ptr::NonNull::new_unchecked(core::ptr::slice_from_raw_parts_mut(
@@ -105,38 +159,47 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
             bumpsize,
             addr: allocstart,
         };
-        for i in 1..5 {
-            alloc.last[i] = alloc.last[i - 1];
-        }
-        alloc.last[0] = Some(a);
-        let old_end = alloc.end;
-        alloc.end += bumpsize;
-        let new_end = alloc.end;
-        if let Some(pa) = &mut alloc.allocate_pages {
-            let mut oldpage = old_end & !(core::mem::size_of::<Page2Mb>() - 1);
-            let newpage = new_end & !(core::mem::size_of::<Page2Mb>() - 1);
+        let (old_end, new_end) = self.add_bump_allocation(a);
+        if let Some(pa) = &mut self.allocate_pages {
+            let mut oldpage = old_end & !0x1fffff;
+            let newpage = new_end & !0x1fffff;
             while oldpage != newpage {
-                let allpage = oldpage + core::mem::size_of::<Page2Mb>();
-                let pageindex = allpage / core::mem::size_of::<Page2Mb>();
+                let allpage = oldpage + 0x200000;
+                let pageindex = allpage / 0x200000;
                 pa.entries[pageindex] = allpage as u64 | 0x83;
                 unsafe { x86::tlb::flush_all() };
-                oldpage += core::mem::size_of::<Page2Mb>();
+                oldpage += 0x200000;
             }
         }
         Ok(ptr)
     }
 
-    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
-        if let Some(a) = alloc.last[0] {
+    /// Run a deallocation for the allocator
+    fn run_deallocation(&mut self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
+        if let Some(a) = self.last[0] {
             if a.addr == ptr.addr().into() {
-                alloc.end -= a.bumpsize;
+                self.end -= a.bumpsize;
                 for i in 1..5 {
-                    alloc.last[i - 1] = alloc.last[i];
+                    self.last[i - 1] = self.last[i];
                 }
-                alloc.last[4] = None;
+                self.last[4] = None;
             }
         }
+    }
+}
+
+unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        let mut alloc = self.sync_lock();
+        alloc.run_allocation(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let mut alloc = self.sync_lock();
+        alloc.run_deallocation(ptr, layout);
     }
 }
 
@@ -258,17 +321,66 @@ pub struct SimpleMemoryManager<'a> {
     pub bitmaps: Option<Vec<Bitmap<'a, Page>, &'a Locked<BumpAllocator>>>,
     /// The memory manager to get virtual memory, used to allocate space for the bitmaps
     mm: &'a crate::Locked<BumpAllocator>,
+    /// The bump allocator for any additional memory for the system
+    extra_mem: BumpAllocator,
 }
 
 impl<'a> SimpleMemoryManager<'a> {
     /// Create a new instance of the physical memory manager.
     pub const fn new(mm: &'a crate::Locked<BumpAllocator>) -> Self {
-        Self { bitmaps: None, mm }
+        Self {
+            bitmaps: None,
+            mm,
+            extra_mem: BumpAllocator::new(0x100000),
+        }
+    }
+
+    /// Set a region of memory as used
+    pub fn set_area_used(&mut self, start: usize, size: usize) {
+        const PAGE_MASK: usize = !(core::mem::size_of::<Page>() - 1);
+        if let Some(bitmaps) = &mut self.bitmaps {
+            let offset = start & PAGE_MASK;
+
+            let realstart = start - offset;
+            let realsize = size + offset;
+            let realsize = if (realsize & PAGE_MASK) != 0 {
+                (realsize & PAGE_MASK) + core::mem::size_of::<Page>()
+            } else {
+                realsize
+            };
+            let realend = realstart + realsize;
+            let mut addr = realstart;
+            loop {
+                for b in bitmaps.iter_mut() {
+                    let a = unsafe { core::ptr::NonNull::new_unchecked(addr as *mut u8) };
+                    if b.page_exists(a) {
+                        b.steal_block(a);
+                        break;
+                    }
+                }
+                addr += core::mem::size_of::<Page>();
+                if addr >= realend {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Indicate that there are no more memory areas to add to the memory manager
+    pub fn done_adding_memory_areas(&mut self) {
+        let mut highest_address: usize = 0;
+        for i in self.bitmaps.as_ref().unwrap() {
+            let addr: usize = i.start + i.num_blocks * core::mem::size_of::<Page>();
+            if addr > highest_address {
+                highest_address = addr;
+            }
+        }
+        self.extra_mem.relocate(highest_address, highest_address);
     }
 
     /// Assumes memory currently allocated by the bump allocator, as ram currently in use and marks it appropriately
     pub fn set_kernel_memory_used(&mut self) {
-        let mml = self.mm.lock();
+        let mml = self.mm.sync_lock();
 
         if let Some(bitmaps) = &mut self.bitmaps {
             for i in (mml.start..mml.end).step_by(core::mem::size_of::<Bitmap<Page>>()) {
@@ -322,7 +434,7 @@ unsafe impl<'a> core::alloc::Allocator for Locked<SimpleMemoryManager<'a>> {
         &self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         if let Some(bitmaps) = &mut alloc.bitmaps {
             if layout.size() <= core::mem::size_of::<Page>() {
                 for bitmap in bitmaps.iter_mut() {
@@ -341,7 +453,7 @@ unsafe impl<'a> core::alloc::Allocator for Locked<SimpleMemoryManager<'a>> {
     }
 
     unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, _layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         if let Some(bitmaps) = &mut alloc.bitmaps {
             for bitmap in bitmaps.iter_mut() {
                 if bitmap.page_exists(ptr) {
@@ -424,7 +536,6 @@ impl PageDirectoryPointerTableRef {
     fn new(cr3: usize, virt: usize) -> Self {
         let virtaddr = virt | (cr3 & 0xFE0);
         let virtaddr = virtaddr as *mut PageDirectoryPointerTable;
-        doors_macros2::kernel_print!("Virtual address is {:p}\r\n", virtaddr);
         Self {
             physical_address: cr3,
             table: unsafe { virtaddr.as_mut().unwrap() },
@@ -463,7 +574,7 @@ impl PageTable {
     }
 
     /// Returns an address if the entry is marked present
-    fn get_entry(&mut self, index: usize) -> Option<u64> {
+    fn get_entry(&self, index: usize) -> Option<u64> {
         let d = self.entries[index];
         if (d & 1) != 0 {
             Some(d & !0xFFF)
@@ -547,6 +658,42 @@ impl<'a> PagingTableManager<'a> {
         }
     }
 
+    /// Map the specified range of physical addresses to the specified virtual addresses as read/write. size is in bytes.
+    pub fn map_addresses_read_write(
+        &mut self,
+        virtual_address: usize,
+        physical_address: usize,
+        size: usize,
+    ) -> Result<(), ()> {
+        let cr3 = unsafe { x86::controlregs::cr3() } as usize;
+
+        for i in (0..size).step_by(core::mem::size_of::<Page>()) {
+            let vaddr = virtual_address + i;
+            let paddr = physical_address + i;
+            self.setup_cache(cr3, vaddr);
+            let pt1_index = (vaddr >> 12) & 0x1FF;
+
+            if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
+                let table = unsafe { &mut *self.pt1.as_mut_ptr() };
+                table.table.entries[pt1_index] = (paddr as u64 | 0x3);
+                unsafe { x86::tlb::flush(vaddr) };
+            } else {
+                return Err(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Lookup the physical address corresponding to the specified address
+    fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
+        let cr3 = unsafe { x86::controlregs::cr3() } as usize;
+        self.setup_cache(cr3, addr);
+        let table = unsafe { self.pt1.assume_init_ref() };
+        let offset = (addr >> 12) & 0x1FF;
+        let a = table.table.get_entry(offset);
+        a.map(|a| (a as usize) | (addr & 0xFFF))
+    }
+
     /// Map the virtual address as a window to the given physical address. Used in the init function.
     fn map_window(&mut self, vaddr: usize, phys: u64) -> &'static mut u64 {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
@@ -588,7 +735,7 @@ impl<'a> PagingTableManager<'a> {
     pub fn init(&mut self) {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
 
-        let mut mm = self.mm.lock();
+        let mut mm = self.mm.sync_lock();
         let pdpt_window = mm.get_complete_virtual_page();
         let page_directory_window = mm.get_complete_virtual_page();
         let page_table_window = mm.get_complete_virtual_page();
@@ -606,7 +753,6 @@ impl<'a> PagingTableManager<'a> {
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
     fn setup_cache(&mut self, cr3: usize, address: usize) {
-        doors_macros2::kernel_print!("Setting up cache for paging {:x}\r\n", address);
         unsafe { &mut *self.pdpt.as_mut_ptr() }.update(cr3);
         let mut gigabyte = unsafe { &mut *self.pdpt.as_mut_ptr() }
             .table
@@ -708,7 +854,6 @@ impl<'a> PagingTableManager<'a> {
     pub fn map_new_page(&mut self, address: usize) -> Result<(), ()> {
         let cr3 = unsafe { x86::controlregs::cr3() } as usize;
         self.setup_cache(cr3, address);
-        doors_macros2::kernel_print!("Mapping new page to {:x}\r\n", address);
         let pt1_index = ((address >> 12) & 0x1FF) as usize;
 
         if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {

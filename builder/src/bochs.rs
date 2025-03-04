@@ -61,7 +61,7 @@ impl super::EmulationTrait for Bochs {
                                 }
                             }
                             if let Some(pc_low) = pc_low {
-                                if attr.name() == gimli::DW_AT_linkage_name {
+                                if attr.name() == gimli::DW_AT_name {
                                     let v = attr.value();
                                     if let gimli::read::AttributeValue::DebugStrRef(a) = v {
                                         let n2 = d.string(a).unwrap();

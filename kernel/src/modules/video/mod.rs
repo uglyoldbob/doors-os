@@ -162,7 +162,7 @@ pub trait FramebufferTrait<P> {
 pub enum Framebuffer {
     /// A framebuffer that lives in plain memory
     SimpleRam(SimpleRamFramebuffer),
-    #[cfg(kernel_machine = "pc64")]
+    #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     /// x86 vga hardware
     VgaHardware(vga::X86VgaMode),
 }
@@ -171,7 +171,7 @@ impl FramebufferTrait<pixels::Palette<u8>> for Framebuffer {
     fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::Palette<u8>>) {
         match self {
             Framebuffer::SimpleRam(f) => f.write_plain(x, y, fb),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(f) => f.write_plain(x, y, fb),
         }
     }
@@ -183,7 +183,7 @@ impl FramebufferTrait<pixels::Palette<u8>> for Framebuffer {
     fn write_pixel(&mut self, x: u16, y: u16, p: pixels::Palette<u8>) {
         match self {
             Framebuffer::SimpleRam(f) => f.write_pixel(x, y, p),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(f) => f.write_pixel(x, y, p),
         }
     }
@@ -193,7 +193,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
     fn write_plain(&mut self, x: u16, y: u16, fb: PlainFrameBuffer<'_, pixels::FullColor<u32>>) {
         match self {
             Framebuffer::SimpleRam(f) => f.write_plain(x, y, fb),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(_f) => todo!(),
         }
     }
@@ -201,7 +201,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
     fn write_opaque(&mut self, x: u16, y: u16, ob: OpaqueFrameBuffer<'_, pixels::FullColor<u32>>) {
         match self {
             Framebuffer::SimpleRam(f) => f.write_opaque(x, y, ob),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(_f) => todo!(),
         }
     }
@@ -209,7 +209,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
     fn write_pixel(&mut self, x: u16, y: u16, p: pixels::FullColor<u32>) {
         match self {
             Framebuffer::SimpleRam(f) => f.write_pixel(x, y, p),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(_f) => todo!(),
         }
     }
@@ -222,7 +222,7 @@ impl Framebuffer {
             Framebuffer::SimpleRam(simple_ram_framebuffer) => {
                 simple_ram_framebuffer.buffer.iter_mut()
             }
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(_vga) => todo!(),
         }
     }
@@ -233,7 +233,7 @@ impl Framebuffer {
             Framebuffer::SimpleRam(fb) => crate::VGA.print_fixed_str(
                 doors_macros2::fixed_string_format!("FB IS AT {:p}\r\n", &fb.buffer[0]),
             ),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(_vga) => todo!(),
         }
     }
@@ -244,7 +244,7 @@ impl Framebuffer {
             Framebuffer::SimpleRam(fb) => TextDisplay::FramebufferTextFull(
                 FramebufferTextMode::new(Framebuffer::SimpleRam(fb), Some(font)),
             ),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(_vga) => todo!(),
         }
     }
@@ -255,7 +255,7 @@ impl Framebuffer {
             Framebuffer::SimpleRam(fb) => TextDisplay::FramebufferTextPalette(
                 FramebufferTextMode::new(Framebuffer::SimpleRam(fb), Some(font)),
             ),
-            #[cfg(kernel_machine = "pc64")]
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Framebuffer::VgaHardware(vga) => {
                 TextDisplay::X86VgaGraphicsMode(vga::X86VgaWithFont::new(vga, font))
             }

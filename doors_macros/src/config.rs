@@ -12,6 +12,8 @@ pub struct KernelConfig {
     pub mm_debug: bool,
     /// Should the kernel test functionality be enabled?
     pub test: bool,
+    /// Should network functionality be included?
+    pub network: bool,
 }
 
 impl KernelConfig {

@@ -220,7 +220,7 @@ pub async fn process_packets_received() {
             loop {
                 if crate::SYSTEM.read().disable_interrupts_for(|| q.is_empty()) {
                     for _ in 0..1000000 {
-                        x86_64::instructions::nop();
+                        crate::nop();
                     }
                     crate::executor::AsyncTask::yield_now().await;
                 } else {

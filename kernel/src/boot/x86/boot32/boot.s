@@ -1,6 +1,7 @@
     .section .data
     .global start
     .extern MULTIBOOT2_DATA
+    .extern INITIAL_STACK
     .extern start32
     .align 8
     MULTIBOOT2_DATA: .word 0
@@ -8,4 +9,5 @@
     .code32
     start:
         mov [MULTIBOOT2_DATA], ebx
+        mov [INITIAL_STACK], rsp
         jmp start32

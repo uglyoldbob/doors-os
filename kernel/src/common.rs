@@ -11,6 +11,18 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+/// Do nothing
+#[cfg(target_arch = "x86")]
+pub fn nop() {
+    unsafe { core::arch::asm!("nop;") };
+}
+
+/// Do nothing
+#[cfg(target_arch = "x86_64")]
+pub fn nop() {
+    x86_64::instructions::nop();
+}
+
 /// This trait is implemented for things safe to use in an interrupt context
 pub auto trait Interrupt {}
 

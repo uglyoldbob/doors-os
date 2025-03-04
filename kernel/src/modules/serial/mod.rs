@@ -6,6 +6,9 @@ pub mod stm32f769;
 #[cfg(kernel_machine = "pc64")]
 pub mod x86;
 
+#[cfg(kernel_machine = "pc32")]
+pub mod x86;
+
 use crate::Arc;
 use futures::Stream;
 
@@ -45,7 +48,7 @@ pub enum Serial {
     #[cfg(kernel_machine = "stm32f769i-disco")]
     Stm32f769(LockedArc<stm32f769::Usart>),
     /// X86 serial port
-    #[cfg(kernel_machine = "pc64")]
+    #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     PcComPort(x86::X86SerialPort),
 }
 

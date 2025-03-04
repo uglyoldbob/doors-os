@@ -438,6 +438,12 @@ impl Scheduler {
         this.cur_task.status = TaskStatus::Completed;
     }
 
+    /// Retrieve the task id of the current task
+    pub fn cur_task_id(&self) -> Option<TaskId> {
+        let mut this = self.i.0.sync_access();
+        this.cur_task_id
+    }
+
     /// The interrupt handler for the timer
     #[inline(never)]
     fn handle_interrupt(
@@ -515,9 +521,11 @@ impl Scheduler {
     }
 
     /// Add a task
-    pub fn add_task(&self, task: Task) {
+    pub fn add_task(&self, task: Task) -> TaskId {
         let mut this = self.i.0.sync_access();
-        this.local_tasks.insert(TaskId::new(), task);
+        let tid = TaskId::new();
+        this.local_tasks.insert(tid, task);
+        tid
     }
 
     /// Print all tasks

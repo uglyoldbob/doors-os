@@ -455,24 +455,6 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
     }
 }
 
-impl memory::PciMemory {
-    /// Allocate some pci memory with the given size. TODO implement a 32-bit restricted version of this function.
-    pub fn new(size: usize) -> Result<Self, core::alloc::AllocError> {
-        let mut t = super::PAGE_ALLOCATOR.sync_lock();
-        let phys = t.extra_mem.allocate_nonram_memory(size, size)?;
-        let layout =
-            core::alloc::Layout::from_size_align(size, core::mem::size_of::<Page>()).unwrap();
-        let virt = super::VIRTUAL_MEMORY_ALLOCATOR.allocate(layout)?;
-        let mut mm = super::PAGING_MANAGER.sync_lock();
-        let va = unsafe { virt.as_ref() }.as_ptr() as usize;
-        let pa = unsafe { phys.as_ref() }.as_ptr() as usize;
-        match mm.map_addresses_read_write(va, pa, layout.size()) {
-            Ok(()) => Ok(unsafe { Self::build_with(va, pa, size) }),
-            Err(()) => Err(core::alloc::AllocError),
-        }
-    }
-}
-
 impl Drop for memory::PciMemory {
     fn drop(&mut self) {
         let mut t = super::PAGE_ALLOCATOR.sync_lock();
@@ -506,33 +488,6 @@ impl<T: Default> memory::DmaMemory<T> {
             .ok_or(core::alloc::AllocError)?;
         let s = unsafe { Self::build_with(va, phys, core::mem::size_of::<T>(), b) };
         Ok(s)
-    }
-}
-
-impl<T> memory::DmaMemorySlice<T> {
-    /// Construct a new self, initializing each individual element with a closure
-    pub fn new_with(
-        quantity: usize,
-        mut f: impl FnMut(usize) -> Result<T, core::alloc::AllocError>,
-    ) -> Result<Self, core::alloc::AllocError> {
-        let mut b: alloc::vec::Vec<T> = alloc::vec::Vec::with_capacity(quantity);
-        for i in 0..quantity {
-            b.push(f(i)?);
-        }
-        let va = crate::slice_address(b.as_ref());
-        let phys = super::PAGING_MANAGER
-            .sync_lock()
-            .lookup_physical_address(va)
-            .ok_or(core::alloc::AllocError)?;
-        let s = unsafe { Self::build_with(va, phys, quantity * core::mem::size_of::<T>(), b) };
-        Ok(s)
-    }
-}
-
-impl<T: Default> memory::DmaMemorySlice<T> {
-    /// Construct a new self, with the contents initialized with the default trait
-    pub fn new(quantity: usize) -> Result<Self, core::alloc::AllocError> {
-        Self::new_with(quantity, |_| Ok(T::default()))
     }
 }
 

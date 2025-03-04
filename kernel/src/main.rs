@@ -183,7 +183,11 @@ fn main() -> ! {
             crate::modules::network::network_init();
         }
         if doors_macros::config_check_equals!(test, "true") {
-            scheduler::SCHEDULER.read().as_ref().unwrap().add_task(scheduler::Task::new(kernel_testing_thread));
+            scheduler::SCHEDULER
+                .read()
+                .as_ref()
+                .unwrap()
+                .add_task(scheduler::Task::new(kernel_testing_thread));
         }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
@@ -205,7 +209,7 @@ fn main() -> ! {
         if doors_macros::config_check_equals!(test, "true") {
             executor.spawn_closure_local(non_send_future).unwrap();
         }
-        if true {
+        if doors_macros::config_check_equals!(network, "true") {
             executor
                 .spawn(executor::AsyncTask::new(
                     crate::modules::network::process_packets_received(),
@@ -257,7 +261,7 @@ fn main() -> ! {
                 }
             })
             .unwrap();
-        if true {
+        if doors_macros::config_check_equals!(network, "true") {
             executor
                 .spawn(executor::AsyncTask::new(net_test()))
                 .unwrap();

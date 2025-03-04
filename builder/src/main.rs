@@ -96,6 +96,10 @@ enum BuildMode {
     Cmake,
     /// Run the build directly with this tool
     Build,
+    /// Run the build and then run the emulator
+    BuildAndRun,
+    /// Just run the emulator
+    Run,
 }
 
 /// Command line arguments for the tool
@@ -128,6 +132,8 @@ trait DiskBuilderTrait {
         kernel_machine: &str,
         local: &LocalConfiguration,
     ) -> Result<Disk, String>;
+    /// Fetch an existing disk image
+    fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk, String>;
 }
 
 /// The configuration required to build an operating system disk image
@@ -149,6 +155,7 @@ struct DiskImageConfigurationCommon {
 }
 
 /// Defines the types of disks that can exist
+#[derive(Debug)]
 pub enum Disk {
     /// A standard bootable cd
     Cd(std::path::PathBuf),
@@ -164,6 +171,10 @@ struct DiskImageConfiguration {
 }
 
 impl DiskBuilderTrait for CdConfiguration {
+    fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk,String> {
+        Ok(Disk::Cd(common.output.clone()))
+    }
+
     fn build(
         &self,
         common: &DiskImageConfigurationCommon,
@@ -377,14 +388,21 @@ impl DoorsConfiguration {
         ]);
         cargo.current_dir("./kernel");
         let cout = cargo
-            .output()
-            .expect("Failed to run command to build the kernel");
-        if cout.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8(cout.stderr)
-                .expect("Invalid output from cargo while building kernel"))
+            .output();
+        match cout {
+            Ok(cout) => {
+                if cout.status.success() {
+                    Ok(())
+                } else {
+                    Err(String::from_utf8(cout.stderr)
+                        .expect("Invalid output from cargo while building kernel"))
+                }
+            }
+            Err(e) => {
+                Err(e.to_string())
+            }
         }
+        
     }
 
     /// Build the disassembly for the kernel
@@ -399,7 +417,6 @@ impl DoorsConfiguration {
             target,
             "--bin",
             "kernel",
-            "-q",
             "--",
             "-d",
         ]);
@@ -425,6 +442,11 @@ impl DoorsConfiguration {
         self.disk
             .unique
             .build(&self.disk.common, kernel_machine, local_config)
+    }
+
+    /// Fetch the disk image for the operating system
+    pub fn fetch_image(&self) -> Result<Disk, String> {
+        self.disk.unique.fetch(&self.disk.common)
     }
 }
 
@@ -545,7 +567,7 @@ fn build_cmake_files(_args: &Args, _config: MasterConfig) {
         .expect("Failed to save CMakeLists.txt file");
 }
 
-fn run_build(args: &Args, mut config: MasterConfig) {
+fn run_build(args: &Args, config: &mut MasterConfig) {
     use std::io::Write;
     if let Some(f) = &args.save {
         config
@@ -576,15 +598,20 @@ fn run_build(args: &Args, mut config: MasterConfig) {
 
         print!("Building kernel... ");
         std::io::stdout().flush().unwrap();
-        config
+        let kernel = config
             .os
             .build_kernel()
             .inspect_err(|e| {
                 println!("Failed to build the kernel");
                 print!("{}", e);
-            })
-            .unwrap();
-        println!("Kernel built");
+            });
+        match kernel {
+            Ok(_) => println!("Kernel built"),
+            Err(e) => {
+                println!("Failed to build\n{}", e);
+                panic!();
+            }
+        }
 
         print!("Producing disassembly for kernel... ");
         std::io::stdout().flush().unwrap();
@@ -607,15 +634,11 @@ fn run_build(args: &Args, mut config: MasterConfig) {
 
         print!("Building disk image... ");
         std::io::stdout().flush().unwrap();
-        let disk = config
+        config
             .os
             .build_image(&config.os.kernel_machine, &config.local)
             .unwrap();
         println!("done");
-        println!(
-            "Running disk image on {}",
-            config.os.target.emulator.simple_name()
-        );
         config.os.target.emulator.custom_debug_symbols(
             format!(
                 "./kernel/target/{}/release/kernel",
@@ -623,7 +646,20 @@ fn run_build(args: &Args, mut config: MasterConfig) {
             )
             .into(),
         );
-        config
+    }
+}
+
+fn run_emulator(_args: &Args, config: &MasterConfig) {
+    let disk = config
+            .os
+            .fetch_image()
+            .unwrap();
+    println!(
+            "Running disk image {:?} on {}",
+            disk,
+            config.os.target.emulator.simple_name()
+        );
+    config
             .os
             .target
             .emulator
@@ -637,7 +673,6 @@ fn run_build(args: &Args, mut config: MasterConfig) {
         {
             let _ = emulator.wait();
         }
-    }
 }
 
 fn main() {
@@ -648,13 +683,20 @@ fn main() {
         DoorsConfiguration::default()
     };
     let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
-    let config = MasterConfig::build(local, config);
+    let mut config = MasterConfig::build(local, config);
     match args.mode {
         BuildMode::Cmake => {
             build_cmake_files(&args, config);
         }
         BuildMode::Build => {
-            run_build(&args, config);
+            run_build(&args, &mut config);
+        }
+        BuildMode::Run => {
+            run_emulator(&args, &config);
+        }
+        BuildMode::BuildAndRun => {
+            run_build(&args, &mut config);
+            run_emulator(&args, &config);
         }
     }
 }

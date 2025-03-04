@@ -320,7 +320,10 @@ pub trait SystemTrait {
 #[derive(Clone)]
 #[enum_dispatch::enum_dispatch(SystemTrait)]
 pub enum System {
-    #[cfg(kernel_machine = "pc64")]
+    #[cfg(target_arch = "x86")]
+    /// The x86 64 system code
+    X86_32(LockedArc<Pin<Box<crate::boot::x86::boot32::X86System<'static>>>>),
+    #[cfg(target_arch = "x86_64")]
     /// The x86 64 system code
     X86_64(LockedArc<Pin<Box<crate::boot::x86::boot64::X86System<'static>>>>),
     /// A dummy do nothing system
