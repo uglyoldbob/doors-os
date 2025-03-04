@@ -1,11 +1,8 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
 use core::marker::PhantomData;
-use core::sync::atomic::Ordering;
 
 use crate::modules::serial::SerialTrait;
-use crate::Arc;
-use crate::AsyncLockedArc;
 use crate::IoReadWrite;
 use crate::Locked;
 
@@ -253,12 +250,12 @@ fn setup_serial() {
 /// Enable interrupts for the first serial port if it is present
 fn serial_interrupts() {
     let sys = crate::SYSTEM.read().clone();
-    if let Some(mut s) = crate::kernel::SERIAL.take_device(0) {
+    if let Some(s) = crate::kernel::SERIAL.take_device(0) {
         s.sync_transmit_str("About to enable async mode for serial port 0\r\n");
         s.enable_async(sys.clone()).unwrap();
         let t = s.convert(
             |a| a.make_text_display(),
-            move |t| {
+            move |_t| {
                 todo!();
             },
         );

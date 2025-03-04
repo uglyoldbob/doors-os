@@ -154,11 +154,7 @@ impl super::EmulationTrait for Bochs {
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
     ) -> Result<Option<std::process::Child>, std::io::Error> {
-        let mut b = if let Some(p) = &local.bochs_path {
-            std::process::Command::new(p)
-        } else {
-            std::process::Command::new("bochs")
-        };
+        let mut b = std::process::Command::new(local.bochs_path());
         let b = b.args(["-f", "bochs_config.txt", "-q"]);
         b.spawn().map(Some)
     }

@@ -630,7 +630,6 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
                 let table: &[u8] = unsafe {
                     core::slice::from_raw_parts(v.address as *const u8, v.length as usize)
                 };
-                crate::modules::video::hex_dump(table, false, false);
                 match aml.parse_table(table) {
                     Ok(()) => crate::VGA.print_str("SSDT PARSED OK\r\n"),
                     Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(

@@ -261,45 +261,89 @@ pub struct DoorsConfiguration {
 }
 
 /// Configuration specific to the build machine
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct LocalConfiguration {
     /// The binary for bochs
-    pub bochs_path: Option<std::path::PathBuf>,
+    bochs_path: Option<std::path::PathBuf>,
     /// The binary for qemu
-    pub qemu_path: Option<std::path::PathBuf>,
+    qemu_path: Option<std::path::PathBuf>,
     /// The binary for virtualbox
-    pub virtualbox_path: Option<std::path::PathBuf>,
+    virtualbox_path: Option<std::path::PathBuf>,
     /// The binary for vboxmanage, to manage virtualbox images
-    pub vboxmanage_path: Option<std::path::PathBuf>,
+    vboxmanage_path: Option<std::path::PathBuf>,
     /// The binary for vbox-img, to build images in certain situations
-    pub vboximg_path: Option<std::path::PathBuf>,
+    vboximg_path: Option<std::path::PathBuf>,
     /// Network devices that can be used by emulators
     pub net_devs: Vec<String>,
 }
 
-impl Default for LocalConfiguration {
+impl LocalConfiguration {
     #[cfg(target_os = "linux")]
-    fn default() -> Self {
-        Self {
-            bochs_path: None,
-            qemu_path: None,
-            virtualbox_path: None,
-            vboxmanage_path: None,
-            vboximg_path: None,
-            net_devs: Vec::new(),
-        }
+    /// Get the path for the bochs binary
+    pub fn bochs_path(&self) -> std::path::PathBuf {
+        self.bochs_path.clone().unwrap_or("bochs".into())
     }
 
     #[cfg(target_os = "windows")]
-    fn default() -> Self {
-        Self {
-            bochs_path: Some("C:\\Program Files\\Bochs-2.8\\bochsdbg.exe".into()),
-            qemu_path: Some("C:\\Program Files\\qemu\\qemu-system-x86_64.exe".into()),
-            virtualbox_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\VirtualBoxVM.exe".into()),
-            vboxmanage_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into()),
-            vboximg_path: Some("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into()),
-            net_devs: Vec::new(),
-        }
+    /// Get the path for the bochs binary
+    pub fn bochs_path(&self) -> std::path::PathBuf {
+        self.bochs_path.clone().unwrap_or("C:\\Program Files\\Bochs-2.8\\bochsdbg.exe".into())
+    }
+
+    #[cfg(target_os = "linux")]
+    /// Get the path for the qemu binary
+    pub fn qemu_path(&self) -> std::path::PathBuf {
+        self.qemu_path
+            .clone()
+            .unwrap_or("qemu-system-x86_64".into())
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Get the path for the qemu binary
+    pub fn qemu_path(&self) -> std::path::PathBuf {
+        self.qemu_path
+            .clone()
+            .unwrap_or("C:\\Program Files\\qemu\\qemu-system-x86_64.exe".into())
+    }
+
+    #[cfg(target_os = "linux")]
+    /// Get the path for the virtualbox binary
+    pub fn virtualbox_path(&self) -> std::path::PathBuf {
+        self.virtualbox_path
+            .clone()
+            .unwrap_or("VirtualBoxVM".into())
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Get the path for the virtualbox binary
+    pub fn virtualbox_path(&self) -> std::path::PathBuf {
+        self.virtualbox_path
+            .clone()
+            .unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\VirtualBoxVM.exe".into())
+    }
+
+    #[cfg(target_os = "linux")]
+    /// Get the path for the vboxmanage binary
+    pub fn vboxmanage_path(&self) -> std::path::PathBuf {
+        self.vboxmanage_path.clone().unwrap_or("VBoxManage".into())
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Get the path for the vboxmanage binary
+    pub fn vboxmanage_path(&self) -> std::path::PathBuf {
+        self.vboxmanage_path.clone().unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into())
+    }
+
+    #[cfg(target_os = "linux")]
+    /// Get the path for the vbox-img binary
+    pub fn vboximg_path(&self) -> std::path::PathBuf {
+        self.vboximg_path.clone().unwrap_or("vbox-img".into())
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Get the path for the vbox-img binary
+    pub fn vboximg_path(&self) -> std::path::PathBuf {
+        self.vboximg_path.clone().unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into())
     }
 }
 

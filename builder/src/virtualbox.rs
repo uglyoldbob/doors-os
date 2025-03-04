@@ -9,16 +9,127 @@ impl super::EmulationTrait for VirtualBox {
         &self,
         _disk: &crate::Disk,
         _common: &super::EmulatorConfig,
-        _local: &super::LocalConfiguration,
+        local: &super::LocalConfiguration,
     ) {
+        let _ = std::fs::remove_file("./doors-os-64/doors-os-64.vbox");
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "createvm",
+                "--name",
+                "doors-os-64",
+                "--ostype",
+                "\"Doors\"",
+                "--register",
+                "--basefolder",
+                "./",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "modifyvm",
+                "doors-os-64",
+                "--uart1",
+                "0x3f8",
+                "4",
+                "--uartmode1",
+                "file",
+                "serial.log",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "modifyvm",
+                "doors-os-64",
+                "--uart2",
+                "0x2f8",
+                "3",
+                "--uartmode2",
+                "tcpserver",
+                "1234",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "modifyvm",
+                "doors-os-64",
+                "--nic1",
+                "hostonly",
+                "--hostonlyadapter1",
+                "vboxnet0",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+        std::process::Command::new(local.vboxmanage_path())
+            .args(["modifyvm", "doors-os-64", "--macaddress1", "525400123456"])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+        std::process::Command::new(local.vboxmanage_path())
+            .args(["modifyvm", "doors-os-64", "--nictype1", "82540EM"])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "storagectl",
+                "doors-os-64",
+                "--name",
+                "\"IDE Controller\"",
+                "--add",
+                "ide",
+                "--controller",
+                "PIIX4",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "storageattach",
+                "doors-os-64",
+                "--storagectl",
+                "\"IDE Controller\"",
+                "--port",
+                "1",
+                "--device",
+                "0",
+                "--type",
+                "dvddrive",
+                "--medium",
+                "./cd64.iso",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
     }
 
     fn run(
         &self,
         _common: &super::EmulatorConfig,
-        _local: &super::LocalConfiguration,
+        local: &super::LocalConfiguration,
     ) -> Result<Option<std::process::Child>, std::io::Error> {
-        todo!();
+        std::process::Command::new(local.virtualbox_path())
+            .args(["--startvm", "doors-os-64"])
+            .spawn()
+            .map(Some)
     }
 
     fn simple_name(&self) -> &str {
