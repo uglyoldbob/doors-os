@@ -178,14 +178,14 @@ impl DiskBuilderTrait for CdConfiguration {
     fn build(
         &self,
         common: &DiskImageConfigurationCommon,
-        kernel_machine: &str,
+        kernel_path: &str,
         local: &LocalConfiguration,
     ) -> Result<Disk, String> {
         use std::io::Write;
         let cd_path = "./build/iso/boot/grub";
         std::fs::create_dir_all(cd_path).map_err(|e| e.to_string())?;
 
-        let kernel = format!("./kernel/target/{}/release/kernel", kernel_machine);
+        let kernel = format!("./kernel/target/{}/release/kernel", kernel_path);
         let new_kernel_path = std::path::PathBuf::from(&self.kernel_path);
         std::fs::copy(&kernel, &new_kernel_path).map_err(|e| e.to_string())?;
         std::process::Command::new("strip")
@@ -265,10 +265,14 @@ pub struct DoorsConfiguration {
     kernel_config: config::KernelConfig,
     /// The machine name to use for building the kernel
     kernel_machine: String,
+    /// The output path for the machine used to build the kernel
+    kernel_path: String,
     /// The configuration required to build a disk image
     disk: DiskImageConfiguration,
     /// The target for running the final disk image
     target: EmulatorCommon,
+    /// Should the disassembly be created
+    disassembly: bool,
 }
 
 /// Configuration specific to the build machine
@@ -436,12 +440,12 @@ impl DoorsConfiguration {
     /// Build a disk image for the operating system
     pub fn build_image(
         &self,
-        kernel_machine: &str,
+        kernel_path: &str,
         local_config: &LocalConfiguration,
     ) -> Result<Disk, String> {
         self.disk
             .unique
-            .build(&self.disk.common, kernel_machine, local_config)
+            .build(&self.disk.common, kernel_path, local_config)
     }
 
     /// Fetch the disk image for the operating system
@@ -613,36 +617,38 @@ fn run_build(args: &Args, config: &mut MasterConfig) {
             }
         }
 
-        print!("Producing disassembly for kernel... ");
-        std::io::stdout().flush().unwrap();
-        let d = config
-            .os
-            .build_kernel_disassembly()
-            .inspect_err(|e| {
-                println!("Failed to build the kernel disassembly");
-                print!("{}", e);
-            })
-            .unwrap();
-        {
-            let mut configf = std::fs::File::create("./disassemble.txt")
-                .expect("Failed to create disassembly file");
-            configf
-                .write_all(d.as_bytes())
-                .expect("Failed to save disassembly file");
+        if config.os.disassembly {
+            print!("Producing disassembly for kernel... ");
+            std::io::stdout().flush().unwrap();
+            let d = config
+                .os
+                .build_kernel_disassembly()
+                .inspect_err(|e| {
+                    println!("Failed to build the kernel disassembly");
+                    print!("{}", e);
+                })
+                .unwrap();
+            {
+                let mut configf = std::fs::File::create("./disassemble.txt")
+                    .expect("Failed to create disassembly file");
+                configf
+                    .write_all(d.as_bytes())
+                    .expect("Failed to save disassembly file");
+            }
+            println!("{} bytes generated", d.len());
         }
-        println!("{} bytes generated", d.len());
 
         print!("Building disk image... ");
         std::io::stdout().flush().unwrap();
         config
             .os
-            .build_image(&config.os.kernel_machine, &config.local)
+            .build_image(&config.os.kernel_path, &config.local)
             .unwrap();
         println!("done");
         config.os.target.emulator.custom_debug_symbols(
             format!(
                 "./kernel/target/{}/release/kernel",
-                &config.os.kernel_machine
+                &config.os.kernel_path
             )
             .into(),
         );
