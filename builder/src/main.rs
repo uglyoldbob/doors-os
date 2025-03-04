@@ -442,7 +442,7 @@ fn add_to_cmakelist(cmakelist: &mut String, f: &std::path::PathBuf, target: &str
     config.os.make_cmake_rules(cmakelist, target);
 }
 
-fn build_cmake_files(args: &Args, config: MasterConfig) {
+fn build_cmake_files(_args: &Args, _config: MasterConfig) {
     use std::io::Write;
     let p = std::path::PathBuf::from("./configs");
     let read = p.as_path().read_dir().unwrap();
