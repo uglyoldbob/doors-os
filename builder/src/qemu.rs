@@ -5,7 +5,7 @@
 pub struct Qemu {}
 
 impl super::EmulationTrait for Qemu {
-    fn build_config(&self, _disk: &crate::Disk) {}
+    fn build_config(&self, _disk: &crate::Disk, local: &super::LocalConfiguration) {}
 
     fn run(
         &self,

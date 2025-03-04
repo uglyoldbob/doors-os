@@ -38,9 +38,6 @@ SECTIONS
   .end_kernel : {
     END_OF_KERNEL = .;
   } > ram
-  .debug (NOLOAD) : {
-    KEEP(*(.debug));
-  } > debug
   /DISCARD/ :
   {
     *(.dynamic);

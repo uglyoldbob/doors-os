@@ -19,8 +19,10 @@ doors_macros::define_config!();
 /// The trait that specifies how to build an emulator configuration and run it
 #[enum_dispatch::enum_dispatch]
 trait EmulationTrait {
+    /// Build any custom debug symbols required
+    fn custom_debug_symbols(&self, _s: std::path::PathBuf) {}
     /// Build the config for the emulator
-    fn build_config(&self, disk: &Disk);
+    fn build_config(&self, disk: &Disk, local: &LocalConfiguration);
     /// Run the emulator
     fn run(
         &self,
@@ -35,7 +37,7 @@ trait EmulationTrait {
 struct NoEmulator {}
 
 impl EmulationTrait for NoEmulator {
-    fn build_config(&self, _disk: &Disk) {}
+    fn build_config(&self, _disk: &Disk, local: &LocalConfiguration) {}
 
     fn run(
         &self,
@@ -349,8 +351,14 @@ impl DoorsConfiguration {
     }
 
     /// Build a disk image for the operating system
-    pub fn build_image(&self, kernel_machine: &str, local_config: &LocalConfiguration) -> Result<Disk, String> {
-        self.disk.unique.build(&self.disk.common, kernel_machine, local_config)
+    pub fn build_image(
+        &self,
+        kernel_machine: &str,
+        local_config: &LocalConfiguration,
+    ) -> Result<Disk, String> {
+        self.disk
+            .unique
+            .build(&self.disk.common, kernel_machine, local_config)
     }
 }
 
@@ -533,10 +541,20 @@ fn run_build(args: &Args, mut config: MasterConfig) {
 
         print!("Building disk image... ");
         std::io::stdout().flush().unwrap();
-        let disk = config.os.build_image(&config.os.kernel_machine, &config.local).unwrap();
+        let disk = config
+            .os
+            .build_image(&config.os.kernel_machine, &config.local)
+            .unwrap();
         println!("done");
         println!("Running disk image on {:?}", config.os.target);
-        config.os.target.build_config(&disk);
+        config.os.target.custom_debug_symbols(
+            format!(
+                "./kernel/target/{}/release/kernel",
+                &config.os.kernel_machine
+            )
+            .into(),
+        );
+        config.os.target.build_config(&disk, &config.local);
         if let Some(mut emulator) = config.os.target.run(&config.local).unwrap() {
             let _ = emulator.wait();
         }
