@@ -18,8 +18,23 @@ use crate::{
 /// A target for the gdbstub
 struct DoorsTarget {}
 
+#[cfg(target_arch = "x86_64")]
 impl gdbstub::target::Target for DoorsTarget {
     type Arch = gdbstub_arch::x86::X86_64_SSE;
+    type Error = alloc::string::String;
+
+    fn base_ops(&mut self) -> gdbstub::target::ext::base::BaseOps<'_, Self::Arch, Self::Error> {
+        gdbstub::target::ext::base::BaseOps::MultiThread(self)
+    }
+
+    fn guard_rail_implicit_sw_breakpoints(&self) -> bool {
+        true
+    }
+}
+
+#[cfg(target_arch = "x86")]
+impl gdbstub::target::Target for DoorsTarget {
+    type Arch = gdbstub_arch::x86::X86_SSE;
     type Error = alloc::string::String;
 
     fn base_ops(&mut self) -> gdbstub::target::ext::base::BaseOps<'_, Self::Arch, Self::Error> {
@@ -131,6 +146,7 @@ impl MultiThreadBase for DoorsTarget {
         None
     }
 
+    #[cfg(target_arch = "x86_64")]
     fn read_registers(
         &mut self,
         regs: &mut <Self::Arch as gdbstub::arch::Arch>::Registers,
@@ -165,7 +181,42 @@ impl MultiThreadBase for DoorsTarget {
                 regs.regs[14] = scontext.r14;
                 regs.regs[15] = scontext.r15;
                 regs.rip = scontext.rip;
-                regs.eflags = (scontext.rflags & 0xFFFFFFFF) as u32;
+                Ok(())
+            } else {
+                Err(gdbstub::target::TargetError::Errno(42))
+            }
+        } else {
+            Err(gdbstub::target::TargetError::Errno(43))
+        }
+    }
+
+    #[cfg(target_arch = "x86")]
+    fn read_registers(
+        &mut self,
+        regs: &mut <Self::Arch as gdbstub::arch::Arch>::Registers,
+        tid: gdbstub::common::Tid,
+    ) -> gdbstub::target::TargetResult<(), Self> {
+        let s = crate::scheduler::SCHEDULER.read();
+        let s = s.as_ref().unwrap().sync_access();
+        let task = s.lookup(tid.into());
+        if let Some(task) = task {
+            if let Some((context, scontext)) = task.examine_stack() {
+                regs.eflags = scontext.eflags;
+                regs.segments.cs = 8;
+                regs.segments.ds = 8;
+                regs.segments.es = 8;
+                regs.segments.fs = 8;
+                regs.segments.gs = 8;
+                regs.segments.ss = 16;
+                regs.eax = scontext.eax;
+                regs.ebx = context.ebx;
+                regs.ecx = scontext.ecx;
+                regs.edx = scontext.edx;
+                regs.esi = scontext.esi;
+                regs.edi = scontext.edi;
+                regs.ebp = scontext.ebp;
+                regs.esp = context.esp;
+                regs.eip = scontext.eip;
                 Ok(())
             } else {
                 Err(gdbstub::target::TargetError::Errno(42))
@@ -217,11 +268,41 @@ impl MultiThreadBase for DoorsTarget {
 /// The type for implementing the gdbstub BlockingEventLoop trait
 enum GdbstubBlockingEventLoop {}
 
+#[cfg(target_arch = "x86_64")]
 impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop {
     type Target = DoorsTarget;
     type Connection = OwnedDevice<Serial>;
 
     type StopReason = MultiThreadStopReason<u64>;
+
+    fn wait_for_stop_reason(
+        target: &mut Self::Target,
+        conn: &mut Self::Connection,
+    ) -> Result<
+        gdbstub::stub::run_blocking::Event<Self::StopReason>,
+        gdbstub::stub::run_blocking::WaitForStopReasonError<
+            <Self::Target as gdbstub::target::Target>::Error,
+            <Self::Connection as gdbstub::conn::Connection>::Error,
+        >,
+    > {
+        loop {}
+    }
+
+    fn on_interrupt(
+        target: &mut Self::Target,
+    ) -> Result<Option<Self::StopReason>, <Self::Target as gdbstub::target::Target>::Error> {
+        Ok(Some(
+            MultiThreadStopReason::Signal(gdbstub::common::Signal::SIGINT).into(),
+        ))
+    }
+}
+
+#[cfg(target_arch = "x86")]
+impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop {
+    type Target = DoorsTarget;
+    type Connection = OwnedDevice<Serial>;
+
+    type StopReason = MultiThreadStopReason<u32>;
 
     fn wait_for_stop_reason(
         target: &mut Self::Target,
