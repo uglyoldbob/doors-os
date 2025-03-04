@@ -7,7 +7,7 @@ pub struct VirtualBox {}
 impl super::EmulationTrait for VirtualBox {
     fn build_config(
         &self,
-        _disk: &crate::Disk,
+        disk: &crate::Disk,
         _common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
     ) {
@@ -85,40 +85,45 @@ impl super::EmulationTrait for VirtualBox {
             .unwrap()
             .wait()
             .unwrap();
-        std::process::Command::new(local.vboxmanage_path())
-            .args([
-                "storagectl",
-                "doors-os-64",
-                "--name",
-                "\"IDE Controller\"",
-                "--add",
-                "ide",
-                "--controller",
-                "PIIX4",
-            ])
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
-        std::process::Command::new(local.vboxmanage_path())
-            .args([
-                "storageattach",
-                "doors-os-64",
-                "--storagectl",
-                "\"IDE Controller\"",
-                "--port",
-                "1",
-                "--device",
-                "0",
-                "--type",
-                "dvddrive",
-                "--medium",
-                "./cd64.iso",
-            ])
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
+        match disk {
+            super::Disk::Cd(p) => {
+                std::process::Command::new(local.vboxmanage_path())
+                .args([
+                    "storagectl",
+                    "doors-os-64",
+                    "--name",
+                    "\"IDE Controller\"",
+                    "--add",
+                    "ide",
+                    "--controller",
+                    "PIIX4",
+                ])
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+            std::process::Command::new(local.vboxmanage_path())
+                .args([
+                    "storageattach",
+                    "doors-os-64",
+                    "--storagectl",
+                    "\"IDE Controller\"",
+                    "--port",
+                    "1",
+                    "--device",
+                    "0",
+                    "--type",
+                    "dvddrive",
+                    "--medium",
+                    p.to_str().unwrap(),
+                ])
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+            }
+        }
+        
     }
 
     fn run(
