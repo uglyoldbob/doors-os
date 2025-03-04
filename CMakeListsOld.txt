@@ -31,7 +31,6 @@ add_custom_target(
     DEPENDS kernel64
     BYPRODUCTS cd64.iso cd64test.iso
     COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64.iso --name-setup=iso9660 ./boot/kernel=./kernel/kernel64 --volid="Doors OS"
-    COMMAND ${VIRTUALBOX_IMAGE} createiso --import-iso grub-skeleton.iso -o cd64test.iso --name-setup=iso9660 ./boot/kernel=./kernel/kerneltest64 --volid="Doors OS TEST"
 )
 
 add_custom_target(

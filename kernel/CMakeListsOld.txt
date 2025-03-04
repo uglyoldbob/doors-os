@@ -19,8 +19,6 @@ add_custom_target(
     COMMAND cp -u target/x86_64-unknown-none/release/kernel ./kernel64.debug
     COMMAND cp -u target/x86_64-unknown-none/release/kernel ./kernel64
     COMMAND strip ./kernel64
-    COMMAND cp -u target/x86_64-unknown-none/release/kerneltest ./kerneltest64
-    COMMAND strip ./kerneltest64
 )
 
 add_custom_target(

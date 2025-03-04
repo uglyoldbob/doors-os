@@ -13,4 +13,8 @@ impl super::EmulationTrait for VirtualBox {
     ) -> Result<Option<std::process::Child>, std::io::Error> {
         todo!();
     }
+
+    fn simple_name(&self) -> &str {
+        "virtualbox"
+    }
 }

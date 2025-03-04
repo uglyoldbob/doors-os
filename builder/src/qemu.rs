@@ -13,4 +13,8 @@ impl super::EmulationTrait for Qemu {
     ) -> Result<Option<std::process::Child>, std::io::Error> {
         todo!();
     }
+
+    fn simple_name(&self) -> &str {
+        "qemu"
+    }
 }

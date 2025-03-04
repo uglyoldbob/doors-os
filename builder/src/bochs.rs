@@ -45,4 +45,8 @@ impl super::EmulationTrait for Bochs {
         let b = b.args(["-f", "bochs_config.txt", "-q"]);
         b.spawn().map(Some)
     }
+
+    fn simple_name(&self) -> &str {
+        "bochs"
+    }
 }

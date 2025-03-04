@@ -26,6 +26,8 @@ trait EmulationTrait {
         &self,
         local: &LocalConfiguration,
     ) -> Result<Option<std::process::Child>, std::io::Error>;
+    /// Get the simple name of the emulator for build purposes
+    fn simple_name(&self) -> &str;
 }
 
 /// An emulation target that does nothing
@@ -41,10 +43,14 @@ impl EmulationTrait for NoEmulator {
     ) -> Result<Option<std::process::Child>, std::io::Error> {
         Ok(None)
     }
+
+    fn simple_name(&self) -> &str {
+        "none"
+    }
 }
 
 /// Specifies how the operating system is to be emulated or run
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, strum::EnumIter)]
 #[enum_dispatch::enum_dispatch(EmulationTrait)]
 enum Emulation {
     /// The bochs emulator
@@ -63,6 +69,15 @@ impl Default for Emulation {
     }
 }
 
+/// The basic modes of operation for this utility
+#[derive(clap::ValueEnum, Clone, Parser, Debug)]
+enum BuildMode {
+    /// Construct a CMakeLists.txt file for running cmake
+    Cmake,
+    /// Run the build directly with this tool
+    Build,
+}
+
 /// Command line arguments for the tool
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -73,6 +88,8 @@ struct Args {
     /// Should the final configuration be saved to a file?
     #[arg(long)]
     save: Option<std::path::PathBuf>,
+    #[arg(long)]
+    mode: BuildMode,
 }
 
 /// A configuration for building a cd image
@@ -89,6 +106,7 @@ trait DiskBuilderTrait {
         &self,
         common: &DiskImageConfigurationCommon,
         kernel_machine: &str,
+        local: &LocalConfiguration,
     ) -> Result<Disk, String>;
 }
 
@@ -130,6 +148,7 @@ impl DiskBuilderTrait for CdConfiguration {
         &self,
         common: &DiskImageConfigurationCommon,
         kernel_machine: &str,
+        local: &LocalConfiguration,
     ) -> Result<Disk, String> {
         use std::io::Write;
         let cd_path = "./build/iso/boot/grub";
@@ -137,7 +156,7 @@ impl DiskBuilderTrait for CdConfiguration {
 
         let kernel = format!("./kernel/target/{}/release/kernel", kernel_machine);
         let new_kernel_path = std::path::PathBuf::from(&self.kernel_path);
-        std::fs::copy(kernel, &new_kernel_path).map_err(|e| e.to_string())?;
+        std::fs::copy(&kernel, &new_kernel_path).map_err(|e| e.to_string())?;
         std::process::Command::new("strip")
             .arg(new_kernel_path)
             .spawn()
@@ -151,7 +170,23 @@ impl DiskBuilderTrait for CdConfiguration {
         }
 
         let mut g = if cfg!(target_os = "windows") {
-            todo!();
+            let imgm = if let Some(p) = &local.vboximg_path {
+                p.to_owned()
+            } else {
+                "vbox-img".into()
+            };
+            let mut imgm = std::process::Command::new(imgm);
+            imgm.args([
+                "createiso",
+                "--import-iso",
+                "grub-skeleton.iso",
+                "-o",
+                common.output.to_str().unwrap(),
+                "--name-setup=iso9660",
+                &format!("./boot/kernel={}", &kernel),
+                &format!("--volid=\"{}\"", &common.disk_label),
+            ]);
+            imgm
         } else if cfg!(target_os = "linux") {
             let mut g = std::process::Command::new("grub-mkrescue");
             g.args([
@@ -164,6 +199,8 @@ impl DiskBuilderTrait for CdConfiguration {
                     .unwrap()
                     .as_str(),
                 "build/iso",
+                "-o",
+                common.output.to_str().unwrap(),
                 "--",
                 "-volid",
                 &common.disk_label,
@@ -243,75 +280,77 @@ impl Default for LocalConfiguration {
 }
 
 impl DoorsConfiguration {
-    /// Do something in the kernel directory
-    fn in_kernel_dir<U>(&self, f: impl Fn() -> Result<U, String>) -> Result<U, String> {
-        let olddir = std::env::current_dir().unwrap();
-        let kernelpath =
-            std::fs::canonicalize("./kernel").expect("Failed to build path for building kernel");
-        std::env::set_current_dir(kernelpath).unwrap();
-        let result = f();
-        std::env::set_current_dir(olddir).unwrap();
-        result
+    /// Add rules to a cmakelists document
+    fn make_cmake_rules(&self, cmakelist: &mut String, target: &str) {
+        let rule = &format!(
+            "add_custom_target(
+    {0}
+    BYPRODUCTS ./{0}.iso
+    COMMAND cargo run --release --bin builder -- --mode build --name ./configs/{0}.toml
+)
+",
+            target
+        );
+        cmakelist.push_str(rule);
     }
 
     /// Build the kernel for the operating system
     pub fn build_kernel(&self) -> Result<(), String> {
-        self.in_kernel_dir(|| {
-            let mut c = std::process::Command::new("cargo");
-            let target = &self.kernel_machine;
-            let cargo = c.args(["+nightly", "build", "--release", "--target", target]);
-            let cout = cargo
-                .output()
-                .expect("Failed to run command to build the kernel");
-            if cout.status.success() {
-                Ok(())
-            } else {
-                Err(String::from_utf8(cout.stderr)
-                    .expect("Invalid output from cargo while building kernel"))
-            }
-        })
+        let mut c = std::process::Command::new("cargo");
+        let target = &self.kernel_machine;
+        let cargo = c.args([
+            "+nightly",
+            "build",
+            "--release",
+            "--target",
+            target,
+            "--bin",
+            "kernel",
+        ]);
+        cargo.current_dir("./kernel");
+        let cout = cargo
+            .output()
+            .expect("Failed to run command to build the kernel");
+        if cout.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8(cout.stderr)
+                .expect("Invalid output from cargo while building kernel"))
+        }
     }
 
     /// Build the disassembly for the kernel
     pub fn build_kernel_disassembly(&self) -> Result<String, String> {
-        self.in_kernel_dir(|| {
-            let mut c = std::process::Command::new("cargo");
-            let target = &self.kernel_machine;
-            let cargo = c.args([
-                "+nightly",
-                "objdump",
-                "--release",
-                "--target",
-                target,
-                "--bin",
-                "kernel",
-                "-q",
-                "--",
-                "-d",
-            ]);
-            let cout = cargo
-                .output()
-                .expect("Failed to run command to build the kernel");
-            if cout.status.success() {
-                Ok(String::from_utf8(cout.stdout)
-                    .expect("Invalid output from cargo while building kernel"))
-            } else {
-                Err(String::from_utf8(cout.stderr)
-                    .expect("Invalid output from cargo while building kernel"))
-            }
-        })
+        let mut c = std::process::Command::new("cargo");
+        let target = &self.kernel_machine;
+        let cargo = c.args([
+            "+nightly",
+            "objdump",
+            "--release",
+            "--target",
+            target,
+            "--bin",
+            "kernel",
+            "-q",
+            "--",
+            "-d",
+        ]);
+        cargo.current_dir("./kernel");
+        let cout = cargo
+            .output()
+            .expect("Failed to run command to build the kernel");
+        if cout.status.success() {
+            Ok(String::from_utf8(cout.stdout)
+                .expect("Invalid output from cargo while building kernel"))
+        } else {
+            Err(String::from_utf8(cout.stderr)
+                .expect("Invalid output from cargo while building kernel"))
+        }
     }
 
     /// Build a disk image for the operating system
-    #[cfg(target_os = "windows")]
-    pub fn build_image(&self) -> Result<Disk, String> {
-        Err("Not implemented".into())
-    }
-
-    /// Build a disk image for the operating system on linux using grub-mkrescue
-    #[cfg(target_os = "linux")]
-    pub fn build_image(&self, kernel_machine: &str) -> Result<Disk, String> {
-        self.disk.unique.build(&self.disk.common, kernel_machine)
+    pub fn build_image(&self, kernel_machine: &str, local_config: &LocalConfiguration) -> Result<Disk, String> {
+        self.disk.unique.build(&self.disk.common, kernel_machine, local_config)
     }
 }
 
@@ -337,8 +376,11 @@ fn open_config_file(f: std::path::PathBuf) -> Option<DoorsConfiguration> {
     } else {
         let mut p2 = f.clone();
         p2.pop();
+        println!(
+            "Doors config {} not found, valid files in same path are as follows:",
+            f.display()
+        );
         let read = p2.as_path().read_dir().unwrap();
-        println!("Doors config not found, valid files in same path are as follows:");
         for entry in read.flatten() {
             println!("Entry {:?}", entry.path());
         }
@@ -393,21 +435,45 @@ impl MasterConfig {
     }
 }
 
-fn main() {
-    use std::io::Write;
-    let args = Args::parse();
-    println!("I am groot {:?}", args);
-    let config: DoorsConfiguration = if let Some(n) = args.name {
-        open_config_file(n).unwrap()
-    } else {
-        DoorsConfiguration::default()
-    };
+fn add_to_cmakelist(cmakelist: &mut String, f: &std::path::PathBuf, target: &str) {
+    let config = open_config_file(f.to_path_buf()).unwrap();
     let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
-    let mut config = MasterConfig::build(local, config);
+    let config = MasterConfig::build(local, config);
+    config.os.make_cmake_rules(cmakelist, target);
+}
 
-    println!("Doors configuration: {:?}", config);
+fn build_cmake_files(args: &Args, config: MasterConfig) {
+    use std::io::Write;
+    let p = std::path::PathBuf::from("./configs");
+    let read = p.as_path().read_dir().unwrap();
+    println!("Cmake files:");
+    let mut cmakelist = String::new();
+    cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
+    cmakelist.push_str("project(doors-os)\n\n");
 
-    if let Some(f) = args.save {
+    for entry in read.flatten() {
+        if let Ok(ft) = entry.file_type() {
+            if ft.is_file() {
+                if entry.file_name().to_str().unwrap().ends_with(".toml") {
+                    let f = entry.path();
+                    if let Some(name) = f.file_stem() {
+                        add_to_cmakelist(&mut cmakelist, &f, name.to_str().unwrap());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut configf =
+        std::fs::File::create("./CMakeLists.txt").expect("Failed to create cmake configuration");
+    configf
+        .write_all(cmakelist.as_bytes())
+        .expect("Failed to save CMakeLists.txt file");
+}
+
+fn run_build(args: &Args, mut config: MasterConfig) {
+    use std::io::Write;
+    if let Some(f) = &args.save {
         config
             .os
             .disk
@@ -467,12 +533,31 @@ fn main() {
 
         print!("Building disk image... ");
         std::io::stdout().flush().unwrap();
-        let disk = config.os.build_image(&config.os.kernel_machine).unwrap();
+        let disk = config.os.build_image(&config.os.kernel_machine, &config.local).unwrap();
         println!("done");
         println!("Running disk image on {:?}", config.os.target);
         config.os.target.build_config(&disk);
         if let Some(mut emulator) = config.os.target.run(&config.local).unwrap() {
             let _ = emulator.wait();
+        }
+    }
+}
+
+fn main() {
+    let args = Args::parse();
+    let config: DoorsConfiguration = if let Some(n) = &args.name {
+        open_config_file(n.to_path_buf()).unwrap()
+    } else {
+        DoorsConfiguration::default()
+    };
+    let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
+    let config = MasterConfig::build(local, config);
+    match args.mode {
+        BuildMode::Cmake => {
+            build_cmake_files(&args, config);
+        }
+        BuildMode::Build => {
+            run_build(&args, config);
         }
     }
 }
