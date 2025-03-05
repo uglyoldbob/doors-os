@@ -56,13 +56,12 @@
         retf
     .code32
     enter_long:
-        mov ax, 0x8
+        mov ax, 0x10
         nop
         mov ds, ax
         mov es, ax
         mov fs, ax
         mov gs, ax
-        mov eax, 0x10
         mov ss, ax
         jmp prestart64
     .code64
