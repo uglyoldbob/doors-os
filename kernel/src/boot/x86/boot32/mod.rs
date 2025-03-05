@@ -9,11 +9,15 @@ use core::ptr::NonNull;
 use doors_macros::interrupt;
 use lazy_static::lazy_static;
 
+mod gdt;
+use gdt::GlobalDescriptorTable;
 mod idt;
 use idt::InterruptDescriptorTable;
 pub mod memory;
 
 pub use memory::memory as mem2;
+
+use x86::segmentation::Descriptor;
 
 use crate::VGA;
 
@@ -27,8 +31,6 @@ impl X86Apic {
     }
 }
 
-use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable};
-
 /// A generic message indicating the system is booting.
 const GREETING: &str = "I am groot\r\n";
 
@@ -38,8 +40,14 @@ const MAIN_STACK_SIZE: u64 = 8 * 1024;
 /// This function is responsible for building a gdt that can be built at compile time.
 const fn make_gdt_table() -> GlobalDescriptorTable {
     let mut gdtb = GlobalDescriptorTable::new();
-    gdtb.append(Descriptor::kernel_code_segment());
-    gdtb.append(Descriptor::kernel_data_segment());
+    gdtb.const_add_entry(Descriptor {
+        upper: 0b00000000110011111001101000000000,
+        lower: 0xffff,
+    });
+    gdtb.const_add_entry(Descriptor {
+        upper: 0b00000000110011111001001000000000,
+        lower: 0xffff,
+    });
     gdtb
 }
 
@@ -63,6 +71,7 @@ pub struct GdtPointerHolder<'a> {
 pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
 
 /// lidtr is used with this data structure.
+#[no_mangle]
 pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
     _d: GdtPointer {
         size: GDT_TABLE.limit(),
@@ -520,21 +529,6 @@ pub static INTERRUPT_DESCRIPTOR_TABLE: crate::Locked<InterruptDescriptorTable> =
 /// The entry point for the 32 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start32() -> ! {
-    unsafe { x86::irq::disable() };
-    //Enable paging
-    unsafe {
-        memory::PAGE_DIRECTORY_BOOT1.entries[0] = 0x83;
-        memory::PAGE_DIRECTORY_BOOT1.entries[1] = 0x200083;
-        memory::PAGE_DIRECTORY_POINTER_TABLE.set_pagetable(0, &memory::PAGE_DIRECTORY_BOOT1);
-        memory::PAGE_DIRECTORY_POINTER_TABLE.assign_to_cr3();
-        let mut cr4 = x86::controlregs::cr4();
-        cr4 |= x86::controlregs::Cr4::CR4_ENABLE_PAE | x86::controlregs::Cr4::CR4_ENABLE_PSE;
-        x86::controlregs::cr4_write(cr4);
-        let mut cr0 = x86::controlregs::cr0();
-        cr0 |= x86::controlregs::Cr0::CR0_ENABLE_PAGING;
-        x86::controlregs::cr0_write(cr0);
-    }
-
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
@@ -602,6 +596,9 @@ pub extern "C" fn start32() -> ! {
         pal.set_area_used(0, 0x100000);
         pal.done_adding_memory_areas();
     } else {
+        unsafe {
+            core::arch::asm!("xchg bx, bx", options(nomem, nostack, preserves_flags));
+        }
         panic!("Physical memory manager unavailable\r\n");
     };
     VIRTUAL_MEMORY_ALLOCATOR
