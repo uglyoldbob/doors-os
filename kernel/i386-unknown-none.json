@@ -6,7 +6,7 @@
     "dynamic-linking": false,
     "eh-frame-header": false,
     "env": "gnu",
-    "features": "+sse",
+    "features": "-sse",
     "has-rpath": true,
     "has-thread-local": true,
     "llvm-target": "i386-unknown-none",

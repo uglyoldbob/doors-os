@@ -642,7 +642,7 @@ fn run_build(args: &Args, config: &mut MasterConfig) {
 
         print!("Building disk image... ");
         std::io::stdout().flush().unwrap();
-        config
+        let disk = config
             .os
             .build_image(&config.os.kernel_path, &config.local)
             .unwrap();
@@ -650,6 +650,15 @@ fn run_build(args: &Args, config: &mut MasterConfig) {
         config.os.target.emulator.custom_debug_symbols(
             format!("./kernel/target/{}/release/kernel", &config.os.kernel_path).into(),
         );
+
+        print!("Building emulator image... ");
+        std::io::stdout().flush().unwrap();
+        config
+            .os
+            .target
+            .emulator
+            .build_config(&disk, &config.os.target.config, &config.local);
+        println!("done");
     }
 }
 
@@ -660,11 +669,6 @@ fn run_emulator(_args: &Args, config: &MasterConfig) {
         disk,
         config.os.target.emulator.simple_name()
     );
-    config
-        .os
-        .target
-        .emulator
-        .build_config(&disk, &config.os.target.config, &config.local);
     if let Some(mut emulator) = config
         .os
         .target

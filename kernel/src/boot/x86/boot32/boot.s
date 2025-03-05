@@ -1,11 +1,11 @@
     .section .data
     .global _start
-    .extern MULTIBOOT2_DATA
-    .extern INITIAL_STACK
+    .global MULTIBOOT2_DATA
+    .global INITIAL_STACK
     .extern start32
     .align 8
-    MULTIBOOT2_DATA: .word 0
-    INITIAL_STACK: .word 0
+    MULTIBOOT2_DATA: .4byte 0
+    INITIAL_STACK: .4byte 0
     .section .text
     .code32
     _start:
