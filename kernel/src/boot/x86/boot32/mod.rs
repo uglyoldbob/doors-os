@@ -8,7 +8,6 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use doors_macros::interrupt;
 use lazy_static::lazy_static;
-use raw_cpuid::{CpuId, CpuIdReaderNative};
 
 mod idt;
 use idt::InterruptDescriptorTable;
@@ -71,14 +70,12 @@ pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
     },
 };
 
-
 lazy_static! {
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
 }
 
 /// The divide by zero handler
-#[interrupt]
-pub extern "C" fn divide_by_zero() {
+pub extern "x86-interrupt" fn divide_by_zero_exception() {
     crate::VGA.stop_async();
     crate::VGA.print_str("Divide by zero\r\n");
     loop {
@@ -86,21 +83,51 @@ pub extern "C" fn divide_by_zero() {
     }
 }
 
-extern "C" {
-    static MULTIBOOT2_DATA: *const usize;
-}
-
 ///The handler for segment not present
-#[interrupt]
-pub extern "C" fn segment_not_present(arg: u32) {
+pub extern "x86-interrupt" fn segment_not_present_exception() {
     crate::VGA.stop_async();
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "Segment not present {:x}\r\n",
-        arg
-    ));
+    crate::VGA.print_str("Segment not present\r\n");
     loop {
         unsafe { x86::halt() };
     }
+}
+
+///Exception handler
+pub extern "x86-interrupt" fn invalid_opcode_exception() {
+    crate::VGA.stop_async();
+    crate::VGA.print_str("Invalid opcode exception\r\n");
+    loop {
+        unsafe { x86::halt() };
+    }
+}
+
+///Exception handler
+pub extern "x86-interrupt" fn double_fault_exception() {
+    crate::VGA.stop_async();
+    crate::VGA.print_str("Double fault excpetion\r\n");
+    loop {
+        unsafe { x86::halt() };
+    }
+}
+///Exception handler
+pub extern "x86-interrupt" fn gpf_exception() {
+    crate::VGA.stop_async();
+    crate::VGA.print_str("Gpf exception\r\n");
+    loop {
+        unsafe { x86::halt() };
+    }
+}
+///Exception handler
+pub extern "x86-interrupt" fn page_fault_exception() {
+    crate::VGA.stop_async();
+    crate::VGA.print_str("Page fault exception\r\n");
+    loop {
+        unsafe { x86::halt() };
+    }
+}
+
+extern "C" {
+    static MULTIBOOT2_DATA: *const usize;
 }
 
 #[repr(align(16))]
@@ -122,8 +149,6 @@ pub struct X86System<'a> {
     #[doorsconfig = "acpi"]
     /// Used for acpi
     acpi_handler: Acpi<'a>,
-    /// Used for cpuid stuff
-    cpuid: CpuId<CpuIdReaderNative>,
     /// The stack beginning
     stack_start: u64,
 }
@@ -388,14 +413,6 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
     fn init(&self) {
         super::setup_timers();
         super::setup_serial();
-        {
-            let this = self.sync_lock();
-            let cap = this.cpuid.get_processor_capacity_feature_info().unwrap();
-            {
-                //let mut p = PAGING_MANAGER.sync_lock();
-                //p.set_physical_address_size(cap.physical_address_bits());
-            }
-        }
 
         super::serial_interrupts();
         let aml_handler = Box::new(AmlHandler {});
@@ -518,8 +535,6 @@ pub extern "C" fn start32() -> ! {
         x86::controlregs::cr0_write(cr0);
     }
 
-    let cpuid = raw_cpuid::CpuId::new();
-
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
@@ -612,17 +627,6 @@ pub extern "C" fn start32() -> ! {
         }
     }
 
-    let apic_msr_value = unsafe { x86::msr::rdmsr(x86::msr::APIC_BASE) };
-    let apic_address = apic_msr_value & 0xFFFFF000;
-
-    let apic: Box<super::LocalApicRegister, &crate::Locked<memory::BumpAllocator>> =
-        unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
-
-    PAGING_MANAGER
-        .sync_lock()
-        .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
-        .unwrap();
-
     {
         let pic = super::Pic::new().unwrap();
         pic.disable();
@@ -633,7 +637,12 @@ pub extern "C" fn start32() -> ! {
     {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
         unsafe {
-            idt.set_handler(0, divide_by_zero);
+            idt.set_handler(0, divide_by_zero_exception);
+            idt.set_handler(6, invalid_opcode_exception);
+            idt.set_handler(8, double_fault_exception);
+            idt.set_handler(11, segment_not_present_exception);
+            idt.set_handler(13, gpf_exception);
+            idt.set_handler(14, page_fault_exception);
         }
     }
 
@@ -646,7 +655,6 @@ pub extern "C" fn start32() -> ! {
                     pageman: &PAGING_MANAGER,
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
                 },
-                cpuid,
                 stack_start: (stack_end - stack_size) as u64,
             }
         };

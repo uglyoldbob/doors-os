@@ -18,16 +18,9 @@ impl InterruptDescriptorTable {
     }
 
     /// Set an interrupt handler that takes no arguments
-    pub unsafe fn set_handler(&mut self, index: u8, f: extern "C" fn()) {
-        match index {
-            0..=7 | 16 | 18 | 19 | 20 | 28 => {
-                let faddr = f as *const() as u32;
-                self.entries[index as usize] = f as u64;
-            }
-            _ => {
-                panic!("Invalid handler index");
-            }
-        }
+    pub unsafe fn set_handler(&mut self, index: u8, f: extern "x86-interrupt" fn()) {
+        let faddr = f as *const () as u32;
+        self.entries[index as usize] = f as u64;
         self.highest = core::cmp::max(self.highest, index as u16 + 1);
     }
 
