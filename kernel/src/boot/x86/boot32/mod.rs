@@ -520,13 +520,6 @@ pub extern "C" fn start32() -> ! {
 
     let cpuid = raw_cpuid::CpuId::new();
 
-    let mbi = unsafe {
-        multiboot2::BootInformation::load(
-            MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
-        )
-    };
-    let boot_info = mbi.unwrap();
-
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
@@ -618,56 +611,6 @@ pub extern "C" fn start32() -> ! {
             drop(v);
         }
     }
-
-    let acpi_handler = Acpi {
-        pageman: &PAGING_MANAGER,
-        vmm: &VIRTUAL_MEMORY_ALLOCATOR,
-    };
-
-    let acpi = if let Some(rsdp2) = boot_info.rsdp_v2_tag() {
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "rsdpv2 at {:x} revision {}\r\n",
-            rsdp2.xsdt_address() as *const u8 as usize,
-            rsdp2.revision()
-        ));
-        Some(
-            unsafe {
-                acpi::AcpiTables::from_rsdt(
-                    acpi_handler,
-                    rsdp2.revision(),
-                    rsdp2.xsdt_address() as *const u8 as usize,
-                )
-            }
-            .unwrap(),
-        )
-    } else if let Some(rsdp1) = boot_info.rsdp_v1_tag() {
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "rsdpv1 at {:x}\r\n",
-            rsdp1.rsdt_address() as *const u8 as usize
-        ));
-        let t = unsafe {
-            acpi::AcpiTables::from_rsdt(acpi_handler, 0, rsdp1.rsdt_address() as *const u8 as usize)
-        };
-        if let Err(e) = &t {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "acpi error {:?}\r\n",
-                e
-            ));
-        }
-        Some(t.unwrap())
-    } else {
-        None
-    };
-
-    if acpi.is_none() {
-        crate::VGA.print_str("No ACPI table found\r\n");
-    }
-    let acpi = acpi.unwrap();
-
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "acpi rev {:x}\r\n",
-        acpi.revision()
-    ));
 
     let sys = {
         let s = doors_macros::config_build_struct! {
