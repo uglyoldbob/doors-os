@@ -201,12 +201,7 @@ impl DiskBuilderTrait for CdConfiguration {
         }
 
         let mut g = if cfg!(target_os = "windows") {
-            let imgm = if let Some(p) = &local.vboximg_path {
-                p.to_owned()
-            } else {
-                "vbox-img".into()
-            };
-            let mut imgm = std::process::Command::new(imgm);
+            let mut imgm = std::process::Command::new(local.vboximg_path());
             imgm.args([
                 "createiso",
                 "--import-iso",
@@ -242,12 +237,12 @@ impl DiskBuilderTrait for CdConfiguration {
         };
         let cout = g
             .output()
-            .expect("Failed to run command to build the kernel");
+            .expect("Failed to run command to build the cd image");
         if cout.status.success() {
             Ok(Disk::Cd(common.output.clone()))
         } else {
             Err(String::from_utf8(cout.stderr)
-                .expect("Invalid output from cargo while building kernel"))
+                .expect("Invalid output from cargo while building cd image"))
         }
     }
 }
@@ -427,7 +422,7 @@ impl DoorsConfiguration {
         cargo.current_dir("./kernel");
         let cout = cargo
             .output()
-            .expect("Failed to run command to build the kernel");
+            .expect("Failed to run command to disassemble the kernel");
         if cout.status.success() {
             Ok(String::from_utf8(cout.stdout)
                 .expect("Invalid output from cargo while building kernel"))
