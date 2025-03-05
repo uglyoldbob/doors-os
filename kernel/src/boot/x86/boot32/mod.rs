@@ -10,7 +10,8 @@ use doors_macros::interrupt;
 use lazy_static::lazy_static;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
 
-mod gdt;
+mod idt;
+use idt::InterruptDescriptorTable;
 pub mod memory;
 
 pub use memory::memory as mem2;
@@ -27,58 +28,52 @@ impl X86Apic {
     }
 }
 
+use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable};
+
 /// A generic message indicating the system is booting.
 const GREETING: &str = "I am groot\r\n";
 
 /// The size of the main/boot kernel stack in bytes
 const MAIN_STACK_SIZE: u64 = 8 * 1024;
 
-use x86::segmentation::BuildDescriptor;
-
-/// Create a global descriptor table for the system to boot with.
-fn make_gdt_table() -> gdt::GlobalDescriptorTable {
-    let gdt = gdt::GlobalDescriptorTable::new();
-    let code = x86::segmentation::DescriptorBuilder::code_descriptor(
-        0,
-        0xFFFFFFFF,
-        x86::segmentation::CodeSegmentType::ExecuteRead,
-    );
-    let data = x86::segmentation::DescriptorBuilder::data_descriptor(
-        0,
-        0xFFFFFFFF,
-        x86::segmentation::DataSegmentType::ReadWrite,
-    );
-    gdt.const_add_entry(code.finish())
-        .const_add_entry(data.finish())
+/// This function is responsible for building a gdt that can be built at compile time.
+const fn make_gdt_table() -> GlobalDescriptorTable {
+    let mut gdtb = GlobalDescriptorTable::new();
+    gdtb.append(Descriptor::kernel_code_segment());
+    gdtb.append(Descriptor::kernel_data_segment());
+    gdtb
 }
 
 /// A struct for creating a global descriptor table pointer, suitable for loading with lidtr
 #[repr(C, packed)]
 pub struct GdtPointer<'a> {
-    /// The size of the gdt
+    /// The size of the gdt table in bytes minus 1. See x86 processor manual for more information.
     size: u16,
-    /// The address of the gdt
-    address: &'a gdt::GlobalDescriptorTable,
+    /// The address of the global descriptor table.
+    address: &'a GlobalDescriptorTable,
 }
 
 #[repr(align(8))]
 /// Holder structure for a Global descriptor table pointer, aligning the start of the structure as required.
 pub struct GdtPointerHolder<'a> {
-    /// The pointer for the gdt
-    d: GdtPointer<'a>,
+    /// The gdt pointer
+    _d: GdtPointer<'a>,
 }
 
-use x86::segmentation::SegmentDescriptorBuilder;
+/// The global descriptor table
+pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
+
+/// lidtr is used with this data structure.
+pub static GDT_TABLE_PTR: GdtPointerHolder = GdtPointerHolder {
+    _d: GdtPointer {
+        size: GDT_TABLE.limit(),
+        address: &GDT_TABLE,
+    },
+};
+
 
 lazy_static! {
     static ref APIC: spin::Mutex<X86Apic> = spin::Mutex::new(X86Apic::get());
-    static ref GDT_TABLE: gdt::GlobalDescriptorTable = make_gdt_table();
-    static ref GDT_TABLE_PTR: GdtPointerHolder<'static> = GdtPointerHolder {
-        d: GdtPointer {
-            size: (GDT_TABLE.len() * 8 - 1) as u16,
-            address: &GDT_TABLE,
-        }
-    };
 }
 
 /// The divide by zero handler
@@ -501,9 +496,14 @@ pub static PAGE_ALLOCATOR: crate::Locked<memory::SimpleMemoryManager> =
 pub static PAGING_MANAGER: crate::Locked<memory::PagingTableManager> =
     crate::Locked::new(memory::PagingTableManager::new(&PAGE_ALLOCATOR));
 
+/// The interrupt descriptor table for the system
+pub static INTERRUPT_DESCRIPTOR_TABLE: crate::Locked<InterruptDescriptorTable> =
+    crate::Locked::new(InterruptDescriptorTable::new());
+
 /// The entry point for the 32 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start32() -> ! {
+    unsafe { x86::irq::disable() };
     //Enable paging
     unsafe {
         memory::PAGE_DIRECTORY_BOOT1.entries[0] = 0x83;
@@ -612,6 +612,31 @@ pub extern "C" fn start32() -> ! {
         }
     }
 
+    let apic_msr_value = unsafe { x86::msr::rdmsr(x86::msr::APIC_BASE) };
+    let apic_address = apic_msr_value & 0xFFFFF000;
+
+    let apic: Box<super::LocalApicRegister, &crate::Locked<memory::BumpAllocator>> =
+        unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
+
+    PAGING_MANAGER
+        .sync_lock()
+        .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
+        .unwrap();
+
+    {
+        let pic = super::Pic::new().unwrap();
+        pic.disable();
+        pic.remap(0x20, 0x28);
+        super::INTERRUPT_CONTROLLER.write().replace(pic);
+    }
+
+    {
+        let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
+        unsafe {
+            idt.set_handler(0, divide_by_zero);
+        }
+    }
+
     let sys = {
         let s = doors_macros::config_build_struct! {
             X86System {
@@ -628,6 +653,10 @@ pub extern "C" fn start32() -> ! {
         let b = Box::new(s);
         Box::into_pin(b)
     };
+
+    unsafe {
+        INTERRUPT_DESCRIPTOR_TABLE.sync_lock().load_unsafe();
+    }
 
     *crate::SYSTEM.write() = kernel::System::X86_32(crate::LockedArc::new(sys));
     super::main_boot();

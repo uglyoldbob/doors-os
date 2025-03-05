@@ -25,6 +25,13 @@ pub mod memory;
 
 pub use boot::mem2;
 
+/// The registers for a local apic
+#[repr(align(16))]
+struct LocalApicRegister {
+    /// The apic registers
+    regs: [u32; 256],
+}
+
 /// The programmable interrupt controller
 struct Pic {
     /// The first pic

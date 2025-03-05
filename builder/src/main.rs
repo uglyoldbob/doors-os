@@ -171,7 +171,7 @@ struct DiskImageConfiguration {
 }
 
 impl DiskBuilderTrait for CdConfiguration {
-    fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk,String> {
+    fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk, String> {
         Ok(Disk::Cd(common.output.clone()))
     }
 
@@ -297,7 +297,9 @@ impl LocalConfiguration {
     #[cfg(target_os = "windows")]
     /// Get the path for the bochs binary
     pub fn bochs_path(&self) -> std::path::PathBuf {
-        self.bochs_path.clone().unwrap_or("C:\\Program Files\\Bochs-2.8\\bochsdbg.exe".into())
+        self.bochs_path
+            .clone()
+            .unwrap_or("C:\\Program Files\\Bochs-2.8\\bochsdbg.exe".into())
     }
 
     #[cfg(target_os = "linux")]
@@ -341,7 +343,9 @@ impl LocalConfiguration {
     #[cfg(target_os = "windows")]
     /// Get the path for the vboxmanage binary
     pub fn vboxmanage_path(&self) -> std::path::PathBuf {
-        self.vboxmanage_path.clone().unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into())
+        self.vboxmanage_path
+            .clone()
+            .unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into())
     }
 
     #[cfg(target_os = "linux")]
@@ -353,7 +357,9 @@ impl LocalConfiguration {
     #[cfg(target_os = "windows")]
     /// Get the path for the vbox-img binary
     pub fn vboximg_path(&self) -> std::path::PathBuf {
-        self.vboximg_path.clone().unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into())
+        self.vboximg_path
+            .clone()
+            .unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into())
     }
 }
 
@@ -386,8 +392,7 @@ impl DoorsConfiguration {
             "kernel",
         ]);
         cargo.current_dir("./kernel");
-        let cout = cargo
-            .output();
+        let cout = cargo.output();
         match cout {
             Ok(cout) => {
                 if cout.status.success() {
@@ -397,15 +402,19 @@ impl DoorsConfiguration {
                         .expect("Invalid output from cargo while building kernel"))
                 }
             }
-            Err(e) => {
-                Err(e.to_string())
-            }
+            Err(e) => Err(e.to_string()),
         }
-        
     }
 
     /// Build the disassembly for the kernel
     pub fn build_kernel_disassembly(&self) -> Result<String, String> {
+        let kp = std::fs::canonicalize("./kernel").unwrap();
+        unsafe {
+            std::env::remove_var("RUSTUP_TOOLCHAIN");
+            std::env::remove_var("CARGO");
+            std::env::remove_var("CARGO_MANIFEST_DIR");
+            std::env::remove_var("CARGO_MANIFEST_PATH");
+        }
         let mut c = std::process::Command::new("cargo");
         let target = &self.kernel_machine;
         let cargo = c.args([
@@ -416,10 +425,11 @@ impl DoorsConfiguration {
             target,
             "--bin",
             "kernel",
+            "-q",
             "--",
             "-d",
         ]);
-        cargo.current_dir("./kernel");
+        cargo.current_dir(kp);
         let cout = cargo
             .output()
             .expect("Failed to run command to disassemble the kernel");
@@ -597,13 +607,10 @@ fn run_build(args: &Args, config: &mut MasterConfig) {
 
         print!("Building kernel... ");
         std::io::stdout().flush().unwrap();
-        let kernel = config
-            .os
-            .build_kernel()
-            .inspect_err(|e| {
-                println!("Failed to build the kernel");
-                print!("{}", e);
-            });
+        let kernel = config.os.build_kernel().inspect_err(|e| {
+            println!("Failed to build the kernel");
+            print!("{}", e);
+        });
         match kernel {
             Ok(_) => println!("Kernel built"),
             Err(e) => {
@@ -641,39 +648,32 @@ fn run_build(args: &Args, config: &mut MasterConfig) {
             .unwrap();
         println!("done");
         config.os.target.emulator.custom_debug_symbols(
-            format!(
-                "./kernel/target/{}/release/kernel",
-                &config.os.kernel_path
-            )
-            .into(),
+            format!("./kernel/target/{}/release/kernel", &config.os.kernel_path).into(),
         );
     }
 }
 
 fn run_emulator(_args: &Args, config: &MasterConfig) {
-    let disk = config
-            .os
-            .fetch_image()
-            .unwrap();
+    let disk = config.os.fetch_image().unwrap();
     println!(
-            "Running disk image {:?} on {}",
-            disk,
-            config.os.target.emulator.simple_name()
-        );
+        "Running disk image {:?} on {}",
+        disk,
+        config.os.target.emulator.simple_name()
+    );
     config
-            .os
-            .target
-            .emulator
-            .build_config(&disk, &config.os.target.config, &config.local);
-        if let Some(mut emulator) = config
-            .os
-            .target
-            .emulator
-            .run(&config.os.target.config, &config.local)
-            .unwrap()
-        {
-            let _ = emulator.wait();
-        }
+        .os
+        .target
+        .emulator
+        .build_config(&disk, &config.os.target.config, &config.local);
+    if let Some(mut emulator) = config
+        .os
+        .target
+        .emulator
+        .run(&config.os.target.config, &config.local)
+        .unwrap()
+    {
+        let _ = emulator.wait();
+    }
 }
 
 fn main() {

@@ -405,13 +405,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
     }
 }
 
-/// The registers for a local apic
-#[repr(align(16))]
-struct LocalApicRegister {
-    /// The apic registers
-    regs: [u32; 256],
-}
-
 /// Aml processing struct
 struct AmlHandler {}
 
@@ -932,7 +925,7 @@ pub extern "C" fn start64() -> ! {
         .sync_lock()
         .stop_allocating(0x3fffff);
 
-    let apic: Box<LocalApicRegister, &Locked<memory::BumpAllocator>> =
+    let apic: Box<super::LocalApicRegister, &Locked<memory::BumpAllocator>> =
         unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
 
     PAGING_MANAGER.sync_lock().init();

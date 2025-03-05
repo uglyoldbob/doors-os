@@ -675,7 +675,7 @@ impl<'a> PagingTableManager<'a> {
 
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
                 let table = unsafe { &mut *self.pt1.as_mut_ptr() };
-                table.table.entries[pt1_index] = (paddr as u64 | 0x3);
+                table.table.entries[pt1_index] = paddr as u64 | 0x3;
                 unsafe { x86::tlb::flush(vaddr) };
             } else {
                 return Err(());

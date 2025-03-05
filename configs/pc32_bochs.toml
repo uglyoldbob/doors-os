@@ -1,6 +1,6 @@
 kernel_machine = "i386-unknown-none.json"
 kernel_path = "i386-unknown-none"
-disassembly = false
+disassembly = true
 
 [kernel_config]
 machine_name = "pc32"
