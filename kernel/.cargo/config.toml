@@ -4,6 +4,7 @@ rustflags = ["-C", "relocation-model=pic",
     "-C", "force-frame-pointers"]
 
 [target.i386-unknown-none]
+linker = "rust-lld"
 rustflags = ["-C", "relocation-model=pic", 
     "-C", "link-arg=-no-pie"]
 
