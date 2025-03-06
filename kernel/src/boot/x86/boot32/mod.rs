@@ -532,41 +532,15 @@ pub extern "C" fn start32() -> ! {
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
-    //Copy the boot information header to the end of the kernel, update the end of the kernel variable to reflect the new data
-    let bi_size = {
-        let boot_info = unsafe {
-            multiboot2::BootInformation::load(
-                MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
-            )
-            .unwrap()
-        };
-        let size = boot_info.total_size();
-        let dest = unsafe { core::slice::from_raw_parts_mut(end_kernel as *mut u8, size) };
-        let source =
-            unsafe { core::slice::from_raw_parts_mut(boot_info.start_address() as *mut u8, size) };
-        if crate::slice_address(dest) < crate::slice_address(source) {
-            let di = dest.iter_mut();
-            let si = source.iter();
-            let a = si.zip(di);
-            for (s, d) in a {
-                *d = *s;
-            }
-        } else {
-            let di = dest.iter_mut();
-            let si = source.iter();
-            let a = si.zip(di);
-            for (s, d) in a.rev() {
-                *d = *s;
-            }
-        }
-        size
-    };
+    let _page = memory::Page4MbMapped::from_raw(unsafe { MULTIBOOT2_DATA as *const () as usize });
 
     let boot_info = unsafe {
-        multiboot2::BootInformation::load(end_kernel as *const multiboot2::BootInformationHeader)
-            .unwrap()
+        multiboot2::BootInformation::load(
+            MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
+        )
+        .unwrap()
     };
-    let end_kernel = end_kernel + bi_size;
+    let end_kernel = end_kernel; // + bi_size;
 
     let stack_end: usize;
     unsafe { core::arch::asm!("mov {}, esp;", out(reg) stack_end) };
@@ -596,9 +570,6 @@ pub extern "C" fn start32() -> ! {
         pal.set_area_used(0, 0x100000);
         pal.done_adding_memory_areas();
     } else {
-        unsafe {
-            core::arch::asm!("xchg bx, bx", options(nomem, nostack, preserves_flags));
-        }
         panic!("Physical memory manager unavailable\r\n");
     };
     VIRTUAL_MEMORY_ALLOCATOR
