@@ -534,9 +534,10 @@ pub extern "C" fn start32() -> ! {
 
     let _page = memory::Page4MbMapped::from_raw(unsafe { MULTIBOOT2_DATA as *const () as usize });
 
+    let boot_info_addr = unsafe { MULTIBOOT2_DATA as usize };
     let boot_info = unsafe {
         multiboot2::BootInformation::load(
-            MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
+            boot_info_addr as *const multiboot2::BootInformationHeader,
         )
         .unwrap()
     };
@@ -568,6 +569,7 @@ pub extern "C" fn start32() -> ! {
         pal.set_kernel_memory_used();
         pal.set_area_used(stack_end - stack_size, stack_size);
         pal.set_area_used(0, 0x100000);
+        pal.set_area_used(boot_info_addr, boot_info.total_size());
         pal.done_adding_memory_areas();
     } else {
         panic!("Physical memory manager unavailable\r\n");
