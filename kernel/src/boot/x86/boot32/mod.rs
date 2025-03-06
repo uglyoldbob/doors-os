@@ -135,6 +135,80 @@ pub extern "x86-interrupt" fn page_fault_exception() {
     }
 }
 
+/// The ending portion of an irq handler
+pub fn finish_irq(irqnum: u8) {
+    let p = super::INTERRUPT_CONTROLLER.read();
+    if let Some(p) = p.as_ref() {
+        p.end_of_interrupt(irqnum)
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq0() {
+    let handle = super::IRQ_HANDLERS[0].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    finish_irq(0);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq3() {
+    let handle = super::IRQ_HANDLERS[3].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    finish_irq(3);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq4() {
+    let handle = super::IRQ_HANDLERS[4].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    finish_irq(4);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq7() {
+    let handle = super::IRQ_HANDLERS[7].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    finish_irq(7);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq10() {
+    let handle = super::IRQ_HANDLERS[10].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    finish_irq(10);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq15() {
+    let handle = super::IRQ_HANDLERS[15].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_ref().unwrap() };
+    finish_irq(15);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
 extern "C" {
     static MULTIBOOT2_DATA: *const usize;
 }
@@ -613,6 +687,12 @@ pub extern "C" fn start32() -> ! {
             idt.set_handler(11, segment_not_present_exception);
             idt.set_handler(13, gpf_exception);
             idt.set_handler(14, page_fault_exception);
+            idt.set_handler(0x20, irq0);
+            idt.set_handler(0x23, irq3);
+            idt.set_handler(0x24, irq4);
+            idt.set_handler(0x27, irq7);
+            idt.set_handler(0x2a, irq10);
+            idt.set_handler(0x2f, irq15);
         }
     }
 

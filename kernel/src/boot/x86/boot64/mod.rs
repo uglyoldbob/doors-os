@@ -106,16 +106,7 @@ pub extern "C" fn divide_by_zero() {
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 
-/// Signals end of interrupt
-fn irq_ender(irqnum: u8) {
-    let p = super::INTERRUPT_CONTROLLER.read();
-    if let Some(p) = p.as_ref() {
-        p.end_of_interrupt(irqnum)
-    }
-}
-
 /// The ending portion of an irq handler
-#[inline(never)]
 pub fn finish_irq(irqnum: u8) {
     let p = super::INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
@@ -128,7 +119,7 @@ pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
     let handle = super::IRQ_HANDLERS[0].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_ref().unwrap() };
-    irq_ender(0);
+    finish_irq(0);
     if let Some(h2) = h3 {
         h2();
     }
