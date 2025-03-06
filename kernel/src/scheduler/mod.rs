@@ -1,6 +1,9 @@
 //! Code for the task/thread scheduler of the kernel.
 
-use alloc::{collections::{btree_map::BTreeMap, VecDeque}, vec::Vec};
+use alloc::{
+    collections::{btree_map::BTreeMap, VecDeque},
+    vec::Vec,
+};
 #[cfg(target_arch = "x86")]
 use gdbstub_arch::x86::reg::X86CoreRegs;
 #[cfg(target_arch = "x86_64")]
@@ -147,7 +150,7 @@ impl InnerScheduler {
     }
 
     /// Try to get mutable thread details by thread id
-    pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut(TaskId, Task)> {
+    pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut (TaskId, Task)> {
         self.local_tasks.get_mut(id.value())
     }
 

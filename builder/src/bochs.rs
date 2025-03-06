@@ -7,7 +7,7 @@ use gimli::EndianReader;
 pub struct Bochs {}
 
 impl super::EmulationTrait for Bochs {
-    fn custom_debug_symbols(&self, s: std::path::PathBuf) {
+    fn custom_debug_symbols(&self, cmakelists: &mut String, s: std::path::PathBuf) {
         use std::io::{Read, Write};
         let mut f = std::fs::File::open(s).unwrap();
         let mut contents = Vec::new();
@@ -99,6 +99,7 @@ impl super::EmulationTrait for Bochs {
         disk: &super::Disk,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
+        s: std::path::PathBuf,
     ) {
         use std::io::Write;
         let mut config: String = String::new();
@@ -151,12 +152,19 @@ impl super::EmulationTrait for Bochs {
 
     fn run(
         &self,
+        cmakelists: &mut String,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
-    ) -> Result<Option<std::process::Child>, std::io::Error> {
-        let mut b = std::process::Command::new(local.bochs_path());
-        let b = b.args(["-f", "bochs_config.txt", "-q"]);
-        b.spawn().map(Some)
+        s: std::path::PathBuf,
+    ) {
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\trun\n");
+        cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND {} -f bochs_config.txt -q\n",
+            local.bochs_path().to_str().unwrap()
+        ));
+        cmakelists.push_str(")\n");
     }
 
     fn simple_name(&self) -> &str {

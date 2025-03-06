@@ -10,6 +10,7 @@ impl super::EmulationTrait for VirtualBox {
         disk: &crate::Disk,
         _common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
+        s: std::path::PathBuf,
     ) {
         let _ = std::fs::remove_file("./doors-os-64/doors-os-64.vbox");
         std::process::Command::new(local.vboxmanage_path())
@@ -127,13 +128,26 @@ impl super::EmulationTrait for VirtualBox {
 
     fn run(
         &self,
+        cmakelists: &mut String,
         _common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
-    ) -> Result<Option<std::process::Child>, std::io::Error> {
-        std::process::Command::new(local.virtualbox_path())
-            .args(["--startvm", "doors-os-64"])
-            .spawn()
-            .map(Some)
+        s: std::path::PathBuf,
+    ) {
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\trun\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND {} --startvm doors-os-64\n",
+            local.virtualbox_path().to_str().unwrap()
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tdebug\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND {} --startvm doors-os-64 --dbg --debug\n",
+            local.virtualbox_path().to_str().unwrap()
+        ));
+        cmakelists.push_str(")\n");
     }
 
     fn simple_name(&self) -> &str {

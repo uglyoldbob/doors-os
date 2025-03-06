@@ -16,17 +16,7 @@ kernel_path = "./build/iso/boot/kernel"
 [disk.common]
 output = "cd32.iso"
 disk_label = "Doors OS"
-config_files = [[
-    "./build/iso/boot/grub/grub.cfg",
-    """
-set timeout=1
-set default=0 # Set the default menu entry
- 
-menuentry "Doors OS" {
-   multiboot2 /boot/kernel testing
-   boot
-}""",
-]]
+config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
 
 [target.config]
 net_devs = [0]

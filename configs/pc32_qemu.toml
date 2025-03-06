@@ -1,10 +1,10 @@
-kernel_machine = "x86_64-unknown-none"
-kernel_path = "x86_64-unknown-none"
+kernel_machine = "i386-unknown-none.json"
+kernel_path = "i386-unknown-none"
 disassembly = true
 
 [kernel_config]
-machine_name = "pc64"
-acpi = true
+machine_name = "pc32"
+acpi = false
 gdbstub = true
 mm_debug = false
 test = false
@@ -14,11 +14,11 @@ network = false
 kernel_path = "./build/iso/boot/kernel"
 
 [disk.common]
-output = "cd64.iso"
+output = "cd32.iso"
 disk_label = "Doors OS"
 config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
 
 [target.config]
 net_devs = [0]
 
-[target.emulator.VirtualBox]
+[target.emulator.Qemu]

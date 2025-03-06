@@ -309,18 +309,11 @@ impl super::SerialTrait for X86SerialPort {
             self.0.itx.store(true, Ordering::Relaxed);
             let mut ienabled = false;
             for c in data.iter() {
-                while txq.interrupt_access().is_full() {
-                    for _ in 0..1000000 {
-                        crate::nop();
-                    }
-                }
+                while txq.interrupt_access().is_full() {}
                 txq.access().push(*c).unwrap();
                 if true {
                     self.0.enable_tx_interrupt();
                     ienabled = true;
-                }
-                for _ in 0..1000000 {
-                    crate::nop();
                 }
             }
             if !ienabled {
@@ -343,9 +336,6 @@ impl super::SerialTrait for X86SerialPort {
                     break;
                 }
                 self.0.enable_tx_interrupt();
-                for _ in 0..1000000 {
-                    crate::nop();
-                }
             }
         }
     }

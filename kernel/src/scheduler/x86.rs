@@ -220,4 +220,3 @@ pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
         iretd;"
     );
 }
-

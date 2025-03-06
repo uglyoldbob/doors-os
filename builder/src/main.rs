@@ -20,15 +20,23 @@ doors_macros::define_config!();
 #[enum_dispatch::enum_dispatch]
 trait EmulationTrait {
     /// Build any custom debug symbols required
-    fn custom_debug_symbols(&self, _s: std::path::PathBuf) {}
+    fn custom_debug_symbols(&self, _cmakelists: &mut String, _s: std::path::PathBuf) {}
     /// Build the config for the emulator
-    fn build_config(&self, disk: &Disk, common: &EmulatorConfig, local: &LocalConfiguration);
-    /// Run the emulator
-    fn run(
+    fn build_config(
         &self,
+        disk: &Disk,
         common: &EmulatorConfig,
         local: &LocalConfiguration,
-    ) -> Result<Option<std::process::Child>, std::io::Error>;
+        s: std::path::PathBuf,
+    );
+    /// Write rules to run the emulator
+    fn run(
+        &self,
+        cmakelists: &mut String,
+        common: &EmulatorConfig,
+        local: &LocalConfiguration,
+        s: std::path::PathBuf,
+    );
     /// Get the simple name of the emulator for build purposes
     fn simple_name(&self) -> &str;
 }
@@ -38,14 +46,22 @@ trait EmulationTrait {
 struct NoEmulator {}
 
 impl EmulationTrait for NoEmulator {
-    fn build_config(&self, _disk: &Disk, _common: &EmulatorConfig, _local: &LocalConfiguration) {}
+    fn build_config(
+        &self,
+        _disk: &Disk,
+        _common: &EmulatorConfig,
+        _local: &LocalConfiguration,
+        _s: std::path::PathBuf,
+    ) {
+    }
 
     fn run(
         &self,
+        cmakelist: &mut String,
         _common: &EmulatorConfig,
         _local: &LocalConfiguration,
-    ) -> Result<Option<std::process::Child>, std::io::Error> {
-        Ok(None)
+        _s: std::path::PathBuf,
+    ) {
     }
 
     fn simple_name(&self) -> &str {
@@ -89,19 +105,6 @@ struct EmulatorCommon {
     pub config: EmulatorConfig,
 }
 
-/// The basic modes of operation for this utility
-#[derive(clap::ValueEnum, Clone, Parser, Debug)]
-enum BuildMode {
-    /// Construct a CMakeLists.txt file for running cmake
-    Cmake,
-    /// Run the build directly with this tool
-    Build,
-    /// Run the build and then run the emulator
-    BuildAndRun,
-    /// Just run the emulator
-    Run,
-}
-
 /// Command line arguments for the tool
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -112,8 +115,6 @@ struct Args {
     /// Should the final configuration be saved to a file?
     #[arg(long)]
     save: Option<std::path::PathBuf>,
-    #[arg(long)]
-    mode: BuildMode,
 }
 
 /// A configuration for building a cd image
@@ -128,6 +129,7 @@ trait DiskBuilderTrait {
     /// Build the disk image
     fn build(
         &self,
+        cmakelists: &mut String,
         common: &DiskImageConfigurationCommon,
         kernel_machine: &str,
         local: &LocalConfiguration,
@@ -150,8 +152,8 @@ struct DiskImageConfigurationCommon {
     output: std::path::PathBuf,
     /// What to label the disk image with
     disk_label: String,
-    /// Generic files to put on the disk, along with their contents
-    config_files: Vec<(std::path::PathBuf, String)>,
+    /// Generic files to put on the disk, source and destination names
+    config_files: Vec<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
 /// Defines the types of disks that can exist
@@ -177,73 +179,52 @@ impl DiskBuilderTrait for CdConfiguration {
 
     fn build(
         &self,
+        cmakelists: &mut String,
         common: &DiskImageConfigurationCommon,
         kernel_path: &str,
         local: &LocalConfiguration,
     ) -> Result<Disk, String> {
-        use std::io::Write;
-        let cd_path = "./build/iso/boot/grub";
-        std::fs::create_dir_all(cd_path).map_err(|e| e.to_string())?;
-
-        let kernel = format!("./kernel/target/{}/release/kernel", kernel_path);
-        let new_kernel_path = std::path::PathBuf::from(&self.kernel_path);
-        std::fs::copy(&kernel, &new_kernel_path).map_err(|e| e.to_string())?;
-        std::process::Command::new("strip")
-            .arg(new_kernel_path)
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
-
-        for (fname, contents) in &common.config_files {
-            let mut f = std::fs::File::create(fname).unwrap();
-            f.write_all(contents.as_bytes()).unwrap();
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tboot_disk\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str(&format!(
+            "\tBYPRODUCTS {}\n",
+            common.output.to_str().unwrap()
+        ));
+        cmakelists.push_str("\tCOMMAND mkdir -p build/iso/boot/grub\n");
+        cmakelists.push_str("\tCOMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cp ./kernel/target/{}/release/kernel ./build/iso/boot/kernel\n",
+            kernel_path
+        ));
+        cmakelists.push_str("\tCOMMAND strip ./build/iso/boot/kernel\n");
+        for (fname, dest) in &common.config_files {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cp {} {}\n",
+                fname.to_str().unwrap(),
+                dest.to_str().unwrap()
+            ));
         }
 
-        let mut g = if cfg!(target_os = "windows") {
-            let mut imgm = std::process::Command::new(local.vboximg_path());
-            imgm.args([
-                "createiso",
-                "--import-iso",
-                "grub-skeleton.iso",
-                "-o",
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND {} createiso --importiso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
+                local.vboximg_path().to_str().unwrap(),
                 common.output.to_str().unwrap(),
-                "--name-setup=iso9660",
-                &format!("./boot/kernel={}", &kernel),
-                &format!("--volid=\"{}\"", &common.disk_label),
-            ]);
-            imgm
+                common.disk_label
+            ));
         } else if cfg!(target_os = "linux") {
-            let mut g = std::process::Command::new("grub-mkrescue");
-            g.args([
-                "-o",
-                common
-                    .output
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap()
-                    .as_str(),
-                "build/iso",
-                "-o",
+            cmakelists.push_str(&format!(
+                "\tCOMMAND grub-mkrescue -o {} build/iso -- -volid \"{}\"\n",
                 common.output.to_str().unwrap(),
-                "--",
-                "-volid",
-                &common.disk_label,
-            ]);
-            g
+                common.disk_label
+            ));
         } else {
             panic!();
-        };
-        let cout = g
-            .output()
-            .expect("Failed to run command to build the cd image");
-        if cout.status.success() {
-            Ok(Disk::Cd(common.output.clone()))
-        } else {
-            Err(String::from_utf8(cout.stderr)
-                .expect("Invalid output from cargo while building cd image"))
         }
+        cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
+        cmakelists.push_str(")\n");
+        Ok(Disk::Cd(common.output.clone()))
     }
 }
 
@@ -283,6 +264,8 @@ pub struct LocalConfiguration {
     vboxmanage_path: Option<std::path::PathBuf>,
     /// The binary for vbox-img, to build images in certain situations
     vboximg_path: Option<std::path::PathBuf>,
+    /// The binary for gdb
+    gdb_path: Option<std::path::PathBuf>,
     /// Network devices that can be used by emulators
     pub net_devs: Vec<String>,
 }
@@ -361,6 +344,18 @@ impl LocalConfiguration {
             .clone()
             .unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into())
     }
+
+    #[cfg(target_os = "linux")]
+    /// Get the path for the vbox-img binary
+    pub fn gdb_path(&self) -> std::path::PathBuf {
+        self.gdb_path.clone().unwrap_or("gdb".into())
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Get the path for the vbox-img binary
+    pub fn gdb_path(&self) -> std::path::PathBuf {
+        self.gdb_path.clone().unwrap_or("gdb".into())
+    }
 }
 
 impl DoorsConfiguration {
@@ -379,78 +374,40 @@ impl DoorsConfiguration {
     }
 
     /// Build the kernel for the operating system
-    pub fn build_kernel(&self) -> Result<(), String> {
-        let mut c = std::process::Command::new("cargo");
-        let target = &self.kernel_machine;
-        let cargo = c.args([
-            "+nightly",
-            "build",
-            "--release",
-            "--target",
-            target,
-            "--bin",
-            "kernel",
-        ]);
-        cargo.current_dir("./kernel");
-        let cout = cargo.output();
-        match cout {
-            Ok(cout) => {
-                if cout.status.success() {
-                    Ok(())
-                } else {
-                    Err(String::from_utf8(cout.stderr)
-                        .expect("Invalid output from cargo while building kernel"))
-                }
-            }
-            Err(e) => Err(e.to_string()),
-        }
+    pub fn build_kernel(&self, cmakelists: &mut String, target: &str) {
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tkernel\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cargo +nightly build --release --target {} --bin kernel\n",
+            target
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tkernel_clippy\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cargo +nightly clippy --target {}\n",
+            target
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tkernel_fmt\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str("\tCOMMAND cargo +nightly fmt\n");
+        cmakelists.push_str(")\n");
     }
 
     /// Build the disassembly for the kernel
-    pub fn build_kernel_disassembly(&self) -> Result<String, String> {
-        let kp = std::fs::canonicalize("./kernel").unwrap();
-        unsafe {
-            std::env::remove_var("RUSTUP_TOOLCHAIN");
-            std::env::remove_var("CARGO");
-            std::env::remove_var("CARGO_MANIFEST_DIR");
-            std::env::remove_var("CARGO_MANIFEST_PATH");
-        }
-        let mut c = std::process::Command::new("cargo");
-        let target = &self.kernel_machine;
-        let cargo = c.args([
-            "+nightly",
-            "objdump",
-            "--release",
-            "--target",
-            target,
-            "--bin",
-            "kernel",
-            "-q",
-            "--",
-            "-d",
-        ]);
-        cargo.current_dir(kp);
-        let cout = cargo
-            .output()
-            .expect("Failed to run command to disassemble the kernel");
-        if cout.status.success() {
-            Ok(String::from_utf8(cout.stdout)
-                .expect("Invalid output from cargo while building kernel"))
-        } else {
-            Err(String::from_utf8(cout.stderr)
-                .expect("Invalid output from cargo while building kernel"))
-        }
-    }
-
-    /// Build a disk image for the operating system
-    pub fn build_image(
-        &self,
-        kernel_path: &str,
-        local_config: &LocalConfiguration,
-    ) -> Result<Disk, String> {
-        self.disk
-            .unique
-            .build(&self.disk.common, kernel_path, local_config)
+    pub fn build_kernel_disassembly(&self, cmakelists: &mut String, target: &str) {
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tdisassemble\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str("\tBYPRODUCTS ../disassemble.txt\n");
+        cmakelists.push_str(&format!("\tCOMMAND cargo objdump --release --target {} --bin kernel -q -- -d > ../disassemble.txt\n", target));
+        cmakelists.push_str(")\n");
     }
 
     /// Fetch the disk image for the operating system
@@ -547,137 +504,93 @@ fn add_to_cmakelist(cmakelist: &mut String, f: &std::path::PathBuf, target: &str
     config.os.make_cmake_rules(cmakelist, target);
 }
 
-fn build_cmake_files(_args: &Args, _config: MasterConfig) {
+fn build_cmake_files(_args: &Args, config: MasterConfig) {
     use std::io::Write;
     let p = std::path::PathBuf::from("./configs");
     let read = p.as_path().read_dir().unwrap();
     println!("Cmake files:");
     let mut cmakelist = String::new();
+    let mut kernel_cmakelist = String::new();
     cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
-    cmakelist.push_str("project(doors-os)\n\n");
+    cmakelist.push_str("project(doors-os)\n");
+    cmakelist.push_str("add_subdirectory(kernel)\n");
 
-    for entry in read.flatten() {
-        if let Ok(ft) = entry.file_type() {
-            if ft.is_file() {
-                if entry.file_name().to_str().unwrap().ends_with(".toml") {
-                    let f = entry.path();
-                    if let Some(name) = f.file_stem() {
-                        add_to_cmakelist(&mut cmakelist, &f, name.to_str().unwrap());
-                    }
-                }
-            }
-        }
+    cmakelist.push_str("add_custom_target(\n");
+    cmakelist.push_str("\tfmt\n");
+    cmakelist.push_str("\tDEPENDS kernel_fmt\n");
+    cmakelist.push_str("\tCOMMAND cargo fmt\n");
+    cmakelist.push_str(")\n");
+
+    kernel_cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
+    kernel_cmakelist.push_str("project(doors-kernel)\n\n");
+
+    write_kernel_config(&config);
+
+    config
+        .os
+        .build_kernel(&mut kernel_cmakelist, &config.os.kernel_machine);
+    config
+        .os
+        .build_kernel_disassembly(&mut kernel_cmakelist, &config.os.kernel_machine);
+
+    let disk = config
+        .os
+        .disk
+        .unique
+        .build(
+            &mut cmakelist,
+            &config.os.disk.common,
+            &config.os.kernel_path,
+            &config.local,
+        )
+        .unwrap();
+    let kernel_binary_path = std::path::PathBuf::from(format!(
+        "./kernel/target/{}/release/kernel",
+        config.os.kernel_path
+    ));
+    config.os.target.emulator.build_config(
+        &disk,
+        &config.os.target.config,
+        &config.local,
+        kernel_binary_path.clone(),
+    );
+    config.os.target.emulator.run(
+        &mut cmakelist,
+        &config.os.target.config,
+        &config.local,
+        kernel_binary_path,
+    );
+
+    {
+        let mut configf = std::fs::File::create("./CMakeLists.txt")
+            .expect("Failed to create cmake configuration");
+        configf
+            .write_all(cmakelist.as_bytes())
+            .expect("Failed to save CMakeLists.txt file");
     }
-
-    let mut configf =
-        std::fs::File::create("./CMakeLists.txt").expect("Failed to create cmake configuration");
-    configf
-        .write_all(cmakelist.as_bytes())
-        .expect("Failed to save CMakeLists.txt file");
+    {
+        let mut configf = std::fs::File::create("./kernel/CMakeLists.txt")
+            .expect("Failed to create kernel cmake configuration");
+        configf
+            .write_all(kernel_cmakelist.as_bytes())
+            .expect("Failed to save kernel CMakeLists.txt file");
+    }
 }
 
-fn run_build(args: &Args, config: &mut MasterConfig) {
+fn write_kernel_config(config: &MasterConfig) {
     use std::io::Write;
-    if let Some(f) = &args.save {
-        config
-            .os
-            .disk
-            .common
-            .config_files
-            .push(("asdf".into(), "fdsa".to_string()));
-        let text = toml::to_string_pretty(&config.os).expect("Failed to create configuration file");
-        let mut configf =
-            std::fs::File::create(f).expect("Failed to create operating system configuration");
+    print!("Writing kernel config...");
+    std::io::stdout().flush().unwrap();
+    {
+        let mut configf = std::fs::File::create("./kernel/config.toml")
+            .expect("Failed to create kernel configuration");
+        let text = toml::to_string_pretty(&config.os.kernel_config)
+            .expect("Failed to create kernel configuration file");
         configf
             .write_all(text.as_bytes())
             .expect("Failed to save configuration file");
-    } else {
-        print!("Writing kernel config...");
-        std::io::stdout().flush().unwrap();
-        {
-            let mut configf = std::fs::File::create("./kernel/config.toml")
-                .expect("Failed to create kernel configuration");
-            let text = toml::to_string_pretty(&config.os.kernel_config)
-                .expect("Failed to create kernel configuration file");
-            configf
-                .write_all(text.as_bytes())
-                .expect("Failed to save configuration file");
-        }
-        println!("done");
-
-        print!("Building kernel... ");
-        std::io::stdout().flush().unwrap();
-        let kernel = config.os.build_kernel().inspect_err(|e| {
-            println!("Failed to build the kernel");
-            print!("{}", e);
-        });
-        match kernel {
-            Ok(_) => println!("Kernel built"),
-            Err(e) => {
-                println!("Failed to build\n{}", e);
-                panic!();
-            }
-        }
-
-        if config.os.disassembly {
-            print!("Producing disassembly for kernel... ");
-            std::io::stdout().flush().unwrap();
-            let d = config
-                .os
-                .build_kernel_disassembly()
-                .inspect_err(|e| {
-                    println!("Failed to build the kernel disassembly");
-                    print!("{}", e);
-                })
-                .unwrap();
-            {
-                let mut configf = std::fs::File::create("./disassemble.txt")
-                    .expect("Failed to create disassembly file");
-                configf
-                    .write_all(d.as_bytes())
-                    .expect("Failed to save disassembly file");
-            }
-            println!("{} bytes generated", d.len());
-        }
-
-        print!("Building disk image... ");
-        std::io::stdout().flush().unwrap();
-        let disk = config
-            .os
-            .build_image(&config.os.kernel_path, &config.local)
-            .unwrap();
-        println!("done");
-        config.os.target.emulator.custom_debug_symbols(
-            format!("./kernel/target/{}/release/kernel", &config.os.kernel_path).into(),
-        );
-
-        print!("Building emulator image... ");
-        std::io::stdout().flush().unwrap();
-        config
-            .os
-            .target
-            .emulator
-            .build_config(&disk, &config.os.target.config, &config.local);
-        println!("done");
     }
-}
-
-fn run_emulator(_args: &Args, config: &MasterConfig) {
-    let disk = config.os.fetch_image().unwrap();
-    println!(
-        "Running disk image {:?} on {}",
-        disk,
-        config.os.target.emulator.simple_name()
-    );
-    if let Some(mut emulator) = config
-        .os
-        .target
-        .emulator
-        .run(&config.os.target.config, &config.local)
-        .unwrap()
-    {
-        let _ = emulator.wait();
-    }
+    println!("done");
 }
 
 fn main() {
@@ -689,19 +602,5 @@ fn main() {
     };
     let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
     let mut config = MasterConfig::build(local, config);
-    match args.mode {
-        BuildMode::Cmake => {
-            build_cmake_files(&args, config);
-        }
-        BuildMode::Build => {
-            run_build(&args, &mut config);
-        }
-        BuildMode::Run => {
-            run_emulator(&args, &config);
-        }
-        BuildMode::BuildAndRun => {
-            run_build(&args, &mut config);
-            run_emulator(&args, &config);
-        }
-    }
+    build_cmake_files(&args, config);
 }

@@ -4,21 +4,66 @@
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct Qemu {}
 
+impl Qemu {
+    fn get_common_run(&self, local: &super::LocalConfiguration) -> String {
+        let mut qemu = String::new();
+        qemu.push_str(&format!("{} ", local.qemu_path().to_str().unwrap()));
+        qemu.push_str("-cdrom cd64.iso -m 8 -serial file:serial.log -serial tcp::1234,server,nowait,nodelay -netdev user,id=u1 -device e1000,netdev=u1");
+        qemu
+    }
+}
+
 impl super::EmulationTrait for Qemu {
     fn build_config(
         &self,
         _disk: &crate::Disk,
-        _common: &super::EmulatorConfig,
-        _local: &super::LocalConfiguration,
+        common: &super::EmulatorConfig,
+        local: &super::LocalConfiguration,
+        s: std::path::PathBuf,
     ) {
+        use std::io::Write;
+        let mut config = String::new();
+
+        let mut qemu = String::new();
+        qemu.push_str(&self.get_common_run(local));
+        qemu.push_str(" -gdb stdio");
+
+        config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
+        config.push_str("define exit\n\tmonitor quit\n\tquit\nend\n");
+        config.push_str("disp /i $pc\n");
+        config.push_str(&format!("target remote | {}\n", qemu));
+
+        let f = "./gdb_config.gdb";
+        let mut configf = std::fs::File::create(f).expect("Failed to create gdb configuration");
+        configf
+            .write_all(config.as_bytes())
+            .expect("Failed to save configuration file");
     }
 
     fn run(
         &self,
-        _common: &super::EmulatorConfig,
-        _local: &super::LocalConfiguration,
-    ) -> Result<Option<std::process::Child>, std::io::Error> {
-        todo!();
+        cmakelists: &mut String,
+        common: &super::EmulatorConfig,
+        local: &super::LocalConfiguration,
+        s: std::path::PathBuf,
+    ) {
+        let mut qemu = String::new();
+        qemu.push_str("\tCOMMAND ");
+        qemu.push_str(&self.get_common_run(local));
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\trun\n");
+        cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
+        cmakelists.push_str(&qemu);
+        cmakelists.push_str("\n)\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tdebug\n");
+        cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND {} -x gdb_config.gdb\n",
+            local.gdb_path().to_str().unwrap()
+        ));
+        cmakelists.push_str(")\n");
     }
 
     fn simple_name(&self) -> &str {
