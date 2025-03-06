@@ -143,7 +143,9 @@ async fn net_test() {
 
 /// A test function for the kernel
 fn test_function() {
-    loop {}
+    for _ in 0..10 {
+        crate::VGA.print_str("Test print from a separate thread\r\n");
+    }
 }
 
 doors_macros::define_doors_test_runner!();

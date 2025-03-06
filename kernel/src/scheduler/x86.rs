@@ -11,8 +11,6 @@ use gdbstub_arch::x86::reg::X86CoreRegs;
 pub struct Context {
     /// esp register
     pub esp: u32,
-    /// ebx register
-    pub ebx: u32,
 }
 
 /// The context for a thread that lives on the stack
@@ -21,6 +19,8 @@ pub struct Context {
 pub struct StackContext {
     /// eax register
     pub eax: u32,
+    /// ebx register
+    pub ebx: u32,
     /// ecx register
     pub ecx: u32,
     /// edx register
@@ -47,19 +47,31 @@ impl super::Task {
         let mut sc = StackContext::default();
         let mut c = Context::new();
         s.set_rsp(&mut c.esp);
-        sc.eax = 0x64;
+        sc.eax = 0x63;
+        sc.ebx = 0x64;
         sc.ecx = 0x65;
         sc.edx = 0x66;
         sc.esi = 0x6f;
         sc.edi = 0x70;
         sc.eip = 0x71;
+        sc.ebp = 0x72;
         sc.edi = f as *const () as u32;
         let start_eip = Self::task_runner as *const () as u32;
-        s.push(&mut c.esp, 0x10);
-        let saved_esp = c.esp;
-        s.push(&mut c.esp, saved_esp);
-        s.push(&mut c.esp, sc.eflags | 1 << 9);
-        s.push(&mut c.esp, 0x8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
+        //s.push(&mut c.esp, sc.eflags | 1 << 9);
+        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, 8);
         s.push(&mut c.esp, start_eip as u32);
         s.push(&mut c.esp, sc.ebp);
         s.push(&mut c.esp, sc.edi);
@@ -67,13 +79,9 @@ impl super::Task {
         s.push(&mut c.esp, sc.edx);
         s.push(&mut c.esp, sc.ecx);
         s.push(&mut c.esp, sc.eax);
-        s.push(&mut c.esp, 43);
-        let t = irq_finisher as *const () as u32;
-        s.push(&mut c.esp, t); // mocked end of the irq handler
-        s.push(&mut c.esp, sc.ebp);
-        s.push(&mut c.esp, c.ebx);
+        s.push(&mut c.esp, sc.ebx);
 
-        s.push(&mut c.esp, thread_wrapper as *const () as u32); // the mocked return for the scheduler
+        s.push(&mut c.esp, irq_finisher as *const () as u32); // the mocked return for the scheduler
         sc.ebp = c.esp;
         let s = Self {
             context: Some(c),
@@ -88,7 +96,7 @@ impl super::Task {
 impl Context {
     /// Construct an empty context
     pub fn new() -> Self {
-        Self { ebx: 98, esp: 99 }
+        Self { esp: 99 }
     }
 
     /// Write registers into the stack for a thread context
@@ -125,24 +133,22 @@ impl Context {
         (self, sc)
     }
 
-    /// Saves thread context that is not already on the stack, and the thread stack pointer
+    /// Restores thread context not on the stack, and the thread stack pointer
     #[naked]
     pub(crate) unsafe extern "C" fn thread_restore(m: &Context) {
         naked_asm!(
             "\
-            mov esp, [edi];\
-            mov ebx, [edi+8];\
+            mov esp, [eax];\
             ret;"
         );
     }
 
-    /// Restores thread context not on the stack, and the thread stack pointer
+    /// Saves thread context that is not already on the stack, and the thread stack pointer    
     #[naked]
     pub(crate) unsafe extern "C" fn thread_save(m: &mut Context) {
         naked_asm!(
             "\
-            mov [edi], esp;\
-            mov [edi+8], ebx;\
+            mov [eax], esp;\
             ret;"
         );
     }
@@ -210,7 +216,7 @@ impl Stack {
 pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
     naked_asm!(
         "\
-        add esp, 8;\
+        pop ebx;\
         pop eax;\
         pop ecx;\
         pop edx;\
@@ -221,13 +227,3 @@ pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
     );
 }
 
-/// The thread wrapper function for starting a thread
-#[naked]
-pub(crate) unsafe extern "C" fn thread_wrapper() -> ! {
-    naked_asm!(
-        "\
-        pop ebx;\
-        pop ebp;\
-        ret;"
-    );
-}

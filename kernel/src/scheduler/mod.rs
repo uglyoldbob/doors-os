@@ -1,6 +1,6 @@
 //! Code for the task/thread scheduler of the kernel.
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::{collections::{btree_map::BTreeMap, VecDeque}, vec::Vec};
 #[cfg(target_arch = "x86")]
 use gdbstub_arch::x86::reg::X86CoreRegs;
 #[cfg(target_arch = "x86_64")]
@@ -123,7 +123,7 @@ pub static SCHEDULER: RwLock<Option<Scheduler>> = RwLock::new(None);
 /// The actual contents of a scheduler
 pub struct InnerScheduler {
     /// The list of tasks local to the scheduler
-    local_tasks: BTreeMap<TaskId, Task>,
+    local_tasks: VecDeque<(TaskId, Task)>,
     /// The currently executing task
     cur_task: Task,
     /// The id of the currently executing task
@@ -136,7 +136,7 @@ impl InnerScheduler {
     /// Create a new scheduler
     pub const fn new() -> Self {
         Self {
-            local_tasks: BTreeMap::new(),
+            local_tasks: VecDeque::new(),
             cur_task: Task::running(),
             cur_task_id: None,
             timer: None,
@@ -144,18 +144,18 @@ impl InnerScheduler {
     }
 
     /// Create an iterator over all tasks for this scheduler
-    pub fn iter(&self) -> alloc::collections::btree_map::Iter<TaskId, Task> {
+    pub fn iter(&self) -> alloc::collections::vec_deque::Iter<(TaskId, Task)> {
         self.local_tasks.iter()
     }
 
     /// Try to get thread details by thread id
-    pub fn lookup(&self, id: TaskId) -> Option<&Task> {
-        self.local_tasks.get(&id)
+    pub fn lookup(&self, id: TaskId) -> Option<&(TaskId, Task)> {
+        self.local_tasks.get(id.value())
     }
 
     /// Try to get mutable thread details by thread id
-    pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut Task> {
-        self.local_tasks.get_mut(&id)
+    pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut(TaskId, Task)> {
+        self.local_tasks.get_mut(id.value())
     }
 
     /// Print all tasks
@@ -204,7 +204,7 @@ impl Scheduler {
 
     /// Retrieve the task id of the current task
     pub fn cur_task_id(&self) -> Option<TaskId> {
-        let mut this = self.i.0.sync_access();
+        let this = self.i.0.sync_access();
         this.cur_task_id
     }
 
@@ -223,8 +223,7 @@ impl Scheduler {
                 drop(timer);
                 return;
             }
-            let taskid = this.local_tasks.keys().next().cloned().unwrap();
-            let (taskid, mut task) = this.local_tasks.remove_entry(&taskid).unwrap();
+            let (taskid, mut task) = this.local_tasks.pop_front().unwrap();
             if TaskStatus::Runnable == task.status {
                 let new_context = match task.context.take() {
                     Some(c) => c,
@@ -243,7 +242,7 @@ impl Scheduler {
                 if let Some(_c) = task.context.replace(old_context) {
                     panic!();
                 }
-                this.local_tasks.insert(taskid, task);
+                this.local_tasks.push_back((taskid, task));
                 drop(this);
                 timer.start_oneshot();
                 drop(timer);
@@ -282,7 +281,7 @@ impl Scheduler {
     pub fn add_task(&self, task: Task) -> TaskId {
         let mut this = self.i.0.sync_access();
         let tid = TaskId::new();
-        this.local_tasks.insert(tid, task);
+        this.local_tasks.push_back((tid, task));
         tid
     }
 

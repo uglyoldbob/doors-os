@@ -155,7 +155,7 @@ impl MultiThreadBase for DoorsTarget {
         let s = crate::scheduler::SCHEDULER.read();
         let s = s.as_ref().unwrap().sync_access();
         let task = s.lookup(tid.into());
-        if let Some(task) = task {
+        if let Some((_taskid, task)) = task {
             if let Some((context, scontext)) = task.examine_stack() {
                 regs.eflags = (scontext.rflags & 0xFFFFFFFF) as u32;
                 regs.segments.cs = 8;
@@ -199,7 +199,7 @@ impl MultiThreadBase for DoorsTarget {
         let s = crate::scheduler::SCHEDULER.read();
         let s = s.as_ref().unwrap().sync_access();
         let task = s.lookup(tid.into());
-        if let Some(task) = task {
+        if let Some((_taskid, task)) = task {
             if let Some((context, scontext)) = task.examine_stack() {
                 regs.eflags = scontext.eflags;
                 regs.segments.cs = 8;
@@ -209,7 +209,7 @@ impl MultiThreadBase for DoorsTarget {
                 regs.segments.gs = 8;
                 regs.segments.ss = 16;
                 regs.eax = scontext.eax;
-                regs.ebx = context.ebx;
+                regs.ebx = scontext.ebx;
                 regs.ecx = scontext.ecx;
                 regs.edx = scontext.edx;
                 regs.esi = scontext.esi;
@@ -234,7 +234,7 @@ impl MultiThreadBase for DoorsTarget {
         let s = crate::scheduler::SCHEDULER.read();
         let mut s = s.as_ref().unwrap().sync_access();
         let task = s.lookup_mut(tid.into());
-        if let Some(task) = task {
+        if let Some((taskid, task)) = task {
             task.write_registers(regs)
                 .map_err(|_| TargetError::NonFatal)
         } else {
