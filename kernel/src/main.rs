@@ -148,6 +148,7 @@ fn test_function() {
 
 doors_macros::define_doors_test_runner!();
 
+/// This function runs the kernel tests
 fn kernel_testing_thread() {
     if DoorsTester::doors_test_main().is_err() {
         crate::VGA.print_str("At least one test failed\r\n");
