@@ -99,13 +99,6 @@ impl Task {
         }
     }
 
-    /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
-    fn task_runner() {
-        unsafe { core::arch::asm!("call eax;")};
-        SCHEDULER.read().as_ref().unwrap().task_completed();
-        loop {}
-    }
-
     /// Construct a new task from the currently running function
     const fn running() -> Self {
         Self {

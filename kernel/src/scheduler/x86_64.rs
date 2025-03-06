@@ -115,6 +115,13 @@ impl super::Task {
         };
         s
     }
+
+    /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
+    fn task_runner(main_func: fn()) {
+        main_func();
+        super::SCHEDULER.read().as_ref().unwrap().task_completed();
+        loop {}
+    }
 }
 
 impl Context {

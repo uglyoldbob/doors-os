@@ -78,6 +78,13 @@ impl super::Task {
         };
         s
     }
+
+    /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
+    fn task_runner() {
+        unsafe { core::arch::asm!("call eax;") };
+        super::SCHEDULER.read().as_ref().unwrap().task_completed();
+        loop {}
+    }
 }
 
 impl Context {
