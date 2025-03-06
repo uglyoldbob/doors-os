@@ -47,7 +47,7 @@ impl super::Task {
         let mut sc = StackContext::default();
         let mut c = Context::new();
         s.set_rsp(&mut c.esp);
-        sc.eax = 0x63;
+        sc.eax = f as *const () as u32;
         sc.ebx = 0x64;
         sc.ecx = 0x65;
         sc.edx = 0x66;
@@ -55,22 +55,9 @@ impl super::Task {
         sc.edi = 0x70;
         sc.eip = 0x71;
         sc.ebp = 0x72;
-        sc.edi = f as *const () as u32;
+        sc.edi = 0x73;
         let start_eip = Self::task_runner as *const () as u32;
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        s.push(&mut c.esp, 8);
-        //s.push(&mut c.esp, sc.eflags | 1 << 9);
-        s.push(&mut c.esp, 8);
+        s.push(&mut c.esp, sc.eflags | 1 << 9);
         s.push(&mut c.esp, 8);
         s.push(&mut c.esp, start_eip as u32);
         s.push(&mut c.esp, sc.ebp);
@@ -223,7 +210,7 @@ pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
         pop esi;\
         pop edi;\
         pop ebp;\
-        iret;"
+        iretd;"
     );
 }
 

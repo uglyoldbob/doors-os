@@ -100,8 +100,8 @@ impl Task {
     }
 
     /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
-    fn task_runner(main_func: fn()) {
-        main_func();
+    fn task_runner() {
+        unsafe { core::arch::asm!("call eax;")};
         SCHEDULER.read().as_ref().unwrap().task_completed();
         loop {}
     }
