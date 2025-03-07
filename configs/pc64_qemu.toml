@@ -1,0 +1,24 @@
+kernel_machine = "x86_64-unknown-none"
+kernel_path = "x86_64-unknown-none"
+disassembly = true
+
+[kernel_config]
+machine_name = "pc64"
+acpi = false
+gdbstub = true
+mm_debug = false
+test = false
+network = false
+
+[disk.unique.Cd]
+kernel_path = "./build/iso/boot/kernel"
+
+[disk.common]
+output = "cd64.iso"
+disk_label = "Doors OS"
+config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
+
+[target.config]
+net_devs = [0]
+
+[target.emulator.Qemu]

@@ -62,7 +62,7 @@ impl super::EmulationTrait for VirtualBox {
             .unwrap();
 
         for (i, nid) in common.net_devs.iter().enumerate() {
-            let net_name = &local.net_devs[*nid];
+            let net_name = local.net_devs[*nid].virtualbox.as_ref().unwrap();
             let nicnum = i + 1;
             std::process::Command::new(local.vboxmanage_path())
                 .args([

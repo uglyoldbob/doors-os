@@ -112,7 +112,7 @@ impl super::EmulationTrait for Bochs {
         }
 
         for nid in &common.net_devs {
-            let net_name = &local.net_devs[*nid];
+            let net_name = local.net_devs[*nid].bochs.as_ref().unwrap();
             #[cfg(target_os = "linux")]
             {
                 config.push_str(&format!(

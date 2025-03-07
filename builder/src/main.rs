@@ -57,7 +57,7 @@ impl EmulationTrait for NoEmulator {
 
     fn run(
         &self,
-        cmakelist: &mut String,
+        _cmakelist: &mut String,
         _common: &EmulatorConfig,
         _local: &LocalConfiguration,
         _s: std::path::PathBuf,
@@ -251,6 +251,17 @@ pub struct DoorsConfiguration {
     disassembly: bool,
 }
 
+/// A configuration for a single local network card used by an emulator
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+pub struct NetworkConfig {
+    /// The configuration string for bochs
+    bochs: Option<String>,
+    /// The configuration string for qemu
+    qemu: Option<String>,
+    /// The configuration string for virtualbox
+    virtualbox: Option<String>,
+}
+
 /// Configuration specific to the build machine
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct LocalConfiguration {
@@ -267,7 +278,7 @@ pub struct LocalConfiguration {
     /// The binary for gdb
     gdb_path: Option<std::path::PathBuf>,
     /// Network devices that can be used by emulators
-    pub net_devs: Vec<String>,
+    pub net_devs: Vec<NetworkConfig>,
 }
 
 impl LocalConfiguration {
@@ -606,6 +617,6 @@ fn main() {
         DoorsConfiguration::default()
     };
     let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
-    let mut config = MasterConfig::build(local, config);
+    let config = MasterConfig::build(local, config);
     build_cmake_files(&args, config);
 }
