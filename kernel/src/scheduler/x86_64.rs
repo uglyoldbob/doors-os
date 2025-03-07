@@ -120,7 +120,10 @@ impl super::Task {
     fn task_runner(main_func: fn()) {
         main_func();
         super::SCHEDULER.read().as_ref().unwrap().task_completed();
-        loop {}
+        loop {
+            use crate::kernel::SystemTrait;
+            crate::SYSTEM.read().idle();
+        }
     }
 }
 
@@ -132,12 +135,12 @@ impl Context {
 
     /// Write registers into the stack for a thread context
     pub fn stack_write(&self, stack: &mut Stack, regs: &X86_64CoreRegs) {
-        let rsp = self.rsp + 0x120;
-        stack.update(rsp + 8, regs.regs[12]);
-        stack.update(rsp + 16, regs.regs[13]);
-        stack.update(rsp + 24, regs.regs[14]);
-        stack.update(rsp + 32, regs.regs[15]);
-        let rsp = self.rsp + 0x120 + 96 + 56 + 24;
+        let rsp = self.rsp + 0xa8;
+        stack.update(rsp + 16, regs.regs[12]);
+        stack.update(rsp + 24, regs.regs[13]);
+        stack.update(rsp + 32, regs.regs[14]);
+        stack.update(rsp + 40, regs.regs[15]);
+        let rsp = self.rsp + 0xa8 + 0x58 + 16 + 8 + 0x48;
         stack.update(rsp, regs.regs[0]);
         stack.update(rsp + 8, regs.regs[2]);
         stack.update(rsp + 16, regs.regs[3]);
@@ -155,17 +158,17 @@ impl Context {
     /// Read registers from the stack for a thread context
     pub fn stack_read(&self, stack: &Stack) -> (&Context, StackContext) {
         let mut sc = StackContext::default();
-        let rsp = self.rsp + 0x120;
+        let rsp = self.rsp + 0xa8;
         //let rbx = stack.reference(rsp);
-        sc.r12 = stack.reference(rsp + 8);
-        sc.r13 = stack.reference(rsp + 16);
-        sc.r14 = stack.reference(rsp + 24);
-        sc.r15 = stack.reference(rsp + 32);
+        sc.r12 = stack.reference(rsp + 16);
+        sc.r13 = stack.reference(rsp + 24);
+        sc.r14 = stack.reference(rsp + 32);
+        sc.r15 = stack.reference(rsp + 40);
         //sc.rbp = stack.reference(rsp + 40);
         //let rsp = con.rsp + 0x120 + 56;
         //let rbx = stack.reference(rsp + 8);
         //sc.rbp = stack.reference(rsp + 16);
-        let rsp = self.rsp + 0x120 + 96 + 56 + 24;
+        let rsp = self.rsp + 0xa8 + 0x58 + 16 + 8 + 0x48;
         sc.rax = stack.reference(rsp);
         sc.rcx = stack.reference(rsp + 8);
         sc.rdx = stack.reference(rsp + 16);
@@ -281,6 +284,7 @@ pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
     );
 }
 
+doors_macros::todo_item!("Get rid of this function and merge functionality into irq_finisher");
 /// The thread wrapper function for starting a thread
 #[naked]
 pub(crate) unsafe extern "C" fn thread_wrapper() -> ! {

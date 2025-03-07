@@ -514,18 +514,10 @@ impl MasterConfig {
     }
 }
 
-fn add_to_cmakelist(cmakelist: &mut String, f: &std::path::PathBuf, target: &str) {
-    let config = open_config_file(f.to_path_buf()).unwrap();
-    let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
-    let config = MasterConfig::build(local, config);
-    config.os.make_cmake_rules(cmakelist, target);
-}
 
+/// Build the cmakelists files from the configuration and the program arguments
 fn build_cmake_files(args: &Args, config: MasterConfig) {
     use std::io::Write;
-    let p = std::path::PathBuf::from("./configs");
-    let read = p.as_path().read_dir().unwrap();
-    println!("Cmake files:");
     let mut cmakelist = String::new();
     let mut kernel_cmakelist = String::new();
     cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
@@ -610,8 +602,31 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
             .write_all(kernel_cmakelist.as_bytes())
             .expect("Failed to save kernel CMakeLists.txt file");
     }
+
+    write_vscode_configs(&config);
 }
 
+/// Write the files used by vscode
+fn write_vscode_configs(config: &MasterConfig) {
+    use std::io::Write;
+    print!("Writing vscode config...");
+    std::io::stdout().flush().unwrap();
+    {
+        let mut configf = std::fs::File::create("./kernel/.vscode/settings.json")
+            .expect("Failed to create kernel configuration");
+        let mut contents = String::new();
+        contents.push_str("{\n");
+        contents.push_str("\t\"rust-analyzer.cargo.allTargets\": false,\n");
+        contents.push_str(&format!("\t\"rust-analyzer.cargo.target\": \"{}\",\n", config.os.kernel_machine));
+        contents.push_str("}\n");
+        configf
+            .write_all(contents.as_bytes())
+            .expect("Failed to save configuration file");
+    }
+    println!("done");
+}
+
+/// Write the config used directly by the kernel build process
 fn write_kernel_config(config: &MasterConfig) {
     use std::io::Write;
     print!("Writing kernel config...");

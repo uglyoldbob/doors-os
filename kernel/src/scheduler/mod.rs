@@ -146,12 +146,22 @@ impl InnerScheduler {
 
     /// Try to get thread details by thread id
     pub fn lookup(&self, id: TaskId) -> Option<&(TaskId, Task)> {
-        self.local_tasks.get(id.value())
+        for a in &self.local_tasks {
+            if a.0 == id {
+                return Some(a);
+            }
+        }
+        None
     }
 
     /// Try to get mutable thread details by thread id
     pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut (TaskId, Task)> {
-        self.local_tasks.get_mut(id.value())
+        for a in &mut self.local_tasks {
+            if a.0 == id {
+                return Some(a);
+            }
+        }
+        None
     }
 
     /// Print all tasks

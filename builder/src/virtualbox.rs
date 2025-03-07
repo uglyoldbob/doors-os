@@ -139,6 +139,19 @@ impl super::EmulationTrait for VirtualBox {
                     .unwrap();
             }
         }
+
+        use std::io::Write;
+        let mut config = String::new();
+
+        config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
+        config.push_str("disp /i $pc\n");
+        config.push_str("target remote :1234\n");
+
+        let f = "./gdb_config.gdb";
+        let mut configf = std::fs::File::create(f).expect("Failed to create gdb configuration");
+        configf
+            .write_all(config.as_bytes())
+            .expect("Failed to save configuration file");
     }
 
     fn run(
@@ -150,6 +163,7 @@ impl super::EmulationTrait for VirtualBox {
     ) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\trun\n");
+        cmakelists.push_str("\tDEPENDS boot_disk\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} --startvm doors-os-64\n",
             super::LocalConfiguration::escape_path(&local.virtualbox_path()),
@@ -158,9 +172,19 @@ impl super::EmulationTrait for VirtualBox {
 
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdebug\n");
+        cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} --startvm doors-os-64 --dbg --debug\n",
             super::LocalConfiguration::escape_path(&local.virtualbox_path()),
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tgdb\n");
+        cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND {} -x gdb_config.gdb\n",
+            super::LocalConfiguration::escape_path(&local.gdb_path())
         ));
         cmakelists.push_str(")\n");
     }

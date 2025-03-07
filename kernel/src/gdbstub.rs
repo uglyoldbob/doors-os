@@ -159,10 +159,10 @@ impl MultiThreadBase for DoorsTarget {
             if let Some((context, scontext)) = task.examine_stack() {
                 regs.eflags = (scontext.rflags & 0xFFFFFFFF) as u32;
                 regs.segments.cs = 8;
-                regs.segments.ds = 8;
-                regs.segments.es = 8;
-                regs.segments.fs = 8;
-                regs.segments.gs = 8;
+                regs.segments.ds = 16;
+                regs.segments.es = 16;
+                regs.segments.fs = 16;
+                regs.segments.gs = 16;
                 regs.segments.ss = 16;
                 regs.regs[0] = scontext.rax;
                 regs.regs[1] = context.rbx;
