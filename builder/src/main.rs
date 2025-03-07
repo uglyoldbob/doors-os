@@ -543,7 +543,11 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str(&format!(
         "\tDEPENDS {} {}\n",
         args.name.as_ref().unwrap().to_str().unwrap(),
-        if let Ok(true) = std::fs::exists("./local_config.toml") { "./local_config.toml" } else { "" },
+        if let Ok(true) = std::fs::exists("./local_config.toml") {
+            "./local_config.toml"
+        } else {
+            ""
+        },
     ));
     cmakelist.push_str("\tBYPRODUCTS CMakeLists.txt kernel/CMakeLists.txt\n");
     cmakelist.push_str(&format!(
