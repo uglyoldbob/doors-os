@@ -393,6 +393,7 @@ impl DoorsConfiguration {
     pub fn build_kernel(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel\n");
+        cmakelists.push_str("\tDEPENDS buildscript\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo +nightly build --release --target {} --bin kernel\n",
@@ -420,7 +421,7 @@ impl DoorsConfiguration {
     pub fn build_kernel_disassembly(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdisassemble\n");
-        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str("\tDEPENDS kernel buildscript\n");
         cmakelists.push_str("\tBYPRODUCTS ../disassemble.txt\n");
         cmakelists.push_str(&format!("\tCOMMAND cargo objdump --release --target {} --bin kernel -q -- -d > ../disassemble.txt\n", target));
         cmakelists.push_str(")\n");
@@ -520,7 +521,7 @@ fn add_to_cmakelist(cmakelist: &mut String, f: &std::path::PathBuf, target: &str
     config.os.make_cmake_rules(cmakelist, target);
 }
 
-fn build_cmake_files(_args: &Args, config: MasterConfig) {
+fn build_cmake_files(args: &Args, config: MasterConfig) {
     use std::io::Write;
     let p = std::path::PathBuf::from("./configs");
     let read = p.as_path().read_dir().unwrap();
@@ -535,6 +536,20 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("\tfmt\n");
     cmakelist.push_str("\tDEPENDS kernel_fmt\n");
     cmakelist.push_str("\tCOMMAND cargo fmt\n");
+    cmakelist.push_str(")\n");
+
+    cmakelist.push_str("add_custom_target(\n");
+    cmakelist.push_str("\tbuildscript\n");
+    cmakelist.push_str(&format!(
+        "\tDEPENDS {} {}\n",
+        args.name.as_ref().unwrap().to_str().unwrap(),
+        if let Ok(true) = std::fs::exists("./local_config.toml") { "./local_config.toml" } else { "" },
+    ));
+    cmakelist.push_str("\tBYPRODUCTS CMakeLists.txt kernel/CMakeLists.txt\n");
+    cmakelist.push_str(&format!(
+        "\tCOMMAND cargo run --release --bin builder -- --name {}\n",
+        args.name.as_ref().unwrap().to_str().unwrap()
+    ));
     cmakelist.push_str(")\n");
 
     kernel_cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
