@@ -8,7 +8,7 @@ impl super::EmulationTrait for VirtualBox {
     fn build_config(
         &self,
         disk: &crate::Disk,
-        _common: &super::EmulatorConfig,
+        common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
         s: std::path::PathBuf,
     ) {
@@ -22,7 +22,7 @@ impl super::EmulationTrait for VirtualBox {
                 "\"Doors\"",
                 "--register",
                 "--basefolder",
-                "./",
+                std::env::current_dir().unwrap().to_str().unwrap(),
             ])
             .spawn()
             .unwrap()
@@ -61,31 +61,46 @@ impl super::EmulationTrait for VirtualBox {
             .wait()
             .unwrap();
 
-        std::process::Command::new(local.vboxmanage_path())
-            .args([
-                "modifyvm",
-                "doors-os-64",
-                "--nic1",
-                "hostonly",
-                "--hostonlyadapter1",
-                "vboxnet0",
-            ])
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
-        std::process::Command::new(local.vboxmanage_path())
-            .args(["modifyvm", "doors-os-64", "--macaddress1", "525400123456"])
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
-        std::process::Command::new(local.vboxmanage_path())
-            .args(["modifyvm", "doors-os-64", "--nictype1", "82540EM"])
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
+        for (i, nid) in common.net_devs.iter().enumerate() {
+            let net_name = &local.net_devs[*nid];
+            let nicnum = i + 1;
+            std::process::Command::new(local.vboxmanage_path())
+                .args([
+                    "modifyvm",
+                    "doors-os-64",
+                    &format!("--nic{}", nicnum),
+                    "hostonly",
+                    &format!("--hostonlyadapter{}", nicnum),
+                    net_name,
+                ])
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+            std::process::Command::new(local.vboxmanage_path())
+                .args([
+                    "modifyvm",
+                    "doors-os-64",
+                    &format!("--macaddress{}", nicnum),
+                    "525400123456",
+                ])
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+            std::process::Command::new(local.vboxmanage_path())
+                .args([
+                    "modifyvm",
+                    "doors-os-64",
+                    &format!("--nictype{}", nicnum),
+                    "82540EM",
+                ])
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+        }
+
         match disk {
             super::Disk::Cd(p) => {
                 std::process::Command::new(local.vboxmanage_path())
