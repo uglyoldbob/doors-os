@@ -2,10 +2,14 @@
 
 use core::num::NonZero;
 
+use alloc::collections::btree_map::BTreeMap;
 use gdbstub::{
     stub::MultiThreadStopReason,
     target::{
-        ext::base::multithread::{MultiThreadBase, MultiThreadResume},
+        ext::{
+            base::multithread::{MultiThreadBase, MultiThreadResume},
+            breakpoints::SwBreakpoint,
+        },
         TargetError,
     },
 };
@@ -16,7 +20,28 @@ use crate::{
 };
 
 /// A target for the gdbstub
-struct DoorsTarget {}
+struct DoorsTarget {
+    /// Software breakpoints
+    soft_breaks: BTreeMap<usize, u8>,
+}
+
+impl DoorsTarget {
+    /// Construct a new self
+    pub fn new() -> Self {
+        Self {
+            soft_breaks: BTreeMap::new(),
+        }
+    }
+}
+
+impl Drop for DoorsTarget {
+    fn drop(&mut self) {
+        for (address, byte) in &self.soft_breaks {
+            let a: &mut u8 = &mut unsafe { *(*address as *mut u8) };
+            *a = *byte;
+        }
+    }
+}
 
 #[cfg(target_arch = "x86_64")]
 impl gdbstub::target::Target for DoorsTarget {
@@ -27,8 +52,10 @@ impl gdbstub::target::Target for DoorsTarget {
         gdbstub::target::ext::base::BaseOps::MultiThread(self)
     }
 
-    fn guard_rail_implicit_sw_breakpoints(&self) -> bool {
-        true
+    fn support_breakpoints(
+        &mut self,
+    ) -> Option<gdbstub::target::ext::breakpoints::BreakpointsOps<'_, Self>> {
+        Some(self)
     }
 }
 
@@ -50,37 +77,70 @@ impl gdbstub::target::ext::breakpoints::Breakpoints for DoorsTarget {
     fn support_hw_breakpoint(
         &mut self,
     ) -> Option<gdbstub::target::ext::breakpoints::HwBreakpointOps<'_, Self>> {
-        todo!()
+        Some(self)
     }
 
     fn support_hw_watchpoint(
         &mut self,
     ) -> Option<gdbstub::target::ext::breakpoints::HwWatchpointOps<'_, Self>> {
-        todo!()
+        None
     }
 
     fn support_sw_breakpoint(
         &mut self,
     ) -> Option<gdbstub::target::ext::breakpoints::SwBreakpointOps<'_, Self>> {
-        todo!()
+        Some(self)
+    }
+}
+
+impl gdbstub::target::ext::breakpoints::SwBreakpoint for DoorsTarget {
+    fn add_sw_breakpoint(
+        &mut self,
+        addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
+        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+    ) -> gdbstub::target::TargetResult<bool, Self> {
+        use crate::kernel::SystemTrait;
+        if let Some(b_byte) = crate::SYSTEM.read().breakpoint() {
+            let a: &mut u8 = &mut unsafe { *(addr as *mut u8) };
+            let old_byte = *a;
+            *a = b_byte;
+            self.soft_breaks.insert(addr as usize, old_byte);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn remove_sw_breakpoint(
+        &mut self,
+        addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
+        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+    ) -> gdbstub::target::TargetResult<bool, Self> {
+        if let Some((address, instruction_byte)) = self.soft_breaks.remove_entry(&(addr as usize)) {
+            let a: &mut u8 = &mut unsafe { *(address as *mut u8) };
+            *a = instruction_byte;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 
 impl gdbstub::target::ext::breakpoints::HwBreakpoint for DoorsTarget {
     fn add_hw_breakpoint(
         &mut self,
-        _addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
-        _kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+        addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
+        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
     ) -> gdbstub::target::TargetResult<bool, Self> {
-        todo!()
+        self.add_sw_breakpoint(addr, kind)
     }
 
     fn remove_hw_breakpoint(
         &mut self,
-        _addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
-        _kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+        addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
+        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
     ) -> gdbstub::target::TargetResult<bool, Self> {
-        todo!()
+        self.remove_sw_breakpoint(addr, kind)
     }
 }
 
@@ -285,7 +345,14 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
             <Self::Connection as gdbstub::conn::Connection>::Error,
         >,
     > {
-        loop {}
+        loop {
+            if let Some(b) = conn.try_read() {
+                return Ok(gdbstub::stub::run_blocking::Event::IncomingData(b));
+            }
+            for _ in 0..1000 {
+                x86_64::instructions::nop();
+            }
+        }
     }
 
     fn on_interrupt(
@@ -354,7 +421,7 @@ impl gdbstub::conn::ConnectionExt for OwnedDevice<Serial> {
 
 /// synchonously run the gdb stub over a serial port
 pub fn sync_run() {
-    let mut target = DoorsTarget {};
+    let mut target = DoorsTarget::new();
     loop {
         let c = crate::kernel::SERIAL.take_device(1).unwrap();
         let gdbstub = gdbstub::stub::GdbStub::new(c);
@@ -365,7 +432,7 @@ pub fn sync_run() {
 /// asynchonously run the gdb stub over a serial port
 pub async fn run() {
     crate::VGA.print_str_async("Starting gdb stub\r\n").await;
-    let mut target = DoorsTarget {};
+    let mut target = DoorsTarget::new();
     loop {
         crate::VGA
             .print_str_async("Starting a gdbstub instance\r\n")

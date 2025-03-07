@@ -514,7 +514,6 @@ impl MasterConfig {
     }
 }
 
-
 /// Build the cmakelists files from the configuration and the program arguments
 fn build_cmake_files(args: &Args, config: MasterConfig) {
     use std::io::Write;
@@ -617,7 +616,10 @@ fn write_vscode_configs(config: &MasterConfig) {
         let mut contents = String::new();
         contents.push_str("{\n");
         contents.push_str("\t\"rust-analyzer.cargo.allTargets\": false,\n");
-        contents.push_str(&format!("\t\"rust-analyzer.cargo.target\": \"{}\",\n", config.os.kernel_machine));
+        contents.push_str(&format!(
+            "\t\"rust-analyzer.cargo.target\": \"{}\",\n",
+            config.os.kernel_machine
+        ));
         contents.push_str("}\n");
         configf
             .write_all(contents.as_bytes())

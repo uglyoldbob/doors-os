@@ -29,6 +29,8 @@ pub trait SerialTrait {
     fn sync_flush(&self);
     /// Read a byte synchronously
     fn sync_read_byte(&self) -> u8;
+    /// Try to read a byte, returning none if no data is immediately available
+    fn try_read(&self) -> Option<u8>;
     /// Transmit some data asynchronously. Data may not be fully sent until flush is performed.
     async fn transmit(&self, data: &[u8]);
     /// Transmit some str data asynchronously. Data may not be fully sent until flush is performed.

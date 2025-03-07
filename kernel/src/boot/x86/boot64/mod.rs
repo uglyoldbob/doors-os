@@ -106,6 +106,26 @@ pub extern "C" fn divide_by_zero() {
 
 doors_macros::todo_item!("Make a macro to build interrupt handlers on x86");
 
+/// the debug exception handler
+extern "x86-interrupt" fn debug_exception(_isf: InterruptStackFrame) {
+    let handle = super::EXCEPTION_HANDLERS[1].sync_lock();
+    if let Some(h) = handle.as_ref() {
+        h();
+    } else {
+        loop {}
+    }
+}
+
+/// the breakpoint exception handler
+extern "x86-interrupt" fn breakpoint_exception(_isf: InterruptStackFrame) {
+    let handle = super::EXCEPTION_HANDLERS[3].sync_lock();
+    if let Some(h) = handle.as_ref() {
+        h();
+    } else {
+        loop {}
+    }
+}
+
 /// The ending portion of an irq handler
 pub fn finish_irq(irqnum: u8) {
     let p = super::INTERRUPT_CONTROLLER.read();
@@ -643,6 +663,20 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         irqs.replace(a);
     }
 
+    fn breakpoint(&self) -> Option<u8> {
+        Some(0xcc)
+    }
+
+    fn register_exception_handler<F: Fn() -> () + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        exception: u8,
+        handler: F,
+    ) {
+        let a = Box::new(handler);
+        let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
+        irqs.replace(a);
+    }
+
     fn disable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
             let p = super::INTERRUPT_CONTROLLER.read();
@@ -650,6 +684,10 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
                 p.disable_irq(irq)
             }
         });
+    }
+
+    fn nop(&self) {
+        x86_64::instructions::nop();
     }
 
     fn idle(&self) {
@@ -983,6 +1021,12 @@ pub extern "C" fn start64() -> ! {
                 invalid_opcode as *const (),
             ));
             idt.invalid_opcode = entry;
+
+            let mut entry = x86_64::structures::idt::Entry::missing();
+            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                breakpoint_exception as *const (),
+            ));
+            idt.breakpoint = entry;
             idt[0x20].set_handler_fn(irq0);
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);

@@ -258,8 +258,34 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_read_byte(&self) -> u8 {
-        while !self.0.can_receive() {}
-        self.0.receive().unwrap()
+        if !self.0.interrupts.load(Ordering::Relaxed) {
+            while !self.0.can_receive() {}
+            self.0.receive().unwrap()
+        } else {
+            while self.0.rx_queue.access().is_empty() {
+                for _ in 0..1000 {
+                    x86_64::instructions::nop();
+                }
+            }
+            self.0.rx_queue.access().pop().unwrap()
+        }
+    }
+
+    fn try_read(&self) -> Option<u8> {
+        if !self.0.interrupts.load(Ordering::Relaxed) {
+            if self.0.can_receive() {
+                self.0.receive()
+            } else {
+                None
+            }
+        } else {
+            let r = self.0.rx_queue.access();
+            if !r.is_empty() {
+                r.pop()
+            } else {
+                None
+            }
+        }
     }
 
     fn read_stream(&self) -> impl futures::Stream<Item = u8> {

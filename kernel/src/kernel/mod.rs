@@ -294,10 +294,16 @@ pub trait SystemTrait {
         self.enable_interrupts();
         r
     }
-    /// Register a serial port handler
+    /// Register an irq handler
     fn register_irq_handler<F: Fn() -> () + Send + Sync + crate::Interrupt + 'static>(
         &self,
         irq: u8,
+        handler: F,
+    );
+    /// Register an exception handler
+    fn register_exception_handler<F: Fn() -> () + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        exception: u8,
         handler: F,
     );
     /// Enable IRQ
@@ -314,6 +320,10 @@ pub trait SystemTrait {
     async fn acpi_debug(&self);
     /// Get the details for the boot/main stack of the kernel. Return is in the form of start address and size in bytes
     fn main_stack(&self) -> (u64, u64);
+    /// The the single byte opcode (if it exists) for a breakpoint instruction
+    fn breakpoint(&self) -> Option<u8>;
+    /// A nop instruction
+    fn nop(&self);
 }
 
 /// This struct implements the SystemTrait
@@ -365,4 +375,17 @@ impl SystemTrait for NullSystem {
     fn main_stack(&self) -> (u64, u64) {
         (0, 0)
     }
+
+    fn breakpoint(&self) -> Option<u8> {
+        None
+    }
+
+    fn register_exception_handler<F: Fn() -> () + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        _exception: u8,
+        _handler: F,
+    ) {
+    }
+
+    fn nop(&self) {}
 }
