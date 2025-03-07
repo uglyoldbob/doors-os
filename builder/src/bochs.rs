@@ -162,7 +162,7 @@ impl super::EmulationTrait for Bochs {
         cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} -f bochs_config.txt -q\n",
-            local.bochs_path().to_str().unwrap()
+            super::LocalConfiguration::escape_path(&local.bochs_path())
         ));
         cmakelists.push_str(")\n");
     }

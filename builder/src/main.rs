@@ -208,15 +208,15 @@ impl DiskBuilderTrait for CdConfiguration {
 
         if cfg!(target_os = "windows") {
             cmakelists.push_str(&format!(
-                "\tCOMMAND {} createiso --importiso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
-                local.vboximg_path().to_str().unwrap(),
-                common.output.to_str().unwrap(),
+                "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
+                LocalConfiguration::escape_path(&local.vboximg_path()),
+                LocalConfiguration::escape_path(&common.output),
                 common.disk_label
             ));
         } else if cfg!(target_os = "linux") {
             cmakelists.push_str(&format!(
                 "\tCOMMAND grub-mkrescue -o {} build/iso -- -volid \"{}\"\n",
-                common.output.to_str().unwrap(),
+                LocalConfiguration::escape_path(&common.output),
                 common.disk_label
             ));
         } else {
@@ -271,6 +271,11 @@ pub struct LocalConfiguration {
 }
 
 impl LocalConfiguration {
+    fn escape_path(path: &std::path::PathBuf) -> String {
+        let a = path.to_str().unwrap().to_string();
+        a.replace("\\", "\\\\").replace(" ", "\\ ")
+    }
+
     #[cfg(target_os = "linux")]
     /// Get the path for the bochs binary
     pub fn bochs_path(&self) -> std::path::PathBuf {

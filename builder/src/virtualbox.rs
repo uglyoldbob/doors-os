@@ -137,7 +137,7 @@ impl super::EmulationTrait for VirtualBox {
         cmakelists.push_str("\trun\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} --startvm doors-os-64\n",
-            local.virtualbox_path().to_str().unwrap()
+            super::LocalConfiguration::escape_path(&local.virtualbox_path()),
         ));
         cmakelists.push_str(")\n");
 
@@ -145,7 +145,7 @@ impl super::EmulationTrait for VirtualBox {
         cmakelists.push_str("\tdebug\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} --startvm doors-os-64 --dbg --debug\n",
-            local.virtualbox_path().to_str().unwrap()
+            super::LocalConfiguration::escape_path(&local.virtualbox_path()),
         ));
         cmakelists.push_str(")\n");
     }

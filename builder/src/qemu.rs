@@ -7,7 +7,7 @@ pub struct Qemu {}
 impl Qemu {
     fn get_common_run(&self, local: &super::LocalConfiguration) -> String {
         let mut qemu = String::new();
-        qemu.push_str(&format!("{} ", local.qemu_path().to_str().unwrap()));
+        qemu.push_str(&format!("{} ", super::LocalConfiguration::escape_path(&local.qemu_path())));
         qemu.push_str("-cdrom cd64.iso -m 8 -serial file:serial.log -serial tcp::1234,server,nowait,nodelay -netdev user,id=u1 -device e1000,netdev=u1");
         qemu
     }
@@ -61,7 +61,7 @@ impl super::EmulationTrait for Qemu {
         cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} -x gdb_config.gdb\n",
-            local.gdb_path().to_str().unwrap()
+            super::LocalConfiguration::escape_path(&local.gdb_path())
         ));
         cmakelists.push_str(")\n");
     }
