@@ -611,7 +611,11 @@ fn write_vscode_configs(config: &MasterConfig) {
     print!("Writing vscode config...");
     std::io::stdout().flush().unwrap();
     {
-        let mut configf = std::fs::File::create("./kernel/.vscode/settings.json")
+        let p = std::path::PathBuf::from("./kernel/.vscode/settings.json");
+        let mut p2 = p.clone();
+        p2.pop();
+        let _ = std::fs::create_dir_all(p2);
+        let mut configf = std::fs::File::create(p)
             .expect("Failed to create kernel configuration");
         let mut contents = String::new();
         contents.push_str("{\n");

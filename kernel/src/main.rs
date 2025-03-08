@@ -157,6 +157,24 @@ fn kernel_testing_thread() {
     }
 }
 
+fn serial_test() {
+    crate::VGA
+        .print_str("Waiting for data from second serial port\r\n");
+    let ser = crate::kernel::SERIAL.take_device(1).unwrap();
+    use crate::modules::serial::SerialTrait;
+    for i in 0..1000 {
+        crate::VGA
+            .print_str("Sending data to second serial port\r\n");
+        ser.sync_transmit_str(&alloc::format!("Testing {}\r\n", i));
+    }
+    loop {
+        let b = ser.sync_read_byte();
+        crate::VGA
+            .print_str(&alloc::format!("Received a {} from serial1\r\n", b));
+        ser.sync_transmit_str(&alloc::format!("Received a {}\r\n", b as char));
+    }
+}
+
 fn main() -> ! {
     {
         {
@@ -220,7 +238,11 @@ fn main() -> ! {
                 .unwrap();
         }
         if !doors_macros::config_check_equals!(gdbstub, "true") {
-            executor
+            if true {
+                scheduler::SCHEDULER.read().as_ref().unwrap().add_task(scheduler::Task::new(serial_test));
+            }
+            else {
+                executor
                 .spawn_closure(async || {
                     crate::VGA
                         .print_str_async("Waiting for data from second serial port\r\n")
@@ -244,6 +266,7 @@ fn main() -> ! {
                     }
                 })
                 .unwrap();
+            }
         }
         executor
             .spawn_closure(async || {

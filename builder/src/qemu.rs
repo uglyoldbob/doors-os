@@ -34,7 +34,7 @@ impl super::EmulationTrait for Qemu {
         config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
         config.push_str("define exit\n\tmonitor quit\n\tquit\nend\n");
         config.push_str("disp /i $pc\n");
-        config.push_str(&format!("target remote | {}\n", qemu));
+        config.push_str("target remote :1234\n");
 
         let f = "./gdb_config.gdb";
         let mut configf =
@@ -47,7 +47,7 @@ impl super::EmulationTrait for Qemu {
 
         config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
         config.push_str("disp /i $pc\n");
-        config.push_str("target remote :1234 \n");
+        config.push_str("target remote :12345 \n");
 
         let f = "./gdb_stub.gdb";
         let mut configf = std::fs::File::create(f).expect("Failed to create gdb configuration");
@@ -72,8 +72,18 @@ impl super::EmulationTrait for Qemu {
         cmakelists.push_str(&qemu);
         cmakelists.push_str("\n)\n");
 
+        let mut qemu = String::new();
+        qemu.push_str("\tCOMMAND ");
+        qemu.push_str(&self.get_common_run(local));
+        qemu.push_str(" -s -S");
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdebug\n");
+        cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
+        cmakelists.push_str(&qemu);
+        cmakelists.push_str("\n)\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tdebug2\n");
         cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND {} -x gdb_config.gdb\n",

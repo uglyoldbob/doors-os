@@ -147,7 +147,7 @@ pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
 
 /// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
-    let handle = super::IRQ_HANDLERS[4].sync_lock();
+    let handle = super::IRQ_HANDLERS[3].sync_lock();
     if let Some(h2) = handle.as_ref() {
         h2();
     }

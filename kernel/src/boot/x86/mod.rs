@@ -124,6 +124,7 @@ impl Pic {
 
         pic1_data.port_write(mask1);
         pic2_data.port_write(mask2);
+        self.disable();
         self.enable_irq(2); //enable the interrupt for the second pic
     }
 }
@@ -355,7 +356,7 @@ fn setup_serial() {
             ));
             let com = crate::modules::serial::Serial::PcComPort(com);
             use crate::modules::serial::SerialTrait;
-            for i in 0..100 {
+            for i in 0..5 {
                 com.sync_transmit_str(&alloc::format!("Testing the serial port {}\r\n", i));
             }
             serials.register_serial(com);
@@ -377,8 +378,9 @@ fn serial_interrupts() {
         );
         crate::common::VGA.sync_replace(Some(t));
     }
-    if !doors_macros::config_check_equals!(gdbstub, "true") {
+    if true {
         if let Some(s) = crate::kernel::SERIAL.take_device(1) {
+            s.sync_transmit_str("About to enable async mode for serial port 1\r\n");
             s.enable_async(sys.clone()).unwrap();
         }
     }

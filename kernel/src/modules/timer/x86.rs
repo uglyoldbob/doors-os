@@ -17,11 +17,15 @@ pub struct PitInner {
 impl PitInner {
     /// Attempt to construct a new self
     fn new() -> Option<Self> {
-        Some(Self {
+        let mut s = Self {
             chan0: IOPORTS.get_port(0x40)?,
             chan2: IOPORTS.get_port(0x42)?,
             command: IOPORTS.get_port(0x43)?,
-        })
+        };
+        s.command.port_write(0);
+        s.chan0.port_write(255);
+        s.chan0.port_write(255);
+        Some(s)
     }
 }
 
@@ -61,7 +65,7 @@ pub struct Pit {
 impl Pit {
     /// Construct a new self
     pub fn new() -> Self {
-        let m = Self {
+        let mut m = Self {
             i: Some(PitInner::new().unwrap()),
         };
         m

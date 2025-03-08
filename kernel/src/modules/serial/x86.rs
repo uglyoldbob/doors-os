@@ -69,7 +69,7 @@ impl X86SerialPort {
         let testval = 0x55u8;
         ports.port(0).port_write(testval);
 
-        let com = common::IrqGuardedInner::new(irq, true, true, |_| {}, |_| {});
+        let com = common::IrqGuardedInner::new(irq, true, false, |_| {}, |_| {});
 
         let i = Arc::new(X86SerialPortInternal {
             base: IrqGuardedSimple::new(ports, &com),
@@ -125,6 +125,7 @@ impl X86SerialPort {
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
             let stat: u8 = s.base.interrupt_access().port(2).port_read();
+            let lsr : u8 = s.base.interrupt_access().port(5).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
                     0 => {
@@ -162,6 +163,10 @@ impl X86SerialPort {
     fn enable_rx_interrupt(&self) {
         if self.0.interrupts.load(Ordering::Relaxed) {
             let p = self.0.base.access();
+            let _: u8 = p.port(5).port_read();
+            let _: u8 = p.port(0).port_read();
+            let _: u8 = p.port(2).port_read();
+            let _: u8 = p.port(6).port_read();
             let mut ie = p.port(1);
             let v: u8 = ie.port_read();
             ie.port_write(v | 1);
@@ -170,7 +175,11 @@ impl X86SerialPort {
 
     /// synchronously send a byte
     fn sync_send_byte(&self, c: u8) {
-        while !self.can_send() {}
+        while !self.can_send() {
+            for _ in 0..100000 {
+                x86_64::instructions::nop();
+            }
+        }
         self.force_send_byte(c);
     }
 
@@ -279,12 +288,7 @@ impl super::SerialTrait for X86SerialPort {
                 None
             }
         } else {
-            let r = self.0.rx_queue.access();
-            if !r.is_empty() {
-                r.pop()
-            } else {
-                None
-            }
+            self.0.rx_queue.access().pop()
         }
     }
 
@@ -320,6 +324,8 @@ impl super::SerialTrait for X86SerialPort {
                 .port_write(0x03u8 | 8u8);
             self.0.interrupts.store(true, Ordering::Relaxed);
         };
+        let _stat: u8 = self.0.base.interrupt_access().port(2).port_read();
+        let _stat: u8 = self.0.base.interrupt_access().port(5).port_read();
         self.enable_rx_interrupt();
         sys.enable_irq(irqnum);
         Ok(())
