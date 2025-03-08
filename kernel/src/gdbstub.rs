@@ -2,7 +2,7 @@
 
 use core::num::NonZero;
 
-use alloc::collections::btree_map::BTreeMap;
+use alloc::{collections::btree_map::BTreeMap, string::ToString};
 use gdbstub::{
     stub::MultiThreadStopReason,
     target::{
@@ -101,9 +101,9 @@ impl gdbstub::target::ext::breakpoints::SwBreakpoint for DoorsTarget {
     ) -> gdbstub::target::TargetResult<bool, Self> {
         use crate::kernel::SystemTrait;
         if let Some(b_byte) = crate::SYSTEM.read().breakpoint() {
-            let a: &mut u8 = &mut unsafe { *(addr as *mut u8) };
+            let a: &u8 = &unsafe { *(addr as *const u8) };
             let old_byte = *a;
-            *a = b_byte;
+            unsafe { *(addr as *mut u8) = b_byte };
             self.soft_breaks.insert(addr as usize, old_byte);
             Ok(true)
         } else {
