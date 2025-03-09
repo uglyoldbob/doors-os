@@ -57,7 +57,7 @@ fn main() {
                             let p = e.next_packet();
                             if let Ok(p) = p {
                                 println!("Got packet {:x?}", p);
-                                mac_address.copy_from_slice(&p.data[6..12]);
+                                //mac_address.copy_from_slice(&p.data[6..12]);
                                 packets_received += 1;
                             }
                         }

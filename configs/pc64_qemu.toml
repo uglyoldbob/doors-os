@@ -4,11 +4,11 @@ disassembly = true
 
 [kernel_config]
 machine_name = "pc64"
-acpi = false
-gdbstub = true
+acpi = true
+gdbstub = false
 mm_debug = false
 test = false
-network = false
+network = true
 
 [disk.unique.Cd]
 kernel_path = "./build/iso/boot/kernel"

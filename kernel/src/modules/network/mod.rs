@@ -2,7 +2,7 @@
 
 use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String, vec::Vec};
 
-use crate::{kernel::SystemTrait, AsyncLocked, AsyncLockedArc, IrqGuardedSimple, LockedArc};
+use crate::{kernel::SystemTrait, Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, IrqGuardedSimple, Locked, LockedArc};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -201,53 +201,52 @@ impl RawEthernetPacket {
     }
 }
 
-lazy_static::lazy_static! {
-    /// The list of received packets
-    pub static ref ETHERNET_PACKETS_RECEIVED: conquer_once::spin::OnceCell<crossbeam::queue::ArrayQueue<RawEthernetPacket>> =
-        conquer_once::spin::OnceCell::uninit();
+/// A structure to received packets from a network interface
+pub struct NetworkReceiver {
+    /// The list of packets received from the network card
+    packets: alloc::collections::vec_deque::VecDeque<RawEthernetPacket>,
 }
 
-/// Initialize data required for network operations
-pub fn network_init() {
-    ETHERNET_PACKETS_RECEIVED.init_once(|| crossbeam::queue::ArrayQueue::new(32));
+impl NetworkReceiver {
+    /// Construct a new self
+    fn new() -> Self {
+        Self {
+            packets: alloc::collections::vec_deque::VecDeque::new(),
+        }
+    }
+}
+
+lazy_static::lazy_static!{
+    /// The list of received packets
+    pub static ref ETHERNET_PACKETS_RECEIVED: AsyncLocked<Vec<Arc<IrqGuarded<NetworkReceiver>>>> = AsyncLocked::new(Vec::new());
+}
+
+/// Initialize data required for network operations, returning the index of the registered network packet receiver
+fn network_init(i: Arc<IrqGuarded<NetworkReceiver>>) {
+    let mut e = ETHERNET_PACKETS_RECEIVED.sync_lock();
+    e.push(i);
 }
 
 /// Temporary function to process received ethernet packets
 pub async fn process_packets_received() {
     loop {
-        if let Some(q) = ETHERNET_PACKETS_RECEIVED.get() {
-            crate::VGA.print_str_async("Waiting for a packet\r\n").await;
-            loop {
-                if crate::SYSTEM.read().disable_interrupts_for(|| q.is_empty()) {
-                    for _ in 0..1000000 {
-                        crate::nop();
-                    }
-                    crate::executor::AsyncTask::yield_now().await;
-                } else {
-                    break;
-                }
-            }
-            crate::VGA
-                .print_str_async("There is at least one packet\r\n")
-                .await;
-            let p = crate::SYSTEM.read().disable_interrupts_for(|| q.pop());
-            if let Some(p) = p {
-                let frame: EthernetFrame = (&p).into();
+        let mut e = ETHERNET_PACKETS_RECEIVED.lock().await;
+        let mut received_packet = false;
+        for ethernet in e.iter_mut() {
+            let mut ethernet = ethernet.access().await;
+            while let Some(packet) = ethernet.packets.pop_front() {
+                received_packet = true;
                 crate::VGA
-                    .print_str_async(&alloc::format!("Received packet: {:x?}\r\n", frame))
+                    .print_str_async(&alloc::format!("Received packet: {:x?}\r\n", packet))
                     .await;
-            } else {
+            }
+        }
+        drop(e);
+        if !received_packet {
+            for _ in 0..1000000 {
                 crate::executor::AsyncTask::yield_now().await;
             }
-        } else {
-            panic!();
         }
     }
 }
 
-/// Called from an interrupt context to process a received ethernet packet
-fn interrupt_process_received_packet(packet: RawEthernetPacket) {
-    if let Some(q) = ETHERNET_PACKETS_RECEIVED.get() {
-        let _ = q.push(packet);
-    }
-}

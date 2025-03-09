@@ -492,6 +492,8 @@ struct IntelPro1000DeviceInternal {
     up: AtomicBool,
     /// The rx buffers and the index for the current rx buffer
     rxbufs: crate::IrqGuarded<Option<(RxBuffers, u8)>>,
+    /// The packet receiver in the kernel
+    packet_receiver: Arc<crate::IrqGuarded<super::super::NetworkReceiver>>,
 }
 
 impl Arc<IntelPro1000DeviceInternal> {
@@ -524,7 +526,12 @@ impl IntelPro1000DeviceInternal {
             bar0,
             up,
             rxbufs: IrqGuarded::new(None, common),
+            packet_receiver: Arc::new(IrqGuarded::new(super::super::NetworkReceiver::new(), common)),
         }
+    }
+
+    pub fn register_network_receiver(&self) {
+        super::super::network_init(self.packet_receiver.clone());
     }
 }
 
@@ -1094,7 +1101,7 @@ impl IntelPro1000Device {
                     } else {
                         packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                     }
-                    super::super::interrupt_process_received_packet(packet);
+                    this.packet_receiver.interrupt_access().packets.push_back(packet);
                     let mut bar0 = this.bar0.interrupt_access();
                     let mut t = bar0.read(IntelPro1000Registers::RxDescTail as u16);
                     t = (t + 1) % buffer.bufs.len() as u32;
@@ -1256,6 +1263,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     model,
                     mac_address: MacAddress::default(),
                 };
+                d.internal.register_network_receiver();
                 f.set_bus_mastering(cs, bus, dev, true);
                 {
                     crate::VGA

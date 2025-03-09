@@ -167,12 +167,6 @@ fn serial_test() {
             .print_str("Sending data to second serial port\r\n");
         ser.sync_transmit_str(&alloc::format!("Testing {}\r\n", i));
     }
-    loop {
-        let b = ser.sync_read_byte();
-        crate::VGA
-            .print_str(&alloc::format!("Received a {} from serial1\r\n", b));
-        ser.sync_transmit_str(&alloc::format!("Received a {}\r\n", b as char));
-    }
 }
 
 fn main() -> ! {
@@ -201,7 +195,6 @@ fn main() -> ! {
                 .unwrap()
                 .timer_setup(main_stack.0, main_stack.1);
             crate::DEBUG_PRINT.store(true, core::sync::atomic::Ordering::SeqCst);
-            crate::modules::network::network_init();
         }
         if doors_macros::config_check_equals!(test, "true") {
             scheduler::SCHEDULER
