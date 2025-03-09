@@ -122,18 +122,47 @@ impl super::EmulationTrait for Bochs {
             }
             #[cfg(target_os = "windows")]
             {
-                config.push_str(&format!(
-                    "e1000: enabled=1, mac=52:54:00:12:34:56, ethmod=win32, ethdev={}\n",
-                    net_name
-                ));
+                config.push_str("e1000: enabled=1, mac=52:54:00:12:34:56, ethmod=slirp\n");
             }
         }
 
-        config.push_str("com1: enabled=1, mode=file, dev=serial.log\n");
-        config.push_str("com2: enabled=1, mode=file, dev=serial2.log\n");
+        for (i, serial_id) in common.serial_ports.iter().enumerate() {
+            let i = i + 1;
+            let port = &local.serial_ports[*serial_id];
+            match port {
+                super::SerialConfig::File(f) => {
+                    config.push_str(&format!("com{}: enabled=1, mode=file, dev={}\n", i, f.to_str().unwrap()));
+                }
+                super::SerialConfig::TcpServer(port) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        config.push_str(&format!("com{}: enabled=1, mode=socket-server, dev=localhost:{}\n", i, port));
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        panic!("Tcp server serial port not supported on bochs");
+                    }
+                }
+                super::SerialConfig::TcpClient(port) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        config.push_str(&format!("com{}: enabled=1, mode=socket-client, dev=localhost:{}\n", i, port));
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        panic!("Tcp server serial port not supported on bochs");
+                    }
+                }
+                super::SerialConfig::Real(p) => {
+                    config.push_str(&format!("com{}: enabled=1, mode=raw, dev={}\n", i, p));
+                }
+                super::SerialConfig::Nothing => {}
+            }
+        }
+
         config.push_str("debug_symbols: file=./symbols_bochs\n");
         config.push_str("magic_break: enabled=1\n");
-        config.push_str("#debug: pic=report\n");
+        config.push_str("#debug: action=ignore, e1000a=report\n");
         match disk {
             crate::Disk::Cd(p) => {
                 config.push_str(&format!(

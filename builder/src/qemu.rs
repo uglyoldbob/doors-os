@@ -5,13 +5,32 @@
 pub struct Qemu {}
 
 impl Qemu {
-    fn get_common_run(&self, local: &super::LocalConfiguration) -> String {
+    fn get_common_run(&self, common: &super::EmulatorConfig, local: &super::LocalConfiguration) -> String {
         let mut qemu = String::new();
         qemu.push_str(&format!(
             "{} ",
             super::LocalConfiguration::escape_path(&local.qemu_path())
         ));
-        qemu.push_str("-cdrom cd64.iso -m 8 -serial file:serial.log -serial tcp::1234,server,nowait,nodelay -netdev user,id=u1 -device e1000,netdev=u1");
+        qemu.push_str("-cdrom cd64.iso -m 8 ");
+        for serial_id in common.serial_ports.iter() {
+            let port = &local.serial_ports[*serial_id];
+            match port {
+                super::SerialConfig::File(f) => {
+                    qemu.push_str(&format!("-serial: file:{} ", f.to_str().unwrap()));
+                }
+                super::SerialConfig::TcpServer(port) => {
+                    qemu.push_str(&format!("-serial tcp:{},server,nowait,nodelay ", port));
+                }
+                super::SerialConfig::TcpClient(port) => {
+                    qemu.push_str(&format!("-serial tcp:{},nodelay ", port));
+                }
+                super::SerialConfig::Real(p) => {
+                    qemu.push_str(&format!("-serial {} ", p));
+                }
+                super::SerialConfig::Nothing => {}
+            }
+        }
+        qemu.push_str("-netdev user,id=u1 -device e1000,netdev=u1");
         qemu
     }
 }
@@ -28,7 +47,7 @@ impl super::EmulationTrait for Qemu {
         let mut config = String::new();
 
         let mut qemu = String::new();
-        qemu.push_str(&self.get_common_run(local));
+        qemu.push_str(&self.get_common_run(common, local));
         qemu.push_str(" -gdb stdio");
 
         config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
@@ -61,11 +80,11 @@ impl super::EmulationTrait for Qemu {
         cmakelists: &mut String,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
-        s: std::path::PathBuf,
+        _s: std::path::PathBuf,
     ) {
         let mut qemu = String::new();
         qemu.push_str("\tCOMMAND ");
-        qemu.push_str(&self.get_common_run(local));
+        qemu.push_str(&self.get_common_run(common, local));
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\trun\n");
         cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
@@ -74,7 +93,7 @@ impl super::EmulationTrait for Qemu {
 
         let mut qemu = String::new();
         qemu.push_str("\tCOMMAND ");
-        qemu.push_str(&self.get_common_run(local));
+        qemu.push_str(&self.get_common_run(common, local));
         qemu.push_str(" -s -S");
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdebug\n");

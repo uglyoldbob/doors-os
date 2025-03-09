@@ -94,6 +94,8 @@ impl Default for Emulation {
 struct EmulatorConfig {
     /// The nodes to use for network devices in the emulator
     pub net_devs: Vec<usize>,
+    /// The items to use for serial port emulation
+    pub serial_ports: Vec<usize>,
 }
 
 /// The holder of the emulation enum and the common configuration for all emulator types
@@ -252,7 +254,7 @@ pub struct DoorsConfiguration {
 }
 
 /// A configuration for a single local network card used by an emulator
-#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct NetworkConfig {
     /// The configuration string for bochs
     bochs: Option<String>,
@@ -260,6 +262,21 @@ pub struct NetworkConfig {
     qemu: Option<String>,
     /// The configuration string for virtualbox
     virtualbox: Option<String>,
+}
+
+/// A configuration for a single local network card used by an emulator
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub enum SerialConfig {
+    /// The serial port output goes to a file
+    File(std::path::PathBuf),
+    /// The serial port is made available by a tcp server on the specified port
+    TcpServer(u16),
+    /// The serial port is made available by a tcp client on the specified port
+    TcpClient(u16),
+    /// A physical serial port
+    Real(String),
+    /// A non-existant serial port that goes nowhere
+    Nothing,
 }
 
 /// Configuration specific to the build machine
@@ -279,6 +296,8 @@ pub struct LocalConfiguration {
     gdb_path: Option<std::path::PathBuf>,
     /// Network devices that can be used by emulators
     pub net_devs: Vec<NetworkConfig>,
+    /// Serial ports that can be used by emulators
+    pub serial_ports: Vec<SerialConfig>,
 }
 
 impl LocalConfiguration {
