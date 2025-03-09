@@ -125,7 +125,8 @@ impl X86SerialPort {
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
             let stat: u8 = s.base.interrupt_access().port(2).port_read();
-            let lsr : u8 = s.base.interrupt_access().port(5).port_read();
+            let _lsr : u8 = s.base.interrupt_access().port(5).port_read();
+            let _: u8 = s.base.interrupt_access().port(6).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
                     0 => {
@@ -163,8 +164,8 @@ impl X86SerialPort {
     fn enable_rx_interrupt(&self) {
         if self.0.interrupts.load(Ordering::Relaxed) {
             let p = self.0.base.access();
-            let _: u8 = p.port(5).port_read();
             let _: u8 = p.port(0).port_read();
+            let _: u8 = p.port(5).port_read();
             let _: u8 = p.port(2).port_read();
             let _: u8 = p.port(6).port_read();
             let mut ie = p.port(1);
