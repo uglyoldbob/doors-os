@@ -1,6 +1,7 @@
 //! This driver is for the intel pro/1000 networking hardware.
 //! TODO: Implement support notation for ipv6 (82544GC/EI does not support ipv6)
 
+use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
 
@@ -1095,13 +1096,13 @@ impl IntelPro1000Device {
             if let Some((buffer, index)) = a.as_ref() {
                 let rxbuf = &buffer.bufs[*index as usize];
                 if rxbuf.status.0 != 0 {
-                    let mut packet = super::super::RawEthernetPacket::new();
+                    let mut packet = super::super::RawEthernetPacket::new_box();
                     if !rxbuf.status.eop() {
                         doors_macros::todo!("Process a packet covering more than one descriptor");
                     } else {
                         packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                     }
-                    this.packet_receiver.interrupt_access().packets.push_back(packet);
+                    this.packet_receiver.interrupt_access().packets.push_back(*packet);
                     let mut bar0 = this.bar0.interrupt_access();
                     let mut t = bar0.read(IntelPro1000Registers::RxDescTail as u16);
                     t = (t + 1) % buffer.bufs.len() as u32;

@@ -186,11 +186,14 @@ impl core::fmt::Debug for RawEthernetPacket {
 }
 
 impl RawEthernetPacket {
-    /// Construct a new empty packet
-    fn new() -> Self {
-        Self {
-            data: [0; MAX_RX_PACKET_SIZE],
-            length: 0,
+    /// Construct a new boxed empty packet, without allocating any memory on the stack
+    fn new_box() -> alloc::boxed::Box<Self> {
+        unsafe {
+            let layout = alloc::alloc::Layout::new::<Self>();
+            let ptr = alloc::alloc::alloc(layout) as *mut Self;
+            (*ptr).length = 0;
+            let bx = alloc::boxed::Box::from_raw(ptr);
+            bx
         }
     }
 
