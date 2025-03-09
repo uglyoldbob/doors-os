@@ -2,7 +2,7 @@
 [workspace]
 
 members = [
-    "builder",
+    "builder", "kernel-stack-analysis",
     "network_test",
 ]
 exclude = [

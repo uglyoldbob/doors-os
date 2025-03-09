@@ -538,6 +538,12 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     use std::io::Write;
     let mut cmakelist = String::new();
     let mut kernel_cmakelist = String::new();
+
+    let kernel_binary_path = std::path::PathBuf::from(format!(
+        "./kernel/target/{}/release/kernel",
+        config.os.kernel_path
+    ));
+
     cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
     cmakelist.push_str("project(doors-os)\n");
     cmakelist.push_str("add_subdirectory(kernel)\n");
@@ -546,6 +552,12 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str("\tfmt\n");
     cmakelist.push_str("\tDEPENDS kernel_fmt\n");
     cmakelist.push_str("\tCOMMAND cargo fmt\n");
+    cmakelist.push_str(")\n");
+
+    cmakelist.push_str("add_custom_target(\n");
+    cmakelist.push_str("\tstack\n");
+    cmakelist.push_str("\tDEPENDS kernel\n");
+    cmakelist.push_str(&format!("\tCOMMAND cargo run --bin kernel-stack-analysis -- --name {}\n", kernel_binary_path.to_str().unwrap()));
     cmakelist.push_str(")\n");
 
     cmakelist.push_str("add_custom_target(\n");
@@ -589,10 +601,6 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
             &config.local,
         )
         .unwrap();
-    let kernel_binary_path = std::path::PathBuf::from(format!(
-        "./kernel/target/{}/release/kernel",
-        config.os.kernel_path
-    ));
     config.os.target.emulator.build_config(
         &disk,
         &config.os.target.config,
