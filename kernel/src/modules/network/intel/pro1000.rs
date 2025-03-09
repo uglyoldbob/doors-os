@@ -1082,7 +1082,7 @@ impl IntelPro1000Device {
     }
 
     /// The interrupt handler for the network card
-    fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>) {
+    fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>, packet: &mut Box<super::super::RawEthernetPacket>) {
         let reason = this
             .bar0
             .interrupt_access()
@@ -1096,13 +1096,12 @@ impl IntelPro1000Device {
             if let Some((buffer, index)) = a.as_ref() {
                 let rxbuf = &buffer.bufs[*index as usize];
                 if rxbuf.status.0 != 0 {
-                    let mut packet = super::super::RawEthernetPacket::new_box();
                     if !rxbuf.status.eop() {
                         doors_macros::todo!("Process a packet covering more than one descriptor");
                     } else {
                         packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                     }
-                    this.packet_receiver.interrupt_access().packets.push_back(*packet);
+                    this.packet_receiver.interrupt_access().packets.push_back(packet.clone());
                     let mut bar0 = this.bar0.interrupt_access();
                     let mut t = bar0.read(IntelPro1000Registers::RxDescTail as u16);
                     t = (t + 1) % buffer.bufs.len() as u32;
@@ -1135,7 +1134,8 @@ impl IntelPro1000Device {
         // Read the interrupt register to clear it
         let _ = bar0.read(IntelPro1000Registers::ICR as u16);
         let c = self.internal.clone();
-        sys.register_irq_handler(irqnum, move || IntelPro1000Device::handle_interrupt(&c));
+        let mut packet_buffer = super::super::RawEthernetPacket::new_box();
+        sys.register_irq_handler(irqnum, move || IntelPro1000Device::handle_interrupt(&c, &mut packet_buffer));
         drop(bar0);
         sys.enable_irq(irqnum);
     }

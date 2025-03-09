@@ -133,11 +133,11 @@ impl Pic {
 static INTERRUPT_CONTROLLER: RwLock<Option<Pic>> = RwLock::new(None);
 
 /// The irq handlers registered by the system
-static IRQ_HANDLERS: [Locked<Option<Box<dyn Fn() + Send + Sync>>>; 256] =
+static IRQ_HANDLERS: [Locked<Option<Box<dyn FnMut() + Send + Sync>>>; 256] =
     [const { Locked::new(None) }; 256];
 
 /// The exception handlers registered by the system
-static EXCEPTION_HANDLERS: [Locked<Option<Box<dyn Fn() + Send + Sync>>>; 32] =
+static EXCEPTION_HANDLERS: [Locked<Option<Box<dyn FnMut() + Send + Sync>>>; 32] =
     [const { Locked::new(None) }; 32];
 
 /// The entire list of io ports for an x86 machine

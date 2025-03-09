@@ -1,6 +1,6 @@
 //! Networking code for the kernel
 
-use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec};
 
 use crate::{kernel::SystemTrait, Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, IrqGuardedSimple, Locked, LockedArc};
 
@@ -141,6 +141,7 @@ pub struct EthernetFrame<'a> {
 }
 
 /// A raw ethernet packet received from a network card
+#[derive(Clone)]
 pub struct RawEthernetPacket {
     /// The contents of the packet
     data: [u8; MAX_RX_PACKET_SIZE],
@@ -207,7 +208,7 @@ impl RawEthernetPacket {
 /// A structure to received packets from a network interface
 pub struct NetworkReceiver {
     /// The list of packets received from the network card
-    packets: alloc::collections::vec_deque::VecDeque<RawEthernetPacket>,
+    packets: alloc::collections::vec_deque::VecDeque<Box<RawEthernetPacket>>,
 }
 
 impl NetworkReceiver {
