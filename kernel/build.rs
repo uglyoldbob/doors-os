@@ -46,26 +46,29 @@ fn write_font_source(name: String, table: Vec<FontData>) {
     let mut contents = String::new();
 
     contents.push_str("lazy_static! {\n");
-    contents.push_str("/// The generated fontmap\n");
-    contents.push_str("pub static ref FONTMAP: alloc::collections::BTreeMap<char, FontData> = alloc::collections::BTreeMap::from([");
 
-    let mtable: Vec<String> = table
-        .iter()
-        .map(|a| {
-            let d: Vec<String> = a.data.iter().map(|n| format!("{}", n)).collect();
-            format!(
-                "({:?}, FontData {{ width: {}, height: {}, left: {}, top: {}, data: &[{}],}})",
-                a.c,
-                a.width,
-                a.height,
-                a.left,
-                a.top,
-                d.join(", ")
-            )
-        })
-        .collect();
-    contents.push_str(&mtable.join(",\n"));
-    contents.push_str("]);\n");
+    contents.push_str("/// The generated fontmap\n");
+    contents.push_str("pub static ref FONTMAP: alloc::collections::BTreeMap<char, FontData> = {\n");
+    contents.push_str("\tlet mut t = alloc::collections::BTreeMap::new();\n");
+
+    let mtable = table.iter().map(|a| {
+        let d: Vec<String> = a.data.iter().map(|n| format!("{}", n)).collect();
+        let s = format!(
+            "FontData {{ width: {}, height: {}, left: {}, top: {}, data: &[{}],}}",
+            a.width,
+            a.height,
+            a.left,
+            a.top,
+            d.join(", ")
+        );
+        (a.c, s)
+    });
+    for e in mtable {
+        contents.push_str(&format!("\tt.insert({:?}, {});\n", e.0, e.1));
+    }
+
+    contents.push_str("t\n");
+    contents.push_str("};\n");
     contents.push_str("}\n");
 
     std::fs::write(dest_path, contents).unwrap();

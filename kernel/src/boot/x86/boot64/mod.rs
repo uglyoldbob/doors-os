@@ -18,6 +18,7 @@ use core::ptr::NonNull;
 use doors_macros::interrupt_64;
 use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
+use raw_cpuid::ProcessorCapacityAndFeatureInfo;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
 use spin::RwLock;
 use x86_64::structures::idt::InterruptStackFrame;
@@ -442,7 +443,7 @@ pub struct X86System<'a> {
     stack_start: u64,
 }
 
-impl LockedArc<Pin<Box<X86System<'_>>>> {
+impl LockedArc<X86System<'_>> {
     /// Perform processing necessary for acpi functionality
     #[doors_macros::config_check(acpi, "true")]
     fn handle_acpi(&self, aml: &mut aml::AmlContext) {
@@ -642,7 +643,7 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
     }
 }
 
-impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
+impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     fn enable_interrupts(&self) {
         x86_64::instructions::interrupts::enable();
     }
@@ -730,7 +731,11 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
         super::serial_interrupts();
         let aml_handler = Box::new(AmlHandler {});
-        let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
+        crate::VGA.print_str(&alloc::format!(
+            "Size of aml is 0x{:x}\r\n",
+            core::mem::size_of::<aml::AmlContext>()
+        ));
+        let mut aml = Box::new(aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All));
         aml.initialize_objects().unwrap();
 
         doors_macros::config_check_bool!(acpi, {
@@ -1060,8 +1065,7 @@ pub extern "C" fn start64() -> ! {
                 stack_start: (stack_end - stack_size) as u64,
             }
         };
-        let b = Box::new(s);
-        Box::into_pin(b)
+        s
     };
 
     unsafe {

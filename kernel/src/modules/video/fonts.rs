@@ -35,7 +35,7 @@ pub struct VariableWidthFont<P> {
 
 impl<P> VariableWidthFont<P> {
     /// Create a new variable width font
-    pub fn new(fdata: &'static alloc::collections::BTreeMap<char, super::FontData>) -> Self {
+    pub const fn new(fdata: &'static alloc::collections::BTreeMap<char, super::FontData>) -> Self {
         Self {
             fdata,
             _phantom: PhantomData,

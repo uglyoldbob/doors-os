@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use fonts::VariableWidthFont;
 use pixels::FullColor;
 
-use crate::{AsyncLockedArc, LockedArc};
+use crate::{kernel::OwnedDevice, AsyncLockedArc, LockedArc};
 
 use super::serial::SerialTrait;
 
@@ -582,41 +582,39 @@ pub fn hex_dump(data: &[u8], print_address: bool, print_ascii: bool) {
             break;
         }
     }
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "ADDRESS IS {:p}, size {:x}\r\n",
-        data,
-        data.len()
-    ));
-    for (i, b) in data.chunks(16).enumerate() {
-        if print_address {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "{:0>addr_len$x}: ",
-                i * 16
-            ));
-        }
-        for d in b {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{:02x} ", d));
-        }
-        if print_ascii {
-            for _ in b.len()..16 {
-                crate::VGA.print_str("   ");
+
+    crate::VGA.print_with_closure(|a| {
+        a.print_str(&alloc::format!(
+            "ADDRESS IS {:p}, size {:x}\r\n",
+            data,
+            data.len()
+        ));
+        for (i, b) in data.chunks(16).enumerate() {
+            if print_address {
+                a.print_str(&alloc::format!("{:0>addr_len$x}: ", i * 16));
             }
             for d in b {
-                let c = *d as char;
-                if c.is_ascii() {
-                    match *d {
-                        32..127 => {
-                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}", c))
+                a.print_str(&alloc::format!("{:02x} ", d));
+            }
+            if print_ascii {
+                for _ in b.len()..16 {
+                    a.print_str("   ");
+                }
+                for d in b {
+                    let c = *d as char;
+                    if c.is_ascii() {
+                        match *d {
+                            32..127 => a.print_str(&alloc::format!("{}", c)),
+                            _ => a.print_str("?"),
                         }
-                        _ => crate::VGA.print_str("?"),
+                    } else {
+                        a.print_str("?");
                     }
-                } else {
-                    crate::VGA.print_str("?");
                 }
             }
+            a.print_str("\r\n");
         }
-        crate::VGA.print_str("\r\n");
-    }
+    });
 }
 
 /// prints out a user friendly hex dump of the specified data
@@ -648,41 +646,40 @@ pub async fn hex_dump_async(data: &[u8], print_address: bool, print_ascii: bool)
         }
     }
     crate::VGA
-        .print_str_async(&alloc::format!(
-            "ADDRESS IS {:p}, size {:x}\r\n",
-            data,
-            data.len()
-        ))
-        .await;
-    for (i, b) in data.chunks(16).enumerate() {
-        if print_address {
-            crate::VGA
-                .print_str_async(&alloc::format!("{:0>addr_len$x}: ", i * 16))
-                .await;
-        }
-        for d in b {
-            crate::VGA
-                .print_str_async(&alloc::format!("{:02x} ", d))
-                .await;
-        }
-        if print_ascii {
-            for _ in b.len()..16 {
-                crate::VGA.print_str_async("   ").await;
-            }
-            for d in b {
-                let c = *d as char;
-                if c.is_ascii() {
-                    match *d {
-                        32..127 => crate::VGA.print_str_async(&alloc::format!("{}", c)).await,
-                        _ => crate::VGA.print_str_async("?").await,
-                    }
-                } else {
-                    crate::VGA.print_str_async("?").await;
+        .print_with_async_closure(async |a| {
+            a.print_str(&alloc::format!(
+                "ADDRESS IS {:p}, size {:x}\r\n",
+                data,
+                data.len()
+            ));
+            for (i, b) in data.chunks(16).enumerate() {
+                if print_address {
+                    a.print_str_async(&alloc::format!("{:0>addr_len$x}: ", i * 16))
+                        .await;
                 }
+                for d in b {
+                    a.print_str_async(&alloc::format!("{:02x} ", d)).await;
+                }
+                if print_ascii {
+                    for _ in b.len()..16 {
+                        a.print_str_async("   ").await;
+                    }
+                    for d in b {
+                        let c = *d as char;
+                        if c.is_ascii() {
+                            match *d {
+                                32..127 => a.print_str_async(&alloc::format!("{}", c)).await,
+                                _ => a.print_str_async("?").await,
+                            }
+                        } else {
+                            a.print_str_async("?").await;
+                        }
+                    }
+                }
+                a.print_str_async("\r\n").await;
             }
-        }
-        crate::VGA.print_str_async("\r\n").await;
-    }
+        })
+        .await;
 }
 
 /// prints out a user friendly hex dump of the specified data

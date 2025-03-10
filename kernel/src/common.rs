@@ -91,7 +91,7 @@ impl<T> Arc<T> {
     }
 }
 
-use crate::kernel::{self, SystemTrait};
+use crate::kernel::{self, OwnedDevice, SystemTrait};
 
 /// Get the address of the specified variable
 pub fn address<T>(v: &T) -> usize {
@@ -462,6 +462,30 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
         if let core::option::Option::Some(vga) = vga {
             use crate::modules::video::TextDisplayTrait;
             vga.stop_async();
+        }
+    }
+
+    /// Use this function for prints that should be together, but require multiple print calls
+    pub fn print_with_closure<F>(&self, a: F)
+    where
+        F: FnOnce(&mut OwnedDevice<crate::TextDisplay>) -> (),
+    {
+        let mut v = self.sync_lock();
+        let vga = v.as_mut();
+        if let Some(vga) = vga {
+            a(vga);
+        }
+    }
+
+    /// Use this function for prints that should be together, but require multiple print calls
+    pub async fn print_with_async_closure<F>(&self, a: F)
+    where
+        F: AsyncFnOnce(&mut OwnedDevice<crate::TextDisplay>) -> (),
+    {
+        let mut v = self.lock().await;
+        let vga = v.as_mut();
+        if let Some(vga) = vga {
+            a(vga).await;
         }
     }
 

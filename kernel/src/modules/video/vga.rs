@@ -1,5 +1,8 @@
 //! Kernel module for x86 vga text using video mode
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::boot::x86::IOPORTS;
 use crate::IoPortArray;
 use crate::IoReadWrite;
@@ -16,6 +19,8 @@ pub struct X86VgaMode {
     hw: &'static mut X86VgaHardware,
     /// The io ports for the vga hardware
     ports: IoPortArray<'static>,
+    /// The local copy of the font table
+    font_table: Vec<u8>,
 }
 
 /// The structure that adds a font to the x86 vga mode
@@ -163,13 +168,34 @@ pub const DEFAULT_PALETTE: &[u8] = &[
 ];
 
 impl X86VgaMode {
+    /// Copy the font data to local memory
+    fn copy_font_data(&mut self) {
+        let mut p: crate::IoPortRef<u16> = self.ports.port(0xe);
+        p.port_write(5);
+        p.port_write(0x0406);
+        let mut p2: crate::IoPortRef<u16> = self.ports.port(0x4);
+        p2.port_write(0x0402);
+        p2.port_write(0x0604);
+        for i in 0..=255 {
+            for j in 0..16 {
+                self.font_table[i * 16 + j] = self.hw.buf[i * 32 + j];
+            }
+        }
+        p2.port_write(0x0302);
+        p2.port_write(0x0204);
+        p.port_write(0x1005);
+        p.port_write(0x0e06);
+    }
+
     /// Gets an instance of the X86Vga.
     pub fn get(adr: usize) -> Option<Self> {
         let ports = IOPORTS.get_ports(0x3c0, 32).unwrap();
         let mut check = Self {
             hw: unsafe { &mut *(adr as *mut X86VgaHardware) },
             ports,
+            font_table: alloc::vec![0; 16*256],
         };
+        check.copy_font_data();
         let emulation_mode = check.read_misc_output_register() & 1;
         check.write_misc_output_register(0x63);
         check.write_sequencer_register(0, 3);
