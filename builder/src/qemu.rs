@@ -16,13 +16,13 @@ impl Qemu {
             let port = &local.serial_ports[*serial_id];
             match port {
                 super::SerialConfig::File(f) => {
-                    qemu.push_str(&format!("-serial: file:{} ", f.to_str().unwrap()));
+                    qemu.push_str(&format!("-serial file:{} ", f.to_str().unwrap()));
                 }
                 super::SerialConfig::TcpServer(port) => {
-                    qemu.push_str(&format!("-serial tcp:{},server,nowait,nodelay ", port));
+                    qemu.push_str(&format!("-serial tcp::{},server,nowait,nodelay ", port));
                 }
                 super::SerialConfig::TcpClient(port) => {
-                    qemu.push_str(&format!("-serial tcp:{},nodelay ", port));
+                    qemu.push_str(&format!("-serial tcp::{},nodelay ", port));
                 }
                 super::SerialConfig::Real(p) => {
                     qemu.push_str(&format!("-serial {} ", p));

@@ -7,7 +7,7 @@ use alloc::{
 #[cfg(target_arch = "x86")]
 use gdbstub_arch::x86::reg::X86CoreRegs;
 #[cfg(target_arch = "x86_64")]
-use gdbstub_arch::x86::reg::X86_64CoreRegs;
+use crate::gdbstub::x86::reg::X86_64CoreRegs;
 use spin::RwLock;
 
 #[cfg(target_arch = "x86_64")]

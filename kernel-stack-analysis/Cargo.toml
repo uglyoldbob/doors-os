@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.30", features = ["derive"] }
+rustc-demangle = "0.1.24"
 stack-sizes = "0.5.0"

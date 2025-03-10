@@ -202,7 +202,7 @@ impl super::EmulationTrait for VirtualBox {
 
         config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
         config.push_str("disp /i $pc\n");
-        config.push_str("target remote :1234\n");
+        config.push_str("target remote :12345\n");
 
         let f = "./gdb_config.gdb";
         let mut configf = std::fs::File::create(f).expect("Failed to create gdb configuration");

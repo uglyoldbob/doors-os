@@ -3,7 +3,7 @@
 use core::arch::naked_asm;
 
 use alloc::vec::Vec;
-use gdbstub_arch::x86::reg::X86_64CoreRegs;
+use crate::gdbstub::x86::reg::X86_64CoreRegs;
 
 /// The saved context for a thread
 #[derive(Debug)]
@@ -135,12 +135,12 @@ impl Context {
 
     /// Write registers into the stack for a thread context
     pub fn stack_write(&self, stack: &mut Stack, regs: &X86_64CoreRegs) {
-        let rsp = self.rsp + 0xa8;
+        let rsp = self.rsp + 0xd8;
         stack.update(rsp + 16, regs.regs[12]);
         stack.update(rsp + 24, regs.regs[13]);
         stack.update(rsp + 32, regs.regs[14]);
         stack.update(rsp + 40, regs.regs[15]);
-        let rsp = self.rsp + 0xa8 + 0x58 + 16 + 8 + 0x48;
+        let rsp = self.rsp + 0xd8 + 0x68 + 48 + 16 + 8 + 0x48;
         stack.update(rsp, regs.regs[0]);
         stack.update(rsp + 8, regs.regs[2]);
         stack.update(rsp + 16, regs.regs[3]);
@@ -168,7 +168,7 @@ impl Context {
         //let rsp = con.rsp + 0x120 + 56;
         //let rbx = stack.reference(rsp + 8);
         //sc.rbp = stack.reference(rsp + 16);
-        let rsp = self.rsp + 0xa8 + 0x58 + 16 + 8 + 0x48;
+        let rsp = self.rsp + 0xa8 + 48 + 0x58 + 8 + 16 + 24;
         sc.rax = stack.reference(rsp);
         sc.rcx = stack.reference(rsp + 8);
         sc.rdx = stack.reference(rsp + 16);

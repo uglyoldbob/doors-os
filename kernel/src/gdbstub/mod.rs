@@ -2,7 +2,10 @@
 
 use core::num::NonZero;
 
-use alloc::{collections::btree_map::BTreeMap, string::ToString};
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+pub mod x86;
+
+use alloc::collections::btree_map::BTreeMap;
 use gdbstub::{
     stub::MultiThreadStopReason,
     target::{
@@ -45,7 +48,7 @@ impl Drop for DoorsTarget {
 
 #[cfg(target_arch = "x86_64")]
 impl gdbstub::target::Target for DoorsTarget {
-    type Arch = gdbstub_arch::x86::X86_64_SSE;
+    type Arch = x86::X86_64_SSE;
     type Error = alloc::string::String;
 
     fn base_ops(&mut self) -> gdbstub::target::ext::base::BaseOps<'_, Self::Arch, Self::Error> {
@@ -61,7 +64,7 @@ impl gdbstub::target::Target for DoorsTarget {
 
 #[cfg(target_arch = "x86")]
 impl gdbstub::target::Target for DoorsTarget {
-    type Arch = gdbstub_arch::x86::X86_SSE;
+    type Arch = x86::X86_SSE;
     type Error = alloc::string::String;
 
     fn base_ops(&mut self) -> gdbstub::target::ext::base::BaseOps<'_, Self::Arch, Self::Error> {
