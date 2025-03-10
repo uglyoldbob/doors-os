@@ -8,7 +8,7 @@ use alloc::{boxed::Box, vec::Vec};
 use multiboot2::{MemoryAreaType, MemoryMapTag};
 
 #[path = "../../memory.rs"]
-pub mod memory;
+pub mod generic_memory;
 
 use crate::Locked;
 
@@ -455,7 +455,7 @@ unsafe impl core::alloc::Allocator for Locked<SimpleMemoryManager<'_>> {
     }
 }
 
-impl Drop for memory::PciMemory {
+impl Drop for generic_memory::PciMemory {
     fn drop(&mut self) {
         let mut t = super::PAGE_ALLOCATOR.sync_lock();
         let layout = core::alloc::Layout::from_size_align(self.size(), self.size()).unwrap();
@@ -477,7 +477,7 @@ impl Drop for memory::PciMemory {
     }
 }
 
-impl<T: Default> memory::DmaMemory<T> {
+impl<T: Default> generic_memory::DmaMemory<T> {
     /// Construct a new self
     pub fn new() -> Result<Self, core::alloc::AllocError> {
         let b: alloc::boxed::Box<T> = alloc::boxed::Box::default();

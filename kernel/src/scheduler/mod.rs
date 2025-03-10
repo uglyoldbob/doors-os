@@ -142,22 +142,12 @@ impl InnerScheduler {
 
     /// Try to get thread details by thread id
     pub fn lookup(&self, id: TaskId) -> Option<&(TaskId, Task)> {
-        for a in &self.local_tasks {
-            if a.0 == id {
-                return Some(a);
-            }
-        }
-        None
+        self.local_tasks.iter().find(|a| a.0 == id)
     }
 
     /// Try to get mutable thread details by thread id
     pub fn lookup_mut(&mut self, id: TaskId) -> Option<&mut (TaskId, Task)> {
-        for a in &mut self.local_tasks {
-            if a.0 == id {
-                return Some(a);
-            }
-        }
-        None
+        self.local_tasks.iter_mut().find(|a| a.0 == id)
     }
 
     /// Print all tasks
@@ -185,9 +175,9 @@ pub struct Scheduler {
 
 impl Scheduler {
     /// Construct a new scheduler
-    pub fn new() -> Self {
+    pub fn new(id: TaskId) -> Self {
         let com = IrqGuardedInner::new(0, false, true, |_| {}, |_| {});
-        let i = IrqGuarded::new(InnerScheduler::new(TaskId::new()), &com);
+        let i = IrqGuarded::new(InnerScheduler::new(id), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),
         }
@@ -249,7 +239,7 @@ impl Scheduler {
                     Some(c) => c,
                     None => Self::panic(2),
                 };
-                let mut old_context = Context::new();
+                let mut old_context = Context::default();
                 unsafe { Context::thread_save(&mut old_context) };
                 if t.cur_task.1.context.replace(old_context).is_some() {
                     Self::panic(3);
@@ -292,7 +282,7 @@ impl Scheduler {
     /// Add a task
     pub fn add_task(&self, task: Task) -> TaskId {
         let mut this = self.i.0.sync_access();
-        let tid = TaskId::new();
+        let tid = TaskId::default();
         this.local_tasks.push((tid, task));
         tid
     }

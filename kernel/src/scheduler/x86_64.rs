@@ -6,7 +6,7 @@ use crate::gdbstub::x86::reg::X86_64CoreRegs;
 use alloc::vec::Vec;
 
 /// The saved context for a thread
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[repr(C)]
 pub struct Context {
     /// rsp register
@@ -61,7 +61,7 @@ impl super::Task {
     pub fn new(f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
         let mut sc = StackContext::default();
-        let mut c = Context::new();
+        let mut c = Context::default();
         s.set_rsp(&mut c.rsp);
         sc.rax = 0x64;
         sc.rbx = 0x72;
@@ -85,7 +85,7 @@ impl super::Task {
         s.push(&mut c.rsp, saved_rsp);
         s.push(&mut c.rsp, sc.rflags | 1 << 9);
         s.push(&mut c.rsp, 0x8);
-        s.push(&mut c.rsp, start_eip as u64);
+        s.push(&mut c.rsp, start_eip);
         s.push(&mut c.rsp, sc.rbp);
         s.push(&mut c.rsp, sc.r11);
         s.push(&mut c.rsp, sc.r10);
@@ -108,13 +108,12 @@ impl super::Task {
 
         s.push(&mut c.rsp, thread_wrapper as *const () as u64); // the mocked return for the scheduler
         sc.rbp = c.rsp;
-        let s = Self {
+        Self {
             context: Some(c),
             status: super::TaskStatus::Runnable,
             _f: Some(f),
             stack: Some(s),
-        };
-        s
+        }
     }
 
     /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
@@ -129,11 +128,6 @@ impl super::Task {
 }
 
 impl Context {
-    /// Construct an empty context
-    pub fn new() -> Self {
-        Self { r13: 0, rsp: 0 }
-    }
-
     /// Write registers into the stack for a thread context
     pub fn stack_write(&self, stack: &mut Stack, regs: &X86_64CoreRegs) {
         let rsp = self.rsp + 0x70;
@@ -217,11 +211,9 @@ pub struct Stack {
 impl Stack {
     /// Construct a new Self
     fn new(size: usize) -> Self {
-        let mut s = Vec::with_capacity(size);
-        for _ in 0..size {
-            s.push(0);
+        Self {
+            data: alloc::vec![0; size],
         }
-        Self { data: s }
     }
 
     /// A helper for building a stack from an existing stack
@@ -260,7 +252,7 @@ impl Stack {
 
     /// Push a value onto the stack
     fn push(&mut self, rsp: &mut u64, val: u64) {
-        *rsp = *rsp - core::mem::size_of::<u64>() as u64;
+        *rsp -= core::mem::size_of::<u64>() as u64;
         self.update(*rsp, val);
     }
 }

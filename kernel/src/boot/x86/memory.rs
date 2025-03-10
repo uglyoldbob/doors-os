@@ -332,40 +332,38 @@ impl<'a> HeapManager<'a> {
                         *best_fit_link = Some(node);
                         (best.start() + ha.pre_align) as *mut u8
                     }
-                } else {
-                    if (best.size - ha.size_needed - ha.pre_align)
-                        < core::mem::size_of::<HeapNode>()
+                } else if (best.size - ha.size_needed - ha.pre_align)
+                    < core::mem::size_of::<HeapNode>()
+                {
+                    if doors_macros::config_check_equals!(mm_debug, "true")
+                        && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
                     {
-                        if doors_macros::config_check_equals!(mm_debug, "true")
-                            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
-                        {
-                            crate::VGA.print_str("ALLOC3\r\n");
-                        }
-                        let mut prev = best_fit_prev.unwrap();
-                        let prev = unsafe { prev.as_mut() };
-                        prev.next = best.next;
-                        (crate::address(best) + ha.pre_align) as *mut u8
-                    } else {
-                        if doors_macros::config_check_equals!(mm_debug, "true")
-                            && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
-                        {
-                            crate::VGA.print_str("ALLOC4\r\n");
-                        }
-                        let newblock = crate::address(best) + ha.pre_align + ha.size_needed;
-                        if best.size < (ha.size_needed + ha.pre_align) {
-                            self.troubleshoot(best.size, ha.size_needed + ha.pre_align);
-                        }
-                        let e = unsafe {
-                            HeapNode::with_size(
-                                newblock as *mut u8,
-                                best.size - ha.size_needed - ha.pre_align,
-                                best.next,
-                            )
-                        };
-                        best.next = Some(e);
-                        best.size = ha.pre_align;
-                        (crate::address(best) + ha.pre_align) as *mut u8
+                        crate::VGA.print_str("ALLOC3\r\n");
                     }
+                    let mut prev = best_fit_prev.unwrap();
+                    let prev = unsafe { prev.as_mut() };
+                    prev.next = best.next;
+                    (crate::address(best) + ha.pre_align) as *mut u8
+                } else {
+                    if doors_macros::config_check_equals!(mm_debug, "true")
+                        && crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst)
+                    {
+                        crate::VGA.print_str("ALLOC4\r\n");
+                    }
+                    let newblock = crate::address(best) + ha.pre_align + ha.size_needed;
+                    if best.size < (ha.size_needed + ha.pre_align) {
+                        self.troubleshoot(best.size, ha.size_needed + ha.pre_align);
+                    }
+                    let e = unsafe {
+                        HeapNode::with_size(
+                            newblock as *mut u8,
+                            best.size - ha.size_needed - ha.pre_align,
+                            best.next,
+                        )
+                    };
+                    best.next = Some(e);
+                    best.size = ha.pre_align;
+                    (crate::address(best) + ha.pre_align) as *mut u8
                 };
                 if self.check().is_err() {
                     if doors_macros::config_check_equals!(mm_debug, "true")
@@ -382,13 +380,12 @@ impl<'a> HeapManager<'a> {
                 }
                 return r;
             }
-            if times == 1 {
-                if self
+            if times == 1
+                && self
                     .expand_with_physical_memory(layout.size() + layout.align())
                     .is_err()
-                {
-                    return core::ptr::null_mut();
-                }
+            {
+                return core::ptr::null_mut();
             }
             if times == 2 {
                 return core::ptr::null_mut();

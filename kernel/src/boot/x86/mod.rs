@@ -132,13 +132,14 @@ impl Pic {
 /// The interrupt controller
 static INTERRUPT_CONTROLLER: RwLock<Option<Pic>> = RwLock::new(None);
 
+/// A generic interrupt or exception handler
+type Handler = dyn FnMut() + Send + Sync;
+
 /// The irq handlers registered by the system
-static IRQ_HANDLERS: [Locked<Option<Box<dyn FnMut() + Send + Sync>>>; 256] =
-    [const { Locked::new(None) }; 256];
+static IRQ_HANDLERS: [Locked<Option<Box<Handler>>>; 256] = [const { Locked::new(None) }; 256];
 
 /// The exception handlers registered by the system
-static EXCEPTION_HANDLERS: [Locked<Option<Box<dyn FnMut() + Send + Sync>>>; 32] =
-    [const { Locked::new(None) }; 32];
+static EXCEPTION_HANDLERS: [Locked<Option<Box<Handler>>>; 32] = [const { Locked::new(None) }; 32];
 
 /// The entire list of io ports for an x86 machine
 pub static IOPORTS: Locked<IoPortManager> = Locked::new(IoPortManager::new());
@@ -340,7 +341,7 @@ extern "C" {
 /// Setup timers for the x86 kernel
 fn setup_timers() {
     let mut timers = crate::kernel::TIMERS.sync_lock();
-    let pit = crate::modules::timer::x86::Pit::new();
+    let pit = crate::modules::timer::x86::Pit::default();
     timers.register_timer(pit.into());
 }
 

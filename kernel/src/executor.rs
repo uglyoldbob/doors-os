@@ -13,14 +13,15 @@ pub struct NonSendable {
     elem: alloc::rc::Rc<u32>,
 }
 
-impl NonSendable {
-    /// Construct a new Self
-    pub fn new() -> Self {
+impl Default for NonSendable {
+    fn default() -> Self {
         Self {
             elem: alloc::rc::Rc::new(0),
         }
     }
+}
 
+impl NonSendable {
     /// Do the thing
     pub fn do_thing(&mut self) {
         self.elem = (*self.elem + 1).into();
@@ -41,7 +42,7 @@ impl<'a> LocalAsyncTask<'a> {
     /// Construct a new task with a future.
     pub fn new(future: impl core::future::Future<Output = ()> + 'a) -> Self {
         Self {
-            id: TaskId::new(),
+            id: TaskId::default(),
             future: alloc::boxed::Box::pin(future),
         }
     }
@@ -91,7 +92,7 @@ impl<'a> AsyncTask<'a> {
     /// Construct a new task with a future.
     pub fn new(future: impl core::future::Future<Output = ()> + Send + 'a) -> Self {
         Self {
-            id: TaskId::new(),
+            id: TaskId::default(),
             future: alloc::boxed::Box::pin(future),
             polled: 0,
         }
@@ -139,8 +140,8 @@ struct TaskListWaker {
 }
 
 impl TaskListWaker {
-    /// Construct a new Self for the specified task and task list
-    fn new(id: TaskId, tasks: alloc::sync::Arc<TaskListType<TaskId>>) -> Waker {
+    /// Construct a new waker for the specified task and task list
+    fn new_waker(id: TaskId, tasks: alloc::sync::Arc<TaskListType<TaskId>>) -> Waker {
         Waker::from(alloc::sync::Arc::new(Self { id, tasks }))
     }
 
@@ -210,7 +211,7 @@ impl TaskList {
             if let Some(task) = task {
                 let waker = wakers
                     .entry(taskid)
-                    .or_insert_with(|| TaskListWaker::new(taskid, self.tasks.clone()));
+                    .or_insert_with(|| TaskListWaker::new_waker(taskid, self.tasks.clone()));
                 let mut context = core::task::Context::from_waker(waker);
                 task.polled += 1;
                 self.copy_polls(taskid, task, polled);

@@ -112,7 +112,7 @@ fn main() {
 
     let linker_script = linker_script.expect("Failed to get linker script definition");
 
-    if !std::path::PathBuf::from(format!("{}", linker_script)).exists() {
+    if !std::path::PathBuf::from(linker_script.to_string()).exists() {
         panic!("Linker script {} does not exist", linker_script);
     }
 

@@ -79,7 +79,7 @@ pub use modules::video::TextDisplay;
 
 /// This is an example of a future that is non-Send.
 async fn non_send_future() {
-    let mut nonsend = NonSendable::new();
+    let mut nonsend = NonSendable::default();
     crate::VGA.print_str_async("Stuff 1\r\n").await;
     nonsend.do_thing();
     crate::VGA.print_str_async("Stuff 2\r\n").await;
@@ -172,7 +172,7 @@ fn serial_test() {
 fn main() -> ! {
     {
         {
-            let s = scheduler::Scheduler::new();
+            let s = scheduler::Scheduler::new(TaskId::default());
             scheduler::SCHEDULER.write().replace(s);
         }
         {

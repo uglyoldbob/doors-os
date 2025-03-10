@@ -162,7 +162,7 @@ impl X86SerialPort {
 
     /// Enable the rx interrupt, used when receiving data over the serial port
     fn enable_rx_interrupt(&self) {
-        if self.0.interrupts.load(Ordering::Relaxed) {
+        if self.0.interrupts.load(Ordering::SeqCst) {
             let p = self.0.base.access();
             let _: u8 = p.port(0).port_read();
             let _: u8 = p.port(5).port_read();
@@ -193,24 +193,22 @@ impl X86SerialPort {
 impl Arc<X86SerialPortInternal> {
     /// Enable the tx interrupt, used when sending data over the serial port
     fn enable_tx_interrupt(&self) {
-        if self.interrupts.load(Ordering::Relaxed) {
-            if !self.tx_enabled.load(Ordering::Relaxed) {
-                let p = self.base.access();
-                let mut ie = p.port(1);
-                let v: u8 = ie.port_read();
-                ie.port_write(v | 2);
-                self.tx_enabled.store(true, Ordering::Relaxed);
-            }
+        if self.interrupts.load(Ordering::SeqCst) && !self.tx_enabled.load(Ordering::SeqCst) {
+            let p = self.base.access();
+            let mut ie = p.port(1);
+            let v: u8 = ie.port_read();
+            ie.port_write(v | 2);
+            self.tx_enabled.store(true, Ordering::SeqCst);
         }
     }
 
     /// Stop the tx interrupt. Used when a transmission has completed. Only to be called from the interrupt handler!
     fn disable_tx_interrupt(&self) {
-        if self.interrupts.load(Ordering::Relaxed) {
+        if self.interrupts.load(Ordering::SeqCst) {
             let p = self.base.interrupt_access();
             let v: u8 = p.port(1).port_read();
             p.port(1).port_write(1 | (v & !2));
-            self.tx_enabled.store(false, Ordering::Relaxed);
+            self.tx_enabled.store(false, Ordering::SeqCst);
         }
     }
 
@@ -268,7 +266,7 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_read_byte(&self) -> u8 {
-        if !self.0.interrupts.load(Ordering::Relaxed) {
+        if !self.0.interrupts.load(Ordering::SeqCst) {
             while !self.0.can_receive() {}
             self.0.receive().unwrap()
         } else {
@@ -282,7 +280,7 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn try_read(&self) -> Option<u8> {
-        if !self.0.interrupts.load(Ordering::Relaxed) {
+        if !self.0.interrupts.load(Ordering::SeqCst) {
             if self.0.can_receive() {
                 self.0.receive()
             } else {
@@ -304,7 +302,7 @@ impl super::SerialTrait for X86SerialPort {
         use crate::kernel::SystemTrait;
         let irqnum = { self.0.irq };
         {
-            self.0.interrupts.store(false, Ordering::Relaxed);
+            self.0.interrupts.store(false, Ordering::SeqCst);
         };
         crate::SYSTEM.read().disable_irq(irqnum);
         self.0.base.interrupt_access().port(1).port_write(0u8);
@@ -323,7 +321,7 @@ impl super::SerialTrait for X86SerialPort {
                 .interrupt_access()
                 .port(4)
                 .port_write(0x03u8 | 8u8);
-            self.0.interrupts.store(true, Ordering::Relaxed);
+            self.0.interrupts.store(true, Ordering::SeqCst);
         };
         let _stat: u8 = self.0.base.interrupt_access().port(2).port_read();
         let _stat: u8 = self.0.base.interrupt_access().port(5).port_read();
@@ -333,13 +331,13 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_transmit(&self, data: &[u8]) {
-        if !self.0.interrupts.load(Ordering::Relaxed) {
+        if !self.0.interrupts.load(Ordering::SeqCst) {
             for c in data {
                 self.sync_send_byte(*c);
             }
         } else {
             let txq = self.0.tx_queue.clone();
-            self.0.itx.store(true, Ordering::Relaxed);
+            self.0.itx.store(true, Ordering::SeqCst);
             let mut ienabled = false;
             for c in data.iter() {
                 while txq.interrupt_access().is_full() {}
@@ -352,7 +350,7 @@ impl super::SerialTrait for X86SerialPort {
             if !ienabled {
                 self.0.enable_tx_interrupt();
             }
-            self.0.itx.store(false, Ordering::Relaxed);
+            self.0.itx.store(false, Ordering::SeqCst);
         }
     }
 
@@ -361,7 +359,7 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     fn sync_flush(&self) {
-        let i = self.0.interrupts.load(Ordering::Relaxed);
+        let i = self.0.interrupts.load(Ordering::SeqCst);
         if i {
             loop {
                 let empty = self.0.tx_queue.interrupt_access().is_empty();
@@ -374,12 +372,12 @@ impl super::SerialTrait for X86SerialPort {
     }
 
     async fn transmit(&self, data: &[u8]) {
-        self.0.itx.store(true, Ordering::Relaxed);
+        self.0.itx.store(true, Ordering::SeqCst);
         AsyncWriter::new(self.0.clone(), data).await
     }
 
     async fn transmit_str(&self, data: &str) {
-        self.0.itx.store(true, Ordering::Relaxed);
+        self.0.itx.store(true, Ordering::SeqCst);
         AsyncWriter::new(self.0.clone(), data.as_bytes()).await;
     }
 
@@ -416,7 +414,7 @@ impl Future for AsyncWriter<'_> {
         let mut newindex = self.index;
         let mut interrupt_enable = false;
         let this = &self.s;
-        if !this.interrupts.load(Ordering::Relaxed) {
+        if !this.interrupts.load(Ordering::SeqCst) {
             panic!("interrupts not enabled for future");
         }
         let tx_wakers = this.tx_wakers.clone();
@@ -452,7 +450,7 @@ impl Future for AsyncWriter<'_> {
         if r2.is_ready() {
             self.s
                 .itx
-                .store(false, core::sync::atomic::Ordering::Relaxed);
+                .store(false, core::sync::atomic::Ordering::SeqCst);
         }
         r2
     }

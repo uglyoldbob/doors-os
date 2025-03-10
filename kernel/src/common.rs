@@ -45,22 +45,23 @@ use spin::RwLock;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(usize);
 
-impl TaskId {
-    /// Construct the next unique task id
-    pub fn new() -> Self {
+impl Default for TaskId {
+    fn default() -> Self {
         static NEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(1);
         Self(NEXT.fetch_add(1, core::sync::atomic::Ordering::Relaxed))
     }
+}
 
+impl TaskId {
     /// Get the value
     pub fn value(&self) -> usize {
         self.0
     }
 }
 
-impl Into<TaskId> for core::num::NonZero<usize> {
-    fn into(self) -> TaskId {
-        TaskId(self.get())
+impl From<core::num::NonZero<usize>> for TaskId {
+    fn from(value: core::num::NonZero<usize>) -> Self {
+        Self(value.get())
     }
 }
 
@@ -350,6 +351,9 @@ pub struct MutexGuard<'a, T> {
 
 impl<'a, T> MutexGuard<'a, T> {
     /// Unsafe destroy the lock and return the inner contents
+    /// # Safety
+    ///
+    /// Be sure you know what you are doing!
     pub unsafe fn unsafe_destroy(self) -> *mut T {
         self.guard.store(false, Ordering::Release);
         self.data
@@ -469,7 +473,7 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
     /// Use this function for prints that should be together, but require multiple print calls
     pub fn print_with_closure<F>(&self, a: F)
     where
-        F: FnOnce(&mut OwnedDevice<crate::TextDisplay>) -> (),
+        F: FnOnce(&mut OwnedDevice<crate::TextDisplay>),
     {
         let mut v = self.sync_lock();
         let vga = v.as_mut();
@@ -602,7 +606,7 @@ impl<'a, T, U> !Send for IrqGuardedSimpleUse<'a, T, U> {}
 impl<'a, T, U> Deref for IrqGuardedSimpleUse<'a, T, U> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        &self.val
+        self.val
     }
 }
 

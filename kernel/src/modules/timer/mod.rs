@@ -74,22 +74,19 @@ pub enum Timer {
     Dummy(DummyTimer),
 }
 
+/// The type for a callback function in the timer code
+type TimerCallback = dyn Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
+    + crate::Interrupt
+    + Send
+    + Sync
+    + 'static;
+
 /// An instance of a timer channel
 pub struct TimerInstance {
     /// The protected inner timer instance
     inner: Arc<IrqGuarded<TimerInstanceInner>>,
     /// The callback (will be moved to the [TimerInstanceInner] soon)
-    callback: Option<
-        Arc<
-            Box<
-                dyn Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
-                    + crate::Interrupt
-                    + Send
-                    + Sync
-                    + 'static,
-            >,
-        >,
-    >,
+    callback: Option<Arc<Box<TimerCallback>>>,
 }
 
 impl TimerInstance {
@@ -102,17 +99,7 @@ impl TimerInstance {
     #[inline(never)]
     fn handle_interrupt(
         this: &IrqGuarded<TimerInstanceInner>,
-        cb: &Option<
-            Arc<
-                Box<
-                    dyn Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
-                        + crate::Interrupt
-                        + Send
-                        + Sync
-                        + 'static,
-                >,
-            >,
-        >,
+        cb: &Option<Arc<Box<TimerCallback>>>,
     ) {
         let s = this.interrupt_access();
         let _channel = s.hardware_interrupt();
@@ -124,7 +111,7 @@ impl TimerInstance {
 
     /// Register an interrupt handler
     pub fn register_handler<
-        F: Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>) -> ()
+        F: Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
             + crate::Interrupt
             + Send
             + Sync

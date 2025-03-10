@@ -17,7 +17,7 @@ use x86_64::structures::idt::InterruptStackFrame;
 
 pub mod memory;
 
-pub use memory::memory as mem2;
+pub use memory::generic_memory as mem2;
 
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
@@ -104,7 +104,9 @@ extern "x86-interrupt" fn debug_exception(_isf: InterruptStackFrame) {
     if let Some(h) = handle.as_mut() {
         h();
     } else {
-        loop {}
+        loop {
+            x86_64::instructions::hlt();
+        }
     }
 }
 
@@ -114,7 +116,9 @@ extern "x86-interrupt" fn breakpoint_exception(_isf: InterruptStackFrame) {
     if let Some(h) = handle.as_mut() {
         h();
     } else {
-        loop {}
+        loop {
+            x86_64::instructions::hlt();
+        }
     }
 }
 
@@ -384,14 +388,13 @@ impl acpi::AcpiHandler for Acpi<'_> {
             }
             let vstart = bufaddr + size_before_allocation;
 
-            let r = acpi::PhysicalMapping::new(
+            acpi::PhysicalMapping::new(
                 physical_address,
                 NonNull::new((vstart) as *mut T).unwrap(),
                 size,
                 size + size_after_allocation + 0x1000,
                 self.clone(),
-            );
-            r
+            )
         }
     }
 
@@ -663,7 +666,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         Some(0xcc)
     }
 
-    fn register_exception_handler<F: FnMut() -> () + Send + Sync + crate::Interrupt + 'static>(
+    fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         exception: u8,
         handler: F,
@@ -1044,9 +1047,9 @@ pub extern "C" fn start64() -> ! {
     }
 
     let sys = {
-        let s = doors_macros::config_build_struct! {
+        doors_macros::config_build_struct! {
             X86System {
-                boot_info: boot_info,
+                boot_info,
                 #[doorsconfig = "acpi"]
                 acpi_handler: Acpi {
                     pageman: &PAGING_MANAGER,
@@ -1055,8 +1058,7 @@ pub extern "C" fn start64() -> ! {
                 cpuid,
                 stack_start: (stack_end - stack_size) as u64,
             }
-        };
-        s
+        }
     };
 
     unsafe {

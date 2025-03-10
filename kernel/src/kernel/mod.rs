@@ -293,13 +293,13 @@ pub trait SystemTrait {
         r
     }
     /// Register an irq handler
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + crate::Interrupt + 'static>(
+    fn register_irq_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         irq: u8,
         handler: F,
     );
     /// Register an exception handler
-    fn register_exception_handler<F: FnMut() -> () + Send + Sync + crate::Interrupt + 'static>(
+    fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         exception: u8,
         handler: F,
@@ -358,7 +358,7 @@ impl NullSystem {
 impl SystemTrait for NullSystem {
     fn enable_interrupts(&self) {}
     fn disable_interrupts(&self) {}
-    fn register_irq_handler<F: FnMut() -> () + Send + Sync + crate::Interrupt + 'static>(
+    fn register_irq_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         _irq: u8,
         _handler: F,
@@ -378,7 +378,7 @@ impl SystemTrait for NullSystem {
         None
     }
 
-    fn register_exception_handler<F: FnMut() -> () + Send + Sync + crate::Interrupt + 'static>(
+    fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         _exception: u8,
         _handler: F,

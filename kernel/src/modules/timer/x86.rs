@@ -62,9 +62,8 @@ pub struct Pit {
     i: Option<PitInner>,
 }
 
-impl Pit {
-    /// Construct a new self
-    pub fn new() -> Self {
+impl Default for Pit {
+    fn default() -> Self {
         Self {
             i: Some(PitInner::new().unwrap()),
         }

@@ -157,23 +157,23 @@ impl MemoryOrIo {
 #[repr(u16)]
 enum IntelPro1000Registers {
     /// Device control register
-    CTRL = 0,
+    Ctrl = 0,
     /// Device status register
-    STATUS = 8,
+    Status = 8,
     /// The eeprom read register
     Eeprom = 0x14,
     /// MDI control register
-    MDIC = 0x20,
+    Mdic = 0x20,
     /// Interrupt cause register
-    ICR = 0xc0,
+    Icr = 0xc0,
     /// Interrupt mask set/read register
-    IMS = 0xd0,
+    Ims = 0xd0,
     /// Receive control register
     Rctrl = 0x100,
     /// Transmit control register
     Tctrl = 0x400,
     /// Transmit IPG (inter packet gap) register
-    TIPG = 0x410,
+    Tipg = 0x410,
     /// Receive descriptor base low
     RxDescLow = 0x2800,
     /// Receive descriptor base high
@@ -201,9 +201,9 @@ enum IntelPro1000Registers {
     /// Receive address high
     RAH0 = 0x5404,
     /// Receive address low
-    RAL1 = 0x5400 + 8 * 1,
+    RAL1 = 0x5400 + 8,
     /// Receive address high
-    RAH1 = 0x5404 + 8 * 1,
+    RAH1 = 0x5404 + 8,
     /// Receive address low
     RAL2 = 0x5400 + 8 * 2,
     /// Receive address high
@@ -501,7 +501,7 @@ impl Arc<IntelPro1000DeviceInternal> {
         let status = self
             .bar0
             .interrupt_access()
-            .read(IntelPro1000Registers::STATUS as u16);
+            .read(IntelPro1000Registers::Status as u16);
         let linkstat = (status & 2) != 0;
         self.up.store(linkstat, Ordering::Relaxed);
     }
@@ -512,7 +512,7 @@ impl Arc<IntelPro1000DeviceInternal> {
             .bar0
             .access()
             .await
-            .read(IntelPro1000Registers::STATUS as u16);
+            .read(IntelPro1000Registers::Status as u16);
         let linkstat = (status & 2) != 0;
         self.up.store(linkstat, Ordering::Relaxed);
     }
@@ -852,8 +852,8 @@ impl IntelPro1000Device {
     /// Dump the contents of key registers
     async fn dump_registers(&self) {
         let regs = &[
-            IntelPro1000Registers::CTRL,
-            IntelPro1000Registers::STATUS,
+            IntelPro1000Registers::Ctrl,
+            IntelPro1000Registers::Status,
             IntelPro1000Registers::Rctrl,
             IntelPro1000Registers::RxDescLow,
             IntelPro1000Registers::RxDescHigh,
@@ -960,18 +960,18 @@ impl IntelPro1000Device {
     async fn read_from_phy(&mut self, phy: u8, index: u8) -> Option<u16> {
         let mut bar0 = self.internal.bar0.access().await;
         bar0.write(
-            IntelPro1000Registers::MDIC as u16,
+            IntelPro1000Registers::Mdic as u16,
             MdicRegister::new(0, index, phy, 2, false).0,
         );
 
         loop {
-            let v = bar0.read(IntelPro1000Registers::MDIC as u16);
+            let v = bar0.read(IntelPro1000Registers::Mdic as u16);
             let mdic = MdicRegister(v);
             if mdic.ready() {
                 break;
             }
         }
-        let v = bar0.read(IntelPro1000Registers::MDIC as u16);
+        let v = bar0.read(IntelPro1000Registers::Mdic as u16);
         let mdic = MdicRegister(v);
         if mdic.error() {
             None
@@ -995,9 +995,9 @@ impl IntelPro1000Device {
             todo!("Configure LED behavior and clear statistics counters");
         }
         let mut bar0 = self.internal.bar0.access().await;
-        let mut ctrl = bar0.read(IntelPro1000Registers::CTRL as u16);
-        ctrl = ctrl | 0x40;
-        bar0.write(IntelPro1000Registers::CTRL as u16, ctrl);
+        let mut ctrl = bar0.read(IntelPro1000Registers::Ctrl as u16);
+        ctrl |= 0x40;
+        bar0.write(IntelPro1000Registers::Ctrl as u16, ctrl);
     }
 
     /// Initialize the rx buffers for the device
@@ -1013,7 +1013,7 @@ impl IntelPro1000Device {
             let rxbuf = RxBuffers::new(32, 8192)?;
             let rxaddr = rxbuf.bufs.phys();
             crate::VGA
-                .print_str_async(&format!("Writing RX stuff to network card\r\n"))
+                .print_str_async("Writing RX stuff to network card\r\n")
                 .await;
             bar0.write(
                 IntelPro1000Registers::RxDescLow as u16,
@@ -1055,7 +1055,7 @@ impl IntelPro1000Device {
         if self.txbufs.is_none() {
             let mut bar0 = self.internal.bar0.access().await;
             crate::VGA
-                .print_str_async(&format!("Writing TX stuff to network card\r\n"))
+                .print_str_async("Writing TX stuff to network card\r\n")
                 .await;
             let txbuf = TxBuffers::new(8, 8192)?;
             let txaddr = txbuf.bufs.phys();
@@ -1093,7 +1093,7 @@ impl IntelPro1000Device {
         let reason = this
             .bar0
             .interrupt_access()
-            .read(IntelPro1000Registers::ICR as u16);
+            .read(IntelPro1000Registers::Icr as u16);
         let reason = InterruptCauseRegister(reason);
         if reason.lsc() {
             this.update_link_status_interrupt();
@@ -1133,16 +1133,16 @@ impl IntelPro1000Device {
         let val = 0x1f6fc;
         // Marked as interrupt access becuase interrupts are not fully setup yet
         let mut bar0 = self.internal.bar0.interrupt_access();
-        while bar0.read(IntelPro1000Registers::IMS as u16) != val {
-            bar0.write(IntelPro1000Registers::IMS as u16, val);
-            bar0.read(IntelPro1000Registers::STATUS as u16);
+        while bar0.read(IntelPro1000Registers::Ims as u16) != val {
+            bar0.write(IntelPro1000Registers::Ims as u16, val);
+            bar0.read(IntelPro1000Registers::Status as u16);
         }
         let val = 0xff & !4;
-        bar0.write(IntelPro1000Registers::IMS as u16, val);
-        bar0.read(IntelPro1000Registers::STATUS as u16);
+        bar0.write(IntelPro1000Registers::Ims as u16, val);
+        bar0.read(IntelPro1000Registers::Status as u16);
 
         // Read the interrupt register to clear it
-        let _ = bar0.read(IntelPro1000Registers::ICR as u16);
+        let _ = bar0.read(IntelPro1000Registers::Icr as u16);
         let c = self.internal.clone();
         let mut packet_buffer = super::super::RawEthernetPacket::new_box();
         sys.register_irq_handler(irqnum, move || {

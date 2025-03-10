@@ -361,9 +361,9 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
     fn on_interrupt(
         _target: &mut Self::Target,
     ) -> Result<Option<Self::StopReason>, <Self::Target as gdbstub::target::Target>::Error> {
-        Ok(Some(
-            MultiThreadStopReason::Signal(gdbstub::common::Signal::SIGINT).into(),
-        ))
+        Ok(Some(MultiThreadStopReason::Signal(
+            gdbstub::common::Signal::SIGINT,
+        )))
     }
 }
 

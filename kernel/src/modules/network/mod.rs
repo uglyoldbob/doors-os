@@ -44,16 +44,10 @@ pub async fn get_network_adapter(s: &str) -> Option<AsyncLockedArc<NetworkAdapte
 }
 
 /// A mac address for a network adapter
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct MacAddress {
     /// The bytes of the mac address
     address: [u8; 6],
-}
-
-impl Default for MacAddress {
-    fn default() -> Self {
-        Self { address: [0; 6] }
-    }
 }
 
 impl From<&[u8]> for MacAddress {
@@ -197,8 +191,7 @@ impl RawEthernetPacket {
             let layout = alloc::alloc::Layout::new::<Self>();
             let ptr = alloc::alloc::alloc(layout) as *mut Self;
             (*ptr).length = 0;
-            let bx = alloc::boxed::Box::from_raw(ptr);
-            bx
+            alloc::boxed::Box::from_raw(ptr)
         }
     }
 
