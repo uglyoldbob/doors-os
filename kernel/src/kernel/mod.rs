@@ -1,7 +1,5 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
-use core::pin::Pin;
-
 use crate::{AsyncLocked, AsyncLockedArc, Locked, LockedArc};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;

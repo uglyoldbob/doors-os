@@ -242,7 +242,6 @@ impl Scheduler {
             }
             let t: &mut InnerScheduler = &mut this;
             if t.cur_task.1.context.is_some() {
-                ::x86_64::instructions::bochs_breakpoint();
                 Self::panic(1);
             }
             if TaskStatus::Runnable == t.local_tasks[next_task_index].1.status {

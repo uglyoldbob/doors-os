@@ -9,7 +9,7 @@ pub struct PitInner {
     /// Channel 0
     chan0: IoPortRef<u8>,
     /// Channel 2
-    chan2: IoPortRef<u8>,
+    _chan2: IoPortRef<u8>,
     /// command
     command: IoPortRef<u8>,
 }
@@ -19,7 +19,7 @@ impl PitInner {
     fn new() -> Option<Self> {
         let mut s = Self {
             chan0: IOPORTS.get_port(0x40)?,
-            chan2: IOPORTS.get_port(0x42)?,
+            _chan2: IOPORTS.get_port(0x42)?,
             command: IOPORTS.get_port(0x43)?,
         };
         s.command.port_write(0);
@@ -65,10 +65,9 @@ pub struct Pit {
 impl Pit {
     /// Construct a new self
     pub fn new() -> Self {
-        let mut m = Self {
+        Self {
             i: Some(PitInner::new().unwrap()),
-        };
-        m
+        }
     }
 }
 

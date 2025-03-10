@@ -153,6 +153,7 @@ impl MemoryOrIo {
 /// Defines the addresses of various registers for the pro1000 device
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[allow(non_camel_case_types)]
+#[allow(unused)]
 #[repr(u16)]
 enum IntelPro1000Registers {
     /// Device control register
@@ -878,6 +879,7 @@ impl IntelPro1000Device {
     }
 
     /// Does the device support pci-x extension to pci?
+    #[allow(unused)]
     fn supports_pcix(&self) -> bool {
         !matches!(
             self.model,
@@ -925,6 +927,7 @@ impl IntelPro1000Device {
     }
 
     /// Clear the receive address at the specified index
+    #[allow(unused)]
     async fn clear_receive_mac_address(&mut self, index: u8) {
         let (low, high) = Self::receive_mac_address_registers(index);
         let mut bar0 = self.internal.bar0.access().await;
@@ -933,6 +936,7 @@ impl IntelPro1000Device {
     }
 
     /// Retrieve the existing receive address at the specified index from the device
+    #[allow(unused)]
     async fn get_receive_mac_address(&mut self, index: u8) -> ReceiveAddress {
         let (low, high) = Self::receive_mac_address_registers(index);
         let bar0 = self.internal.bar0.access().await;
@@ -988,8 +992,7 @@ impl IntelPro1000Device {
                 | Model::Model82547EI_A0_or_Model82547EI_A1_or_Model82547EI_B0_Copper_or_Model82547GI_B0
                 | Model::Model82547EI_B0_Mobile
         ) {
-            todo!("Configure LED behavior");
-            todo!("Clear statistics counters");
+            todo!("Configure LED behavior and clear statistics counters");
         }
         let mut bar0 = self.internal.bar0.access().await;
         let mut ctrl = bar0.read(IntelPro1000Registers::CTRL as u16);

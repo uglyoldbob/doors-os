@@ -1,7 +1,6 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
-use crate::IoReadWrite;
 use crate::Locked;
 use crate::LockedArc;
 use acpi::fadt::Fadt;
@@ -10,17 +9,10 @@ use acpi::madt::Madt;
 use acpi::sdt::SdtHeader;
 use acpi::PlatformInfo;
 use alloc::boxed::Box;
-use aml::value::Args;
-use conquer_once::noblock::OnceCell;
 use core::alloc::Allocator;
-use core::pin::Pin;
 use core::ptr::NonNull;
-use doors_macros::interrupt_64;
-use doors_macros::interrupt_arg_64;
 use lazy_static::lazy_static;
-use raw_cpuid::ProcessorCapacityAndFeatureInfo;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
-use spin::RwLock;
 use x86_64::structures::idt::InterruptStackFrame;
 
 pub mod memory;
@@ -96,8 +88,7 @@ lazy_static! {
 }
 
 /// The divide by zero handler
-#[interrupt_64]
-pub extern "C" fn divide_by_zero() {
+pub extern "x86-interrupt" fn divide_by_zero() {
     crate::VGA.stop_async();
     crate::VGA.print_str("Divide by zero\r\n");
     loop {
@@ -224,7 +215,7 @@ extern "x86-interrupt" fn general_protection_handler(isf: InterruptStackFrame, c
 
 ///The handler for segment not present
 extern "x86-interrupt" fn segment_not_present(
-    sf: x86_64::structures::idt::InterruptStackFrame,
+    _sf: x86_64::structures::idt::InterruptStackFrame,
     arg: u64,
 ) {
     crate::VGA.stop_async();
@@ -297,8 +288,7 @@ extern "x86-interrupt" fn invalid_opcode(sf: InterruptStackFrame) {
 }
 
 /// A test interrupt handler
-#[interrupt_arg_64]
-pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
+pub extern "x86-interrupt" fn invalid_opcode2(sf: InterruptStackFrame) {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Invalid opcode {:x}\r\n",
@@ -310,8 +300,7 @@ pub extern "C" fn invalid_opcode2(sf: InterruptStackFrame) {
 }
 
 /// A test interrupt handler
-#[interrupt_64]
-pub extern "C" fn unknown_interrupt() {
+pub extern "x86-interrupt" fn unknown_interrupt() {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Unknown interrupt fired\r\n"
@@ -402,9 +391,6 @@ impl acpi::AcpiHandler for Acpi<'_> {
                 size + size_after_allocation + 0x1000,
                 self.clone(),
             );
-
-            let a: usize = r.virtual_start().addr().into();
-            let p = unsafe { core::slice::from_raw_parts(a as *const u8, size) };
             r
         }
     }
@@ -1011,7 +997,7 @@ pub extern "C" fn start64() -> ! {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
         unsafe {
             idt[0].set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
-                divide_by_zero_asm as *const (),
+                divide_by_zero as *const (),
             ));
             idt.segment_not_present.set_handler_fn(segment_not_present);
 
@@ -1041,6 +1027,11 @@ pub extern "C" fn start64() -> ! {
                 breakpoint_exception as *const (),
             ));
             idt.breakpoint = entry;
+            let mut entry = x86_64::structures::idt::Entry::missing();
+            entry.set_handler_addr(x86_64::addr::VirtAddr::from_ptr(
+                debug_exception as *const (),
+            ));
+            idt.debug = entry;
             idt[0x20].set_handler_fn(irq0);
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);

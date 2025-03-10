@@ -27,7 +27,9 @@ impl NonSendable {
     }
 }
 
+doors_macros::todo_item!("Actually use the asynchronous local tasks");
 /// A task for the kernel
+#[allow(unused)]
 pub struct LocalAsyncTask<'a> {
     /// The id for the task. This is unique across all tasks in the system.
     id: TaskId,
@@ -45,6 +47,7 @@ impl<'a> LocalAsyncTask<'a> {
     }
 
     /// Poll the task
+    #[allow(unused)]
     fn poll(&mut self, context: &mut core::task::Context) -> core::task::Poll<()> {
         self.future.as_mut().poll(context)
     }

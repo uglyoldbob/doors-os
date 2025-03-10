@@ -9,10 +9,7 @@ pub mod x86;
 #[cfg(kernel_machine = "pc32")]
 pub mod x86;
 
-use crate::Arc;
 use futures::Stream;
-
-use crate::{kernel::OwnedDevice, AsyncLockedArc, LockedArc};
 
 /// The standard trait for serial ports
 #[enum_dispatch::enum_dispatch]

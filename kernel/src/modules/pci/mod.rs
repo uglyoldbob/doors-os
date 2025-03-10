@@ -1,6 +1,6 @@
 //! Code for the pci bus
 
-use crate::{AsyncLockedArc, LockedArc};
+use crate::AsyncLockedArc;
 use alloc::{collections::BTreeMap, format};
 use lazy_static::lazy_static;
 

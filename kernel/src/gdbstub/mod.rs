@@ -100,7 +100,7 @@ impl gdbstub::target::ext::breakpoints::SwBreakpoint for DoorsTarget {
     fn add_sw_breakpoint(
         &mut self,
         addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
-        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+        _kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
     ) -> gdbstub::target::TargetResult<bool, Self> {
         use crate::kernel::SystemTrait;
         if let Some(b_byte) = crate::SYSTEM.read().breakpoint() {
@@ -117,7 +117,7 @@ impl gdbstub::target::ext::breakpoints::SwBreakpoint for DoorsTarget {
     fn remove_sw_breakpoint(
         &mut self,
         addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
-        kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
+        _kind: <Self::Arch as gdbstub::arch::Arch>::BreakpointKind,
     ) -> gdbstub::target::TargetResult<bool, Self> {
         if let Some((address, instruction_byte)) = self.soft_breaks.remove_entry(&(addr as usize)) {
             let a: &mut u8 = &mut unsafe { *(address as *mut u8) };
@@ -297,7 +297,7 @@ impl MultiThreadBase for DoorsTarget {
         let s = crate::scheduler::SCHEDULER.read();
         let mut s = s.as_ref().unwrap().sync_access();
         let task = s.lookup_mut(tid.into());
-        if let Some((taskid, task)) = task {
+        if let Some((_taskid, task)) = task {
             task.write_registers(regs)
                 .map_err(|_| TargetError::NonFatal)
         } else {
@@ -309,7 +309,7 @@ impl MultiThreadBase for DoorsTarget {
         &mut self,
         start_addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
         data: &mut [u8],
-        tid: gdbstub::common::Tid,
+        _tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<usize, Self> {
         let src = unsafe { core::slice::from_raw_parts(start_addr as *const u8, data.len()) };
         data.copy_from_slice(src);
@@ -320,7 +320,7 @@ impl MultiThreadBase for DoorsTarget {
         &mut self,
         start_addr: <Self::Arch as gdbstub::arch::Arch>::Usize,
         data: &[u8],
-        tid: gdbstub::common::Tid,
+        _tid: gdbstub::common::Tid,
     ) -> gdbstub::target::TargetResult<(), Self> {
         let dst = unsafe { core::slice::from_raw_parts_mut(start_addr as *mut u8, data.len()) };
         dst.copy_from_slice(data);
@@ -339,7 +339,7 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
     type StopReason = MultiThreadStopReason<u64>;
 
     fn wait_for_stop_reason(
-        target: &mut Self::Target,
+        _target: &mut Self::Target,
         conn: &mut Self::Connection,
     ) -> Result<
         gdbstub::stub::run_blocking::Event<Self::StopReason>,
@@ -359,7 +359,7 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
     }
 
     fn on_interrupt(
-        target: &mut Self::Target,
+        _target: &mut Self::Target,
     ) -> Result<Option<Self::StopReason>, <Self::Target as gdbstub::target::Target>::Error> {
         Ok(Some(
             MultiThreadStopReason::Signal(gdbstub::common::Signal::SIGINT).into(),
@@ -468,10 +468,10 @@ pub async fn run() {
                     }
                     a.unwrap()
                 }
-                gdbstub::stub::state_machine::GdbStubStateMachine::Running(gdb) => {
+                gdbstub::stub::state_machine::GdbStubStateMachine::Running(_gdb) => {
                     todo!();
                 }
-                gdbstub::stub::state_machine::GdbStubStateMachine::CtrlCInterrupt(gdb) => {
+                gdbstub::stub::state_machine::GdbStubStateMachine::CtrlCInterrupt(_gdb) => {
                     doors_macros::todo_item!("Do something besides unwrap here");
                     todo!();
                 }

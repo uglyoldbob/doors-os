@@ -375,17 +375,12 @@ impl super::SerialTrait for X86SerialPort {
 
     async fn transmit(&self, data: &[u8]) {
         self.0.itx.store(true, Ordering::Relaxed);
-        AsyncWriter::new(self.0.clone(), data, crate::SYSTEM.read().clone()).await
+        AsyncWriter::new(self.0.clone(), data).await
     }
 
     async fn transmit_str(&self, data: &str) {
         self.0.itx.store(true, Ordering::Relaxed);
-        AsyncWriter::new(
-            self.0.clone(),
-            data.as_bytes(),
-            crate::SYSTEM.read().clone(),
-        )
-        .await;
+        AsyncWriter::new(self.0.clone(), data.as_bytes()).await;
     }
 
     async fn flush(&self) {
@@ -407,8 +402,7 @@ struct AsyncWriter<'a> {
 
 impl<'a> AsyncWriter<'a> {
     /// Construct a new object for asynchronous serial port writing
-    fn new(s: Arc<X86SerialPortInternal>, data: &'a [u8], sys: crate::kernel::System) -> Self {
-        let i = s.irq;
+    fn new(s: Arc<X86SerialPortInternal>, data: &'a [u8]) -> Self {
         Self { s, index: 0, data }
     }
 }

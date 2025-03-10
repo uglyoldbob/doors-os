@@ -4,10 +4,7 @@ use alloc::{
     borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec,
 };
 
-use crate::{
-    kernel::SystemTrait, Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, IrqGuardedSimple, Locked,
-    LockedArc,
-};
+use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -123,6 +120,7 @@ const MAX_RX_PACKET_SIZE: usize = 8192;
 
 /// An ethernet packet header
 #[derive(Debug)]
+#[allow(unused)]
 pub struct EthernetFrameHeader {
     /// The destination for the packet
     destination: MacAddress,
@@ -136,6 +134,7 @@ pub struct EthernetFrameHeader {
 
 /// Represents a received ethernet frame
 #[derive(Debug)]
+#[allow(unused)]
 pub struct EthernetFrame<'a> {
     /// The header
     header: EthernetFrameHeader,

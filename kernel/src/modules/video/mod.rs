@@ -4,8 +4,6 @@ use alloc::vec::Vec;
 use fonts::VariableWidthFont;
 use pixels::FullColor;
 
-use crate::{kernel::OwnedDevice, AsyncLockedArc, LockedArc};
-
 use super::serial::SerialTrait;
 
 pub mod fonts;
@@ -19,7 +17,9 @@ pub mod mipi_dsi;
 
 use lazy_static::lazy_static;
 
+doors_macros::todo_item!("Use left and top fields of FontData");
 /// The data required to render a single font character
+#[allow(unused)]
 pub struct FontData {
     /// the width of the character in pixels
     width: u8,

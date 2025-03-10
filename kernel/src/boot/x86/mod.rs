@@ -29,7 +29,7 @@ pub use boot::mem2;
 #[repr(align(16))]
 struct LocalApicRegister {
     /// The apic registers
-    regs: [u32; 256],
+    _regs: [u32; 256],
 }
 
 /// The programmable interrupt controller

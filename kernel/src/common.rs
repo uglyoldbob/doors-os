@@ -332,6 +332,7 @@ pub struct Locked<A> {
 
 /// A blank nonsend structure
 #[repr(C)]
+#[allow(unused)]
 struct PhantomNonSend;
 
 impl !Send for PhantomNonSend {}

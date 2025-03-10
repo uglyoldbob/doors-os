@@ -1,6 +1,5 @@
 //! Kernel module for x86 vga text using video mode
 
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::boot::x86::IOPORTS;
