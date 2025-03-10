@@ -117,13 +117,9 @@ impl super::Task {
     }
 
     /// This function runs extra threads in the kernel, ending them gracefully when they are done (eventually)
-    fn task_runner(main_func: fn()) {
+    fn task_runner(main_func: fn()) -> ! {
         main_func();
         super::SCHEDULER.read().as_ref().unwrap().task_completed();
-        loop {
-            use crate::kernel::SystemTrait;
-            crate::SYSTEM.read().idle();
-        }
     }
 }
 

@@ -685,23 +685,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         });
     }
 
-    fn nop(&self) {
-        x86_64::instructions::nop();
-    }
-
-    fn idle(&self) {
-        x86_64::instructions::hlt();
-    }
-
-    fn idle_if(&self, mut f: impl FnMut() -> bool) {
-        self.disable_interrupts();
-        if f() {
-            x86_64::instructions::interrupts::enable_and_hlt();
-        } else {
-            self.enable_interrupts();
-        }
-    }
-
     async fn acpi_debug(&self) {
         crate::VGA.print_str_async("ACPI INFORMATION\r\n").await;
     }

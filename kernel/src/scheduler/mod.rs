@@ -189,9 +189,13 @@ impl Scheduler {
     }
 
     /// Set the status of the current task to completed
-    fn task_completed(&self) {
+    fn task_completed(&self) -> ! {
         let mut this = self.i.0.sync_access();
         this.cur_task.1.status = TaskStatus::Completed;
+        drop(this);
+        loop {
+            crate::idle();
+        }
     }
 
     /// Retrieve the task id of the current task
@@ -225,30 +229,36 @@ impl Scheduler {
                 return;
             }
             let next_task_index = this.next_task_index;
-            if (this.next_task_index + 2) < this.local_tasks.len() {
-                this.next_task_index += 1;
-            } else {
-                this.next_task_index = 0;
-            }
             let t: &mut InnerScheduler = &mut this;
             if t.cur_task.1.context.is_some() {
                 Self::panic(1);
             }
-            if TaskStatus::Runnable == t.local_tasks[next_task_index].1.status {
-                let new_context = match t.local_tasks[next_task_index].1.context.take() {
-                    Some(c) => c,
-                    None => Self::panic(2),
-                };
-                let mut old_context = Context::default();
-                unsafe { Context::thread_save(&mut old_context) };
-                if t.cur_task.1.context.replace(old_context).is_some() {
-                    Self::panic(3);
+            match t.local_tasks[next_task_index].1.status {
+                TaskStatus::Runnable => {
+                    if (t.next_task_index + 2) < t.local_tasks.len() {
+                        t.next_task_index += 1;
+                    } else {
+                        t.next_task_index = 0;
+                    }
+
+                    let new_context = match t.local_tasks[next_task_index].1.context.take() {
+                        Some(c) => c,
+                        None => Self::panic(2),
+                    };
+                    let mut old_context = Context::default();
+                    unsafe { Context::thread_save(&mut old_context) };
+                    if t.cur_task.1.context.replace(old_context).is_some() {
+                        Self::panic(3);
+                    }
+                    core::mem::swap(&mut t.local_tasks[next_task_index], &mut t.cur_task);
+                    drop(this);
+                    timer.start_oneshot();
+                    drop(timer);
+                    return unsafe { Context::thread_restore(&new_context) };
                 }
-                core::mem::swap(&mut t.local_tasks[next_task_index], &mut t.cur_task);
-                drop(this);
-                timer.start_oneshot();
-                drop(timer);
-                return unsafe { Context::thread_restore(&new_context) };
+                TaskStatus::Completed => {
+                    this.local_tasks.remove(next_task_index);
+                }
             }
         }
     }

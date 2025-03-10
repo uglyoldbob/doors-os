@@ -310,18 +310,12 @@ pub trait SystemTrait {
     fn disable_irq(&self, irq: u8);
     /// System required init code
     fn init(&self);
-    /// Code to idle the system
-    fn idle(&self);
-    /// Code to conditionally idle the system based on a closure
-    fn idle_if(&self, f: impl FnMut() -> bool);
     /// Print debug stuff for acpi
     async fn acpi_debug(&self);
     /// Get the details for the boot/main stack of the kernel. Return is in the form of start address and size in bytes
     fn main_stack(&self) -> (u64, u64);
     /// The the single byte opcode (if it exists) for a breakpoint instruction
     fn breakpoint(&self) -> Option<u8>;
-    /// A nop instruction
-    fn nop(&self);
 }
 
 /// This struct implements the SystemTrait
@@ -367,8 +361,6 @@ impl SystemTrait for NullSystem {
     fn enable_irq(&self, _irq: u8) {}
     fn disable_irq(&self, _irq: u8) {}
     fn init(&self) {}
-    fn idle(&self) {}
-    fn idle_if(&self, _f: impl FnMut() -> bool) {}
     async fn acpi_debug(&self) {}
     fn main_stack(&self) -> (u64, u64) {
         (0, 0)
@@ -384,6 +376,4 @@ impl SystemTrait for NullSystem {
         _handler: F,
     ) {
     }
-
-    fn nop(&self) {}
 }

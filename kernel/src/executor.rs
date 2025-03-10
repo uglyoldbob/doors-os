@@ -301,12 +301,10 @@ impl<'a> Executor<'a> {
 
     /// Run the executor
     pub fn run(&mut self) -> ! {
-        let sys = crate::SYSTEM.read();
         loop {
             self.run_tasks();
             self.get_polls();
-            use crate::kernel::SystemTrait;
-            sys.idle_if(|| self.basic_tasks.is_empty());
+            crate::idle_if(|| self.basic_tasks.is_empty());
         }
     }
 }

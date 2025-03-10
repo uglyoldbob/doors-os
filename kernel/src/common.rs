@@ -23,6 +23,23 @@ pub fn nop() {
     x86_64::instructions::nop();
 }
 
+/// Code to idle the system
+#[cfg(target_arch = "x86_64")]
+pub fn idle() {
+    x86_64::instructions::hlt();
+}
+
+/// Code to conditionally idle the system based on a closure
+#[cfg(target_arch = "x86_64")]
+pub fn idle_if(mut f: impl FnMut() -> bool) {
+    crate::SYSTEM.read().disable_interrupts();
+    if f() {
+        x86_64::instructions::interrupts::enable_and_hlt();
+    } else {
+        crate::SYSTEM.read().enable_interrupts();
+    }
+}
+
 /// This trait is implemented for things safe to use in an interrupt context
 pub auto trait Interrupt {}
 
