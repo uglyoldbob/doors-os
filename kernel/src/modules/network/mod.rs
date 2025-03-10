@@ -1,8 +1,13 @@
 //! Networking code for the kernel
 
-use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec,
+};
 
-use crate::{kernel::SystemTrait, Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, IrqGuardedSimple, Locked, LockedArc};
+use crate::{
+    kernel::SystemTrait, Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, IrqGuardedSimple, Locked,
+    LockedArc,
+};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -220,7 +225,7 @@ impl NetworkReceiver {
     }
 }
 
-lazy_static::lazy_static!{
+lazy_static::lazy_static! {
     /// The list of received packets
     pub static ref ETHERNET_PACKETS_RECEIVED: AsyncLocked<Vec<Arc<IrqGuarded<NetworkReceiver>>>> = AsyncLocked::new(Vec::new());
 }
@@ -253,4 +258,3 @@ pub async fn process_packets_received() {
         }
     }
 }
-

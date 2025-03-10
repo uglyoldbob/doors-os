@@ -1,3 +1,5 @@
+//! 32 and 64 bit register id stuff
+
 use core::num::NonZeroUsize;
 use gdbstub::arch::RegId;
 
@@ -23,6 +25,7 @@ pub enum X87FpuInternalRegId {
 }
 
 impl X87FpuInternalRegId {
+    /// Try to build a self from a u8 value
     fn from_u8(val: u8) -> Option<Self> {
         use self::X87FpuInternalRegId::*;
 
@@ -60,6 +63,7 @@ pub enum X86SegmentRegId {
 }
 
 impl X86SegmentRegId {
+    /// Try to build a Self from a u8 value
     fn from_u8(val: u8) -> Option<Self> {
         use self::X86SegmentRegId::*;
 

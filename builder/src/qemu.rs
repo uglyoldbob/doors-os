@@ -5,7 +5,11 @@
 pub struct Qemu {}
 
 impl Qemu {
-    fn get_common_run(&self, common: &super::EmulatorConfig, local: &super::LocalConfiguration) -> String {
+    fn get_common_run(
+        &self,
+        common: &super::EmulatorConfig,
+        local: &super::LocalConfiguration,
+    ) -> String {
         let mut qemu = String::new();
         qemu.push_str(&format!(
             "{} ",

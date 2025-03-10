@@ -41,82 +41,82 @@ impl super::EmulationTrait for VirtualBox {
             .wait()
             .unwrap();
 
-            for (i, serial_id) in common.serial_ports.iter().enumerate() {
-                let i = i + 1;
-                let port = &local.serial_ports[*serial_id];
-                let (io, irq) = Self::get_serial_port_details(i as u8);
-                println!("SERIAL PORT DETAILS {:x} {} {:?}", io, irq, port);
-                match port {
-                    super::SerialConfig::File(f) => {
-                        std::process::Command::new(local.vboxmanage_path())
-                            .args([
-                                "modifyvm",
-                                "doors-os-64",
-                                &format!("--uart{}", i),
-                                &format!("{}", io),
-                                &format!("{}", irq),
-                                &format!("--uartmode{}", i),
-                                "file",
-                                f.to_str().unwrap(),
-                            ])
-                            .spawn()
-                            .unwrap()
-                            .wait()
-                            .unwrap();
-                    }
-                    super::SerialConfig::TcpServer(port) => {
-                        std::process::Command::new(local.vboxmanage_path())
-                            .args([
-                                "modifyvm",
-                                "doors-os-64",
-                                &format!("--uart{}", i),
-                                &format!("{}", io),
-                                &format!("{}", irq),
-                                &format!("--uartmode{}", i),
-                                "tcpserver",
-                                &format!("{}", port),
-                            ])
-                            .spawn()
-                            .unwrap()
-                            .wait()
-                            .unwrap();
-                    }
-                    super::SerialConfig::TcpClient(port) => {
-                        std::process::Command::new(local.vboxmanage_path())
-                            .args([
-                                "modifyvm",
-                                "doors-os-64",
-                                &format!("--uart{}", i),
-                                &format!("{}", io),
-                                &format!("{}", irq),
-                                &format!("--uartmode{}", i),
-                                "tcpclient",
-                                &format!("{}", port),
-                            ])
-                            .spawn()
-                            .unwrap()
-                            .wait()
-                            .unwrap();
-                    }
-                    super::SerialConfig::Real(p) => {
-                        std::process::Command::new(local.vboxmanage_path())
-                            .args([
-                                "modifyvm",
-                                "doors-os-64",
-                                &format!("--uart{}", i),
-                                &format!("{}", io),
-                                &format!("{}", irq),
-                                &format!("--uartmode{}", i),
-                                p,
-                            ])
-                            .spawn()
-                            .unwrap()
-                            .wait()
-                            .unwrap();
-                    }
-                    super::SerialConfig::Nothing => {}
+        for (i, serial_id) in common.serial_ports.iter().enumerate() {
+            let i = i + 1;
+            let port = &local.serial_ports[*serial_id];
+            let (io, irq) = Self::get_serial_port_details(i as u8);
+            println!("SERIAL PORT DETAILS {:x} {} {:?}", io, irq, port);
+            match port {
+                super::SerialConfig::File(f) => {
+                    std::process::Command::new(local.vboxmanage_path())
+                        .args([
+                            "modifyvm",
+                            "doors-os-64",
+                            &format!("--uart{}", i),
+                            &format!("{}", io),
+                            &format!("{}", irq),
+                            &format!("--uartmode{}", i),
+                            "file",
+                            f.to_str().unwrap(),
+                        ])
+                        .spawn()
+                        .unwrap()
+                        .wait()
+                        .unwrap();
                 }
+                super::SerialConfig::TcpServer(port) => {
+                    std::process::Command::new(local.vboxmanage_path())
+                        .args([
+                            "modifyvm",
+                            "doors-os-64",
+                            &format!("--uart{}", i),
+                            &format!("{}", io),
+                            &format!("{}", irq),
+                            &format!("--uartmode{}", i),
+                            "tcpserver",
+                            &format!("{}", port),
+                        ])
+                        .spawn()
+                        .unwrap()
+                        .wait()
+                        .unwrap();
+                }
+                super::SerialConfig::TcpClient(port) => {
+                    std::process::Command::new(local.vboxmanage_path())
+                        .args([
+                            "modifyvm",
+                            "doors-os-64",
+                            &format!("--uart{}", i),
+                            &format!("{}", io),
+                            &format!("{}", irq),
+                            &format!("--uartmode{}", i),
+                            "tcpclient",
+                            &format!("{}", port),
+                        ])
+                        .spawn()
+                        .unwrap()
+                        .wait()
+                        .unwrap();
+                }
+                super::SerialConfig::Real(p) => {
+                    std::process::Command::new(local.vboxmanage_path())
+                        .args([
+                            "modifyvm",
+                            "doors-os-64",
+                            &format!("--uart{}", i),
+                            &format!("{}", io),
+                            &format!("{}", irq),
+                            &format!("--uartmode{}", i),
+                            p,
+                        ])
+                        .spawn()
+                        .unwrap()
+                        .wait()
+                        .unwrap();
+                }
+                super::SerialConfig::Nothing => {}
             }
+        }
 
         for (i, nid) in common.net_devs.iter().enumerate() {
             let net_name = local.net_devs[*nid].virtualbox.as_ref().unwrap();

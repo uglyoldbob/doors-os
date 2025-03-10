@@ -240,7 +240,7 @@ impl<'a, A> core::future::Future for AsyncLockedMutexGuardFuture<'a, A> {
                 wakers: self.inner.wakers.clone(),
             })
         } else {
-            self.inner.wakers.push(cx.waker().clone());
+            let _ = self.inner.wakers.push(cx.waker().clone());
             core::task::Poll::Pending
         }
     }

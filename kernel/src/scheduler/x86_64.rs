@@ -2,8 +2,8 @@
 
 use core::arch::naked_asm;
 
-use alloc::vec::Vec;
 use crate::gdbstub::x86::reg::X86_64CoreRegs;
+use alloc::vec::Vec;
 
 /// The saved context for a thread
 #[derive(Debug)]

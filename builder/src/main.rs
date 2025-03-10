@@ -434,6 +434,12 @@ impl DoorsConfiguration {
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str("\tCOMMAND cargo +nightly fmt\n");
         cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tkernel_expand\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str("\tCOMMAND cargo +nightly expand > ../expanded.txt\n");
+        cmakelists.push_str(")\n");
     }
 
     /// Build the disassembly for the kernel
@@ -557,7 +563,10 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str("add_custom_target(\n");
     cmakelist.push_str("\tstack\n");
     cmakelist.push_str("\tDEPENDS kernel\n");
-    cmakelist.push_str(&format!("\tCOMMAND cargo run --bin kernel-stack-analysis -- --name {}\n", kernel_binary_path.to_str().unwrap()));
+    cmakelist.push_str(&format!(
+        "\tCOMMAND cargo run --bin kernel-stack-analysis -- --name {}\n",
+        kernel_binary_path.to_str().unwrap()
+    ));
     cmakelist.push_str(")\n");
 
     cmakelist.push_str("add_custom_target(\n");
@@ -642,8 +651,7 @@ fn write_vscode_configs(config: &MasterConfig) {
         let mut p2 = p.clone();
         p2.pop();
         let _ = std::fs::create_dir_all(p2);
-        let mut configf = std::fs::File::create(p)
-            .expect("Failed to create kernel configuration");
+        let mut configf = std::fs::File::create(p).expect("Failed to create kernel configuration");
         let mut contents = String::new();
         contents.push_str("{\n");
         contents.push_str("\t\"rust-analyzer.cargo.allTargets\": false,\n");

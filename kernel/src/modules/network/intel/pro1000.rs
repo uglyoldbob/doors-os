@@ -527,10 +527,14 @@ impl IntelPro1000DeviceInternal {
             bar0,
             up,
             rxbufs: IrqGuarded::new(None, common),
-            packet_receiver: Arc::new(IrqGuarded::new(super::super::NetworkReceiver::new(), common)),
+            packet_receiver: Arc::new(IrqGuarded::new(
+                super::super::NetworkReceiver::new(),
+                common,
+            )),
         }
     }
 
+    /// Register the network receiver for this interface
     pub fn register_network_receiver(&self) {
         super::super::network_init(self.packet_receiver.clone());
     }
@@ -703,35 +707,35 @@ bitfield::bitfield! {
     impl Debug;
     impl new;
     /// Transmit descriptor write back
-    TXDW, _: 0;
+    txdw, _: 0;
     /// Transmit queue empty
-    TXQE, _: 1;
+    txqe, _: 1;
     /// link status change
-    LSC, _: 2;
+    lsc, _: 2;
     /// receive sequence error
-    RXSEQ, _: 3;
+    rxseq, _: 3;
     /// receive descriptor minimum threshold reached
-    RXDMT0, _: 4;
+    rxdmt, _: 4;
     /// receiver overrun
-    RXO, _: 6;
+    rxo, _: 6;
     /// receiver timer interrupt
-    RXTO, _: 7;
+    rxt, _: 7;
     /// mdio access complete
-    MDAC, _: 9;
+    mdac, _: 9;
     /// receiving ordered sets
-    RXCFG, _: 10;
+    rxcfg, _: 10;
     /// phy interrupt
-    PHYINT, _: 12;
+    phyint, _: 12;
     /// general interrupt on SPD6[2]
-    GPI_SDP6, _: 13;
+    gpi_sdp6, _: 13;
     /// general interrupt in SDP7[3]
-    GPI_SDP7, _: 14;
+    gpi_sdp7, _: 14;
     /// general purpose interrupt (bit 1 not used)
-    u8, GPI, _: 14, 11;
+    u8, gpi, _: 14, 11;
     /// transmit descriptor low threshold
-    TXD_LOW, _: 15;
+    txd_low, _: 15;
     /// small receive packet
-    SRPD, _: 16;
+    srpd, _: 16;
 }
 
 impl super::super::NetworkAdapterTrait for IntelPro1000Device {
@@ -1082,16 +1086,19 @@ impl IntelPro1000Device {
     }
 
     /// The interrupt handler for the network card
-    fn handle_interrupt(this: &Arc<IntelPro1000DeviceInternal>, packet: &mut Box<super::super::RawEthernetPacket>) {
+    fn handle_interrupt(
+        this: &Arc<IntelPro1000DeviceInternal>,
+        packet: &mut Box<super::super::RawEthernetPacket>,
+    ) {
         let reason = this
             .bar0
             .interrupt_access()
             .read(IntelPro1000Registers::ICR as u16);
         let reason = InterruptCauseRegister(reason);
-        if reason.LSC() {
+        if reason.lsc() {
             this.update_link_status_interrupt();
         }
-        if reason.RXDMT0() {
+        if reason.rxdmt() {
             let a = this.rxbufs.interrupt_access();
             if let Some((buffer, index)) = a.as_ref() {
                 let rxbuf = &buffer.bufs[*index as usize];
@@ -1101,7 +1108,10 @@ impl IntelPro1000Device {
                     } else {
                         packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                     }
-                    this.packet_receiver.interrupt_access().packets.push_back(packet.clone());
+                    this.packet_receiver
+                        .interrupt_access()
+                        .packets
+                        .push_back(packet.clone());
                     let mut bar0 = this.bar0.interrupt_access();
                     let mut t = bar0.read(IntelPro1000Registers::RxDescTail as u16);
                     t = (t + 1) % buffer.bufs.len() as u32;
@@ -1135,7 +1145,9 @@ impl IntelPro1000Device {
         let _ = bar0.read(IntelPro1000Registers::ICR as u16);
         let c = self.internal.clone();
         let mut packet_buffer = super::super::RawEthernetPacket::new_box();
-        sys.register_irq_handler(irqnum, move || IntelPro1000Device::handle_interrupt(&c, &mut packet_buffer));
+        sys.register_irq_handler(irqnum, move || {
+            IntelPro1000Device::handle_interrupt(&c, &mut packet_buffer)
+        });
         drop(bar0);
         sys.enable_irq(irqnum);
     }

@@ -131,12 +131,19 @@ impl super::EmulationTrait for Bochs {
             let port = &local.serial_ports[*serial_id];
             match port {
                 super::SerialConfig::File(f) => {
-                    config.push_str(&format!("com{}: enabled=1, mode=file, dev={}\n", i, f.to_str().unwrap()));
+                    config.push_str(&format!(
+                        "com{}: enabled=1, mode=file, dev={}\n",
+                        i,
+                        f.to_str().unwrap()
+                    ));
                 }
                 super::SerialConfig::TcpServer(port) => {
                     #[cfg(target_os = "windows")]
                     {
-                        config.push_str(&format!("com{}: enabled=1, mode=socket-server, dev=localhost:{}\n", i, port));
+                        config.push_str(&format!(
+                            "com{}: enabled=1, mode=socket-server, dev=localhost:{}\n",
+                            i, port
+                        ));
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
@@ -146,7 +153,10 @@ impl super::EmulationTrait for Bochs {
                 super::SerialConfig::TcpClient(port) => {
                     #[cfg(target_os = "windows")]
                     {
-                        config.push_str(&format!("com{}: enabled=1, mode=socket-client, dev=localhost:{}\n", i, port));
+                        config.push_str(&format!(
+                            "com{}: enabled=1, mode=socket-client, dev=localhost:{}\n",
+                            i, port
+                        ));
                     }
                     #[cfg(not(target_os = "windows"))]
                     {

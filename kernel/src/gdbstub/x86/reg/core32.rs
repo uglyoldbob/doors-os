@@ -1,3 +1,5 @@
+//! 32 bit x86 register stuff
+
 use super::X86SegmentRegs;
 use super::X87FpuInternalRegs;
 use super::F80;

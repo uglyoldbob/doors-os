@@ -144,7 +144,7 @@ impl TaskListWaker {
     /// wakeup the task.
     /// TODO handle error for the push?
     fn wake_task(&self) {
-        self.tasks.push(self.id);
+        let _ = self.tasks.push(self.id);
     }
 }
 

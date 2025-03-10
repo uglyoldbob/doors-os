@@ -125,7 +125,7 @@ impl X86SerialPort {
     fn handle_interrupt(s: &Arc<X86SerialPortInternal>) {
         loop {
             let stat: u8 = s.base.interrupt_access().port(2).port_read();
-            let _lsr : u8 = s.base.interrupt_access().port(5).port_read();
+            let _lsr: u8 = s.base.interrupt_access().port(5).port_read();
             let _: u8 = s.base.interrupt_access().port(6).port_read();
             if (stat & 1) == 0 {
                 match (stat >> 1) & 7 {
@@ -403,23 +403,13 @@ struct AsyncWriter<'a> {
     index: usize,
     /// The data reference
     data: &'a [u8],
-    /// The system
-    sys: crate::kernel::System,
-    /// Irq number
-    irq: u8,
 }
 
 impl<'a> AsyncWriter<'a> {
     /// Construct a new object for asynchronous serial port writing
     fn new(s: Arc<X86SerialPortInternal>, data: &'a [u8], sys: crate::kernel::System) -> Self {
         let i = s.irq;
-        Self {
-            s,
-            index: 0,
-            data,
-            sys: sys.clone(),
-            irq: i,
-        }
+        Self { s, index: 0, data }
     }
 }
 
@@ -448,7 +438,7 @@ impl Future for AsyncWriter<'_> {
                             interrupt_enable = true;
                         }
                     } else {
-                        tx_wakers.access().push(cx.waker().clone());
+                        let _ = tx_wakers.access().push(cx.waker().clone());
                         break core::task::Poll::Pending;
                     }
                 } else if interrupt_enable {
@@ -458,7 +448,7 @@ impl Future for AsyncWriter<'_> {
                     break core::task::Poll::Ready(());
                 }
             } else {
-                tx_wakers.access().push(cx.waker().clone());
+                let _ = tx_wakers.access().push(cx.waker().clone());
                 self.s.enable_tx_interrupt();
                 break core::task::Poll::Pending;
             }
