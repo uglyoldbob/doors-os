@@ -11,8 +11,8 @@ use alloc::vec::Vec;
 pub struct Context {
     /// rsp register
     pub rsp: u64,
-    /// rbx register
-    pub rbx: u64,
+    /// r13 register
+    pub r13: u64,
 }
 
 /// The context for a thread that lives on the stack
@@ -21,6 +21,8 @@ pub struct Context {
 pub struct StackContext {
     /// rax register
     pub rax: u64,
+    /// rbx register
+    pub rbx: u64,
     /// rcx register
     pub rcx: u64,
     /// rdx register
@@ -35,8 +37,6 @@ pub struct StackContext {
     pub r11: u64,
     /// r12 register
     pub r12: u64,
-    /// r13 register
-    pub r13: u64,
     /// r14 register
     pub r14: u64,
     /// r15 register
@@ -64,6 +64,7 @@ impl super::Task {
         let mut c = Context::new();
         s.set_rsp(&mut c.rsp);
         sc.rax = 0x64;
+        sc.rbx = 0x72;
         sc.rcx = 0x65;
         sc.rdx = 0x66;
         sc.r8 = 0x67;
@@ -71,7 +72,7 @@ impl super::Task {
         sc.r10 = 0x69;
         sc.r11 = 0x6a;
         sc.r12 = 0x6b;
-        sc.r13 = 0x6c;
+        c.r13 = 0x6c;
         sc.r14 = 0x6d;
         sc.r15 = 0x6e;
         sc.rsi = 0x6f;
@@ -101,9 +102,9 @@ impl super::Task {
         s.push(&mut c.rsp, sc.rbp);
         s.push(&mut c.rsp, sc.r15);
         s.push(&mut c.rsp, sc.r14);
-        s.push(&mut c.rsp, sc.r13);
+        s.push(&mut c.rsp, c.r13);
         s.push(&mut c.rsp, sc.r12);
-        s.push(&mut c.rsp, c.rbx);
+        s.push(&mut c.rsp, sc.rbx);
 
         s.push(&mut c.rsp, thread_wrapper as *const () as u64); // the mocked return for the scheduler
         sc.rbp = c.rsp;
@@ -130,17 +131,17 @@ impl super::Task {
 impl Context {
     /// Construct an empty context
     pub fn new() -> Self {
-        Self { rbx: 98, rsp: 99 }
+        Self { r13: 0, rsp: 0 }
     }
 
     /// Write registers into the stack for a thread context
     pub fn stack_write(&self, stack: &mut Stack, regs: &X86_64CoreRegs) {
-        let rsp = self.rsp + 0xd8;
+        let rsp = self.rsp + 0x70;
         stack.update(rsp + 16, regs.regs[12]);
         stack.update(rsp + 24, regs.regs[13]);
         stack.update(rsp + 32, regs.regs[14]);
         stack.update(rsp + 40, regs.regs[15]);
-        let rsp = self.rsp + 0xd8 + 0x68 + 48 + 16 + 8 + 0x48;
+        let rsp = self.rsp + 0x70 + 0x68 + 48 + 16 + 8 + 0x48;
         stack.update(rsp, regs.regs[0]);
         stack.update(rsp + 8, regs.regs[2]);
         stack.update(rsp + 16, regs.regs[3]);
@@ -158,17 +159,17 @@ impl Context {
     /// Read registers from the stack for a thread context
     pub fn stack_read(&self, stack: &Stack) -> (&Context, StackContext) {
         let mut sc = StackContext::default();
-        let rsp = self.rsp + 0xa8;
+        let rsp = self.rsp + 0x70;
         //let rbx = stack.reference(rsp);
-        sc.r12 = stack.reference(rsp + 16);
-        sc.r13 = stack.reference(rsp + 24);
+        sc.rbx = stack.reference(rsp + 16);
+        sc.r12 = stack.reference(rsp + 24);
         sc.r14 = stack.reference(rsp + 32);
         sc.r15 = stack.reference(rsp + 40);
-        //sc.rbp = stack.reference(rsp + 40);
+        //sc.rbp = stack.reference(rsp + 48);
         //let rsp = con.rsp + 0x120 + 56;
         //let rbx = stack.reference(rsp + 8);
         //sc.rbp = stack.reference(rsp + 16);
-        let rsp = self.rsp + 0xa8 + 48 + 0x58 + 8 + 16 + 24;
+        let rsp = self.rsp + 0x70 + 48 + 0x58 + 8 + 16 + 24;
         sc.rax = stack.reference(rsp);
         sc.rcx = stack.reference(rsp + 8);
         sc.rdx = stack.reference(rsp + 16);
@@ -190,7 +191,7 @@ impl Context {
         naked_asm!(
             "\
             mov rsp, [rdi];\
-            mov rbx, [rdi+8];\
+            mov r13, [rdi+8];\
             ret;"
         );
     }
@@ -201,7 +202,7 @@ impl Context {
         naked_asm!(
             "\
             mov [rdi], rsp;\
-            mov [rdi+8], rbx;\
+            mov [rdi+8], r13;\
             ret;"
         );
     }

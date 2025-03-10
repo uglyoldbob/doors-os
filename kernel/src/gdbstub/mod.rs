@@ -228,7 +228,7 @@ impl MultiThreadBase for DoorsTarget {
                 regs.segments.gs = 16;
                 regs.segments.ss = 16;
                 regs.regs[0] = scontext.rax;
-                regs.regs[1] = context.rbx;
+                regs.regs[1] = scontext.rbx;
                 regs.regs[2] = scontext.rcx;
                 regs.regs[3] = scontext.rdx;
                 regs.regs[4] = scontext.rsi;
@@ -240,7 +240,7 @@ impl MultiThreadBase for DoorsTarget {
                 regs.regs[10] = scontext.r10;
                 regs.regs[11] = scontext.r11;
                 regs.regs[12] = scontext.r12;
-                regs.regs[13] = scontext.r13;
+                regs.regs[13] = context.r13;
                 regs.regs[14] = scontext.r14;
                 regs.regs[15] = scontext.r15;
                 regs.rip = scontext.rip;

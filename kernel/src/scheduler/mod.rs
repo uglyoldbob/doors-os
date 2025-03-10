@@ -2,23 +2,19 @@
 
 #[cfg(target_arch = "x86_64")]
 use crate::gdbstub::x86::reg::X86_64CoreRegs;
-use alloc::{
-    collections::{btree_map::BTreeMap, VecDeque},
-    vec::Vec,
-};
 #[cfg(target_arch = "x86")]
 use gdbstub_arch::x86::reg::X86CoreRegs;
-use spin::RwLock;
-
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 #[cfg(target_arch = "x86_64")]
 use x86_64::*;
-
 #[cfg(target_arch = "x86")]
 mod x86;
 #[cfg(target_arch = "x86")]
 use x86::*;
+
+use alloc::vec::Vec;
+use spin::RwLock;
 
 use crate::{
     kernel::SystemTrait,
@@ -119,28 +115,28 @@ pub static SCHEDULER: RwLock<Option<Scheduler>> = RwLock::new(None);
 /// The actual contents of a scheduler
 pub struct InnerScheduler {
     /// The list of tasks local to the scheduler
-    local_tasks: VecDeque<(TaskId, Task)>,
+    local_tasks: Vec<(TaskId, Task)>,
     /// The currently executing task
-    cur_task: Task,
-    /// The id of the currently executing task
-    cur_task_id: Option<TaskId>,
+    cur_task: (TaskId, Task),
+    /// The next task index to swap to
+    next_task_index: usize,
     /// The timer instance for the scheduler
     timer: Option<TimerInstance>,
 }
 
 impl InnerScheduler {
-    /// Create a new scheduler
-    pub const fn new() -> Self {
+    /// Create a new scheduler, using the specified task id as the starting task
+    pub const fn new(id: TaskId) -> Self {
         Self {
-            local_tasks: VecDeque::new(),
-            cur_task: Task::running(),
-            cur_task_id: None,
+            local_tasks: Vec::new(),
+            cur_task: (id, Task::running()),
+            next_task_index: 0,
             timer: None,
         }
     }
 
     /// Create an iterator over all tasks for this scheduler
-    pub fn iter(&self) -> alloc::collections::vec_deque::Iter<(TaskId, Task)> {
+    pub fn iter(&self) -> core::slice::Iter<(TaskId, Task)> {
         self.local_tasks.iter()
     }
 
@@ -191,7 +187,7 @@ impl Scheduler {
     /// Construct a new scheduler
     pub fn new() -> Self {
         let com = IrqGuardedInner::new(0, false, true, |_| {}, |_| {});
-        let i = IrqGuarded::new(InnerScheduler::new(), &com);
+        let i = IrqGuarded::new(InnerScheduler::new(TaskId::new()), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),
         }
@@ -205,13 +201,22 @@ impl Scheduler {
     /// Set the status of the current task to completed
     fn task_completed(&self) {
         let mut this = self.i.0.sync_access();
-        this.cur_task.status = TaskStatus::Completed;
+        this.cur_task.1.status = TaskStatus::Completed;
     }
 
     /// Retrieve the task id of the current task
-    pub fn cur_task_id(&self) -> Option<TaskId> {
+    pub fn cur_task_id(&self) -> TaskId {
         let this = self.i.0.sync_access();
-        this.cur_task_id
+        this.cur_task.0
+    }
+
+    /// A panic helper for the scheduler
+    #[inline(never)]
+    fn panic(val: usize) -> ! {
+        ::x86_64::instructions::bochs_breakpoint();
+        loop {
+            core::hint::black_box(val);
+        }
     }
 
     /// The interrupt handler for the timer
@@ -229,26 +234,28 @@ impl Scheduler {
                 drop(timer);
                 return;
             }
-            let (taskid, mut task) = this.local_tasks.pop_front().unwrap();
-            if TaskStatus::Runnable == task.status {
-                let new_context = match task.context.take() {
+            let next_task_index = this.next_task_index;
+            if (this.next_task_index + 2) < this.local_tasks.len() {
+                this.next_task_index += 1;
+            } else {
+                this.next_task_index = 0;
+            }
+            let t: &mut InnerScheduler = &mut this;
+            if t.cur_task.1.context.is_some() {
+                ::x86_64::instructions::bochs_breakpoint();
+                Self::panic(1);
+            }
+            if TaskStatus::Runnable == t.local_tasks[next_task_index].1.status {
+                let new_context = match t.local_tasks[next_task_index].1.context.take() {
                     Some(c) => c,
-                    None => {
-                        todo!();
-                    }
+                    None => Self::panic(2),
                 };
-                core::mem::swap(&mut this.cur_task, &mut task);
-                let mut old_task = this.cur_task_id.replace(taskid);
-                if old_task.is_none() {
-                    old_task.replace(TaskId::new());
-                }
-                let taskid = old_task.unwrap();
                 let mut old_context = Context::new();
                 unsafe { Context::thread_save(&mut old_context) };
-                if let Some(_c) = task.context.replace(old_context) {
-                    panic!();
+                if t.cur_task.1.context.replace(old_context).is_some() {
+                    Self::panic(3);
                 }
-                this.local_tasks.push_back((taskid, task));
+                core::mem::swap(&mut t.local_tasks[next_task_index], &mut t.cur_task);
                 drop(this);
                 timer.start_oneshot();
                 drop(timer);
@@ -267,7 +274,7 @@ impl Scheduler {
             let mut this = self.i.0.interrupt_access();
             {
                 let stack = Stack::helper(stack_start, stack_size);
-                this.cur_task.stack.replace(Stack::from_existing(stack));
+                this.cur_task.1.stack.replace(Stack::from_existing(stack));
             }
             let mut t = crate::kernel::TIMERS.sync_lock();
             let timer = t.module(0);
@@ -287,7 +294,7 @@ impl Scheduler {
     pub fn add_task(&self, task: Task) -> TaskId {
         let mut this = self.i.0.sync_access();
         let tid = TaskId::new();
-        this.local_tasks.push_back((tid, task));
+        this.local_tasks.push((tid, task));
         tid
     }
 
