@@ -1296,6 +1296,11 @@ impl PciBus {
         map: &mut alloc::collections::btree_map::BTreeMap<u32, PciFunctionDriver>,
         pci: &mut PciConfigurationSpace,
     ) {
+        for a in map.keys() {
+            crate::VGA
+                .print_str_async(&format!("Looking for {:x}\r\n", a))
+                .await;
+        }
         for d in &self.devices {
             for f in &d.functions {
                 let id = f.get_driver_id(pci, self, d);
@@ -1397,6 +1402,8 @@ pub enum PciFunctionDriver {
     Dummy(DummyPciFunctionDriver),
     /// Intel pro1000 ethernet driver
     IntelPro1000(crate::modules::network::intel::IntelPro1000),
+    /// The PIIX3 isa bridge
+    IntelPiix3IsaBridge(crate::modules::isa::piix3::IsaPiix3BridgeDriver),
 }
 
 impl Default for PciFunctionDriver {
@@ -1405,10 +1412,12 @@ impl Default for PciFunctionDriver {
     }
 }
 
+doors_macros::todo_item!("Make this variable automated if possible");
 /// Holds the pci drivers so that they can register with the `PCI_DRIVERS` variable
 static PCI_CODE: &[PciFunctionDriver] = &[
     PciFunctionDriver::Dummy(DummyPciFunctionDriver {}),
     PciFunctionDriver::IntelPro1000(crate::modules::network::intel::IntelPro1000::new()),
+    PciFunctionDriver::IntelPiix3IsaBridge(crate::modules::isa::piix3::IsaPiix3BridgeDriver::new()),
 ];
 
 /// A dummy pci driver that does nothing

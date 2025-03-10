@@ -2,6 +2,7 @@
 
 pub mod clock;
 pub mod gpio;
+pub mod isa;
 pub mod memory;
 pub mod network;
 pub mod pci;
