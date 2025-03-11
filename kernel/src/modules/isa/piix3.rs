@@ -45,7 +45,7 @@ impl crate::modules::pci::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
         &self,
         m: &mut alloc::collections::btree_map::BTreeMap<
             u32,
-            crate::modules::pci::PciFunctionDriver,
+            crate::modules::PciFunctionDriver,
         >,
     ) {
         crate::VGA

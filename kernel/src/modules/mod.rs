@@ -1,5 +1,7 @@
 //! Kernel modules belong in this module. A lot of the enums will have a dummy provider so that the code will compile.
 
+doors_macros::declare_enum!(PciFunctionDriver);
+
 pub mod clock;
 pub mod gpio;
 pub mod isa;
@@ -51,3 +53,25 @@ pub struct Test {}
 impl ModuleTrait for Test {
     fn do_something(&self) {}
 }
+
+use pci::{BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction, PciFunctionDriverTrait};
+
+/// Represents a device driver for a pci function
+#[enum_dispatch::enum_dispatch(PciFunctionDriverTrait)]
+#[derive(Clone)]
+pub enum PciFunctionDriver {
+    /// A dummy driver so the enum isn't empty
+    Dummy(pci::DummyPciFunctionDriver),
+    /// Intel pro1000 ethernet driver
+    IntelPro1000(crate::modules::network::intel::IntelPro1000),
+    /// The PIIX3 isa bridge
+    IntelPiix3IsaBridge(crate::modules::isa::piix3::IsaPiix3BridgeDriver),
+}
+
+doors_macros::todo_item!("Make this variable automated if possible");
+/// Holds the pci drivers so that they can register with the `PCI_DRIVERS` variable
+static PCI_CODE: &[PciFunctionDriver] = &[
+    PciFunctionDriver::Dummy(pci::DummyPciFunctionDriver::new()),
+    PciFunctionDriver::IntelPro1000(crate::modules::network::intel::IntelPro1000::new()),
+    PciFunctionDriver::IntelPiix3IsaBridge(crate::modules::isa::piix3::IsaPiix3BridgeDriver::new()),
+];

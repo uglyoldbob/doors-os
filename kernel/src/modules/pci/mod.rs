@@ -9,7 +9,7 @@ pub mod x86;
 
 lazy_static! {
     /// The entire list of gpios for the kernel
-    pub static ref PCI_DRIVERS: AsyncLockedArc<BTreeMap<u32, PciFunctionDriver>> =
+    pub static ref PCI_DRIVERS: AsyncLockedArc<BTreeMap<u32, crate::modules::PciFunctionDriver>> =
         AsyncLockedArc::new(BTreeMap::new());
 }
 
@@ -1293,7 +1293,7 @@ impl PciBus {
     /// Run drivers that can be associated with pci functions
     async fn driver_run(
         &self,
-        map: &mut alloc::collections::btree_map::BTreeMap<u32, PciFunctionDriver>,
+        map: &mut alloc::collections::btree_map::BTreeMap<u32, crate::modules::PciFunctionDriver>,
         pci: &mut PciConfigurationSpace,
     ) {
         for a in map.keys() {
@@ -1325,6 +1325,8 @@ impl PciBus {
         }
     }
 }
+
+use crate::modules::PciFunctionDriver;
 
 /// a pci bus instance
 #[enum_dispatch::enum_dispatch(PciTrait)]
@@ -1363,9 +1365,12 @@ pub enum PciConfigurationSpace {
 
 /// The trait that pci function drivers must implement
 #[enum_dispatch::enum_dispatch]
-pub trait PciFunctionDriverTrait: Clone + Default {
+pub trait PciFunctionDriverTrait: Clone {
     /// Register the driver in the given map, must check to see if the driver is already registered
-    async fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>);
+    async fn register(
+        &self,
+        m: &mut alloc::collections::BTreeMap<u32, crate::modules::PciFunctionDriver>,
+    );
 
     /// Parse a bar register for the device
     async fn parse_bars(
@@ -1386,7 +1391,7 @@ pub async fn pci_register_drivers() {
     crate::VGA
         .print_str_async("Registering pci drivers\r\n")
         .await;
-    for d in PCI_CODE {
+    for d in crate::modules::PCI_CODE {
         d.register(&mut drivers).await;
     }
     crate::VGA
@@ -1394,38 +1399,19 @@ pub async fn pci_register_drivers() {
         .await;
 }
 
-/// Represents a device driver for a pci function
-#[enum_dispatch::enum_dispatch(PciFunctionDriverTrait)]
-#[derive(Clone)]
-pub enum PciFunctionDriver {
-    /// A dummy driver so the enum isn't empty
-    Dummy(DummyPciFunctionDriver),
-    /// Intel pro1000 ethernet driver
-    IntelPro1000(crate::modules::network::intel::IntelPro1000),
-    /// The PIIX3 isa bridge
-    IntelPiix3IsaBridge(crate::modules::isa::piix3::IsaPiix3BridgeDriver),
-}
-
-impl Default for PciFunctionDriver {
-    fn default() -> Self {
-        Self::Dummy(DummyPciFunctionDriver::default())
-    }
-}
-
-doors_macros::todo_item!("Make this variable automated if possible");
-/// Holds the pci drivers so that they can register with the `PCI_DRIVERS` variable
-static PCI_CODE: &[PciFunctionDriver] = &[
-    PciFunctionDriver::Dummy(DummyPciFunctionDriver {}),
-    PciFunctionDriver::IntelPro1000(crate::modules::network::intel::IntelPro1000::new()),
-    PciFunctionDriver::IntelPiix3IsaBridge(crate::modules::isa::piix3::IsaPiix3BridgeDriver::new()),
-];
-
 /// A dummy pci driver that does nothing
 #[derive(Clone, Default)]
 pub struct DummyPciFunctionDriver {}
 
+impl DummyPciFunctionDriver {
+    /// Construct a new self
+    pub const fn new() -> Self {
+        Self {}
+    }
+}
+
 impl PciFunctionDriverTrait for DummyPciFunctionDriver {
-    async fn register(&self, _m: &mut BTreeMap<u32, PciFunctionDriver>) {
+    async fn register(&self, _m: &mut BTreeMap<u32, crate::modules::PciFunctionDriver>) {
         crate::VGA
             .print_str_async("Register dummy pci driver\r\n")
             .await;

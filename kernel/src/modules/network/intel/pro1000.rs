@@ -7,9 +7,10 @@ use alloc::format;
 
 use crate::kernel::System;
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
+use crate::modules::PciFunctionDriver;
 use crate::modules::pci::{
     BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
-    PciFunctionDriver, PciFunctionDriverTrait,
+    PciFunctionDriverTrait,
 };
 use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
 use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner};
