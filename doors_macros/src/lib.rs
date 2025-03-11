@@ -499,7 +499,7 @@ pub fn enum_variant(
             };
             let q = quote! {
                 #(#comments)*
-                #newid(doors_enum_variants::#varname)
+                #newid(doors_enum_variants::#f::#varname)
             };
             entry.variants.push(q.to_string());
             Ok(varname)
@@ -513,7 +513,11 @@ pub fn enum_variant(
             #item
             /// A module for making variants accessible
             pub mod doors_enum_variants {
-                pub use super::#varname;
+                /// A module for making variants accessible``
+                #[allow(non_snake_case)]
+                pub mod #f {
+                    pub use super::super::#varname;
+                }
             }
         }
         .into()
@@ -643,118 +647,6 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
                 Ok(())
             }
         }
-    }
-    .into()
-}
-
-/// This macro creates an 32-bit interrupt function, with the appopriate entry and exit code
-#[proc_macro_attribute]
-pub fn interrupt(
-    _attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let fun: syn::ItemFn = syn::parse(item).unwrap();
-    let fname = fun.sig.ident.clone();
-    let asmname = syn::Ident::new(
-        (fname.to_string() + "_asm").as_str(),
-        proc_macro2::Span::mixed_site(),
-    );
-    let assembly = format!(
-        "
-    .section .text
-    .global {0}
-    .code32
-    .extern {1}
-    {0}:
-        push eax
-        call {1}
-        pop eax
-        iret",
-        asmname, fname
-    );
-    quote! {
-        extern {
-            /// The assembly code for an interrupt function
-            pub fn #asmname ();
-        }
-        core::arch::global_asm!(#assembly);
-        #[no_mangle]
-        #fun
-    }
-    .into()
-}
-
-/// This macro creates a 64-bit interrupt function, with the appopriate entry and exit code
-#[proc_macro_attribute]
-pub fn interrupt_64(
-    _attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let fun: syn::ItemFn = syn::parse(item).unwrap();
-    let fname = fun.sig.ident.clone();
-    let asmname = syn::Ident::new(
-        (fname.to_string() + "_asm").as_str(),
-        proc_macro2::Span::mixed_site(),
-    );
-    let assembly = format!(
-        "
-    .section .text
-    .global {0}
-    .code64
-    .extern {1}
-    {0}:
-        push rax
-        call {1}
-        pop rax
-        iret",
-        asmname, fname
-    );
-    quote! {
-        extern {
-            /// The assembly code for an interrupt function
-            pub fn #asmname ();
-        }
-        core::arch::global_asm!(#assembly);
-        #[no_mangle]
-        #fun
-    }
-    .into()
-}
-
-/// This macro creates a 64-bit interrupt function taking a single argument, with the appopriate entry and exit code
-#[proc_macro_attribute]
-pub fn interrupt_arg_64(
-    _attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let fun: syn::ItemFn = syn::parse(item).unwrap();
-    let fname = fun.sig.ident.clone();
-    let asmname = syn::Ident::new(
-        (fname.to_string() + "_asm").as_str(),
-        proc_macro2::Span::mixed_site(),
-    );
-    let assembly = format!(
-        "
-    .section .text
-    .global {0}
-    .code64
-    .extern {1}
-    {0}:
-        pop rdi
-        push rax
-        call {1}
-        pop rax
-        iret",
-        asmname, fname
-    );
-    quote! {
-        extern {
-            /// The assembly code for an interrupt function
-            pub fn #asmname ();
-        }
-        core::arch::global_asm!(#assembly);
-        #[no_mangle]
-        #fun
     }
     .into()
 }

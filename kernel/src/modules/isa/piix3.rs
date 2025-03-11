@@ -1,8 +1,8 @@
 //! Code for function 0 of the PIIX3 ISA bridge
 //! <https://theretroweb.com/chip/documentation/82371sb-intelcorporation-62f8fda6daac0627455529.pdf>
 
-/// The main struct for the isa bridge
 #[doors_macros::enum_variant(IsaBus)]
+/// The main struct for the isa bridge
 pub struct IsaPiix3Bridge {}
 
 impl super::IsaBusTrait for IsaPiix3Bridge {
