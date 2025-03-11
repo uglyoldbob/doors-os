@@ -507,6 +507,7 @@ pub fn enum_variant(
             Err(())
         }
     };
+    varname.expect("Failed to load enum");
     let item: proc_macro2::TokenStream = item.into();
     quote! {
         #item

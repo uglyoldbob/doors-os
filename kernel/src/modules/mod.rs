@@ -58,26 +58,9 @@ impl ModuleTrait for Test {
     fn do_something(&self) {}
 }
 
-/// The trait that pci function drivers must implement
-#[enum_dispatch::enum_dispatch]
-pub trait PciFunctionDriverTrait: Clone {
-    /// Register the driver in the given map, must check to see if the driver is already registered
-    async fn register(&self, m: &mut alloc::collections::BTreeMap<u32, PciFunctionDriver>);
-
-    /// Parse a bar register for the device
-    async fn parse_bars(
-        &mut self,
-        cs: &mut PciConfigurationSpace,
-        bus: &PciBus,
-        dev: &PciDevice,
-        f: &PciFunction,
-        config: &ConfigurationSpaceEnum,
-        bars: [Option<BarSpace>; 6],
-    );
-}
-
 use pci::{
     BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
+    PciFunctionDriverTrait,
 };
 
 /// Represents a device driver for a pci function

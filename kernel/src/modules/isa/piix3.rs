@@ -34,7 +34,7 @@ impl IsaPiix3BridgeDriver {
     }
 }
 
-impl crate::modules::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
+impl crate::modules::pci::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
     async fn parse_bars(
         &mut self,
         _cs: &mut crate::modules::pci::PciConfigurationSpace,
