@@ -257,7 +257,7 @@ impl Scheduler {
                     return unsafe { Context::thread_restore(&new_context) };
                 }
                 TaskStatus::Completed => {
-                    this.local_tasks.remove(next_task_index);
+                    this.local_tasks.swap_remove(next_task_index);
                 }
             }
         }

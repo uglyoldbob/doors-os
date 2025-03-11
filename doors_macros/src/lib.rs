@@ -574,7 +574,7 @@ pub fn fill_enum_with_variants_clonable(
     let fts = quote::ToTokens::into_token_stream(f);
     quote! {
         #[derive(Clone)]
-        #[doors_macros::build_iter]
+        #[doors_macros::vec_builder]
         #[enum_dispatch::enum_dispatch(#dispatch)]
         #fts
     }
@@ -583,7 +583,7 @@ pub fn fill_enum_with_variants_clonable(
 
 /// A macro that builds an iterator over all the variations of an enum
 #[proc_macro_attribute]
-pub fn build_iter(
+pub fn vec_builder(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
