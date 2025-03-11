@@ -3,7 +3,10 @@
 doors_macros::declare_enum!(IsaBus);
 
 pub mod piix3;
-doors_macros2::enum_reexport!(piix3);
+doors_macros2::enum_export_builder! {
+    doors_macros2::enum_reexport!(PciFunctionDriver, piix3);
+    doors_macros2::enum_reexport!(IsaBus, piix3);
+}
 
 /// The trait that defines common functionality for ISA bus adapters
 #[enum_dispatch::enum_dispatch]

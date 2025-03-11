@@ -1296,6 +1296,7 @@ impl PciBus {
         map: &mut alloc::collections::btree_map::BTreeMap<u32, crate::modules::PciFunctionDriver>,
         pci: &mut PciConfigurationSpace,
     ) {
+        use super::PciFunctionDriverTrait;
         for a in map.keys() {
             crate::VGA
                 .print_str_async(&format!("Looking for {:x}\r\n", a))
@@ -1363,29 +1364,9 @@ pub enum PciConfigurationSpace {
     X86(x86::PciRegisters),
 }
 
-/// The trait that pci function drivers must implement
-#[enum_dispatch::enum_dispatch]
-pub trait PciFunctionDriverTrait: Clone {
-    /// Register the driver in the given map, must check to see if the driver is already registered
-    async fn register(
-        &self,
-        m: &mut alloc::collections::BTreeMap<u32, crate::modules::PciFunctionDriver>,
-    );
-
-    /// Parse a bar register for the device
-    async fn parse_bars(
-        &mut self,
-        cs: &mut PciConfigurationSpace,
-        bus: &PciBus,
-        dev: &PciDevice,
-        f: &PciFunction,
-        config: &ConfigurationSpaceEnum,
-        bars: [Option<BarSpace>; 6],
-    );
-}
-
 /// Register all pci drivers with the driver map
 pub async fn pci_register_drivers() {
+    use super::PciFunctionDriverTrait;
     let mut drivers = PCI_DRIVERS.lock().await;
 
     crate::VGA
@@ -1410,7 +1391,7 @@ impl DummyPciFunctionDriver {
     }
 }
 
-impl PciFunctionDriverTrait for DummyPciFunctionDriver {
+impl super::PciFunctionDriverTrait for DummyPciFunctionDriver {
     async fn register(&self, _m: &mut BTreeMap<u32, crate::modules::PciFunctionDriver>) {
         crate::VGA
             .print_str_async("Register dummy pci driver\r\n")

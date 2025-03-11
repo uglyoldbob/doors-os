@@ -9,10 +9,10 @@ use crate::kernel::System;
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
 use crate::modules::pci::{
     BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
-    PciFunctionDriverTrait,
 };
 use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
 use crate::modules::PciFunctionDriver;
+use crate::modules::PciFunctionDriverTrait;
 use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner};
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -268,9 +268,9 @@ enum IntelPro1000Registers {
     RAH15 = 0x5404 + 8 * 15,
 }
 
+#[derive(Clone, Default)]
 #[doors_macros::enum_variant(PciFunctionDriver)]
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
-#[derive(Clone, Default)]
 pub struct IntelPro1000 {}
 
 bitfield::bitfield! {

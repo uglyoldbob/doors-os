@@ -10,7 +10,10 @@ doors_macros::declare_enum!(NetworkAdapter);
 
 pub mod intel;
 
-doors_macros2::enum_reexport!(intel);
+doors_macros2::enum_export_builder! {
+    doors_macros2::enum_reexport!(PciFunctionDriver, intel);
+    doors_macros2::enum_reexport!(NetworkAdapter, intel);
+}
 
 lazy_static::lazy_static! {
     /// Represents all network adapters for the kernel

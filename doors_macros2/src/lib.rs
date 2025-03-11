@@ -6,16 +6,18 @@
 /// This macro re-exports definitions required to fill out enum variants
 #[macro_export]
 macro_rules! enum_reexport {
-    ( $m:ident ) => {
-        /// A module for re-exporting things for enumeration fillout
-        pub mod doors_enum_variants {
-            pub use super::$m::doors_enum_variants::*;
+    ( $o:ident, $m:ident ) => {
+        /// A module for exporting things for enumeration fillout
+        #[allow(non_snake_case)]
+        pub mod $o {
+            pub use super::super::$m::doors_enum_variants::$o::*;
         }
     };
-    ( $($m:ident),+ ) => {
-        /// A module for re-exporting things for enumeration fillout
-        pub mod doors_enum_variants {
-            $(pub use super::$m::doors_enum_variants::*;),+
+    ( $o:ident, $($m:ident),+ ) => {
+        /// A module for exporting things for enumeration fillout
+        #[allow(non_snake_case)]
+        pub mod $o {
+            $(pub use super::super::$m::doors_enum_variants::$o::*;)+
         }
     };
 }

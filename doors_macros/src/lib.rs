@@ -546,6 +546,39 @@ pub fn fill_enum_with_variants(
     .into()
 }
 
+/// A macro that adds the previously defined variants into the enum, adding an enum_dispatch for a given trait, and also making the enum clonable
+#[proc_macro_attribute]
+pub fn fill_enum_with_variants_clonable(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let dispatch = parse_macro_input!(attr as syn::Ident);
+    let mut f = parse_macro_input!(item as syn::ItemEnum);
+    let name = f.ident.clone();
+    let vars = &mut f.variants;
+    let n = name.to_string();
+    let data = {
+        let mut e = ENUM_BUILDER.lock().unwrap();
+        e.remove(&n)
+    }
+    .unwrap();
+    if data.variants.is_empty() {
+        panic!("No variants defined for {}", n);
+    }
+    for d in &data.variants {
+        let ts = proc_macro::TokenStream::from_str(d).unwrap();
+        let v = parse_macro_input!(ts as syn::Variant);
+        vars.push(v);
+    }
+    let fts = quote::ToTokens::into_token_stream(f);
+    quote! {
+        #[derive(Clone)]
+        #[enum_dispatch::enum_dispatch(#dispatch)]
+        #fts
+    }
+    .into()
+}
+
 /// Defines the required doors test structure
 #[proc_macro]
 pub fn use_doors_test(_input: proc_macro::TokenStream) -> proc_macro::TokenStream {
