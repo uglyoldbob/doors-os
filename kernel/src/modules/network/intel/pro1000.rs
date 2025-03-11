@@ -7,14 +7,19 @@ use alloc::format;
 
 use crate::kernel::System;
 use crate::modules::network::{MacAddress, NetworkAdapterTrait};
-use crate::modules::PciFunctionDriver;
 use crate::modules::pci::{
     BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
     PciFunctionDriverTrait,
 };
 use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
+use crate::modules::PciFunctionDriver;
 use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner};
 use core::sync::atomic::{AtomicBool, Ordering};
+
+doors_macros2::enum_export_builder! {
+    doors_macros2::enum_export!(PciFunctionDriver, IntelPro1000);
+    doors_macros2::enum_export!(NetworkAdapter, IntelPro1000Device);
+}
 
 /// Holds either memory or io space
 enum MemoryOrIo {
@@ -263,6 +268,7 @@ enum IntelPro1000Registers {
     RAH15 = 0x5404 + 8 * 15,
 }
 
+#[doors_macros::enum_variant(PciFunctionDriver)]
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
 #[derive(Clone, Default)]
 pub struct IntelPro1000 {}

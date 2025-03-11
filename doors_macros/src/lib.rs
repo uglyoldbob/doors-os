@@ -508,25 +508,10 @@ pub fn enum_variant(
         }
     };
     let item: proc_macro2::TokenStream = item.into();
-    if let Ok(varname) = varname {
-        quote! {
-            #item
-            /// A module for making variants accessible
-            pub mod doors_enum_variants {
-                /// A module for making variants accessible``
-                #[allow(non_snake_case)]
-                pub mod #f {
-                    pub use super::super::#varname;
-                }
-            }
-        }
-        .into()
-    } else {
-        quote! {
-            #item
-        }
-        .into()
+    quote! {
+        #item
     }
+    .into()
 }
 
 /// A macro that adds the previously defined variants into the enum, adding an enum_dispatch for a given trait

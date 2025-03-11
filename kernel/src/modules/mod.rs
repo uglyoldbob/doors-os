@@ -54,7 +54,10 @@ impl ModuleTrait for Test {
     fn do_something(&self) {}
 }
 
-use pci::{BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction, PciFunctionDriverTrait};
+use pci::{
+    BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
+    PciFunctionDriverTrait,
+};
 
 /// Represents a device driver for a pci function
 #[enum_dispatch::enum_dispatch(PciFunctionDriverTrait)]

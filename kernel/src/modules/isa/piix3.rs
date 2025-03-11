@@ -1,6 +1,11 @@
 //! Code for function 0 of the PIIX3 ISA bridge
 //! <https://theretroweb.com/chip/documentation/82371sb-intelcorporation-62f8fda6daac0627455529.pdf>
 
+doors_macros2::enum_export_builder! {
+    doors_macros2::enum_export!(PciFunctionDriver, IsaPiix3BridgeDriver);
+    doors_macros2::enum_export!(IsaBus, IsaPiix3Bridge);
+}
+
 #[doors_macros::enum_variant(IsaBus)]
 /// The main struct for the isa bridge
 pub struct IsaPiix3Bridge {}
@@ -43,10 +48,7 @@ impl crate::modules::pci::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
 
     async fn register(
         &self,
-        m: &mut alloc::collections::btree_map::BTreeMap<
-            u32,
-            crate::modules::PciFunctionDriver,
-        >,
+        m: &mut alloc::collections::btree_map::BTreeMap<u32, crate::modules::PciFunctionDriver>,
     ) {
         crate::VGA
             .print_str_async("Register intel piix3 ISA driver\r\n")
