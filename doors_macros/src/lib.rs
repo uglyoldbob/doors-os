@@ -574,7 +574,40 @@ pub fn fill_enum_with_variants_clonable(
     let fts = quote::ToTokens::into_token_stream(f);
     quote! {
         #[derive(Clone)]
+        #[doors_macros::build_iter]
         #[enum_dispatch::enum_dispatch(#dispatch)]
+        #fts
+    }
+    .into()
+}
+
+/// A macro that builds an iterator over all the variations of an enum
+#[proc_macro_attribute]
+pub fn build_iter(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    assert!(attr.is_empty());
+    let f = parse_macro_input!(item as syn::ItemEnum);
+    let name = f.ident.clone();
+    let fts = quote::ToTokens::into_token_stream(f.clone());
+    let calls = f.variants.iter().map(|i| {
+        let j = i.clone();
+        let k = j.fields.iter().next().unwrap();
+        quote! {
+            #k::new().into()
+        }
+    });
+
+    quote! {
+        impl #name {
+            /// Pushes one of every variant onto the given vector using the new function
+            pub fn build_vec(b: &mut alloc::vec::Vec<Self>) {
+                for d in [#(#calls),*] {
+                    b.push(d);
+                }
+            }
+        }
         #fts
     }
     .into()

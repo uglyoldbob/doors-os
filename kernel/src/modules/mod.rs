@@ -66,7 +66,3 @@ use pci::{
 /// Represents a device driver for a pci function
 #[doors_macros::fill_enum_with_variants_clonable(PciFunctionDriverTrait)]
 pub enum PciFunctionDriver {}
-
-doors_macros::todo_item!("Make this variable automated if possible");
-/// Holds the pci drivers so that they can register with the `PCI_DRIVERS` variable
-static PCI_CODE: &[PciFunctionDriver] = &[];

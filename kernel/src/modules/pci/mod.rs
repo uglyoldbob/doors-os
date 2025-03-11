@@ -1393,7 +1393,9 @@ pub async fn pci_register_drivers() {
     crate::VGA
         .print_str_async("Registering pci drivers\r\n")
         .await;
-    for d in crate::modules::PCI_CODE {
+    let mut ds = alloc::vec::Vec::new();
+    super::PciFunctionDriver::build_vec(&mut ds);
+    for d in ds {
         d.register(&mut drivers).await;
     }
     crate::VGA
