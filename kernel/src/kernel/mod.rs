@@ -313,7 +313,7 @@ pub trait SystemTrait {
     /// Print debug stuff for acpi
     async fn acpi_debug(&self);
     /// Get the details for the boot/main stack of the kernel. Return is in the form of start address and size in bytes
-    fn main_stack(&self) -> (u64, u64);
+    fn main_stack(&self) -> (usize, usize);
     /// The the single byte opcode (if it exists) for a breakpoint instruction
     fn breakpoint(&self) -> Option<u8>;
 }
@@ -362,7 +362,7 @@ impl SystemTrait for NullSystem {
     fn disable_irq(&self, _irq: u8) {}
     fn init(&self) {}
     async fn acpi_debug(&self) {}
-    fn main_stack(&self) -> (u64, u64) {
+    fn main_stack(&self) -> (usize, usize) {
         (0, 0)
     }
 

@@ -40,15 +40,8 @@ pub static GDT_TABLE: GlobalDescriptorTable = make_gdt_table();
 
 core::arch::global_asm!(include_str!("boot.s"));
 
-extern "C" {
-    /// The pointer to the multiboot data
-    static MULTIBOOT2_DATA: *const usize;
-    /// The pointer to the end of the initial stack for the kernel
-    static INITIAL_STACK: *const usize;
-}
-
 /// The size of the main/boot kernel stack in bytes
-const MAIN_STACK_SIZE: u64 = 8 * 1024;
+pub const MAIN_STACK_SIZE: u64 = 8 * 1024;
 
 /// This function is responsible for building a gdt that can be built at compile time.
 const fn make_gdt_table() -> GlobalDescriptorTable {
@@ -429,7 +422,7 @@ pub struct X86System<'a> {
     /// Used for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
     /// The stack beginning
-    stack_start: u64,
+    stack_start: usize,
 }
 
 impl LockedArc<X86System<'_>> {
@@ -715,9 +708,9 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         });
     }
 
-    fn main_stack(&self) -> (u64, u64) {
+    fn main_stack(&self) -> (usize, usize) {
         let s = self.sync_lock();
-        (s.stack_start, MAIN_STACK_SIZE)
+        (s.stack_start as usize, MAIN_STACK_SIZE as usize)
     }
 }
 
@@ -873,7 +866,7 @@ pub extern "C" fn start64() -> ! {
     let bi_size = {
         let boot_info = unsafe {
             multiboot2::BootInformation::load(
-                MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
+                super::MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
             )
             .unwrap()
         };
@@ -905,79 +898,17 @@ pub extern "C" fn start64() -> ! {
     };
     let end_kernel = end_kernel + bi_size;
 
-    VIRTUAL_MEMORY_ALLOCATOR
-        .sync_lock()
-        .relocate(start_kernel, end_kernel);
-    VIRTUAL_MEMORY_ALLOCATOR
-        .sync_lock()
-        .start_allocating(unsafe {
-            &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
-        });
-
-    let stack_end = unsafe { INITIAL_STACK as usize };
+    let stack_end = unsafe { super::INITIAL_STACK as usize };
     let stack_size = MAIN_STACK_SIZE as usize;
 
-    if let Some(mm) = boot_info.memory_map_tag() {
-        let mut pal = PAGE_ALLOCATOR.sync_lock();
-        pal.init(mm);
-        for area in mm
-            .memory_areas()
-            .iter()
-            .filter(|i| i.typ() == multiboot2::MemoryAreaType::Available)
-        {
-            pal.add_memory_area(area);
-        }
-        pal.set_kernel_memory_used();
-
-        pal.set_area_used(stack_end - stack_size, stack_size);
-        pal.set_area_used(0, 0x100000);
-        pal.done_adding_memory_areas();
-    } else {
-        panic!("Physical memory manager unavailable\r\n");
-    };
-
-    VIRTUAL_MEMORY_ALLOCATOR
-        .sync_lock()
-        .stop_allocating(0x3fffff);
-
-    let apic: Box<super::LocalApicRegister, &Locked<memory::BumpAllocator>> =
-        unsafe { Box::new_uninit_in(&VIRTUAL_MEMORY_ALLOCATOR).assume_init() };
-
-    PAGING_MANAGER.sync_lock().init();
-
-    if true {
-        if true {
-            let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();
-            let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
-            {
-                let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
-                let mut v = crate::VGA.sync_lock();
-                v.replace(crate::kernel::OwnedDevice::free_range(a));
-            }
-        } else {
-            let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
-            let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
-            let mut v = crate::VGA.sync_lock();
-            v.replace(crate::kernel::OwnedDevice::free_range(b));
-            drop(v);
-        }
-    }
-
-    let apic_msr = x86_64::registers::model_specific::Msr::new(0x1b);
-    let apic_msr_value = unsafe { apic_msr.read() };
-    let apic_address = apic_msr_value & 0xFFFFF000;
-
-    PAGING_MANAGER
-        .sync_lock()
-        .map_addresses_read_write(crate::address(apic.as_ref()), apic_address as usize, 0x400)
-        .unwrap();
-
-    {
-        let pic = super::Pic::new().unwrap();
-        pic.disable();
-        pic.remap(0x20, 0x28);
-        super::INTERRUPT_CONTROLLER.write().replace(pic);
-    }
+    super::start_common1(
+        start_kernel,
+        end_kernel,
+        &boot_info,
+        stack_end,
+        stack_size,
+        unsafe { &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize },
+    );
 
     {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
@@ -1039,7 +970,7 @@ pub extern "C" fn start64() -> ! {
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
                 },
                 cpuid,
-                stack_start: (stack_end - stack_size) as u64,
+                stack_start: stack_end - stack_size,
             }
         }
     };

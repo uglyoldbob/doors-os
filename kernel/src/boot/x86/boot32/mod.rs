@@ -28,7 +28,7 @@ impl X86Apic {
 }
 
 /// The size of the main/boot kernel stack in bytes
-const MAIN_STACK_SIZE: u64 = 8 * 1024;
+pub const MAIN_STACK_SIZE: u32 = 8 * 1024;
 
 /// This function is responsible for building a gdt that can be built at compile time.
 const fn make_gdt_table() -> GlobalDescriptorTable {
@@ -202,10 +202,6 @@ pub extern "x86-interrupt" fn irq15() {
     }
 }
 
-extern "C" {
-    static MULTIBOOT2_DATA: *const usize;
-}
-
 #[repr(align(16))]
 #[derive(Copy, Clone)]
 #[allow(unused)]
@@ -228,7 +224,7 @@ pub struct X86System<'a> {
     /// Used for acpi
     acpi_handler: Acpi<'a>,
     /// The stack beginning
-    stack_start: u64,
+    stack_start: usize,
 }
 
 impl LockedArc<X86System<'_>> {
@@ -436,12 +432,16 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         Some(0xcc)
     }
 
-    fn register_exception_handler<F:FnMut()+Send+Sync+crate::Interrupt+'static>(&self,exception:u8,handler:F,) {
+    fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        exception: u8,
+        handler: F,
+    ) {
         let a = Box::new(handler);
         let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
         irqs.replace(a);
     }
-    
+
     fn enable_interrupts(&self) {
         unsafe { x86::irq::enable() };
     }
@@ -500,9 +500,9 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         });
     }
 
-    fn main_stack(&self) -> (u64, u64) {
+    fn main_stack(&self) -> (usize, usize) {
         let s = self.sync_lock();
-        (s.stack_start, MAIN_STACK_SIZE)
+        (s.stack_start as usize, MAIN_STACK_SIZE as usize)
     }
 }
 
@@ -593,78 +593,30 @@ pub static INTERRUPT_DESCRIPTOR_TABLE: crate::Locked<InterruptDescriptorTable> =
 /// The entry point for the 32 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start32() -> ! {
-    let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
-    let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
+    let _page =
+        memory::Page4MbMapped::from_raw(unsafe { super::MULTIBOOT2_DATA as *const () as usize });
 
-    let _page = memory::Page4MbMapped::from_raw(unsafe { MULTIBOOT2_DATA as *const () as usize });
-
-    let boot_info_addr = unsafe { MULTIBOOT2_DATA as usize };
+    let boot_info_addr = unsafe { super::MULTIBOOT2_DATA as usize };
     let boot_info = unsafe {
         multiboot2::BootInformation::load(
             boot_info_addr as *const multiboot2::BootInformationHeader,
         )
         .unwrap()
     };
-    let end_kernel = end_kernel; // + bi_size;
+    let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
+    let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
-    let stack_end: usize;
-    unsafe { core::arch::asm!("mov {}, esp;", out(reg) stack_end) };
+    let stack_end = unsafe { super::INITIAL_STACK as usize };
     let stack_size = MAIN_STACK_SIZE as usize;
 
-    VIRTUAL_MEMORY_ALLOCATOR
-        .sync_lock()
-        .relocate(start_kernel, end_kernel);
-    VIRTUAL_MEMORY_ALLOCATOR
-        .sync_lock()
-        .start_allocating(&memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize);
-
-    if let Some(mm) = boot_info.memory_map_tag() {
-        let mut pal = PAGE_ALLOCATOR.sync_lock();
-        pal.init(mm);
-        for area in mm
-            .memory_areas()
-            .iter()
-            .filter(|i| i.typ() == multiboot2::MemoryAreaType::Available)
-        {
-            pal.add_memory_area(area);
-        }
-        pal.set_kernel_memory_used();
-        pal.set_area_used(stack_end - stack_size, stack_size);
-        pal.set_area_used(0, 0x100000);
-        pal.set_area_used(boot_info_addr, boot_info.total_size());
-        pal.done_adding_memory_areas();
-    } else {
-        panic!("Physical memory manager unavailable\r\n");
-    };
-    VIRTUAL_MEMORY_ALLOCATOR
-        .sync_lock()
-        .stop_allocating(0x3fffff);
-    PAGING_MANAGER.sync_lock().init();
-
-    if true {
-        if true {
-            let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();
-            let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
-            {
-                let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
-                let mut v = crate::VGA.sync_lock();
-                v.replace(crate::kernel::OwnedDevice::free_range(a));
-            }
-        } else {
-            let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
-            let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
-            let mut v = crate::VGA.sync_lock();
-            v.replace(crate::kernel::OwnedDevice::free_range(b));
-            drop(v);
-        }
-    }
-
-    {
-        let pic = super::Pic::new().unwrap();
-        pic.disable();
-        pic.remap(0x20, 0x28);
-        super::INTERRUPT_CONTROLLER.write().replace(pic);
-    }
+    super::start_common1(
+        start_kernel,
+        end_kernel,
+        &boot_info,
+        stack_end,
+        stack_size,
+        &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize,
+    );
 
     {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
@@ -693,7 +645,7 @@ pub extern "C" fn start32() -> ! {
                     pageman: &PAGING_MANAGER,
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
                 },
-                stack_start: (stack_end - stack_size) as u64,
+                stack_start: stack_end - stack_size,
             }
         }
     };

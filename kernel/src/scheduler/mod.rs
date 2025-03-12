@@ -1,9 +1,9 @@
 //! Code for the task/thread scheduler of the kernel.
 
-#[cfg(target_arch = "x86_64")]
-use crate::gdbstub::x86::reg::X86_64CoreRegs;
 #[cfg(target_arch = "x86")]
 use crate::gdbstub::x86::reg::X86CoreRegs;
+#[cfg(target_arch = "x86_64")]
+use crate::gdbstub::x86::reg::X86_64CoreRegs;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 #[cfg(target_arch = "x86_64")]
@@ -244,7 +244,7 @@ impl Scheduler {
                         Some(c) => c,
                         None => Self::panic(2),
                     };
-                    let mut old_context = Context::new();
+                    let mut old_context = Context::default();
                     unsafe { Context::thread_save(&mut old_context) };
                     if t.cur_task.1.context.replace(old_context).is_some() {
                         Self::panic(3);
@@ -263,7 +263,7 @@ impl Scheduler {
     }
 
     /// Setup the timer and start scheduling tasks with the timer
-    pub fn timer_setup(&self, stack_start: u64, stack_size: u64) {
+    pub fn timer_setup(&self, stack_start: usize, stack_size: usize) {
         use crate::modules::timer::TimerInstanceInnerTrait;
         let s2 = self.i.clone();
         let irqnum = self.i.0.irq();

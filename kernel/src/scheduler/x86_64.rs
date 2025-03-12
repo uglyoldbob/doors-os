@@ -213,14 +213,8 @@ impl Stack {
     }
 
     /// A helper for building a stack from an existing stack
-    pub fn helper(stack_start: u64, stack_size: u64) -> Vec<u64> {
-        unsafe {
-            Vec::from_raw_parts(
-                stack_start as *mut u64,
-                stack_size as usize / 8,
-                stack_size as usize / 8,
-            )
-        }
+    pub fn helper(stack_start: usize, stack_size: usize) -> Vec<u64> {
+        unsafe { Vec::from_raw_parts(stack_start as *mut u64, stack_size / 8, stack_size / 8) }
     }
 
     /// Construct a stack from an existing stack

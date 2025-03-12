@@ -2,11 +2,11 @@
 
 use core::arch::naked_asm;
 
-use alloc::vec::Vec;
 use crate::gdbstub::x86::reg::X86CoreRegs;
+use alloc::vec::Vec;
 
 /// The saved context for a thread
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[repr(C)]
 pub struct Context {
     /// esp register
@@ -45,7 +45,7 @@ impl super::Task {
     pub fn new(f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
         let mut sc = StackContext::default();
-        let mut c = Context::new();
+        let mut c = Context::default();
         s.set_rsp(&mut c.esp);
         sc.eax = f as *const () as u32;
         sc.ebx = 0x64;
@@ -87,11 +87,6 @@ impl super::Task {
 }
 
 impl Context {
-    /// Construct an empty context
-    pub fn new() -> Self {
-        Self { esp: 99 }
-    }
-
     /// Write registers into the stack for a thread context
     pub fn stack_write(&self, stack: &mut Stack, regs: &X86CoreRegs) {
         //let rsp = self.esp + 0x120;
@@ -164,14 +159,8 @@ impl Stack {
     }
 
     /// A helper for building a stack from an existing stack
-    pub fn helper(stack_start: u64, stack_size: u64) -> Vec<u32> {
-        unsafe {
-            Vec::from_raw_parts(
-                stack_start as *mut u32,
-                stack_size as usize / 4,
-                stack_size as usize / 4,
-            )
-        }
+    pub fn helper(stack_start: usize, stack_size: usize) -> Vec<u32> {
+        unsafe { Vec::from_raw_parts(stack_start as *mut u32, stack_size / 4, stack_size / 4) }
     }
 
     /// Construct a stack from an existing stack

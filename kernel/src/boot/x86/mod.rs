@@ -337,6 +337,10 @@ extern "C" {
     pub static START_OF_KERNEL: u8;
     /// Defines the end of the kernel for the initial kernel load. This is defined by the linker script.
     pub static END_OF_KERNEL: u8;
+    /// The pointer to the multiboot data
+    static MULTIBOOT2_DATA: *const usize;
+    /// The pointer to the end of the initial stack for the kernel
+    static INITIAL_STACK: *const usize;
 }
 
 /// Setup timers for the x86 kernel
@@ -385,6 +389,73 @@ fn serial_interrupts() {
             s.sync_transmit_str("About to enable async mode for serial port 1\r\n");
             s.enable_async(sys.clone()).unwrap();
         }
+    }
+}
+
+/// Code that runs on startup that is common to both x86 and x86_64.
+fn start_common1(
+    start_kernel: usize,
+    end_kernel: usize,
+    boot_info: &multiboot2::BootInformation,
+    stack_end: usize,
+    stack_size: usize,
+    virtual_allocate_start: usize,
+) {
+    boot::VIRTUAL_MEMORY_ALLOCATOR
+        .sync_lock()
+        .relocate(start_kernel, end_kernel);
+    boot::VIRTUAL_MEMORY_ALLOCATOR
+        .sync_lock()
+        .start_allocating(virtual_allocate_start);
+
+    if let Some(mm) = boot_info.memory_map_tag() {
+        let mut pal = boot::PAGE_ALLOCATOR.sync_lock();
+        pal.init(mm);
+        for area in mm
+            .memory_areas()
+            .iter()
+            .filter(|i| i.typ() == multiboot2::MemoryAreaType::Available)
+        {
+            pal.add_memory_area(area);
+        }
+        pal.set_kernel_memory_used();
+
+        pal.set_area_used(stack_end - stack_size, stack_size);
+        pal.set_area_used(0, 0x100000);
+        pal.done_adding_memory_areas();
+    } else {
+        panic!("Physical memory manager unavailable\r\n");
+    };
+
+    boot::VIRTUAL_MEMORY_ALLOCATOR
+        .sync_lock()
+        .stop_allocating(0x3fffff);
+
+    boot::PAGING_MANAGER.sync_lock().init();
+
+    if true {
+        if true {
+            let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();
+            let fb = crate::modules::video::Framebuffer::VgaHardware(vga);
+            {
+                let a = fb.make_console_palette(&crate::modules::video::MAIN_FONT_PALETTE);
+                let mut v = crate::VGA.sync_lock();
+                v.replace(crate::kernel::OwnedDevice::free_range(a));
+            }
+        } else {
+            let vga = unsafe { crate::modules::video::text::X86VgaTextMode::get(0xb8000) };
+            let b = crate::modules::video::TextDisplay::X86VgaTextMode(vga);
+            let mut v = crate::VGA.sync_lock();
+            v.replace(crate::kernel::OwnedDevice::free_range(b));
+            drop(v);
+        }
+    }
+
+    {
+        let pic = Pic::new().unwrap();
+        pic.disable();
+        pic.remap(0x20, 0x28);
+        INTERRUPT_CONTROLLER.write().replace(pic);
     }
 }
 
