@@ -29,12 +29,30 @@ pub fn idle() {
     x86_64::instructions::hlt();
 }
 
+/// Code to idle the system
+#[cfg(target_arch = "x86")]
+pub fn idle() {
+    unsafe { x86::halt() };
+}
+
 /// Code to conditionally idle the system based on a closure
 #[cfg(target_arch = "x86_64")]
 pub fn idle_if(mut f: impl FnMut() -> bool) {
     crate::SYSTEM.read().disable_interrupts();
     if f() {
         x86_64::instructions::interrupts::enable_and_hlt();
+    } else {
+        crate::SYSTEM.read().enable_interrupts();
+    }
+}
+
+/// Code to conditionally idle the system based on a closure
+#[cfg(target_arch = "x86")]
+pub fn idle_if(mut f: impl FnMut() -> bool) {
+    crate::SYSTEM.read().disable_interrupts();
+    if f() {
+        unsafe { x86::irq::enable() };
+        unsafe { x86::halt() };
     } else {
         crate::SYSTEM.read().enable_interrupts();
     }

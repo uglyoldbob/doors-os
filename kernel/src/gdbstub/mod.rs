@@ -375,8 +375,8 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
     type StopReason = MultiThreadStopReason<u32>;
 
     fn wait_for_stop_reason(
-        target: &mut Self::Target,
-        conn: &mut Self::Connection,
+        _target: &mut Self::Target,
+        _conn: &mut Self::Connection,
     ) -> Result<
         gdbstub::stub::run_blocking::Event<Self::StopReason>,
         gdbstub::stub::run_blocking::WaitForStopReasonError<
@@ -388,7 +388,7 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbstubBlockingEventLoop
     }
 
     fn on_interrupt(
-        target: &mut Self::Target,
+        _target: &mut Self::Target,
     ) -> Result<Option<Self::StopReason>, <Self::Target as gdbstub::target::Target>::Error> {
         Ok(Some(
             MultiThreadStopReason::Signal(gdbstub::common::Signal::SIGINT).into(),

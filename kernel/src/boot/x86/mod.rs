@@ -26,6 +26,7 @@ pub mod memory;
 pub use boot::mem2;
 
 /// The registers for a local apic
+#[allow(unused)]
 #[repr(align(16))]
 struct LocalApicRegister {
     /// The apic registers

@@ -4,9 +4,7 @@ use crate::kernel;
 use crate::LockedArc;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::pin::Pin;
 use core::ptr::NonNull;
-use doors_macros::interrupt;
 use lazy_static::lazy_static;
 
 mod gdt;
@@ -19,8 +17,6 @@ pub use memory::memory as mem2;
 
 use x86::segmentation::Descriptor;
 
-use crate::VGA;
-
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
 
@@ -30,9 +26,6 @@ impl X86Apic {
         Self {}
     }
 }
-
-/// A generic message indicating the system is booting.
-const GREETING: &str = "I am groot\r\n";
 
 /// The size of the main/boot kernel stack in bytes
 const MAIN_STACK_SIZE: u64 = 8 * 1024;
@@ -147,7 +140,7 @@ pub fn finish_irq(irqnum: u8) {
 pub extern "x86-interrupt" fn irq0() {
     let handle = super::IRQ_HANDLERS[0].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
-    let h3 = unsafe { h3.as_ref().unwrap() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(0);
     if let Some(h2) = h3 {
         h2();
@@ -158,7 +151,7 @@ pub extern "x86-interrupt" fn irq0() {
 pub extern "x86-interrupt" fn irq3() {
     let handle = super::IRQ_HANDLERS[3].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
-    let h3 = unsafe { h3.as_ref().unwrap() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(3);
     if let Some(h2) = h3 {
         h2();
@@ -169,7 +162,7 @@ pub extern "x86-interrupt" fn irq3() {
 pub extern "x86-interrupt" fn irq4() {
     let handle = super::IRQ_HANDLERS[4].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
-    let h3 = unsafe { h3.as_ref().unwrap() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(4);
     if let Some(h2) = h3 {
         h2();
@@ -180,7 +173,7 @@ pub extern "x86-interrupt" fn irq4() {
 pub extern "x86-interrupt" fn irq7() {
     let handle = super::IRQ_HANDLERS[7].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
-    let h3 = unsafe { h3.as_ref().unwrap() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(7);
     if let Some(h2) = h3 {
         h2();
@@ -191,7 +184,7 @@ pub extern "x86-interrupt" fn irq7() {
 pub extern "x86-interrupt" fn irq10() {
     let handle = super::IRQ_HANDLERS[10].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
-    let h3 = unsafe { h3.as_ref().unwrap() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(10);
     if let Some(h2) = h3 {
         h2();
@@ -202,7 +195,7 @@ pub extern "x86-interrupt" fn irq10() {
 pub extern "x86-interrupt" fn irq15() {
     let handle = super::IRQ_HANDLERS[15].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
-    let h3 = unsafe { h3.as_ref().unwrap() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(15);
     if let Some(h2) = h3 {
         h2();
@@ -215,6 +208,7 @@ extern "C" {
 
 #[repr(align(16))]
 #[derive(Copy, Clone)]
+#[allow(unused)]
 /// A structure for testing
 struct Big {
     /// Some data to take up space
@@ -226,6 +220,7 @@ struct AmlHandler {}
 
 /// The system boot structure
 #[doors_macros::config_check_struct]
+#[allow(unused)]
 pub struct X86System<'a> {
     /// Used for information regarding the bootup of the kernel
     boot_info: multiboot2::BootInformation<'a>,
@@ -236,7 +231,7 @@ pub struct X86System<'a> {
     stack_start: u64,
 }
 
-impl LockedArc<Pin<Box<X86System<'_>>>> {
+impl LockedArc<X86System<'_>> {
     /// Perform processing necessary for acpi functionality
     #[doors_macros::config_check(acpi, "true")]
     fn handle_acpi(&self) {
@@ -436,7 +431,17 @@ impl LockedArc<Pin<Box<X86System<'_>>>> {
     }
 }
 
-impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
+impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
+    fn breakpoint(&self) -> Option<u8> {
+        Some(0xcc)
+    }
+
+    fn register_exception_handler<F:FnMut()+Send+Sync+crate::Interrupt+'static>(&self,exception:u8,handler:F,) {
+        let a = Box::new(handler);
+        let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
+        irqs.replace(a);
+    }
+    
     fn enable_interrupts(&self) {
         unsafe { x86::irq::enable() };
     }
@@ -456,7 +461,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
 
     doors_macros::todo_item!("Add code for unregistering an irq handler");
     doors_macros::todo_item!("Return a Result here to detect shared irq attempts");
-    fn register_irq_handler<F: Fn() + Send + Sync + crate::Interrupt + 'static>(
+    fn register_irq_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         irq: u8,
         handler: F,
@@ -475,20 +480,6 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         });
     }
 
-    fn idle(&self) {
-        unsafe { x86::halt() };
-    }
-
-    fn idle_if(&self, mut f: impl FnMut() -> bool) {
-        self.disable_interrupts();
-        if f() {
-            unsafe { x86::irq::enable() };
-            unsafe { x86::halt() };
-        } else {
-            self.enable_interrupts();
-        }
-    }
-
     async fn acpi_debug(&self) {
         crate::VGA.print_str_async("ACPI INFORMATION\r\n").await;
     }
@@ -498,7 +489,7 @@ impl crate::kernel::SystemTrait for LockedArc<Pin<Box<X86System<'_>>>> {
         super::setup_serial();
 
         super::serial_interrupts();
-        let aml_handler = Box::new(AmlHandler {});
+        let _aml_handler = Box::new(AmlHandler {});
         /*
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
         aml.initialize_objects().unwrap();
@@ -556,7 +547,6 @@ impl<'a> acpi::AcpiHandler for Acpi<'a> {
                 p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
-                loop {}
             }
             let vstart = b.as_mut_ptr() as usize + err - size;
 
@@ -626,9 +616,7 @@ pub extern "C" fn start32() -> ! {
         .relocate(start_kernel, end_kernel);
     VIRTUAL_MEMORY_ALLOCATOR
         .sync_lock()
-        .start_allocating(unsafe {
-            &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize
-        });
+        .start_allocating(&memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize);
 
     if let Some(mm) = boot_info.memory_map_tag() {
         let mut pal = PAGE_ALLOCATOR.sync_lock();
@@ -697,7 +685,7 @@ pub extern "C" fn start32() -> ! {
     }
 
     let sys = {
-        let s = doors_macros::config_build_struct! {
+        doors_macros::config_build_struct! {
             X86System {
                 boot_info: boot_info,
                 #[doorsconfig = "acpi"]
@@ -707,9 +695,7 @@ pub extern "C" fn start32() -> ! {
                 },
                 stack_start: (stack_end - stack_size) as u64,
             }
-        };
-        let b = Box::new(s);
-        Box::into_pin(b)
+        }
     };
 
     unsafe {

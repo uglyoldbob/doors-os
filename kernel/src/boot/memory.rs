@@ -72,6 +72,7 @@ impl<T> DmaMemory<T> {
     /// # Safety
     /// virt should be mapped to phys over a length of size
     /// this mapping should not be changed over the life of this object
+    #[allow(unused)]
     pub(super) unsafe fn build_with(
         virt: usize,
         phys: usize,

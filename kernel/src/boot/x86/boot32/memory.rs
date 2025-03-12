@@ -1,6 +1,5 @@
 //! This module exists to cover memory management for x86 (32 bit) processors. It assumes the usage of physical address extensions.
 
-use core::alloc::Allocator;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
@@ -12,11 +11,8 @@ pub mod memory;
 
 use crate::Locked;
 
-use crate::FixedString;
-use crate::VGA;
-
 /// The page directory, used for the paging system in PAGE paging.
-pub static mut PAGE_DIRECTORY_BOOT1: PageTable = PageTable { entries: [0; 1024] };
+pub static PAGE_DIRECTORY_BOOT1: PageTable = PageTable { entries: [0; 1024] };
 
 #[derive(Copy, Clone)]
 /// An allocation made by the bump allocator. This is used to undo allocations
@@ -68,6 +64,7 @@ impl BumpAllocator {
     }
 
     /// Deallocate memory allocated with [allocate_nonram_memory]
+    #[allow(unused)]
     fn deallocate_nonram_memory(
         &mut self,
         ptr: core::ptr::NonNull<u8>,
@@ -289,6 +286,7 @@ impl<'a, T> Bitmap<'a, T> {
 
 /// A physical memory page
 #[repr(align(4096))]
+#[allow(unused)]
 pub struct Page {
     /// The data for a single physical memory page
     data: [u8; 4096],
@@ -307,6 +305,7 @@ impl Page {
 
 #[repr(align(0x400000))]
 /// A 4 megabyte large page
+#[allow(unused)]
 pub struct Page4Mb {
     /// The page contents
     data: [Page; 1024],
@@ -534,6 +533,7 @@ struct PageTableRef {
 
 impl PageTableRef {
     /// Create a blank page table ref, using the specified address for viewing a page table.
+    #[allow(unused)]
     const fn blank(a: &mut PageTable, v: &'static mut u32) -> Self {
         Self {
             table: unsafe { &mut *(a as *mut PageTable) },
@@ -550,6 +550,7 @@ impl PageTableRef {
     }
 
     /// Get the address of the page table viewing window
+    #[allow(unused)]
     fn table_address(&self) -> usize {
         self.table as *const PageTable as usize
     }
@@ -671,14 +672,13 @@ impl<'a> PagingTableManager<'a> {
     }
 
     /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
-    fn setup_cache(&mut self, cr3: usize, address: usize) {
+    fn setup_cache(&mut self, _cr3: usize, address: usize) {
         let page_directory = unsafe { &mut *self.pt2.as_mut_ptr() };
         let pde = page_directory.table.get_entry((address >> 22) & 0x3FF);
         let pde = match pde {
             Some(pde) => pde,
             None => {
                 unimplemented!();
-                0
             }
         };
         unsafe { &mut *self.pt1.as_mut_ptr() }.update(pde);

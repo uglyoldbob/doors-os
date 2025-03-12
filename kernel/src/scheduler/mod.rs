@@ -3,7 +3,7 @@
 #[cfg(target_arch = "x86_64")]
 use crate::gdbstub::x86::reg::X86_64CoreRegs;
 #[cfg(target_arch = "x86")]
-use gdbstub_arch::x86::reg::X86CoreRegs;
+use crate::gdbstub::x86::reg::X86CoreRegs;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 #[cfg(target_arch = "x86_64")]
@@ -207,7 +207,6 @@ impl Scheduler {
     /// A panic helper for the scheduler
     #[inline(never)]
     fn panic(val: usize) -> ! {
-        ::x86_64::instructions::bochs_breakpoint();
         loop {
             core::hint::black_box(val);
         }
@@ -245,7 +244,7 @@ impl Scheduler {
                         Some(c) => c,
                         None => Self::panic(2),
                     };
-                    let mut old_context = Context::default();
+                    let mut old_context = Context::new();
                     unsafe { Context::thread_save(&mut old_context) };
                     if t.cur_task.1.context.replace(old_context).is_some() {
                         Self::panic(3);

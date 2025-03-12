@@ -3,7 +3,7 @@
 use core::arch::naked_asm;
 
 use alloc::vec::Vec;
-use gdbstub_arch::x86::reg::X86CoreRegs;
+use crate::gdbstub::x86::reg::X86CoreRegs;
 
 /// The saved context for a thread
 #[derive(Debug)]
@@ -83,7 +83,6 @@ impl super::Task {
     fn task_runner() {
         unsafe { core::arch::asm!("call eax;") };
         super::SCHEDULER.read().as_ref().unwrap().task_completed();
-        loop {}
     }
 }
 
@@ -95,7 +94,7 @@ impl Context {
 
     /// Write registers into the stack for a thread context
     pub fn stack_write(&self, stack: &mut Stack, regs: &X86CoreRegs) {
-        let rsp = self.esp + 0x120;
+        //let rsp = self.esp + 0x120;
         let rsp = self.esp + 0x120 + 96 + 56 + 24;
         stack.update(rsp, regs.eax);
         stack.update(rsp + 8, regs.ecx);
@@ -109,7 +108,7 @@ impl Context {
     /// Read registers from the stack for a thread context
     pub fn stack_read(&self, stack: &Stack) -> (&Context, StackContext) {
         let mut sc = StackContext::default();
-        let rsp = self.esp + 0x120;
+        //let rsp = self.esp + 0x120;
         //let rbx = stack.reference(rsp);
         //sc.rbp = stack.reference(rsp + 40);
         //let rsp = con.rsp + 0x120 + 56;

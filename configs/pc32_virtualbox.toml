@@ -20,5 +20,6 @@ config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
 
 [target.config]
 net_devs = [0]
+serial_ports = [0, 2]
 
 [target.emulator.VirtualBox]

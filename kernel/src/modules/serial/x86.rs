@@ -178,7 +178,7 @@ impl X86SerialPort {
     fn sync_send_byte(&self, c: u8) {
         while !self.can_send() {
             for _ in 0..100000 {
-                x86_64::instructions::nop();
+                crate::nop();
             }
         }
         self.force_send_byte(c);
@@ -272,7 +272,7 @@ impl super::SerialTrait for X86SerialPort {
         } else {
             while self.0.rx_queue.access().is_empty() {
                 for _ in 0..1000 {
-                    x86_64::instructions::nop();
+                    crate::nop();
                 }
             }
             self.0.rx_queue.access().pop().unwrap()

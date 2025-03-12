@@ -44,7 +44,6 @@ impl crate::modules::pci::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
         _config: &crate::modules::pci::ConfigurationSpaceEnum,
         _bars: [Option<crate::modules::pci::BarSpace>; 6],
     ) {
-        todo!();
     }
 
     async fn register(
