@@ -4,7 +4,7 @@ disassembly = true
 
 [kernel_config]
 machine_name = "pc32"
-acpi = false
+acpi = true
 gdbstub = true
 mm_debug = false
 test = false
