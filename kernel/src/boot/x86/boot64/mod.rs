@@ -318,7 +318,7 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
 pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
 
-impl acpi::AcpiHandler for super::Acpi<'_> {
+impl acpi::AcpiHandler for super::Acpi {
     unsafe fn map_physical_region<T>(
         &self,
         physical_address: usize,
@@ -404,7 +404,9 @@ pub struct X86System<'a> {
     pub boot_info: multiboot2::BootInformation<'a>,
     #[doorsconfig = "acpi"]
     /// Used for acpi
-    pub acpi_handler: super::Acpi<'a>,
+    pub acpi_handler: super::Acpi,
+    /// The acpi tables element
+    pub acpi: Option<acpi::AcpiTables<super::Acpi>>,
     /// Used for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
     /// The stack beginning
@@ -606,7 +608,7 @@ pub extern "C" fn start64() -> ! {
         }
     }
 
-    let sys = {
+    let mut sys = {
         doors_macros::config_build_struct! {
             X86System {
                 boot_info,
@@ -616,11 +618,12 @@ pub extern "C" fn start64() -> ! {
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
                 },
                 cpuid,
+                acpi: None,
                 stack_start: stack_end - stack_size,
             }
         }
     };
-
+    sys.load_acpi();
     unsafe {
         INTERRUPT_DESCRIPTOR_TABLE.sync_lock().load_unsafe();
     }

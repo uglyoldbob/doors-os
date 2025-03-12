@@ -394,20 +394,20 @@ fn serial_interrupts() {
 
 #[derive(Clone)]
 /// A structure for mapping and unmapping acpi memory
-pub struct Acpi<'a> {
+pub struct Acpi {
     /// The page manager for mapping and unmapping virtual memory
-    pageman: &'a Locked<boot::memory::PagingTableManager<'a>>,
+    pageman: &'static Locked<boot::memory::PagingTableManager<'static>>,
     /// The virtual memory manager for getting virtual memory
-    vmm: &'a Locked<boot::memory::BumpAllocator>,
+    vmm: &'static Locked<boot::memory::BumpAllocator>,
 }
 
 impl aml::Handler for boot::AmlHandler {
-    fn sleep(&self, milliseconds: u64) {
-        todo!();    
+    fn sleep(&self, _milliseconds: u64) {
+        todo!()
     }
 
-    fn stall(&self, microseconds: u64) {
-        todo!();
+    fn stall(&self, _microseconds: u64) {
+        todo!()
     }
 
     fn read_u8(&self, _address: usize) -> u8 {
@@ -549,12 +549,11 @@ impl aml::Handler for boot::AmlHandler {
     }
 }
 
-impl crate::LockedArc<boot::X86System<'_>> {
-    /// Perform processing necessary for acpi functionality
+impl boot::X86System<'_> {
+    /// This function loads the acpi tables if they are present
     #[doors_macros::config_check(acpi, "true")]
-    fn handle_acpi(&self, aml: &mut aml::AmlContext) {
-        let this = self.sync_lock();
-        let acpi = if let Some(rsdp2) = this.boot_info.rsdp_v2_tag() {
+    fn load_acpi(&mut self) {
+        let acpi = if let Some(rsdp2) = self.boot_info.rsdp_v2_tag() {
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "rsdpv2 at {:X} {:x} revision {}\r\n",
                 rsdp2 as *const multiboot2::RsdpV2Tag as usize,
@@ -564,13 +563,13 @@ impl crate::LockedArc<boot::X86System<'_>> {
             Some(
                 unsafe {
                     acpi::AcpiTables::from_rsdp(
-                        this.acpi_handler.clone(),
+                        self.acpi_handler.clone(),
                         rsdp2 as *const multiboot2::RsdpV2Tag as usize + 8,
                     )
                 }
                 .unwrap(),
             )
-        } else if let Some(rsdp1) = this.boot_info.rsdp_v1_tag() {
+        } else if let Some(rsdp1) = self.boot_info.rsdp_v1_tag() {
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "rsdpv1 at {:p} {:x}\r\n",
                 rsdp1.signature().unwrap().as_ptr(),
@@ -579,7 +578,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
 
             let t = unsafe {
                 acpi::AcpiTables::from_rsdp(
-                    this.acpi_handler.clone(),
+                    self.acpi_handler.clone(),
                     rsdp1.signature().unwrap().as_ptr() as usize,
                 )
             };
@@ -599,152 +598,158 @@ impl crate::LockedArc<boot::X86System<'_>> {
         } else {
             None
         };
-
-        if acpi.is_none() {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "No ACPI table found\r\n"
-            ));
+        if acpi.is_some() {
+            self.acpi = acpi;
         }
-        let acpi = acpi.unwrap();
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "acpi rev {:x}\r\n",
-            acpi.revision()
-        ));
+    }
+}
 
-        crate::VGA.print_str("Trying DSDT\r\n");
-
-        if true {
-            if let Ok(v) = acpi.dsdt() {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "dsdt {:x} {:x}\r\n",
-                    v.address,
-                    v.length
-                ));
-                boot::PAGING_MANAGER
-                    .sync_lock()
-                    .map_addresses_read_only(v.address, v.address, v.length as usize)
-                    .unwrap();
-                let table: &[u8] = unsafe {
-                    core::slice::from_raw_parts(v.address as *const u8, v.length as usize)
-                };
-                if aml.parse_table(table).is_ok() {
-                    crate::VGA.print_str("DSDT PARSED OK\r\n");
+impl crate::LockedArc<boot::X86System<'_>> {
+    /// Perform processing necessary for acpi functionality
+    #[doors_macros::config_check(acpi, "true")]
+    fn handle_acpi(&self, aml: &mut aml::AmlContext) {
+        let mut this = self.sync_lock();
+        if let Some(acpi) = this.acpi.as_mut() {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "acpi rev {:x}\r\n",
+                acpi.revision()
+            ));
+    
+            crate::VGA.print_str("Trying DSDT\r\n");
+    
+            if true {
+                if let Ok(v) = acpi.dsdt() {
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "dsdt {:x} {:x}\r\n",
+                        v.address,
+                        v.length
+                    ));
+                    boot::PAGING_MANAGER
+                        .sync_lock()
+                        .map_addresses_read_only(v.address, v.address, v.length as usize)
+                        .unwrap();
+                    let table: &[u8] = unsafe {
+                        core::slice::from_raw_parts(v.address as *const u8, v.length as usize)
+                    };
+                    if aml.parse_table(table).is_ok() {
+                        crate::VGA.print_str("DSDT PARSED OK\r\n");
+                    }
                 }
             }
-        }
-        if true {
-            crate::VGA.print_str("About to iterate ssdts\r\n");
-            for v in acpi.ssdts() {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "ssdt {:x} {:x}\r\n",
-                    v.address,
-                    v.length
-                ));
-                boot::PAGING_MANAGER
-                    .sync_lock()
-                    .map_addresses_read_only(v.address, v.address, v.length as usize)
-                    .unwrap();
-                let table: &[u8] = unsafe {
-                    core::slice::from_raw_parts(v.address as *const u8, v.length as usize)
-                };
-                match aml.parse_table(table) {
-                    Ok(()) => crate::VGA.print_str("SSDT PARSED OK\r\n"),
-                    Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "SSDT PARSED ERR {:?}\r\n",
-                        e
-                    )),
+            if true {
+                crate::VGA.print_str("About to iterate ssdts\r\n");
+                for v in acpi.ssdts() {
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "ssdt {:x} {:x}\r\n",
+                        v.address,
+                        v.length
+                    ));
+                    boot::PAGING_MANAGER
+                        .sync_lock()
+                        .map_addresses_read_only(v.address, v.address, v.length as usize)
+                        .unwrap();
+                    let table: &[u8] = unsafe {
+                        core::slice::from_raw_parts(v.address as *const u8, v.length as usize)
+                    };
+                    match aml.parse_table(table) {
+                        Ok(()) => crate::VGA.print_str("SSDT PARSED OK\r\n"),
+                        Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "SSDT PARSED ERR {:?}\r\n",
+                            e
+                        )),
+                    }
                 }
             }
-        }
-
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "There are {} entries\r\n",
-            acpi.headers().count()
-        ));
-
-        for header in acpi.headers() {
+    
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "sdt {:X} {} {} {}\r\n",
-                &header as *const acpi::sdt::SdtHeader as usize,
-                header.signature.as_str(),
-                header.length as usize,
-                header.revision
+                "There are {} entries\r\n",
+                acpi.headers().count()
             ));
-            match header.signature {
-                acpi::sdt::Signature::WAET => {
-                    crate::VGA.print_str("TODO Parse the Waet table\r\n");
-                }
-                acpi::sdt::Signature::HPET => match acpi.find_table::<acpi::hpet::HpetTable>() {
-                    Ok(_hpet) => crate::VGA.print_str("TODO Parse the Hpet table\r\n"),
-                    Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "HPET ERROR {:?}\r\n",
-                        e
-                    )),
-                },
-                acpi::sdt::Signature::FADT => match acpi.find_table::<acpi::fadt::Fadt>() {
-                    Ok(_fadt) => crate::VGA.print_str("TODO Parse the Fadt\r\n"),
-                    Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "FADT ERROR {:?}\r\n",
-                        e
-                    )),
-                },
-                acpi::sdt::Signature::MADT => match acpi.find_table::<acpi::madt::Madt>() {
-                    Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "MADT ERROR {:?}\r\n",
-                        e
-                    )),
-                    Ok(madt) => {
-                        let madt = madt.get();
-                        for e in madt.entries() {
-                            match e {
-                                acpi::madt::MadtEntry::LocalApic(lapic) => {
-                                    crate::VGA.print_fixed_str(
-                                        doors_macros2::fixed_string_format!(
-                                            "madt lapic entry {:x} {:x} {:x}\r\n",
-                                            lapic.processor_id,
-                                            lapic.apic_id,
-                                            { lapic.flags }
-                                        ),
-                                    );
+    
+            for header in acpi.headers() {
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "sdt {:X} {} {} {}\r\n",
+                    &header as *const acpi::sdt::SdtHeader as usize,
+                    header.signature.as_str(),
+                    header.length as usize,
+                    header.revision
+                ));
+                match header.signature {
+                    acpi::sdt::Signature::WAET => {
+                        crate::VGA.print_str("TODO Parse the Waet table\r\n");
+                    }
+                    acpi::sdt::Signature::HPET => match acpi.find_table::<acpi::hpet::HpetTable>() {
+                        Ok(_hpet) => crate::VGA.print_str("TODO Parse the Hpet table\r\n"),
+                        Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "HPET ERROR {:?}\r\n",
+                            e
+                        )),
+                    },
+                    acpi::sdt::Signature::FADT => match acpi.find_table::<acpi::fadt::Fadt>() {
+                        Ok(_fadt) => crate::VGA.print_str("TODO Parse the Fadt\r\n"),
+                        Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "FADT ERROR {:?}\r\n",
+                            e
+                        )),
+                    },
+                    acpi::sdt::Signature::MADT => match acpi.find_table::<acpi::madt::Madt>() {
+                        Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "MADT ERROR {:?}\r\n",
+                            e
+                        )),
+                        Ok(madt) => {
+                            let madt = madt.get();
+                            for e in madt.entries() {
+                                match e {
+                                    acpi::madt::MadtEntry::LocalApic(lapic) => {
+                                        crate::VGA.print_fixed_str(
+                                            doors_macros2::fixed_string_format!(
+                                                "madt lapic entry {:x} {:x} {:x}\r\n",
+                                                lapic.processor_id,
+                                                lapic.apic_id,
+                                                { lapic.flags }
+                                            ),
+                                        );
+                                    }
+                                    acpi::madt::MadtEntry::IoApic(_ioapic) => {
+                                        crate::VGA.print_str("madt ioapic entry\r\n");
+                                    }
+                                    acpi::madt::MadtEntry::InterruptSourceOverride(_i) => {
+                                        crate::VGA.print_str("madt int source override\r\n");
+                                    }
+                                    acpi::madt::MadtEntry::NmiSource(_) => todo!(),
+                                    acpi::madt::MadtEntry::LocalApicNmi(_) => {
+                                        crate::VGA.print_str("madt lapic nmi entry\r\n");
+                                    }
+                                    acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
+                                    acpi::madt::MadtEntry::IoSapic(_) => todo!(),
+                                    acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
+                                    acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
+                                    acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
+                                    acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
+                                    acpi::madt::MadtEntry::Gicc(_) => todo!(),
+                                    acpi::madt::MadtEntry::Gicd(_) => todo!(),
+                                    acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
+                                    acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
+                                    acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
+                                    acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
                                 }
-                                acpi::madt::MadtEntry::IoApic(_ioapic) => {
-                                    crate::VGA.print_str("madt ioapic entry\r\n");
-                                }
-                                acpi::madt::MadtEntry::InterruptSourceOverride(_i) => {
-                                    crate::VGA.print_str("madt int source override\r\n");
-                                }
-                                acpi::madt::MadtEntry::NmiSource(_) => todo!(),
-                                acpi::madt::MadtEntry::LocalApicNmi(_) => {
-                                    crate::VGA.print_str("madt lapic nmi entry\r\n");
-                                }
-                                acpi::madt::MadtEntry::LocalApicAddressOverride(_) => todo!(),
-                                acpi::madt::MadtEntry::IoSapic(_) => todo!(),
-                                acpi::madt::MadtEntry::LocalSapic(_) => todo!(),
-                                acpi::madt::MadtEntry::PlatformInterruptSource(_) => todo!(),
-                                acpi::madt::MadtEntry::LocalX2Apic(_) => todo!(),
-                                acpi::madt::MadtEntry::X2ApicNmi(_) => todo!(),
-                                acpi::madt::MadtEntry::Gicc(_) => todo!(),
-                                acpi::madt::MadtEntry::Gicd(_) => todo!(),
-                                acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
-                                acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
-                                acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
-                                acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
                             }
                         }
-                    }
-                },
-                _ => {}
+                    },
+                    _ => {}
+                }
             }
-        }
-
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "acpi: is {:p}\r\n",
-            &acpi
-        ));
-
-        let pi = acpi::PlatformInfo::new(&acpi);
-        if let Ok(pi) = pi {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &pi));
+    
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "acpi: is {:p}\r\n",
+                &acpi
+            ));
+    
+            let pi = acpi::PlatformInfo::new(&acpi);
+            if let Ok(pi) = pi {
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &pi));
+            }
         }
     }
 }

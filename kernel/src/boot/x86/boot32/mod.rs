@@ -223,6 +223,8 @@ pub struct X86System<'a> {
     #[doorsconfig = "acpi"]
     /// Used for acpi
     pub acpi_handler: super::Acpi<'a>,
+    /// The acpi tables element
+    pub acpi: Option<acpi::AcpiTables<super::Acpi>>,
     /// The stack beginning
     stack_start: usize,
 }
@@ -438,7 +440,7 @@ pub extern "C" fn start32() -> ! {
             }
         }
     };
-
+    sys.load_acpi();
     unsafe {
         INTERRUPT_DESCRIPTOR_TABLE.sync_lock().load_unsafe();
     }
