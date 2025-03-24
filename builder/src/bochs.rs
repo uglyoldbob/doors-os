@@ -173,7 +173,7 @@ impl super::EmulationTrait for Bochs {
                 ));
                 config.push_str("boot: cdrom\n");
             }
-            crate::Disk::Network(_p) => { }
+            crate::Disk::Network(_p) => {}
         }
         let f = "./bochs_config.txt";
         let mut configf = std::fs::File::create(f).expect("Failed to create bochs configuration");

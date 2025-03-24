@@ -129,8 +129,8 @@ struct CdConfiguration {
 /// A configuration for building a cd image
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 struct NetworkConfiguration {
-    /// where to find the files for the grub command to make the netboot image
-    grub_source: std::path::PathBuf,
+    /// Where in the tftp to copy the image to
+    tftp_relative: std::path::PathBuf,
 }
 
 /// This trait is used to build disk images
@@ -146,6 +146,13 @@ trait DiskBuilderTrait {
     ) -> Result<Disk, String>;
     /// Fetch an existing disk image
     fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk, String>;
+    /// Add rules to deploy for disk images where it is applicable
+    fn deploy(
+        &self,
+        local: &LocalConfiguration,
+        common: &DiskImageConfigurationCommon,
+        cmakelists: &mut String,
+    );
 }
 
 /// The configuration required to build an operating system disk image
@@ -166,6 +173,8 @@ struct DiskImageConfigurationCommon {
     disk_label: String,
     /// Generic files to put on the disk, source and destination names
     config_files: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+    /// Optional Grub config override for the source filename
+    grub_config: Option<std::path::PathBuf>,
 }
 
 /// Defines the types of disks that can exist
@@ -187,6 +196,29 @@ struct DiskImageConfiguration {
 }
 
 impl DiskBuilderTrait for NetworkConfiguration {
+    fn deploy(
+        &self,
+        local: &LocalConfiguration,
+        common: &DiskImageConfigurationCommon,
+        cmakelists: &mut String,
+    ) {
+        let mut pa = local
+            .tftp_base
+            .clone()
+            .expect("Local configuration is missing tftp_base");
+        pa.push(&self.tftp_relative);
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tboot_disk_deploy\n");
+        cmakelists.push_str("\tDEPENDS boot_disk\n");
+        cmakelists.push_str(&format!("\tCOMMAND mkdir -p {}\n", pa.display(),));
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cp -r {}/* {}\n",
+            LocalConfiguration::escape_path(&common.output),
+            pa.display(),
+        ));
+        cmakelists.push_str(")\n");
+    }
+
     fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk, String> {
         Ok(Disk::Network(common.output.clone()))
     }
@@ -206,7 +238,6 @@ impl DiskBuilderTrait for NetworkConfiguration {
             common.output.to_str().unwrap()
         ));
         cmakelists.push_str("\tCOMMAND mkdir -p build/net/boot\n");
-        cmakelists.push_str("\tCOMMAND cp grub2.lst ./build/net/grub.cfg\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cp ./kernel/target/{}/release/kernel ./build/net/boot/kernel\n",
             kernel_path
@@ -230,7 +261,7 @@ impl DiskBuilderTrait for NetworkConfiguration {
         } else if cfg!(target_os = "linux") {
             cmakelists.push_str(&format!(
                 "\tCOMMAND cp {}/* ./build/net\n",
-                self.grub_source.display()
+                local.grub_source.display()
             ));
             cmakelists.push_str(&format!(
                 "\tCOMMAND grub-mknetdir --net-directory {} --subdir=/boot/grub -d ./build/net\n",
@@ -239,13 +270,34 @@ impl DiskBuilderTrait for NetworkConfiguration {
         } else {
             panic!();
         }
-        cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
-        cmakelists.push_str(")\n");
+        if let Some(s) = &common.grub_config {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cp {} {}/grub.cfg\n",
+                LocalConfiguration::escape_path(&s),
+                LocalConfiguration::escape_path(&common.output)
+            ));
+            cmakelists.push_str(")\n");
+        }
+        else {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cp grub2.lst {}/grub.cfg\n",
+                LocalConfiguration::escape_path(&common.output)
+            ));
+            cmakelists.push_str(")\n");
+        }
         Ok(Disk::Network(common.output.clone()))
     }
 }
 
 impl DiskBuilderTrait for CdConfiguration {
+    fn deploy(
+        &self,
+        _local: &LocalConfiguration,
+        _common: &DiskImageConfigurationCommon,
+        _cmakelists: &mut String,
+    ) {
+    }
+
     fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk, String> {
         Ok(Disk::Cd(common.output.clone()))
     }
@@ -369,6 +421,10 @@ pub struct LocalConfiguration {
     pub net_devs: Vec<NetworkConfig>,
     /// Serial ports that can be used by emulators
     pub serial_ports: Vec<SerialConfig>,
+    /// Optional base path the tftp server for deploying network images
+    pub tftp_base: Option<std::path::PathBuf>,
+    /// where to find the files for the grub command to make the netboot image
+    grub_source: std::path::PathBuf,
 }
 
 impl LocalConfiguration {
@@ -668,6 +724,11 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
             &config.local,
         )
         .unwrap();
+    config
+        .os
+        .disk
+        .unique
+        .deploy(&config.local, &config.os.disk.common, &mut cmakelist);
     config.os.target.emulator.build_config(
         &disk,
         &config.os.target.config,
