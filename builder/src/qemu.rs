@@ -5,6 +5,7 @@
 pub struct Qemu {}
 
 impl Qemu {
+    /// Get details common for a qemu run. for both debug and non-debug
     fn get_common_run(
         &self,
         common: &super::EmulatorConfig,

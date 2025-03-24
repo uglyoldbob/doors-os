@@ -5,6 +5,7 @@
 pub struct VirtualBox {}
 
 impl VirtualBox {
+    /// Get the port and irq for serial ports used
     fn get_serial_port_details(port: u8) -> (u16, u8) {
         match port {
             0 => (0x3f8, 4),
@@ -159,6 +160,7 @@ impl super::EmulationTrait for VirtualBox {
         }
 
         match disk {
+            super::Disk::Network(_p) => {}
             super::Disk::Cd(p) => {
                 std::process::Command::new(local.vboxmanage_path())
                     .args([
@@ -216,7 +218,7 @@ impl super::EmulationTrait for VirtualBox {
         cmakelists: &mut String,
         _common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
-        s: std::path::PathBuf,
+        _s: std::path::PathBuf,
     ) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\trun\n");

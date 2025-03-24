@@ -7,7 +7,7 @@ use gimli::EndianReader;
 pub struct Bochs {}
 
 impl super::EmulationTrait for Bochs {
-    fn custom_debug_symbols(&self, cmakelists: &mut String, s: std::path::PathBuf) {
+    fn custom_debug_symbols(&self, _cmakelists: &mut String, s: std::path::PathBuf) {
         use std::io::{Read, Write};
         let mut f = std::fs::File::open(s).unwrap();
         let mut contents = Vec::new();
@@ -46,7 +46,6 @@ impl super::EmulationTrait for Bochs {
                     if entry.tag() == gimli::DW_TAG_subprogram {
                         let mut attrs = entry.attrs();
                         let mut fdata = String::new();
-                        let mut printme = false;
                         let mut pc_low = None;
                         while let Ok(Some(attr)) = attrs.next() {
                             fdata.push_str(&format!(
@@ -55,7 +54,6 @@ impl super::EmulationTrait for Bochs {
                             ));
                             if attr.name() == gimli::DW_AT_low_pc {
                                 if let gimli::read::AttributeValue::Addr(a) = attr.value() {
-                                    printme = true;
                                     fdata.push_str(&format!("pc low is {:x}\n", a));
                                     pc_low = Some(a)
                                 }
@@ -77,12 +75,6 @@ impl super::EmulationTrait for Bochs {
                                 }
                             }
                         }
-                        if false {
-                            if printme {
-                                println!("Process function");
-                                print!("{}", fdata);
-                            }
-                        }
                     }
                 }
             }
@@ -99,7 +91,7 @@ impl super::EmulationTrait for Bochs {
         disk: &super::Disk,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
-        s: std::path::PathBuf,
+        _s: std::path::PathBuf,
     ) {
         use std::io::Write;
         let mut config: String = String::new();
@@ -181,6 +173,7 @@ impl super::EmulationTrait for Bochs {
                 ));
                 config.push_str("boot: cdrom\n");
             }
+            crate::Disk::Network(_p) => { }
         }
         let f = "./bochs_config.txt";
         let mut configf = std::fs::File::create(f).expect("Failed to create bochs configuration");
@@ -192,9 +185,9 @@ impl super::EmulationTrait for Bochs {
     fn run(
         &self,
         cmakelists: &mut String,
-        common: &super::EmulatorConfig,
+        _common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
-        s: std::path::PathBuf,
+        _s: std::path::PathBuf,
     ) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\trun\n");

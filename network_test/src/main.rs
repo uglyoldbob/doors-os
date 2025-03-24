@@ -45,7 +45,7 @@ fn main() {
     if args.name.is_some() {
         for d in interfaces {
             let e = d.open();
-            let mut mac_address = [0x52, 0x54, 0x0, 0x12, 0x34, 0x56];
+            let mac_address = [0x52, 0x54, 0x0, 0x12, 0x34, 0x56];
             match e {
                 Ok(e) => {
                     let mut e = e.setnonblock().unwrap();

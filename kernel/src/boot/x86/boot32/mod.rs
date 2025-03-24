@@ -222,7 +222,7 @@ pub struct X86System<'a> {
     pub boot_info: multiboot2::BootInformation<'a>,
     #[doorsconfig = "acpi"]
     /// Used for acpi
-    pub acpi_handler: super::Acpi<'a>,
+    pub acpi_handler: super::Acpi,
     /// The acpi tables element
     pub acpi: Option<acpi::AcpiTables<super::Acpi>>,
     /// The stack beginning
@@ -306,7 +306,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     }
 }
 
-impl<'a> acpi::AcpiHandler for super::Acpi<'a> {
+impl acpi::AcpiHandler for super::Acpi {
     unsafe fn map_physical_region<T>(
         &self,
         physical_address: usize,
@@ -427,7 +427,7 @@ pub extern "C" fn start32() -> ! {
         }
     }
 
-    let sys = {
+    let mut sys = {
         doors_macros::config_build_struct! {
             X86System {
                 boot_info: boot_info,
@@ -436,6 +436,7 @@ pub extern "C" fn start32() -> ! {
                     pageman: &PAGING_MANAGER,
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
                 },
+                acpi: None,
                 stack_start: stack_end - stack_size,
             }
         }

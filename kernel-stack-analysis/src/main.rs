@@ -26,8 +26,8 @@ fn main() {
     for (address, f) in fcollec.into_iter().rev() {
         let fname = f
             .names()
-            .into_iter()
-            .map(|a| rustc_demangle::demangle(*a).as_str());
+            .iter()
+            .map(|a| rustc_demangle::demangle(a).as_str());
         for name in fname {
             o.write_all(format!("Function {} @{:x}\n", name, address).as_bytes())
                 .unwrap();

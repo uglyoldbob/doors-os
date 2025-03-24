@@ -126,6 +126,14 @@ struct CdConfiguration {
     kernel_path: String,
 }
 
+/// A configuration for building a cd image
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+struct NetworkConfiguration {
+    /// where to find the files for the grub command to make the netboot image
+    grub_source: std::path::PathBuf,
+}
+
+/// This trait is used to build disk images
 #[enum_dispatch::enum_dispatch]
 trait DiskBuilderTrait {
     /// Build the disk image
@@ -146,6 +154,8 @@ trait DiskBuilderTrait {
 enum DiskImageConfigurationUnique {
     /// A bootable cd
     Cd(CdConfiguration),
+    /// A network bootable image
+    Network(NetworkConfiguration),
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -163,6 +173,8 @@ struct DiskImageConfigurationCommon {
 pub enum Disk {
     /// A standard bootable cd
     Cd(std::path::PathBuf),
+    /// A pxe bootable network image
+    Network(std::path::PathBuf),
 }
 
 /// The configuration data required to build a disk image
@@ -172,6 +184,65 @@ struct DiskImageConfiguration {
     unique: DiskImageConfigurationUnique,
     /// configuration data common to all disk images
     common: DiskImageConfigurationCommon,
+}
+
+impl DiskBuilderTrait for NetworkConfiguration {
+    fn fetch(&self, common: &DiskImageConfigurationCommon) -> Result<Disk, String> {
+        Ok(Disk::Network(common.output.clone()))
+    }
+
+    fn build(
+        &self,
+        cmakelists: &mut String,
+        common: &DiskImageConfigurationCommon,
+        kernel_path: &str,
+        local: &LocalConfiguration,
+    ) -> Result<Disk, String> {
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tboot_disk\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str(&format!(
+            "\tBYPRODUCTS {}\n",
+            common.output.to_str().unwrap()
+        ));
+        cmakelists.push_str("\tCOMMAND mkdir -p build/net/boot\n");
+        cmakelists.push_str("\tCOMMAND cp grub2.lst ./build/net/grub.cfg\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cp ./kernel/target/{}/release/kernel ./build/net/boot/kernel\n",
+            kernel_path
+        ));
+        cmakelists.push_str("\tCOMMAND strip ./build/net/boot/kernel\n");
+        for (fname, dest) in &common.config_files {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cp {} {}\n",
+                fname.to_str().unwrap(),
+                dest.to_str().unwrap()
+            ));
+        }
+
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
+                LocalConfiguration::escape_path(&local.vboximg_path()),
+                LocalConfiguration::escape_path(&common.output),
+                common.disk_label
+            ));
+        } else if cfg!(target_os = "linux") {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cp {}/* ./build/net\n",
+                self.grub_source.display()
+            ));
+            cmakelists.push_str(&format!(
+                "\tCOMMAND grub-mknetdir --net-directory {} --subdir=/boot/grub -d ./build/net\n",
+                LocalConfiguration::escape_path(&common.output),
+            ));
+        } else {
+            panic!();
+        }
+        cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
+        cmakelists.push_str(")\n");
+        Ok(Disk::Network(common.output.clone()))
+    }
 }
 
 impl DiskBuilderTrait for CdConfiguration {
@@ -301,7 +372,8 @@ pub struct LocalConfiguration {
 }
 
 impl LocalConfiguration {
-    fn escape_path(path: &std::path::PathBuf) -> String {
+    /// Put escapes into a path containing \ and " "
+    fn escape_path(path: &std::path::Path) -> String {
         let a = path.to_str().unwrap().to_string();
         a.replace("\\", "\\\\").replace(" ", "\\ ")
     }
@@ -394,20 +466,6 @@ impl LocalConfiguration {
 }
 
 impl DoorsConfiguration {
-    /// Add rules to a cmakelists document
-    fn make_cmake_rules(&self, cmakelist: &mut String, target: &str) {
-        let rule = &format!(
-            "add_custom_target(
-    {0}
-    BYPRODUCTS ./{0}.iso
-    COMMAND cargo run --release --bin builder -- --mode build --name ./configs/{0}.toml
-)
-",
-            target
-        );
-        cmakelist.push_str(rule);
-    }
-
     /// Build the kernel for the operating system
     pub fn build_kernel(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");

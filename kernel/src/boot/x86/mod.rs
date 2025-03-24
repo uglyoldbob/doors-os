@@ -614,9 +614,9 @@ impl crate::LockedArc<boot::X86System<'_>> {
                 "acpi rev {:x}\r\n",
                 acpi.revision()
             ));
-    
+
             crate::VGA.print_str("Trying DSDT\r\n");
-    
+
             if true {
                 if let Ok(v) = acpi.dsdt() {
                     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -660,12 +660,12 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     }
                 }
             }
-    
+
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "There are {} entries\r\n",
                 acpi.headers().count()
             ));
-    
+
             for header in acpi.headers() {
                 crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "sdt {:X} {} {} {}\r\n",
@@ -678,13 +678,14 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     acpi::sdt::Signature::WAET => {
                         crate::VGA.print_str("TODO Parse the Waet table\r\n");
                     }
-                    acpi::sdt::Signature::HPET => match acpi.find_table::<acpi::hpet::HpetTable>() {
-                        Ok(_hpet) => crate::VGA.print_str("TODO Parse the Hpet table\r\n"),
-                        Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "HPET ERROR {:?}\r\n",
-                            e
-                        )),
-                    },
+                    acpi::sdt::Signature::HPET => {
+                        match acpi.find_table::<acpi::hpet::HpetTable>() {
+                            Ok(_hpet) => crate::VGA.print_str("TODO Parse the Hpet table\r\n"),
+                            Err(e) => crate::VGA.print_fixed_str(
+                                doors_macros2::fixed_string_format!("HPET ERROR {:?}\r\n", e),
+                            ),
+                        }
+                    }
                     acpi::sdt::Signature::FADT => match acpi.find_table::<acpi::fadt::Fadt>() {
                         Ok(_fadt) => crate::VGA.print_str("TODO Parse the Fadt\r\n"),
                         Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -731,7 +732,9 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                     acpi::madt::MadtEntry::Gicd(_) => todo!(),
                                     acpi::madt::MadtEntry::GicMsiFrame(_) => todo!(),
                                     acpi::madt::MadtEntry::GicRedistributor(_) => todo!(),
-                                    acpi::madt::MadtEntry::GicInterruptTranslationService(_) => todo!(),
+                                    acpi::madt::MadtEntry::GicInterruptTranslationService(_) => {
+                                        todo!()
+                                    }
                                     acpi::madt::MadtEntry::MultiprocessorWakeup(_) => todo!(),
                                 }
                             }
@@ -740,15 +743,16 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     _ => {}
                 }
             }
-    
+
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "acpi: is {:p}\r\n",
                 &acpi
             ));
-    
+
             let pi = acpi::PlatformInfo::new(&acpi);
             if let Ok(pi) = pi {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &pi));
+                crate::VGA
+                    .print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &pi));
             }
         }
     }
