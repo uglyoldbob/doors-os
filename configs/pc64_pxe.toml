@@ -1,0 +1,26 @@
+kernel_machine = "x86_64-unknown-none"
+kernel_path = "x86_64-unknown-none"
+disassembly = true
+
+[kernel_config]
+machine_name = "pc64"
+acpi = true
+gdbstub = true
+mm_debug = false
+test = false
+network = false
+
+[disk.unique.Network]
+tftp_relative = ""
+
+[disk.common]
+output = "./netboot"
+disk_label = "Doors OS"
+config_files = []
+grub_config = "grub2pxe.lst"
+
+[target.config]
+net_devs = [0]
+serial_ports = [0, 2]
+
+[target.emulator.None]
