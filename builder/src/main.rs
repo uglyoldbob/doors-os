@@ -238,18 +238,6 @@ impl DiskBuilderTrait for NetworkConfiguration {
             common.output.to_str().unwrap()
         ));
         cmakelists.push_str("\tCOMMAND mkdir -p build/net/boot\n");
-        cmakelists.push_str(&format!(
-            "\tCOMMAND cp ./kernel/target/{}/release/kernel ./build/net/boot/kernel\n",
-            kernel_path
-        ));
-        cmakelists.push_str("\tCOMMAND strip ./build/net/boot/kernel\n");
-        for (fname, dest) in &common.config_files {
-            cmakelists.push_str(&format!(
-                "\tCOMMAND cp {} {}\n",
-                fname.to_str().unwrap(),
-                dest.to_str().unwrap()
-            ));
-        }
 
         if cfg!(target_os = "windows") {
             cmakelists.push_str(&format!(
@@ -270,9 +258,22 @@ impl DiskBuilderTrait for NetworkConfiguration {
         } else {
             panic!();
         }
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cp ./kernel/target/{}/release/kernel {}/boot/kernel\n",
+            kernel_path,
+            LocalConfiguration::escape_path(&common.output),
+        ));
+        cmakelists.push_str(&format!("\tCOMMAND strip {}/boot/kernel\n", LocalConfiguration::escape_path(&common.output),));
+        for (fname, dest) in &common.config_files {
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cp {} {}\n",
+                fname.to_str().unwrap(),
+                dest.to_str().unwrap()
+            ));
+        }
         if let Some(s) = &common.grub_config {
             cmakelists.push_str(&format!(
-                "\tCOMMAND cp {} {}/grub.cfg\n",
+                "\tCOMMAND cp {} {}/boot/grub/grub.cfg\n",
                 LocalConfiguration::escape_path(&s),
                 LocalConfiguration::escape_path(&common.output)
             ));
@@ -280,7 +281,7 @@ impl DiskBuilderTrait for NetworkConfiguration {
         }
         else {
             cmakelists.push_str(&format!(
-                "\tCOMMAND cp grub2.lst {}/grub.cfg\n",
+                "\tCOMMAND cp grub2.lst {}/boot/grub/grub.cfg\n",
                 LocalConfiguration::escape_path(&common.output)
             ));
             cmakelists.push_str(")\n");

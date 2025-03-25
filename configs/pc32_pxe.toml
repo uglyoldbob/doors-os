@@ -10,16 +10,17 @@ mm_debug = false
 test = false
 network = false
 
-[disk.unique.Cd]
-kernel_path = "./build/iso/boot/kernel"
+[disk.unique.Network]
+tftp_relative = ""
 
 [disk.common]
-output = "cd32.iso"
+output = "./netboot"
 disk_label = "Doors OS"
-config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
+config_files = []
+grub_config = "grub2pxe.lst"
 
 [target.config]
 net_devs = [0]
-serial_ports = [0, 1]
+serial_ports = [0, 2]
 
-[target.emulator.Bochs]
+[target.emulator.None]
