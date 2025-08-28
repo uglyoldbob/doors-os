@@ -3,6 +3,8 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 
+use std::{io::Write, path::PathBuf, str::FromStr};
+
 use clap::Parser;
 
 mod bochs;
@@ -376,13 +378,22 @@ pub struct DoorsConfiguration {
     disassembly: bool,
 }
 
+/// The configuration for a qemu network
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct QemuNetworkConfig {
+    /// The network type
+    pub net_type: String,
+    /// The device name
+    pub dev_name: String,
+}
+
 /// A configuration for a single local network card used by an emulator
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct NetworkConfig {
     /// The configuration string for bochs
     bochs: Option<String>,
     /// The configuration string for qemu
-    qemu: Option<String>,
+    qemu: Option<QemuNetworkConfig>,
     /// The configuration string for virtualbox
     virtualbox: Option<String>,
 }
@@ -403,7 +414,7 @@ pub enum SerialConfig {
 }
 
 /// Configuration specific to the build machine
-#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct LocalConfiguration {
     /// The binary for bochs
     bochs_path: Option<std::path::PathBuf>,
@@ -425,6 +436,55 @@ pub struct LocalConfiguration {
     pub tftp_base: Option<std::path::PathBuf>,
     /// where to find the files for the grub command to make the netboot image
     grub_source: std::path::PathBuf,
+}
+
+impl Default for LocalConfiguration {
+    fn default() -> Self {
+        Self {
+            bochs_path: Some(
+                std::path::PathBuf::from_str("./optional/example/bochs/path/here").unwrap(),
+            ),
+            qemu_path: Some(
+                std::path::PathBuf::from_str("./optional/example/qemu/path/here").unwrap(),
+            ),
+            virtualbox_path: Some(
+                std::path::PathBuf::from_str("./optional/example/virtualbox/path/here").unwrap(),
+            ),
+            vboxmanage_path: Some(
+                std::path::PathBuf::from_str("./optional/example/vboxmanage/path/here").unwrap(),
+            ),
+            vboximg_path: Some(
+                std::path::PathBuf::from_str("./optional/example/vboximg/path/here").unwrap(),
+            ),
+            gdb_path: Some(
+                std::path::PathBuf::from_str("./optional/example/gdb/path/here").unwrap(),
+            ),
+            net_devs: vec![NetworkConfig {
+                bochs: Some("bochs_net_config".to_string()),
+                qemu: Some(QemuNetworkConfig {
+                    net_type: "tap".to_string(),
+                    dev_name: "tap0".to_string(),
+                }),
+                virtualbox: Some("virtualbox_net_config".to_string()),
+            }, NetworkConfig {
+                bochs: Some("bochs_net_config2".to_string()),
+                qemu: Some(QemuNetworkConfig {
+                    net_type: "tap".to_string(),
+                    dev_name: "tap1".to_string(),
+                }),
+                virtualbox: Some("virtualbox_net_config2".to_string()),
+            }],
+            serial_ports: vec![
+                SerialConfig::File(PathBuf::from_str("./example/serial/file.log").unwrap()),
+                SerialConfig::TcpServer(1234),
+                SerialConfig::TcpClient(1235),
+                SerialConfig::Real("/dev/fakeport0".to_string()),
+                SerialConfig::Nothing,
+            ],
+            tftp_base: Some(PathBuf::from_str("./example/tftp/base").unwrap()),
+            grub_source: PathBuf::from_str("./example/grub/source").unwrap(),
+        }
+    }
 }
 
 impl LocalConfiguration {
@@ -806,7 +866,17 @@ fn write_kernel_config(config: &MasterConfig) {
 fn main() {
     let args = Args::parse();
     let config: DoorsConfiguration = open_config_file(args.name.to_path_buf()).unwrap();
-    let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
+    let lc = open_local_config("./local_config.toml".into());
+    let local = if let Some(lc) = lc {
+        lc
+    } else {
+        let mut file = std::fs::File::create("./local_config.toml").unwrap();
+        let lc = LocalConfiguration::default();
+        let data = toml::to_string(&lc).unwrap();
+        file.write_all(data.as_bytes()).unwrap();
+        lc
+    };
+    
     let config = MasterConfig::build(local, config);
     build_cmake_files(&args, config);
 }

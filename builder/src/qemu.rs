@@ -35,7 +35,25 @@ impl Qemu {
                 super::SerialConfig::Nothing => {}
             }
         }
-        qemu.push_str("-netdev user,id=u1 -device e1000,netdev=u1");
+        for (i, nid) in common.net_devs.iter().enumerate() {
+            let uname = format!("u{}", i + 1);
+            if let Some(s) = &local.net_devs[*nid].qemu {
+                match s.net_type.as_str() {
+                    "tap" => {
+                        qemu.push_str(&format!(
+                            "-netdev {},ifname={2},id={1} -device e1000,netdev={1}",
+                            s.net_type, uname, s.dev_name
+                        ));
+                    }
+                    _ => {
+                        qemu.push_str(&format!(
+                            "-netdev {},id={1} -device e1000,netdev={1}",
+                            s.net_type, uname
+                        ));
+                    }
+                }
+            }
+        }
         qemu
     }
 }
