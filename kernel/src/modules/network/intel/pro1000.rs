@@ -539,9 +539,9 @@ impl IntelPro1000DeviceInternal {
         }
     }
 
-    /// Register the network receiver for this interface
-    pub fn register_network_receiver(&self) {
-        super::super::network_init(self.packet_receiver.clone());
+    /// Get a clone of the packet receiver
+    pub fn packet_receiver_clone(&self) -> Arc<IrqGuarded<super::super::NetworkReceiver>> {
+        self.packet_receiver.clone()
     }
 }
 
@@ -743,7 +743,11 @@ bitfield::bitfield! {
     srpd, _: 16;
 }
 
-impl super::super::NetworkAdapterTrait for IntelPro1000Device {
+impl NetworkAdapterTrait for IntelPro1000Device {
+    fn get_receiver(&self) -> Arc<IrqGuarded<crate::modules::network::NetworkReceiver>> {
+        self.internal.packet_receiver.clone()
+    }
+
     async fn get_mac_address(&mut self) -> MacAddress {
         if self.detect_eeprom().await {
             let v = self.read_from_eeprom(0).await;
@@ -768,7 +772,6 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
         crate::VGA
             .print_str_async("Done waiting for link up\r\n")
             .await;
-        hex_dump_async(packet, true, true).await;
         let len = packet.len();
         if len < 8192 {
             let txindex = self.txbufindex.unwrap() as usize;
@@ -780,6 +783,7 @@ impl super::super::NetworkAdapterTrait for IntelPro1000Device {
                 let ma: u64 = self.mac_address.into();
                 let ma: [u8; 8] = ma.to_le_bytes();
                 dest[6..12].clone_from_slice(&ma[0..6]);
+                hex_dump_async(&dest[..len], true, true).await;
                 {
                     let descriptor = &mut txb.bufs[txindex];
                     descriptor.length = len as u16;
@@ -1283,7 +1287,6 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     model,
                     mac_address: MacAddress::default(),
                 };
-                d.internal.register_network_receiver();
                 f.set_bus_mastering(cs, bus, dev, true);
                 {
                     crate::VGA

@@ -33,7 +33,10 @@ pub async fn register_network_adapter(na: NetworkAdapter) {
             name
         ))
         .await;
-    nal.insert(name, AsyncLockedArc::new(na));
+    let na = AsyncLockedArc::new(na);
+    let rxtx = na.make_transceiver().await;
+    network_init(rxtx);
+    nal.insert(name, na);
 }
 
 /// Grab a network adapter by name
@@ -106,6 +109,18 @@ pub trait NetworkAdapterTrait {
     async fn get_mac_address(&mut self) -> MacAddress;
     /// Send a packet over the network interface
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()>;
+    /// Get the receiver clone
+    fn get_receiver(&self) -> Arc<IrqGuarded<NetworkReceiver>>;
+}
+
+impl AsyncLockedArc<NetworkAdapter> {
+    /// Build a network transceiver
+    pub async fn make_transceiver(&self) -> NetworkTransceiver {
+        NetworkTransceiver {
+            receiver: self.lock().await.get_receiver(),
+            sender: self.clone(),
+        }
+    }
 }
 
 /// A network adapter
@@ -291,6 +306,35 @@ pub struct AddressResolutionProtocolPacket<'a> {
     target_protocol_address: &'a [u8],
 }
 
+impl<'a> AddressResolutionProtocolPacket<'a> {
+    /// construct a packet in the specified buffer
+    pub fn build_packet(&self, packet: &mut [u8]) -> Result<(), ()> {
+        let mut offset = 0;
+        (&mut packet[offset..offset + 2]).copy_from_slice(&self.htype.to_be_bytes());
+        offset += 2;
+        (&mut packet[offset..offset + 2]).copy_from_slice(&self.ptype.to_be_bytes());
+        offset += 2;
+        (&mut packet[offset..offset + 1]).copy_from_slice(&self.address_length.to_be_bytes());
+        offset += 1;
+        (&mut packet[offset..offset + 1]).copy_from_slice(&self.protocol_length.to_be_bytes());
+        offset += 1;
+        (&mut packet[offset..offset + 2]).copy_from_slice(&self.operation.to_be_bytes());
+        offset += 2;
+        (&mut packet[offset..offset + self.address_length as usize])
+            .copy_from_slice(self.sender_hardware_address);
+        offset += self.address_length as usize;
+        (&mut packet[offset..offset + self.protocol_length as usize])
+            .copy_from_slice(self.sender_protocol_address);
+        offset += self.protocol_length as usize;
+        (&mut packet[offset..offset + self.address_length as usize])
+            .copy_from_slice(self.target_hardware_address);
+        offset += self.address_length as usize;
+        (&mut packet[offset..offset + self.protocol_length as usize])
+            .copy_from_slice(self.target_protocol_address);
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a [u8]> for AddressResolutionProtocolPacket<'a> {
     fn from(value: &'a [u8]) -> Self {
         let hlength = value[4] as usize;
@@ -328,6 +372,20 @@ pub enum Packet<'a> {
     Unknown(&'a [u8]),
 }
 
+impl<'a> Packet<'a> {
+    /// construct a packet in the specified buffer
+    pub fn build_packet(&self, packet: &mut [u8]) -> Result<(), ()> {
+        match self {
+            Packet::Ipv4(ipv4_packet) => todo!(),
+            Packet::Arp(address_resolution_protocol_packet) => {
+                address_resolution_protocol_packet.build_packet(packet)?
+            }
+            Packet::Unknown(items) => packet.copy_from_slice(*items),
+        }
+        Ok(())
+    }
+}
+
 /// Represents a decoded ethernet frame
 #[derive(Debug)]
 pub struct DecodedEthernetFrame<'a> {
@@ -335,6 +393,22 @@ pub struct DecodedEthernetFrame<'a> {
     header: EthernetFrameHeader,
     /// The packet contents
     contents: Packet<'a>,
+}
+
+impl<'a> DecodedEthernetFrame<'a> {
+    /// construct a packet in the specified buffer
+    pub fn build_packet(&self, packet: &mut [u8]) -> Result<(), ()> {
+        (&mut packet[0..6]).copy_from_slice(&self.header.destination.address);
+        (&mut packet[6..12]).copy_from_slice(&self.header.source.address);
+        let mut offset = 12;
+        if let Some(q) = self.header.vlan {
+            (&mut packet[offset..offset + 4]).copy_from_slice(&q.to_be_bytes());
+            offset += 4;
+        }
+        (&mut packet[offset..offset + 2]).copy_from_slice(&self.header.ethertype.to_be_bytes());
+        offset += 2;
+        self.contents.build_packet(&mut packet[offset..])
+    }
 }
 
 /// Represents a received ethernet frame
@@ -356,7 +430,7 @@ impl<'a> From<&'a EthernetFrame<'a>> for DecodedEthernetFrame<'a> {
                 header: value.header.clone(),
                 contents: Packet::Ipv4(Ipv4Packet::from(value.data)),
             },
-            1544 => Self {
+            2054 => Self {
                 header: value.header.clone(),
                 contents: Packet::Arp(value.data.into()),
             },
@@ -386,11 +460,11 @@ impl<'a> From<&'a RawEthernetPacket> for EthernetFrame<'a> {
             destination: d.into(),
             source: s.into(),
             vlan: None,
-            ethertype: u16::from_le_bytes([value.data[12], value.data[13]]),
+            ethertype: u16::from_be_bytes([value.data[12], value.data[13]]),
         };
         let l = value.length - 18;
         let dat = &value.data[14..(14 + l)];
-        let crc = u32::from_le_bytes([
+        let crc = u32::from_be_bytes([
             value.data[14 + l],
             value.data[15 + l],
             value.data[16 + l],
@@ -447,13 +521,21 @@ impl NetworkReceiver {
     }
 }
 
-lazy_static::lazy_static! {
-    /// The list of received packets
-    pub static ref ETHERNET_PACKETS_RECEIVED: AsyncLocked<Vec<Arc<IrqGuarded<NetworkReceiver>>>> = AsyncLocked::new(Vec::new());
+/// How packets are sent and received on a single network adapter
+pub struct NetworkTransceiver {
+    /// How packets are received
+    pub receiver: Arc<IrqGuarded<NetworkReceiver>>,
+    /// How packets are sent
+    pub sender: AsyncLockedArc<NetworkAdapter>,
 }
 
-/// Initialize data required for network operations, returning the index of the registered network packet receiver
-fn network_init(i: Arc<IrqGuarded<NetworkReceiver>>) {
+lazy_static::lazy_static! {
+    /// The list of received packets
+    pub static ref ETHERNET_PACKETS_RECEIVED: AsyncLocked<Vec<NetworkTransceiver>> = AsyncLocked::new(Vec::new());
+}
+
+/// Initialize data required for network operations
+fn network_init(i: NetworkTransceiver) {
     let mut e = ETHERNET_PACKETS_RECEIVED.sync_lock();
     e.push(i);
 }
@@ -463,9 +545,9 @@ pub async fn process_packets_received() {
     loop {
         let mut e = ETHERNET_PACKETS_RECEIVED.lock().await;
         let mut received_packet = false;
-        for ethernet in e.iter_mut() {
-            let mut ethernet = ethernet.access().await;
-            while let Some(packet) = ethernet.packets.pop_front() {
+        for rxtx in e.iter_mut() {
+            let mut rx = rxtx.receiver.access().await;
+            while let Some(packet) = rx.packets.pop_front() {
                 received_packet = true;
                 let ep: EthernetFrame = packet.as_ref().into();
                 let df: DecodedEthernetFrame = (&ep).into();
@@ -478,6 +560,41 @@ pub async fn process_packets_received() {
                                 address_resolution_protocol_packet
                             ))
                             .await;
+                        if address_resolution_protocol_packet.operation == 1 {
+                            let mut packet = [0; 128];
+                            let p = DecodedEthernetFrame {
+                                header: EthernetFrameHeader {
+                                    destination: df.header.source,
+                                    source: MacAddress::default(),
+                                    vlan: None,
+                                    ethertype: 2054,
+                                },
+                                contents: Packet::Arp(AddressResolutionProtocolPacket {
+                                    htype: address_resolution_protocol_packet.htype,
+                                    ptype: address_resolution_protocol_packet.ptype,
+                                    address_length: address_resolution_protocol_packet
+                                        .address_length,
+                                    protocol_length: address_resolution_protocol_packet
+                                        .protocol_length,
+                                    operation: 2,
+                                    sender_hardware_address: &rxtx
+                                        .sender
+                                        .lock()
+                                        .await
+                                        .get_mac_address()
+                                        .await
+                                        .address,
+                                    sender_protocol_address: &[11, 11, 11, 12],
+                                    target_hardware_address: address_resolution_protocol_packet
+                                        .sender_hardware_address,
+                                    target_protocol_address: address_resolution_protocol_packet
+                                        .sender_protocol_address,
+                                }),
+                            };
+                            if p.build_packet(&mut packet).is_ok() {
+                                let _ = rxtx.sender.lock().await.send_packet(&packet).await;
+                            }
+                        }
                     }
                     Packet::Unknown(items) => {}
                 }
