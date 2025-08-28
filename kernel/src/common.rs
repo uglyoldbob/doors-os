@@ -170,7 +170,7 @@ impl<A> LockedArc<A> {
     }
 
     /// Lock the contained mutex, returning a protected instance of the contained object
-    pub fn sync_lock(&self) -> MutexGuard<A> {
+    pub fn sync_lock(&self) -> MutexGuard<'_, A> {
         self.inner.sync_lock()
     }
 
@@ -204,12 +204,12 @@ impl<A> AsyncLockedArc<A> {
     }
 
     /// Lock the contained mutex, returning a protected instance of the contained object
-    pub fn sync_lock(&self) -> AsyncLockedMutexGuard<A> {
+    pub fn sync_lock(&self) -> AsyncLockedMutexGuard<'_, A> {
         self.inner.sync_lock()
     }
 
     /// Lock the contained mutex asynchronously, returning a protected instance of the contained object
-    pub async fn lock(&self) -> AsyncLockedMutexGuard<A> {
+    pub async fn lock(&self) -> AsyncLockedMutexGuard<'_, A> {
         self.inner.lock().await
     }
 
@@ -293,7 +293,7 @@ impl<A> AsyncLocked<A> {
     }
 
     /// Synchronously lock the mutex, spinning as necessary
-    pub fn sync_lock(&self) -> AsyncLockedMutexGuard<A> {
+    pub fn sync_lock(&self) -> AsyncLockedMutexGuard<'_, A> {
         loop {
             if self
                 .lock
@@ -310,7 +310,7 @@ impl<A> AsyncLocked<A> {
     }
 
     /// Lock the mutex, returning the guard
-    pub fn lock(&self) -> AsyncLockedMutexGuardFuture<A> {
+    pub fn lock(&self) -> AsyncLockedMutexGuardFuture<'_, A> {
         AsyncLockedMutexGuardFuture { inner: self }
     }
 
@@ -429,7 +429,7 @@ impl<A> Locked<A> {
     }
 
     /// Lock the mutex and return a protected instance of the thing
-    pub fn sync_lock(&self) -> MutexGuard<A> {
+    pub fn sync_lock(&self) -> MutexGuard<'_, A> {
         loop {
             if self
                 .lock
@@ -592,7 +592,7 @@ impl<T> IrqGuardedSimple<T> {
     }
 
     /// Use the inner value from a non-interrupt context
-    pub fn access(&self) -> IrqGuardedSimpleUse<T, NotSafeForInterrupts> {
+    pub fn access(&self) -> IrqGuardedSimpleUse<'_, T, NotSafeForInterrupts> {
         let sys = crate::SYSTEM.read();
         if self.value.disable_all_interrupts {
             sys.disable_interrupts();
@@ -611,7 +611,7 @@ impl<T> IrqGuardedSimple<T> {
     }
 
     /// Use the inner value from an interrupt context
-    pub fn interrupt_access(&self) -> IrqGuardedSimpleUse<T, SafeForInterrupts> {
+    pub fn interrupt_access(&self) -> IrqGuardedSimpleUse<'_, T, SafeForInterrupts> {
         IrqGuardedSimpleUse {
             r: &self.value,
             val: &self.inner,
@@ -729,7 +729,7 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Use the inner value from a non-interrupt context
-    pub async fn access(&self) -> IrqGuardedUse<T, NotSafeForInterrupts> {
+    pub async fn access(&self) -> IrqGuardedUse<'_, T, NotSafeForInterrupts> {
         let sys = crate::SYSTEM.read();
         if self.value.disable_all_interrupts {
             sys.disable_interrupts();
@@ -748,7 +748,7 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Use the inner value from a synchronous non-interrupt context
-    pub fn sync_access(&self) -> IrqGuardedUse<T, NotSafeForInterrupts> {
+    pub fn sync_access(&self) -> IrqGuardedUse<'_, T, NotSafeForInterrupts> {
         let sys = crate::SYSTEM.read();
         if self.value.disable_all_interrupts {
             sys.disable_interrupts();
@@ -765,7 +765,7 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Use the inner value from an interrupt context
-    pub fn interrupt_access(&self) -> IrqGuardedUse<T, SafeForInterrupts> {
+    pub fn interrupt_access(&self) -> IrqGuardedUse<'_, T, SafeForInterrupts> {
         IrqGuardedUse {
             r: &self.value,
             val: Some(self.inner.sync_lock()),

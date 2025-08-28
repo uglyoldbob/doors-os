@@ -155,7 +155,7 @@ impl<'a> DcsCommand<'a> {
     }
 
     /// Build a dcs packet with the command
-    pub fn build_packet(&self) -> Result<DcsPacket, ()> {
+    pub fn build_packet(&self) -> Result<DcsPacket<'_>, ()> {
         let msglength = self.send.len();
         let mut header: [u8; 4] = [0; 4];
         header[0] = (self.channel << 6) | self.kind as u8;

@@ -138,7 +138,7 @@ impl SerialHandler {
     }
 
     /// Iterate over all serial ports
-    pub fn iter(&mut self) -> core::slice::Iter<Option<crate::modules::serial::Serial>> {
+    pub fn iter(&mut self) -> core::slice::Iter<'_, Option<crate::modules::serial::Serial>> {
         self.devs.iter()
     }
 }

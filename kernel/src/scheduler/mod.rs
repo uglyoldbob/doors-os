@@ -136,7 +136,7 @@ impl InnerScheduler {
     }
 
     /// Create an iterator over all tasks for this scheduler
-    pub fn iter(&self) -> core::slice::Iter<(TaskId, Task)> {
+    pub fn iter(&self) -> core::slice::Iter<'_, (TaskId, Task)> {
         self.local_tasks.iter()
     }
 
@@ -184,7 +184,7 @@ impl Scheduler {
     }
 
     /// Access the scheduler data from a synchronous non-interrupt context
-    pub fn sync_access(&self) -> IrqGuardedUse<InnerScheduler, NotSafeForInterrupts> {
+    pub fn sync_access(&self) -> IrqGuardedUse<'_, InnerScheduler, NotSafeForInterrupts> {
         self.i.0.sync_access()
     }
 

@@ -139,7 +139,7 @@ impl super::EmulationTrait for Bochs {
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        panic!("Tcp server serial port not supported on bochs");
+                        panic!("Tcp server serial port {} not supported on bochs", port);
                     }
                 }
                 super::SerialConfig::TcpClient(port) => {
@@ -152,7 +152,7 @@ impl super::EmulationTrait for Bochs {
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        panic!("Tcp server serial port not supported on bochs");
+                        panic!("Tcp server serial port {} not supported on bochs", port);
                     }
                 }
                 super::SerialConfig::Real(p) => {

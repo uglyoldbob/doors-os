@@ -20,17 +20,23 @@ Building has been tested on both windows and linux (ubuntu).
 
 *Note: For the windows build, virtualbox is used to build the cd image*
 
-**Cmake targets**
-* kernel64 - This is the primary target for building the actual kernel itself and the test kernel.
-* disassemble - This produces a disassembled version of the kernel at disassemble.txt
-* symbols_bochs - This makes some symbols useful for bochs
-* image_cd64 - This creates a bootable iso and a bootable test iso for the kernel.
-* bochs64 - This builds the kernel, symbol files for bochs, and runs bochs with the cd image.
-* bochs64gdb - This is like bochs64 but sets up bochs to use the gdbstub in bochs. This will likely require manually compiling bochs and copying the bochs binary to the same directory where this readme is located.
-* virtualbox64 - This creates a virtualbox machine for the kernel, builds the kernel, and runs virtualbox to run the kernel.
-* virtualbox64debug - This creates a virtualbox machine for the kernel, builds disassembly output, builds the kernel, and runs virtualbox to run the kernel in debug mode.
-* qemucd64 - This builds the kernel and runs qemu to run the kernel.
-* gdb64 - This is like qemucd64, but it runs gdb attached to qemu for debugging.
+**Builder**
+Builder is a utility that creates cmake build files in order to build the operating system and kernel.
+
+**Cmake targets when using builder**
+* fmt - This runs cargo fmt on everything.
+* stack - This performs stack analysis of the kernel, producing output in stack.txt.
+* buildscript - This re-runs the command for building the cmake files.
+* boot_disk - Builds the bootable image for the operating system.
+* run - Runs the emulator if applicable
+* debug - Runs the emulator with emulator debugging support, if possible
+* debug2 - A second method of doing the debugging, if applicable
+* gdb - Runs debugging in a slightly different way.
+* kernel - Builds the kernel
+* kernel_clippy - Runs cargo clippy on the kernel
+* kernel_fmt - Runs cargo fmt on just the kernel
+* kernel_expand - Runs cargo expand on the kernel, to an output file expanded.txt
+* disassemble - Produces disassembly of the kernel to disassemble.txt
 
 **Kernel varieties**
 There are two kernel varieties currently. There is the plain kernel and a test version of the kernel. The test version of the kernel runs all of the test functions defined in the kernel to verify correct behavior of the kernel.

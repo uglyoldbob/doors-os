@@ -113,10 +113,7 @@ struct EmulatorCommon {
 struct Args {
     /// Name of the configuration to use
     #[arg(short, long)]
-    name: Option<std::path::PathBuf>,
-    /// Should the final configuration be saved to a file?
-    #[arg(long)]
-    save: Option<std::path::PathBuf>,
+    name: std::path::PathBuf,
 }
 
 /// A configuration for building a cd image
@@ -263,7 +260,10 @@ impl DiskBuilderTrait for NetworkConfiguration {
             kernel_path,
             LocalConfiguration::escape_path(&common.output),
         ));
-        cmakelists.push_str(&format!("\tCOMMAND strip {}/boot/kernel\n", LocalConfiguration::escape_path(&common.output),));
+        cmakelists.push_str(&format!(
+            "\tCOMMAND strip {}/boot/kernel\n",
+            LocalConfiguration::escape_path(&common.output),
+        ));
         for (fname, dest) in &common.config_files {
             cmakelists.push_str(&format!(
                 "\tCOMMAND cp {} {}\n",
@@ -278,8 +278,7 @@ impl DiskBuilderTrait for NetworkConfiguration {
                 LocalConfiguration::escape_path(&common.output)
             ));
             cmakelists.push_str(")\n");
-        }
-        else {
+        } else {
             cmakelists.push_str(&format!(
                 "\tCOMMAND cp grub2.lst {}/boot/grub/grub.cfg\n",
                 LocalConfiguration::escape_path(&common.output)
@@ -688,7 +687,7 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str("\tbuildscript\n");
     cmakelist.push_str(&format!(
         "\tDEPENDS {} {}\n",
-        args.name.as_ref().unwrap().to_str().unwrap(),
+        args.name.to_str().unwrap(),
         if let Ok(true) = std::fs::exists("./local_config.toml") {
             "./local_config.toml"
         } else {
@@ -698,7 +697,7 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str("\tBYPRODUCTS CMakeLists.txt kernel/CMakeLists.txt\n");
     cmakelist.push_str(&format!(
         "\tCOMMAND cargo run --release --bin builder -- --name {}\n",
-        args.name.as_ref().unwrap().to_str().unwrap()
+        args.name.to_str().unwrap()
     ));
     cmakelist.push_str(")\n");
 
@@ -806,11 +805,7 @@ fn write_kernel_config(config: &MasterConfig) {
 
 fn main() {
     let args = Args::parse();
-    let config: DoorsConfiguration = if let Some(n) = &args.name {
-        open_config_file(n.to_path_buf()).unwrap()
-    } else {
-        DoorsConfiguration::default()
-    };
+    let config: DoorsConfiguration = open_config_file(args.name.to_path_buf()).unwrap();
     let local = open_local_config("./local_config.toml".into()).unwrap_or_default();
     let config = MasterConfig::build(local, config);
     build_cmake_files(&args, config);

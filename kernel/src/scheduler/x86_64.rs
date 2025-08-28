@@ -176,7 +176,7 @@ impl Context {
     }
 
     /// Saves thread context that is not already on the stack, and the thread stack pointer
-    #[naked]
+    #[unsafe(naked)]
     pub(crate) unsafe extern "C" fn thread_restore(m: &Context) {
         naked_asm!(
             "\
@@ -187,7 +187,7 @@ impl Context {
     }
 
     /// Restores thread context not on the stack, and the thread stack pointer
-    #[naked]
+    #[unsafe(naked)]
     pub(crate) unsafe extern "C" fn thread_save(m: &mut Context) {
         naked_asm!(
             "\
@@ -248,7 +248,7 @@ impl Stack {
 }
 
 /// The finishing function for irq handlers
-#[naked]
+#[unsafe(naked)]
 pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
     naked_asm!(
         "\
@@ -269,7 +269,7 @@ pub(crate) unsafe extern "C" fn irq_finisher(irqnum: u8) -> ! {
 
 doors_macros::todo_item!("Get rid of this function and merge functionality into irq_finisher");
 /// The thread wrapper function for starting a thread
-#[naked]
+#[unsafe(naked)]
 pub(crate) unsafe extern "C" fn thread_wrapper() -> ! {
     naked_asm!(
         "\

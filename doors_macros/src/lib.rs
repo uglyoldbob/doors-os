@@ -55,7 +55,7 @@ pub fn todo_item(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         list.items.push(format!(
             "{} @ {:?} line {}",
             f.value(),
-            ds.source_file().path(),
+            ds.file(),
             ds.start().line()
         ));
     }
@@ -78,7 +78,7 @@ pub fn todo(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
         list.items.push(format!(
             "{} @ {:?} line {}",
             f.value(),
-            ds.source_file().path(),
+            ds.file(),
             ds.start().line()
         ));
     }
@@ -98,7 +98,7 @@ pub fn todo_item_panic(item: proc_macro::TokenStream) -> proc_macro::TokenStream
         list.items.push(format!(
             "{} @ {:?} line {}",
             f.value(),
-            ds.source_file().path(),
+            ds.file(),
             ds.start().line()
         ));
     }

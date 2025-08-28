@@ -76,7 +76,7 @@ lazy_static! {
 }
 
 /// The divide by zero handler
-pub extern "x86-interrupt" fn divide_by_zero() {
+pub extern "x86-interrupt" fn divide_by_zero(_: usize) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Divide by zero\r\n");
     loop {
@@ -292,7 +292,7 @@ pub extern "x86-interrupt" fn invalid_opcode2(sf: InterruptStackFrame) {
 }
 
 /// A test interrupt handler
-pub extern "x86-interrupt" fn unknown_interrupt() {
+pub extern "x86-interrupt" fn unknown_interrupt(_: usize) {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Unknown interrupt fired\r\n"

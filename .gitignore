@@ -15,3 +15,10 @@ Makefile
 *.iso
 *.dat
 *.log
+CMakeLists.txt
+bochs_config.txt
+bochs_symbol_filter
+disassemble.txt
+expanded.txt
+netboot
+stack.txt

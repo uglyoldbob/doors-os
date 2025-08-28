@@ -217,7 +217,7 @@ impl FramebufferTrait<pixels::FullColor<u32>> for Framebuffer {
 
 impl Framebuffer {
     /// Get an iterator over every byte in the framebuffer
-    pub fn iter_bytes(&mut self) -> core::slice::IterMut<u8> {
+    pub fn iter_bytes(&mut self) -> core::slice::IterMut<'_, u8> {
         match self {
             Framebuffer::SimpleRam(simple_ram_framebuffer) => {
                 simple_ram_framebuffer.buffer.iter_mut()
@@ -296,7 +296,7 @@ pub trait FontTrait<P>: Sync + Send {
     /// The height of the font in pixels
     fn height(&self) -> u16;
     /// All valid symbols for the font
-    fn symbols(&self) -> alloc::collections::btree_map::Iter<char, FontData>;
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<'_, char, FontData>;
 }
 
 /// The fonts that can exist
@@ -322,7 +322,7 @@ impl<P: Send + Sync> FontTrait<P> for Font<P> {
         }
     }
 
-    fn symbols(&self) -> alloc::collections::btree_map::Iter<char, FontData> {
+    fn symbols(&self) -> alloc::collections::btree_map::Iter<'_, char, FontData> {
         match self {
             Font::FixedWidth(f) => f.symbols(),
             Font::VariableWidth(f) => f.symbols(),

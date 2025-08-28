@@ -279,7 +279,7 @@ impl Locked<IoPortManager> {
     }
 
     /// Try to get some io ports from the system.
-    pub fn get_ports(&self, base: u16, quantity: u16) -> Option<IoPortArray> {
+    pub fn get_ports(&self, base: u16, quantity: u16) -> Option<IoPortArray<'_>> {
         let mut manager = self.sync_lock();
         let mut possible = true;
         for p in base..base + quantity {
@@ -785,7 +785,10 @@ fn start_common1(
             pal.add_memory_area(area);
         }
         pal.set_kernel_memory_used();
+        let start_boot_info = crate::address(boot_info);
+        let size_boot_info = boot_info.total_size();
 
+        pal.set_area_used(start_boot_info, size_boot_info);
         pal.set_area_used(stack_end - stack_size, stack_size);
         pal.set_area_used(0, 0x100000);
         pal.done_adding_memory_areas();
