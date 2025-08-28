@@ -129,6 +129,54 @@ pub struct EthernetFrameHeader {
     ethertype: u16,
 }
 
+/// A udp packet
+#[derive(Debug)]
+pub struct UdpPacket<'a> {
+    /// the source port
+    source: u16,
+    /// the destination port
+    destination: u16,
+    /// The length of the packet, including the 8 byte header
+    length: u16,
+    /// The packet checksum
+    checksum: u16,
+    /// The actual packet data
+    data: &'a [u8],
+}
+
+impl<'a> From<&'a [u8]> for UdpPacket<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        Self {
+            source: u16::from_be_bytes([value[0], value[1]]),
+            destination: u16::from_be_bytes([value[2], value[3]]),
+            length: u16::from_be_bytes([value[4], value[5]]),
+            checksum: u16::from_be_bytes([value[6], value[7]]),
+            data: &value[8..],
+        }
+    }
+}
+
+/// Represents the types of data that a tcp packet can contain
+#[derive(Debug)]
+pub enum IpPacketData<'a> {
+    /// Internet control message protocol
+    Icmp(&'a [u8]),
+    /// Internet group management protocol
+    Igmp(&'a [u8]),
+    /// Transmission control protocol
+    Tcp(&'a [u8]),
+    /// User datagram protocol
+    Udp(UdpPacket<'a>),
+    /// Ipv6 encapsulated packet
+    Ipv6Encapsulated(&'a [u8]),
+    /// open shortest path first
+    Ospf(&'a [u8]),
+    /// stream control transmission protocol
+    Sctp(&'a [u8]),
+    /// Unknown protocol
+    Unknown(&'a [u8]),
+}
+
 /// Defines the layout of an ipv4 packet header
 #[derive(Debug)]
 pub struct Ipv4PacketHeader {
@@ -197,7 +245,7 @@ pub struct Ipv4Packet<'a> {
     /// The packet header
     header: Ipv4PacketHeader,
     /// The packet data
-    data: &'a [u8],
+    data: IpPacketData<'a>,
 }
 
 impl<'a> From<&'a [u8]> for Ipv4Packet<'a> {
@@ -205,9 +253,66 @@ impl<'a> From<&'a [u8]> for Ipv4Packet<'a> {
         let header = Ipv4PacketHeader::from(value);
         let data_start = (4 * header.header_size as u16) as usize;
         let data_length = header.total_length as usize - data_start;
+        let raw_data = &value[data_start..data_start + data_length];
+        let data = match header.protocol {
+            1 => IpPacketData::Icmp(raw_data),
+            2 => IpPacketData::Igmp(raw_data),
+            6 => IpPacketData::Tcp(raw_data),
+            17 => IpPacketData::Udp(raw_data.into()),
+            41 => IpPacketData::Ipv6Encapsulated(raw_data),
+            89 => IpPacketData::Ospf(raw_data),
+            132 => IpPacketData::Sctp(raw_data),
+            _ => IpPacketData::Unknown(raw_data),
+        };
+        Self { header, data }
+    }
+}
+
+/// THe format of an address resolution packet
+#[derive(Debug)]
+pub struct AddressResolutionProtocolPacket<'a> {
+    /// The hwrdware type
+    htype: u16,
+    /// protocol type
+    ptype: u16,
+    /// The length of a hardware address
+    address_length: u8,
+    /// The length of the protocol address
+    protocol_length: u8,
+    /// The operation for the sender of the packet
+    operation: u16,
+    /// The sender hardware address
+    sender_hardware_address: &'a [u8],
+    /// The sender protocol address
+    sender_protocol_address: &'a [u8],
+    /// The target hardware address
+    target_hardware_address: &'a [u8],
+    /// The target protocol address
+    target_protocol_address: &'a [u8],
+}
+
+impl<'a> From<&'a [u8]> for AddressResolutionProtocolPacket<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        let hlength = value[4] as usize;
+        let plength = value[5] as usize;
+        let mut offset = 8;
+        let sha = &value[offset..offset + hlength];
+        offset += hlength;
+        let spa = &value[offset..offset + plength];
+        offset += plength;
+        let tha = &value[offset..offset + hlength];
+        offset += hlength;
+        let tpa = &value[offset..offset + plength];
         Self {
-            header,
-            data: &value[data_start..data_start + data_length],
+            htype: u16::from_be_bytes([value[0], value[1]]),
+            ptype: u16::from_be_bytes([value[2], value[3]]),
+            address_length: hlength as u8,
+            protocol_length: plength as u8,
+            operation: u16::from_be_bytes([value[6], value[7]]),
+            sender_hardware_address: sha,
+            sender_protocol_address: spa,
+            target_hardware_address: tha,
+            target_protocol_address: tpa,
         }
     }
 }
@@ -217,6 +322,8 @@ impl<'a> From<&'a [u8]> for Ipv4Packet<'a> {
 pub enum Packet<'a> {
     /// An ip version 4 packet
     Ipv4(Ipv4Packet<'a>),
+    /// Address resolution protocol
+    Arp(AddressResolutionProtocolPacket<'a>),
     /// The packet type is unknown, but here is the data anyways, have fun!
     Unknown(&'a [u8]),
 }
@@ -248,6 +355,10 @@ impl<'a> From<&'a EthernetFrame<'a>> for DecodedEthernetFrame<'a> {
             8 => Self {
                 header: value.header.clone(),
                 contents: Packet::Ipv4(Ipv4Packet::from(value.data)),
+            },
+            1544 => Self {
+                header: value.header.clone(),
+                contents: Packet::Arp(value.data.into()),
             },
             _ => Self {
                 header: value.header.clone(),
@@ -358,9 +469,18 @@ pub async fn process_packets_received() {
                 received_packet = true;
                 let ep: EthernetFrame = packet.as_ref().into();
                 let df: DecodedEthernetFrame = (&ep).into();
-                crate::VGA
-                    .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", df))
-                    .await;
+                match df.contents {
+                    Packet::Ipv4(ipv4_packet) => {}
+                    Packet::Arp(address_resolution_protocol_packet) => {
+                        crate::VGA
+                            .print_str_async(&alloc::format!(
+                                "Received arp packet: {:02x?}\r\n",
+                                address_resolution_protocol_packet
+                            ))
+                            .await;
+                    }
+                    Packet::Unknown(items) => {}
+                }
             }
         }
         drop(e);
