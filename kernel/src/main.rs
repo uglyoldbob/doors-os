@@ -129,15 +129,6 @@ async fn net_test() {
         crate::VGA
             .print_str_async("Done doing stuff with network card\r\n")
             .await;
-        loop {
-            let mut packet = [0; 64];
-            {
-                let rng = rng.lock().await;
-                rng.generate_iter(packet.iter_mut());
-            }
-            na.send_packet(&packet).await.unwrap();
-            executor::AsyncTask::yield_now().await;
-        }
     }
 }
 

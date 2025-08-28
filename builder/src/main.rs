@@ -459,21 +459,24 @@ impl Default for LocalConfiguration {
             gdb_path: Some(
                 std::path::PathBuf::from_str("./optional/example/gdb/path/here").unwrap(),
             ),
-            net_devs: vec![NetworkConfig {
-                bochs: Some("bochs_net_config".to_string()),
-                qemu: Some(QemuNetworkConfig {
-                    net_type: "tap".to_string(),
-                    dev_name: "tap0".to_string(),
-                }),
-                virtualbox: Some("virtualbox_net_config".to_string()),
-            }, NetworkConfig {
-                bochs: Some("bochs_net_config2".to_string()),
-                qemu: Some(QemuNetworkConfig {
-                    net_type: "tap".to_string(),
-                    dev_name: "tap1".to_string(),
-                }),
-                virtualbox: Some("virtualbox_net_config2".to_string()),
-            }],
+            net_devs: vec![
+                NetworkConfig {
+                    bochs: Some("bochs_net_config".to_string()),
+                    qemu: Some(QemuNetworkConfig {
+                        net_type: "tap".to_string(),
+                        dev_name: "tap0".to_string(),
+                    }),
+                    virtualbox: Some("virtualbox_net_config".to_string()),
+                },
+                NetworkConfig {
+                    bochs: Some("bochs_net_config2".to_string()),
+                    qemu: Some(QemuNetworkConfig {
+                        net_type: "tap".to_string(),
+                        dev_name: "tap1".to_string(),
+                    }),
+                    virtualbox: Some("virtualbox_net_config2".to_string()),
+                },
+            ],
             serial_ports: vec![
                 SerialConfig::File(PathBuf::from_str("./example/serial/file.log").unwrap()),
                 SerialConfig::TcpServer(1234),
@@ -876,7 +879,7 @@ fn main() {
         file.write_all(data.as_bytes()).unwrap();
         lc
     };
-    
+
     let config = MasterConfig::build(local, config);
     build_cmake_files(&args, config);
 }

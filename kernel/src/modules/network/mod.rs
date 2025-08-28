@@ -116,7 +116,7 @@ pub enum NetworkAdapter {}
 const MAX_RX_PACKET_SIZE: usize = 8192;
 
 /// An ethernet packet header
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[allow(unused)]
 pub struct EthernetFrameHeader {
     /// The destination for the packet
@@ -129,6 +129,107 @@ pub struct EthernetFrameHeader {
     ethertype: u16,
 }
 
+/// Defines the layout of an ipv4 packet header
+#[derive(Debug)]
+pub struct Ipv4PacketHeader {
+    /// Packet version, actually 4 bits
+    version: u8,
+    /// The header size in number of u32
+    header_size: u8,
+    /// differentiated services code point (6 bits)
+    dscp: u8,
+    /// explicit congestion notification (2 bits)
+    ecn: u8,
+    /// Total length of the packet, including the header. Valid values are 20..=65535
+    total_length: u16,
+    /// identification for id of a single ip datagram
+    id: u16,
+    /// flags regarding fragmentation
+    flags: u8,
+    /// fragment offset
+    fragment_offset: u16,
+    /// time to live
+    ttl: u8,
+    /// transport layer protocol
+    protocol: u8,
+    /// header chuecksum
+    checksum: u16,
+    /// The source ip address
+    source: u32,
+    /// The destination ip address
+    destination: u32,
+    /// The packet options
+    options: [u32; 10],
+}
+
+impl From<&[u8]> for Ipv4PacketHeader {
+    fn from(value: &[u8]) -> Self {
+        let header_size = value[0] & 0xf;
+        let mut options: [u32; 10] = [0; 10];
+        if header_size > 5 {
+            for (i, c) in value[20..].chunks_exact(4).enumerate() {
+                let u: u32 = u32::from_be_bytes([c[0], c[1], c[2], c[3]]);
+                options[i] = u;
+            }
+        }
+        Self {
+            version: value[0] >> 4,
+            header_size,
+            dscp: value[1] >> 2,
+            ecn: value[1] & 3,
+            total_length: u16::from_be_bytes([value[2], value[3]]),
+            id: u16::from_be_bytes([value[4], value[5]]),
+            flags: value[6] >> 5,
+            fragment_offset: u16::from_be_bytes([value[6], value[7]]) & 0x1FFF,
+            ttl: value[8],
+            protocol: value[9],
+            checksum: u16::from_be_bytes([value[10], value[11]]),
+            source: u32::from_be_bytes([value[12], value[13], value[14], value[15]]),
+            destination: u32::from_be_bytes([value[16], value[17], value[18], value[19]]),
+            options,
+        }
+    }
+}
+
+/// An ip version 4 packet
+#[derive(Debug)]
+pub struct Ipv4Packet<'a> {
+    /// The packet header
+    header: Ipv4PacketHeader,
+    /// The packet data
+    data: &'a [u8],
+}
+
+impl<'a> From<&'a [u8]> for Ipv4Packet<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        let header = Ipv4PacketHeader::from(value);
+        let data_start = (4 * header.header_size as u16) as usize;
+        let data_length = header.total_length as usize - data_start;
+        Self {
+            header,
+            data: &value[data_start..data_start + data_length],
+        }
+    }
+}
+
+/// The vaious types of packets that can exist
+#[derive(Debug)]
+pub enum Packet<'a> {
+    /// An ip version 4 packet
+    Ipv4(Ipv4Packet<'a>),
+    /// The packet type is unknown, but here is the data anyways, have fun!
+    Unknown(&'a [u8]),
+}
+
+/// Represents a decoded ethernet frame
+#[derive(Debug)]
+pub struct DecodedEthernetFrame<'a> {
+    /// The header
+    header: EthernetFrameHeader,
+    /// The packet contents
+    contents: Packet<'a>,
+}
+
 /// Represents a received ethernet frame
 #[derive(Debug)]
 #[allow(unused)]
@@ -139,6 +240,21 @@ pub struct EthernetFrame<'a> {
     data: &'a [u8],
     /// The crc of the packet
     crc: u32,
+}
+
+impl<'a> From<&'a EthernetFrame<'a>> for DecodedEthernetFrame<'a> {
+    fn from(value: &'a EthernetFrame<'a>) -> Self {
+        match value.header.ethertype {
+            8 => Self {
+                header: value.header.clone(),
+                contents: Packet::Ipv4(Ipv4Packet::from(value.data)),
+            },
+            _ => Self {
+                header: value.header.clone(),
+                contents: Packet::Unknown(value.data),
+            },
+        }
+    }
 }
 
 /// A raw ethernet packet received from a network card
@@ -240,8 +356,10 @@ pub async fn process_packets_received() {
             let mut ethernet = ethernet.access().await;
             while let Some(packet) = ethernet.packets.pop_front() {
                 received_packet = true;
+                let ep: EthernetFrame = packet.as_ref().into();
+                let df: DecodedEthernetFrame = (&ep).into();
                 crate::VGA
-                    .print_str_async(&alloc::format!("Received packet: {:x?}\r\n", packet))
+                    .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", df))
                     .await;
             }
         }
