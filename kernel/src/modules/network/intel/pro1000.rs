@@ -1137,24 +1137,40 @@ impl IntelPro1000Device {
         if reason.lsc() {
             this.update_link_status_interrupt();
         }
-        if reason.rxdmt() {
-            let a = this.rxbufs.interrupt_access();
-            if let Some((buffer, index)) = a.as_ref() {
-                let rxbuf = &buffer.bufs[*index as usize];
-                if rxbuf.status.0 != 0 {
-                    if !rxbuf.status.eop() {
-                        doors_macros::todo!("Process a packet covering more than one descriptor");
-                    } else {
-                        packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
+        if reason.rxo() || reason.rxt() || reason.rxdmt() {
+            let mut bar0 = this.bar0.interrupt_access();
+
+            loop {
+                let mut a = this.rxbufs.interrupt_access();
+                let tail = bar0.read(IntelPro1000Registers::RxDescTail as u16);
+                let head = bar0.read(IntelPro1000Registers::RxDescHead as u16);
+                if let Some((buffer, index)) = a.as_mut() {
+                    let next_tail = (tail + 1) % buffer.bufs.len() as u32;
+                    if next_tail == head {
+                        break;
                     }
-                    this.packet_receiver
-                        .interrupt_access()
-                        .packets
-                        .push_back(packet.clone());
-                    let mut bar0 = this.bar0.interrupt_access();
-                    let mut t = bar0.read(IntelPro1000Registers::RxDescTail as u16);
-                    t = (t + 1) % buffer.bufs.len() as u32;
-                    bar0.write(IntelPro1000Registers::RxDescTail as u16, t);
+                    let rxbuf = &buffer.bufs[*index as usize];
+                    if rxbuf.status.0 != 0 {
+                        if !rxbuf.status.eop() {
+                            doors_macros::todo!(
+                                "Process a packet covering more than one descriptor"
+                            );
+                        } else {
+                            packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
+                        }
+                        this.packet_receiver
+                            .interrupt_access()
+                            .packets
+                            .push_back(packet.clone());
+                        let mut t = *index as u32;
+                        t = (t + 1) % buffer.bufs.len() as u32;
+                        *index = t as u8;
+                        bar0.write(IntelPro1000Registers::RxDescTail as u16, t);
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
                 }
             }
         }
@@ -1172,7 +1188,7 @@ impl IntelPro1000Device {
         let val = 0x1f6fc;
         // Marked as interrupt access becuase interrupts are not fully setup yet
         let mut bar0 = self.internal.bar0.interrupt_access();
-        bar0.write(IntelPro1000Registers::Rdtr as u16, 1);
+        bar0.write(IntelPro1000Registers::Rdtr as u16, 0);
         bar0.write(IntelPro1000Registers::Itr as u16, 4000);
         while bar0.read(IntelPro1000Registers::Ims as u16) != val {
             bar0.write(IntelPro1000Registers::Ims as u16, val);
