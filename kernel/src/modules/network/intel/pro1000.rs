@@ -811,11 +811,17 @@ impl NetworkAdapterTrait for IntelPro1000Device {
                 }
             }
             let descriptor = &self.txbufs.as_ref().unwrap().bufs[txindex];
+            crate::VGA
+                .print_str_async("Waiting for bar access to send packet\r\n")
+                .await;
             self.internal
                 .bar0
                 .access()
                 .await
                 .write(IntelPro1000Registers::TxDescTail as u16, newindex as u32);
+            crate::VGA
+                .print_str_async("Got bar access to send packet\r\n")
+                .await;
             self.txbufindex = Some(newindex as u8);
             let mut tries = 0;
             let a = loop {
@@ -1138,9 +1144,9 @@ impl IntelPro1000Device {
             this.update_link_status_interrupt();
         }
         if reason.rxo() || reason.rxt() || reason.rxdmt() {
-            let mut bar0 = this.bar0.interrupt_access();
-            bar0.read(IntelPro1000Registers::Icr as u16);
             loop {
+                let mut bar0 = this.bar0.interrupt_access();
+                bar0.read(IntelPro1000Registers::Icr as u16);
                 let mut a = this.rxbufs.interrupt_access();
                 let tail = bar0.read(IntelPro1000Registers::RxDescTail as u16);
                 let head = bar0.read(IntelPro1000Registers::RxDescHead as u16);

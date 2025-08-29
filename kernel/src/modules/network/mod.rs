@@ -172,6 +172,68 @@ impl<'a> TryFrom<&'a [u8]> for UdpPacket<'a> {
     }
 }
 
+/// A tcp packet
+#[derive(Debug)]
+pub struct TcpPacket<'a> {
+    /// The source port
+    source: u16,
+    /// The destination port
+    destination: u16,
+    /// Sequence number
+    sequence: u32,
+    /// acknowledgement number
+    ack: u32,
+    /// data offset
+    data_offset: u8,
+    /// various flags
+    flags: u8,
+    /// Receive window size
+    window: u16,
+    /// checksum
+    checksum: u16,
+    /// urgent pointer
+    urgent: u16,
+    /// The packet options
+    options: [u32; 10],
+    /// Packet data
+    data: &'a [u8],
+}
+
+impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
+    type Error = ();
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        let data_offset = *value.get(12).ok_or(())? >> 4;
+        let mut options: [u32; 10] = [0; 10];
+        if data_offset > 5 {
+            for (i, c) in value
+                .get(20..)
+                .ok_or(())?
+                .chunks_exact(4)
+                .enumerate()
+                .take(data_offset as usize - 5)
+            {
+                let u: u32 = u32::from_be_bytes([c[0], c[1], c[2], c[3]]);
+                options[i] = u;
+            }
+        }
+        Ok(Self {
+            source: u16::from_be_bytes(value.get(0..=1).ok_or(())?.try_into().map_err(|_| ())?),
+            destination: u16::from_be_bytes(
+                value.get(2..=3).ok_or(())?.try_into().map_err(|_| ())?,
+            ),
+            sequence: u32::from_be_bytes(value.get(4..=7).ok_or(())?.try_into().map_err(|_| ())?),
+            ack: u32::from_be_bytes(value.get(8..=11).ok_or(())?.try_into().map_err(|_| ())?),
+            data_offset,
+            flags: *value.get(13).ok_or(())?,
+            window: u16::from_be_bytes(value.get(14..=15).ok_or(())?.try_into().map_err(|_| ())?),
+            checksum: u16::from_be_bytes(value.get(16..=17).ok_or(())?.try_into().map_err(|_| ())?),
+            urgent: u16::from_be_bytes(value.get(18..=19).ok_or(())?.try_into().map_err(|_| ())?),
+            options,
+            data: value.get(data_offset as usize * 4..).ok_or(())?,
+        })
+    }
+}
+
 /// Represents the types of data that a tcp packet can contain
 #[derive(Debug)]
 pub enum IpPacketData<'a> {
@@ -180,7 +242,7 @@ pub enum IpPacketData<'a> {
     /// Internet group management protocol
     Igmp(&'a [u8]),
     /// Transmission control protocol
-    Tcp(&'a [u8]),
+    Tcp(TcpPacket<'a>),
     /// User datagram protocol
     Udp(UdpPacket<'a>),
     /// Ipv6 encapsulated packet
@@ -288,7 +350,13 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a> {
         let data = match header.protocol {
             1 => IpPacketData::Icmp(raw_data),
             2 => IpPacketData::Igmp(raw_data),
-            6 => IpPacketData::Tcp(raw_data),
+            6 => {
+                let p = raw_data.try_into();
+                if p.is_err() {
+                    crate::VGA.print_str("Failed to decode tcp packet\r\n");
+                }
+                IpPacketData::Tcp(p?)
+            }
             17 => IpPacketData::Udp(raw_data.try_into()?),
             41 => IpPacketData::Ipv6Encapsulated(raw_data),
             89 => IpPacketData::Ospf(raw_data),
@@ -568,104 +636,114 @@ fn network_init(i: NetworkTransceiver) {
 /// Temporary function to process received ethernet packets
 pub async fn process_packets_received() {
     loop {
-        let mut e = ETHERNET_PACKETS_RECEIVED.lock().await;
         let mut received_packet = false;
-        for rxtx in e.iter_mut() {
-            let mut rx = rxtx.receiver.access().await;
-            while let Some(packet) = rx.packets.pop_front() {
-                received_packet = true;
-                if let Ok(ep) = packet.as_ref().try_into() {
-                    let ep: EthernetFrame = ep;
-                    crate::VGA
-                        .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
-                        .await;
-                    if let Ok(df) = (&ep).try_into() {
-                        let df: DecodedEthernetFrame = df;
+        {
+            let mut e = ETHERNET_PACKETS_RECEIVED.lock().await;
+            for rxtx in e.iter_mut() {
+                let mut rx = rxtx.receiver.access().await;
+                while let Some(packet) = rx.packets.pop_front() {
+                    received_packet = true;
+                    if let Ok(ep) = packet.as_ref().try_into() {
+                        let ep: EthernetFrame = ep;
                         crate::VGA
-                            .print_str_async(&alloc::format!(
-                                "Received packet for: {:02x?}\r\n",
-                                df.header.destination
-                            ))
+                            .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
                             .await;
-                        match df.contents {
-                            Packet::Ipv4(ipv4_packet) => {
-                                crate::VGA
-                                    .print_str_async(&alloc::format!(
-                                        "Received ip packet: {:02x?}\r\n",
-                                        ipv4_packet
-                                    ))
-                                    .await;
-                            }
-                            Packet::Arp(address_resolution_protocol_packet) => {
-                                crate::VGA
-                                    .print_str_async(&alloc::format!(
-                                        "Received arp packet: {:02x?}\r\n",
-                                        address_resolution_protocol_packet
-                                    ))
-                                    .await;
-                                if address_resolution_protocol_packet.operation == 1 {
-                                    let mymac =
-                                        rxtx.sender.lock().await.get_mac_address().await.address;
-                                    doors_macros::todo_item!("Populate the actual ip address");
-                                    let myip = [11, 11, 11, 12];
-                                    if address_resolution_protocol_packet.target_protocol_address
-                                        == myip
-                                    {
-                                        let mut packet = [0; 128];
-                                        let p = DecodedEthernetFrame {
-                                            header: EthernetFrameHeader {
-                                                destination: df.header.source,
-                                                source: MacAddress::default(),
-                                                vlan: None,
-                                                ethertype: 2054,
-                                            },
-                                            contents: Packet::Arp(
-                                                AddressResolutionProtocolPacket {
-                                                    htype: address_resolution_protocol_packet.htype,
-                                                    ptype: address_resolution_protocol_packet.ptype,
-                                                    address_length:
-                                                        address_resolution_protocol_packet
-                                                            .address_length,
-                                                    protocol_length:
-                                                        address_resolution_protocol_packet
-                                                            .protocol_length,
-                                                    operation: 2,
-                                                    sender_hardware_address: &mymac,
-                                                    sender_protocol_address: &myip,
-                                                    target_hardware_address:
-                                                        address_resolution_protocol_packet
-                                                            .sender_hardware_address,
-                                                    target_protocol_address:
-                                                        address_resolution_protocol_packet
-                                                            .sender_protocol_address,
+                        if let Ok(df) = (&ep).try_into() {
+                            let df: DecodedEthernetFrame = df;
+                            crate::VGA
+                                .print_str_async(&alloc::format!(
+                                    "Received packet for: {:02x?}\r\n",
+                                    df.header.destination
+                                ))
+                                .await;
+                            match df.contents {
+                                Packet::Ipv4(ipv4_packet) => {
+                                    crate::VGA
+                                        .print_str_async(&alloc::format!(
+                                            "Received ip packet: {:02x?}\r\n",
+                                            ipv4_packet
+                                        ))
+                                        .await;
+                                }
+                                Packet::Arp(address_resolution_protocol_packet) => {
+                                    crate::VGA
+                                        .print_str_async(&alloc::format!(
+                                            "Received arp packet: {:02x?}\r\n",
+                                            address_resolution_protocol_packet
+                                        ))
+                                        .await;
+                                    if address_resolution_protocol_packet.operation == 1 {
+                                        let mymac = rxtx
+                                            .sender
+                                            .lock()
+                                            .await
+                                            .get_mac_address()
+                                            .await
+                                            .address;
+                                        doors_macros::todo_item!("Populate the actual ip address");
+                                        let myip = [11, 11, 11, 12];
+                                        if address_resolution_protocol_packet
+                                            .target_protocol_address
+                                            == myip
+                                        {
+                                            let mut packet = [0; 128];
+                                            let p = DecodedEthernetFrame {
+                                                header: EthernetFrameHeader {
+                                                    destination: df.header.source,
+                                                    source: MacAddress::default(),
+                                                    vlan: None,
+                                                    ethertype: 2054,
                                                 },
-                                            ),
-                                        };
-                                        if let Ok(length) = p.build_packet(&mut packet) {
-                                            let _ = rxtx
-                                                .sender
-                                                .lock()
-                                                .await
-                                                .send_packet(&packet[0..length as usize])
-                                                .await;
+                                                contents: Packet::Arp(
+                                                    AddressResolutionProtocolPacket {
+                                                        htype: address_resolution_protocol_packet
+                                                            .htype,
+                                                        ptype: address_resolution_protocol_packet
+                                                            .ptype,
+                                                        address_length:
+                                                            address_resolution_protocol_packet
+                                                                .address_length,
+                                                        protocol_length:
+                                                            address_resolution_protocol_packet
+                                                                .protocol_length,
+                                                        operation: 2,
+                                                        sender_hardware_address: &mymac,
+                                                        sender_protocol_address: &myip,
+                                                        target_hardware_address:
+                                                            address_resolution_protocol_packet
+                                                                .sender_hardware_address,
+                                                        target_protocol_address:
+                                                            address_resolution_protocol_packet
+                                                                .sender_protocol_address,
+                                                    },
+                                                ),
+                                            };
+                                            if let Ok(length) = p.build_packet(&mut packet) {
+                                                let _ = rxtx
+                                                    .sender
+                                                    .lock()
+                                                    .await
+                                                    .send_packet(&packet[0..length as usize])
+                                                    .await;
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Packet::Unknown(stuff) => {
-                                crate::VGA
-                                    .print_str_async(&alloc::format!(
-                                        "Received unknown packet: {:02x?}\r\n",
-                                        df
-                                    ))
-                                    .await;
+                                Packet::Unknown(stuff) => {
+                                    crate::VGA
+                                        .print_str_async(&alloc::format!(
+                                            "Received unknown packet: {:02x?}\r\n",
+                                            df
+                                        ))
+                                        .await;
+                                }
                             }
                         }
+                        crate::VGA.print_str("Done processing packet\r\n");
                     }
                 }
             }
         }
-        drop(e);
         if !received_packet {
             for _ in 0..1000000 {
                 crate::executor::AsyncTask::yield_now().await;
