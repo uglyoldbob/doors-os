@@ -308,7 +308,7 @@ pub struct AddressResolutionProtocolPacket<'a> {
 
 impl<'a> AddressResolutionProtocolPacket<'a> {
     /// construct a packet in the specified buffer
-    pub fn build_packet(&self, packet: &mut [u8]) -> Result<(), ()> {
+    pub fn build_packet(&self, packet: &mut [u8]) -> Result<u16, ()> {
         let mut offset = 0;
         (&mut packet[offset..offset + 2]).copy_from_slice(&self.htype.to_be_bytes());
         offset += 2;
@@ -331,7 +331,8 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
         offset += self.address_length as usize;
         (&mut packet[offset..offset + self.protocol_length as usize])
             .copy_from_slice(self.target_protocol_address);
-        Ok(())
+        offset += self.protocol_length as usize;
+        Ok(offset as u16)
     }
 }
 
@@ -374,15 +375,17 @@ pub enum Packet<'a> {
 
 impl<'a> Packet<'a> {
     /// construct a packet in the specified buffer
-    pub fn build_packet(&self, packet: &mut [u8]) -> Result<(), ()> {
+    pub fn build_packet(&self, packet: &mut [u8]) -> Result<u16, ()> {
         match self {
             Packet::Ipv4(ipv4_packet) => todo!(),
             Packet::Arp(address_resolution_protocol_packet) => {
-                address_resolution_protocol_packet.build_packet(packet)?
+                address_resolution_protocol_packet.build_packet(packet)
             }
-            Packet::Unknown(items) => packet.copy_from_slice(*items),
+            Packet::Unknown(items) => {
+                packet.copy_from_slice(*items);
+                Ok(items.len() as u16)
+            }
         }
-        Ok(())
     }
 }
 
@@ -397,7 +400,7 @@ pub struct DecodedEthernetFrame<'a> {
 
 impl<'a> DecodedEthernetFrame<'a> {
     /// construct a packet in the specified buffer
-    pub fn build_packet(&self, packet: &mut [u8]) -> Result<(), ()> {
+    pub fn build_packet(&self, packet: &mut [u8]) -> Result<u16, ()> {
         (&mut packet[0..6]).copy_from_slice(&self.header.destination.address);
         (&mut packet[6..12]).copy_from_slice(&self.header.source.address);
         let mut offset = 12;
@@ -407,7 +410,8 @@ impl<'a> DecodedEthernetFrame<'a> {
         }
         (&mut packet[offset..offset + 2]).copy_from_slice(&self.header.ethertype.to_be_bytes());
         offset += 2;
-        self.contents.build_packet(&mut packet[offset..])
+        offset += self.contents.build_packet(&mut packet[offset..])? as usize;
+        Ok(offset as u16)
     }
 }
 
@@ -426,7 +430,7 @@ pub struct EthernetFrame<'a> {
 impl<'a> From<&'a EthernetFrame<'a>> for DecodedEthernetFrame<'a> {
     fn from(value: &'a EthernetFrame<'a>) -> Self {
         match value.header.ethertype {
-            8 => Self {
+            0x800 => Self {
                 header: value.header.clone(),
                 contents: Packet::Ipv4(Ipv4Packet::from(value.data)),
             },
@@ -551,8 +555,21 @@ pub async fn process_packets_received() {
                 received_packet = true;
                 let ep: EthernetFrame = packet.as_ref().into();
                 let df: DecodedEthernetFrame = (&ep).into();
+                crate::VGA
+                            .print_str_async(&alloc::format!(
+                                "Received packet for: {:02x?}\r\n",
+                                df.header.destination
+                            ))
+                            .await;
                 match df.contents {
-                    Packet::Ipv4(ipv4_packet) => {}
+                    Packet::Ipv4(ipv4_packet) => {
+                        crate::VGA
+                            .print_str_async(&alloc::format!(
+                                "Received ip packet: {:02x?}\r\n",
+                                ipv4_packet
+                            ))
+                            .await;
+                    }
                     Packet::Arp(address_resolution_protocol_packet) => {
                         crate::VGA
                             .print_str_async(&alloc::format!(
@@ -561,42 +578,48 @@ pub async fn process_packets_received() {
                             ))
                             .await;
                         if address_resolution_protocol_packet.operation == 1 {
-                            let mut packet = [0; 128];
-                            let p = DecodedEthernetFrame {
-                                header: EthernetFrameHeader {
-                                    destination: df.header.source,
-                                    source: MacAddress::default(),
-                                    vlan: None,
-                                    ethertype: 2054,
-                                },
-                                contents: Packet::Arp(AddressResolutionProtocolPacket {
-                                    htype: address_resolution_protocol_packet.htype,
-                                    ptype: address_resolution_protocol_packet.ptype,
-                                    address_length: address_resolution_protocol_packet
-                                        .address_length,
-                                    protocol_length: address_resolution_protocol_packet
-                                        .protocol_length,
-                                    operation: 2,
-                                    sender_hardware_address: &rxtx
-                                        .sender
-                                        .lock()
-                                        .await
-                                        .get_mac_address()
-                                        .await
-                                        .address,
-                                    sender_protocol_address: &[11, 11, 11, 12],
-                                    target_hardware_address: address_resolution_protocol_packet
-                                        .sender_hardware_address,
-                                    target_protocol_address: address_resolution_protocol_packet
-                                        .sender_protocol_address,
-                                }),
-                            };
-                            if p.build_packet(&mut packet).is_ok() {
-                                let _ = rxtx.sender.lock().await.send_packet(&packet).await;
+                            let mymac = rxtx.sender.lock().await.get_mac_address().await.address;
+                            doors_macros::todo_item!("Populate the actual ip address");
+                            let myip = [11, 11, 11, 12];
+                            if address_resolution_protocol_packet.target_protocol_address == myip {
+                                let mut packet = [0; 128];
+                                let p = DecodedEthernetFrame {
+                                    header: EthernetFrameHeader {
+                                        destination: df.header.source,
+                                        source: MacAddress::default(),
+                                        vlan: None,
+                                        ethertype: 2054,
+                                    },
+                                    contents: Packet::Arp(AddressResolutionProtocolPacket {
+                                        htype: address_resolution_protocol_packet.htype,
+                                        ptype: address_resolution_protocol_packet.ptype,
+                                        address_length: address_resolution_protocol_packet
+                                            .address_length,
+                                        protocol_length: address_resolution_protocol_packet
+                                            .protocol_length,
+                                        operation: 2,
+                                        sender_hardware_address: &mymac,
+                                        sender_protocol_address: &myip,
+                                        target_hardware_address: address_resolution_protocol_packet
+                                            .sender_hardware_address,
+                                        target_protocol_address: address_resolution_protocol_packet
+                                            .sender_protocol_address,
+                                    }),
+                                };
+                                if let Ok(length) = p.build_packet(&mut packet) {
+                                    let _ = rxtx.sender.lock().await.send_packet(&packet[0..length as usize]).await;
+                                }
                             }
                         }
                     }
-                    Packet::Unknown(items) => {}
+                    Packet::Unknown(stuff) => {
+                        crate::VGA
+                            .print_str_async(&alloc::format!(
+                                "Received unknown packet: {:02x?}\r\n",
+                                df
+                            ))
+                            .await;
+                    }
                 }
             }
         }

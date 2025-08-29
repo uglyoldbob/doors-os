@@ -172,6 +172,8 @@ enum IntelPro1000Registers {
     Mdic = 0x20,
     /// Interrupt cause register
     Icr = 0xc0,
+    /// Interrupt throtting register, units are 256ns, value is 16 bits out of the 32 bits for the register.
+    Itr = 0xc4,
     /// Interrupt mask set/read register
     Ims = 0xd0,
     /// Receive control register
@@ -190,6 +192,8 @@ enum IntelPro1000Registers {
     RxDescHead = 0x2810,
     /// Receive descriptor tail
     RxDescTail = 0x2818,
+    /// Receive delay timer register
+    Rdtr = 0x2820,
     /// Transmit descriptor base low
     TxDescLow = 0x3800,
     /// Transmit descriptor base high
@@ -266,6 +270,17 @@ enum IntelPro1000Registers {
     RAL15 = 0x5400 + 8 * 15,
     /// Receive address high
     RAH15 = 0x5404 + 8 * 15,
+}
+
+bitfield::bitfield! {
+    /// Used to delay interrupt notification for receiving packets. Using the interrupt throttiling register (itr) is preferred.
+    struct Rdtr(u32);
+    impl Debug;
+    impl new;
+    /// The delay in 1.024us increments
+    counts, _: 15, 0;
+    /// set when flush partial descriptor block is desired
+    fpd, _: 31;
 }
 
 #[derive(Clone, Default)]
@@ -1014,7 +1029,20 @@ impl IntelPro1000Device {
     /// Initialize the rx buffers for the device
     async fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
         let ra = ReceiveAddress::new(*mac, 0, true);
+        crate::VGA
+            .print_str_async(&alloc::format!(
+                "Setting receive address to: {:02x?}\r\n",
+                ra
+            ))
+            .await;
         self.set_receive_mac_address(0, &ra).await;
+        let ra2 = self.get_receive_mac_address(0).await;
+        crate::VGA
+            .print_str_async(&alloc::format!(
+                "Reading receive address as: {:02x?}\r\n",
+                ra2
+            ))
+            .await;
         self.clear_multicast_table_array().await;
         let mut rxbufs = self.internal.rxbufs.access().await;
         if rxbufs.is_none() {
@@ -1144,6 +1172,8 @@ impl IntelPro1000Device {
         let val = 0x1f6fc;
         // Marked as interrupt access becuase interrupts are not fully setup yet
         let mut bar0 = self.internal.bar0.interrupt_access();
+        bar0.write(IntelPro1000Registers::Rdtr as u16, 1);
+        bar0.write(IntelPro1000Registers::Itr as u16, 4000);
         while bar0.read(IntelPro1000Registers::Ims as u16) != val {
             bar0.write(IntelPro1000Registers::Ims as u16, val);
             bar0.read(IntelPro1000Registers::Status as u16);

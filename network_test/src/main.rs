@@ -15,11 +15,11 @@ struct Args {
     name: Option<String>,
 
     /// Number of packets to listen for
-    #[arg(short, long, default_value_t = 10)]
+    #[arg(short, long, default_value_t = 0)]
     listen_count: usize,
 
     /// Number of random packets to send
-    #[arg(short, long, default_value_t = 0)]
+    #[arg(short, long, default_value_t = 10)]
     random_count: usize,
 }
 
@@ -66,6 +66,8 @@ fn main() {
                             let mut rng = rand::rng();
                             rng.fill_bytes(&mut buf);
                             buf[0..6].copy_from_slice(&mac_address);
+                            buf[6..12].copy_from_slice(&[1,2,3,4,5,6]);
+                            println!("Packet to send is {:02x?}", buf);
                             if e.sendpacket(buf).is_ok() {
                                 packets_sent += 1;
                             }
