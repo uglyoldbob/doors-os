@@ -35,7 +35,7 @@ pub async fn register_network_adapter(na: NetworkAdapter) {
         .await;
     let na = AsyncLockedArc::new(na);
     let rxtx = na.make_transceiver().await;
-    network_init(rxtx);
+    network_init(rxtx).await;
     nal.insert(name, na);
 }
 
@@ -622,132 +622,111 @@ pub struct NetworkTransceiver {
     pub sender: AsyncLockedArc<NetworkAdapter>,
 }
 
-lazy_static::lazy_static! {
-    /// The list of received packets
-    pub static ref ETHERNET_PACKETS_RECEIVED: AsyncLocked<Vec<NetworkTransceiver>> = AsyncLocked::new(Vec::new());
-}
-
-/// Initialize data required for network operations
-fn network_init(i: NetworkTransceiver) {
-    let mut e = ETHERNET_PACKETS_RECEIVED.sync_lock();
-    e.push(i);
-}
-
-/// Temporary function to process received ethernet packets
-pub async fn process_packets_received() {
-    loop {
-        let mut received_packet = false;
-        {
-            let mut e = ETHERNET_PACKETS_RECEIVED.lock().await;
-            for rxtx in e.iter_mut() {
-                let mut rx = rxtx.receiver.access().await;
-                while let Some(packet) = rx.packets.pop_front() {
-                    received_packet = true;
-                    if let Ok(ep) = packet.as_ref().try_into() {
-                        let ep: EthernetFrame = ep;
+impl NetworkTransceiver {
+    /// Process network packets received
+    pub async fn run(&self) {
+        loop {
+            let mut rx = self.receiver.access().await;
+            while let Some(packet) = rx.packets.pop_front() {
+                if let Ok(ep) = packet.as_ref().try_into() {
+                    let ep: EthernetFrame = ep;
+                    crate::VGA
+                        .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
+                        .await;
+                    if let Ok(df) = (&ep).try_into() {
+                        let df: DecodedEthernetFrame = df;
                         crate::VGA
-                            .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
+                            .print_str_async(&alloc::format!(
+                                "Received packet for: {:02x?}\r\n",
+                                df.header.destination
+                            ))
                             .await;
-                        if let Ok(df) = (&ep).try_into() {
-                            let df: DecodedEthernetFrame = df;
-                            crate::VGA
-                                .print_str_async(&alloc::format!(
-                                    "Received packet for: {:02x?}\r\n",
-                                    df.header.destination
-                                ))
-                                .await;
-                            match df.contents {
-                                Packet::Ipv4(ipv4_packet) => {
-                                    crate::VGA
-                                        .print_str_async(&alloc::format!(
-                                            "Received ip packet: {:02x?}\r\n",
-                                            ipv4_packet
-                                        ))
-                                        .await;
-                                }
-                                Packet::Arp(address_resolution_protocol_packet) => {
-                                    crate::VGA
-                                        .print_str_async(&alloc::format!(
-                                            "Received arp packet: {:02x?}\r\n",
-                                            address_resolution_protocol_packet
-                                        ))
-                                        .await;
-                                    if address_resolution_protocol_packet.operation == 1 {
-                                        let mymac = rxtx
-                                            .sender
-                                            .lock()
-                                            .await
-                                            .get_mac_address()
-                                            .await
-                                            .address;
-                                        doors_macros::todo_item!("Populate the actual ip address");
-                                        let myip = [11, 11, 11, 12];
-                                        if address_resolution_protocol_packet
-                                            .target_protocol_address
-                                            == myip
-                                        {
-                                            let mut packet = [0; 128];
-                                            let p = DecodedEthernetFrame {
-                                                header: EthernetFrameHeader {
-                                                    destination: df.header.source,
-                                                    source: MacAddress::default(),
-                                                    vlan: None,
-                                                    ethertype: 2054,
+                        match df.contents {
+                            Packet::Ipv4(ipv4_packet) => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received ip packet: {:02x?}\r\n",
+                                        ipv4_packet
+                                    ))
+                                    .await;
+                            }
+                            Packet::Arp(address_resolution_protocol_packet) => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received arp packet: {:02x?}\r\n",
+                                        address_resolution_protocol_packet
+                                    ))
+                                    .await;
+                                if address_resolution_protocol_packet.operation == 1 {
+                                    let mymac =
+                                        self.sender.lock().await.get_mac_address().await.address;
+                                    doors_macros::todo_item!("Populate the actual ip address");
+                                    let myip = [11, 11, 11, 12];
+                                    if address_resolution_protocol_packet.target_protocol_address
+                                        == myip
+                                    {
+                                        let mut packet = [0; 128];
+                                        let p = DecodedEthernetFrame {
+                                            header: EthernetFrameHeader {
+                                                destination: df.header.source,
+                                                source: MacAddress::default(),
+                                                vlan: None,
+                                                ethertype: 2054,
+                                            },
+                                            contents: Packet::Arp(
+                                                AddressResolutionProtocolPacket {
+                                                    htype: address_resolution_protocol_packet.htype,
+                                                    ptype: address_resolution_protocol_packet.ptype,
+                                                    address_length:
+                                                        address_resolution_protocol_packet
+                                                            .address_length,
+                                                    protocol_length:
+                                                        address_resolution_protocol_packet
+                                                            .protocol_length,
+                                                    operation: 2,
+                                                    sender_hardware_address: &mymac,
+                                                    sender_protocol_address: &myip,
+                                                    target_hardware_address:
+                                                        address_resolution_protocol_packet
+                                                            .sender_hardware_address,
+                                                    target_protocol_address:
+                                                        address_resolution_protocol_packet
+                                                            .sender_protocol_address,
                                                 },
-                                                contents: Packet::Arp(
-                                                    AddressResolutionProtocolPacket {
-                                                        htype: address_resolution_protocol_packet
-                                                            .htype,
-                                                        ptype: address_resolution_protocol_packet
-                                                            .ptype,
-                                                        address_length:
-                                                            address_resolution_protocol_packet
-                                                                .address_length,
-                                                        protocol_length:
-                                                            address_resolution_protocol_packet
-                                                                .protocol_length,
-                                                        operation: 2,
-                                                        sender_hardware_address: &mymac,
-                                                        sender_protocol_address: &myip,
-                                                        target_hardware_address:
-                                                            address_resolution_protocol_packet
-                                                                .sender_hardware_address,
-                                                        target_protocol_address:
-                                                            address_resolution_protocol_packet
-                                                                .sender_protocol_address,
-                                                    },
-                                                ),
-                                            };
-                                            if let Ok(length) = p.build_packet(&mut packet) {
-                                                let _ = rxtx
-                                                    .sender
-                                                    .lock()
-                                                    .await
-                                                    .send_packet(&packet[0..length as usize])
-                                                    .await;
-                                            }
+                                            ),
+                                        };
+                                        if let Ok(length) = p.build_packet(&mut packet) {
+                                            let _ = self
+                                                .sender
+                                                .lock()
+                                                .await
+                                                .send_packet(&packet[0..length as usize])
+                                                .await;
                                         }
                                     }
                                 }
-                                Packet::Unknown(stuff) => {
-                                    crate::VGA
-                                        .print_str_async(&alloc::format!(
-                                            "Received unknown packet: {:02x?}\r\n",
-                                            df
-                                        ))
-                                        .await;
-                                }
+                            }
+                            Packet::Unknown(stuff) => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received unknown packet: {:02x?}\r\n",
+                                        df
+                                    ))
+                                    .await;
                             }
                         }
-                        crate::VGA.print_str("Done processing packet\r\n");
                     }
+                    crate::VGA.print_str("Done processing packet\r\n");
                 }
             }
-        }
-        if !received_packet {
-            for _ in 0..1000000 {
-                crate::executor::AsyncTask::yield_now().await;
-            }
+            crate::executor::AsyncTask::yield_now().await;
         }
     }
+}
+
+/// Initialize data required for network operations
+async fn network_init(i: NetworkTransceiver) {
+    let _ = crate::executor::spawn(crate::AsyncTask::new(async move {
+        i.run().await;
+    }));
 }

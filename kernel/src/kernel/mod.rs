@@ -377,3 +377,8 @@ impl SystemTrait for NullSystem {
     ) {
     }
 }
+
+use spin::RwLock;
+
+/// The global executor for the kernel
+pub static EXECUTOR: RwLock<Option<crate::GlobalExecutor>> = RwLock::new(None);

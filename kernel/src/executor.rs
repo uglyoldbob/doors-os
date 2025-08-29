@@ -183,8 +183,13 @@ impl TaskList {
     }
 
     /// Add a task id to the list
-    fn add(&mut self, taskid: TaskId) -> Result<(), ()> {
+    fn add(&self, taskid: TaskId) -> Result<(), ()> {
         self.tasks.push(taskid).map_err(|_| ())
+    }
+
+    /// Pop a task from the list
+    fn pop(&self) -> Option<TaskId> {
+        self.tasks.pop()
     }
 
     /// Copy the number of times that tasks have been polled
@@ -299,12 +304,72 @@ impl<'a> Executor<'a> {
         }
     }
 
+    /// Is the task list empty
+    pub fn task_list_empty(&self) -> bool {
+        self.basic_tasks.is_empty()
+    }
+
     /// Run the executor
-    pub fn run(&mut self) -> ! {
-        loop {
-            self.run_tasks();
-            self.get_polls();
-            crate::idle_if(|| self.basic_tasks.is_empty());
+    pub fn run(&mut self) {
+        self.run_tasks();
+        self.get_polls();
+    }
+}
+
+/// Represents the global executor for the kernel
+pub struct GlobalExecutor {
+    executor: crate::LockedArc<Executor<'static>>,
+    /// The list of all tasks specific to this executor
+    local_tasks: crate::LockedArc<alloc::collections::BTreeMap<TaskId, AsyncTask<'static>>>,
+}
+
+impl GlobalExecutor {
+    /// Build a new Global Executor
+    pub fn new(executor: Executor<'static>) -> Self {
+        Self {
+            executor: crate::LockedArc::new(executor),
+            local_tasks: crate::LockedArc::new(alloc::collections::BTreeMap::new()),
         }
     }
+
+    /// Run the global executor
+    pub fn run(&self) -> ! {
+        loop {
+            {
+                let mut e = self.executor.sync_lock();
+                e.run();
+            }
+            {
+                let e = self.executor.sync_lock();
+                let t = self.local_tasks.sync_lock();
+                crate::idle_if(|| e.task_list_empty() && t.is_empty());
+            }
+            {
+                let mut e = self.executor.sync_lock();
+                let mut t = self.local_tasks.sync_lock();
+                if let Some(t) = t.pop_first() {
+                    e.all_tasks.insert(t.0, t.1);
+                    e.basic_tasks.add(t.0);
+                }
+            }
+        }
+    }
+
+    /// Spawn a new async task
+    pub fn spawn(&self, task: AsyncTask<'static>) -> Result<(), ()> {
+        let mut e = self.local_tasks.sync_lock();
+        let id = task.id;
+        if e.insert(id, task).is_some() {
+            return Err(());
+        }
+        Ok(())
+    }
+}
+
+/// Spawn a new async task
+pub fn spawn(task: AsyncTask<'static>) -> Result<(), ()> {
+    crate::VGA.print_str("Spawning an async task\r\n");
+    let r = crate::kernel::EXECUTOR.read().as_ref().unwrap().spawn(task);
+    crate::VGA.print_str("DONE Spawning an async task\r\n");
+    return r;
 }

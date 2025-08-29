@@ -213,13 +213,6 @@ fn main() -> ! {
         if doors_macros::config_check_equals!(test, "true") {
             executor.spawn_closure_local(non_send_future).unwrap();
         }
-        if doors_macros::config_check_equals!(network, "true") {
-            executor
-                .spawn(executor::AsyncTask::new(
-                    crate::modules::network::process_packets_received(),
-                ))
-                .unwrap();
-        }
         if !doors_macros::config_check_equals!(gdbstub, "true") {
             if true {
                 scheduler::SCHEDULER
@@ -308,7 +301,9 @@ fn main() -> ! {
                 }
             })
             .unwrap();
-        executor.run()
+        let ge = GlobalExecutor::new(executor);
+        crate::kernel::EXECUTOR.write().replace(ge);
+        crate::kernel::EXECUTOR.read().as_ref().unwrap().run()
     }
 }
 
