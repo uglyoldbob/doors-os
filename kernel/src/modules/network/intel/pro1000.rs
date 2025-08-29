@@ -798,7 +798,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
                 let ma: u64 = self.mac_address.into();
                 let ma: [u8; 8] = ma.to_le_bytes();
                 dest[6..12].clone_from_slice(&ma[0..6]);
-                hex_dump_async(&dest[..len], true, true).await;
+                //hex_dump_async(&dest[..len], true, true).await;
                 {
                     let descriptor = &mut txb.bufs[txindex];
                     descriptor.length = len as u16;
@@ -807,7 +807,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
                     descriptor.status = 0;
                     descriptor.css = 0;
                     descriptor.special = 0;
-                    hex_dump_generic_async(descriptor, false, true).await;
+                    //hex_dump_generic_async(descriptor, false, true).await;
                 }
             }
             let descriptor = &self.txbufs.as_ref().unwrap().bufs[txindex];
@@ -847,7 +847,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
                     }
                 }
             }
-            self.dump_registers().await;
+            //self.dump_registers().await;
             Ok(())
         } else {
             doors_macros::todo_item_panic!("Packets larger than 8192 bytes not yet handled");

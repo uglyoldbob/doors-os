@@ -67,6 +67,7 @@ fn main() {
                             rng.fill_bytes(&mut buf);
                             buf[0..6].copy_from_slice(&mac_address);
                             buf[6..12].copy_from_slice(&[1,2,3,4,5,6]);
+                            buf[12..14].copy_from_slice(&[8,0]);
                             println!("Packet to send is {:02x?}", buf);
                             if e.sendpacket(buf).is_ok() {
                                 packets_sent += 1;

@@ -554,6 +554,12 @@ pub async fn process_packets_received() {
             while let Some(packet) = rx.packets.pop_front() {
                 received_packet = true;
                 let ep: EthernetFrame = packet.as_ref().into();
+                crate::VGA
+                            .print_str_async(&alloc::format!(
+                                "Received packet: {:02x?}\r\n",
+                                ep
+                            ))
+                            .await;
                 let df: DecodedEthernetFrame = (&ep).into();
                 crate::VGA
                             .print_str_async(&alloc::format!(
