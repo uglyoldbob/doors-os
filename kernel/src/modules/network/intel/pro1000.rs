@@ -1139,7 +1139,7 @@ impl IntelPro1000Device {
         }
         if reason.rxo() || reason.rxt() || reason.rxdmt() {
             let mut bar0 = this.bar0.interrupt_access();
-
+            bar0.read(IntelPro1000Registers::Icr as u16);
             loop {
                 let mut a = this.rxbufs.interrupt_access();
                 let tail = bar0.read(IntelPro1000Registers::RxDescTail as u16);
