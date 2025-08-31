@@ -232,7 +232,7 @@ extern "x86-interrupt" fn segment_not_present(
 extern "x86-interrupt" fn double_fault_handler(
     sf: x86_64::structures::idt::InterruptStackFrame,
     error_code: u64,
-) -> ! {
+) {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
         "Double fault {:x} @ 0x{:X}\r\n",

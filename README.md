@@ -9,6 +9,12 @@ Building has been tested on both windows and linux (ubuntu).
 *Requirements to build*
 * Rust
 
+*Linux requirements to build
+* xorriso
+* mtools
+* virtualbox-dkms
+* (optional) libpcap-dev
+
 *Optional to build*
 * Cmake
 

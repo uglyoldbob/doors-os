@@ -458,6 +458,9 @@ pub type FixedString = arraystring::ArrayString<arraystring::typenum::U80>;
 /// The system manger for the kernel
 pub static SYSTEM: RwLock<kernel::System> = RwLock::new(kernel::NullSystem::new_sys());
 
+/// The main keyboard
+pub static KEYBOARD: RwLock<Option<crate::modules::input::keyboard::Ps2>> = RwLock::new(None);
+
 lazy_static::lazy_static! {
     /// The VGA instance used for x86 kernel printing
     pub static ref VGA: AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> = AsyncLockedArc::new(None);

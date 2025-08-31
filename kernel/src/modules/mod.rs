@@ -4,6 +4,7 @@ doors_macros::declare_enum!(PciFunctionDriver);
 
 pub mod clock;
 pub mod gpio;
+pub mod input;
 pub mod isa;
 pub mod memory;
 pub mod network;

@@ -2,7 +2,7 @@
 cargo build --bin network_test --release
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | jq -r '.target_directory')"
 BIN_NAME="$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].targets[] | select( .kind | map(. == "bin") | any ) | .name')"
-BINARY_PATH="$TARGET_DIR/release/network_test"
+BINARY_PATH="./target/release/network_test"
 echo $BINARY_PATH
 sudo setcap cap_net_raw,cap_net_admin=eip $BINARY_PATH
 $BINARY_PATH --name tap0 --random-count 100

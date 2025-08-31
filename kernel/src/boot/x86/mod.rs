@@ -830,5 +830,10 @@ fn start_common1(
 
 /// This function is called by the entrance module for the kernel.
 fn main_boot() -> ! {
+    doors_macros::todo_item!("Use acpi tables to determine presence of ps2 hardware");
+    let k = crate::modules::input::keyboard::Ps2::new();
+    if let Some(k) = k {
+        crate::common::KEYBOARD.write().replace(k);
+    }
     crate::main()
 }
