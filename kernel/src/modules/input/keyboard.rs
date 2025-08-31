@@ -33,7 +33,20 @@ impl Ps2 {
         let s = Self {
             inner: Arc::new(inner),
         };
+        s.send_command(0xad);
+        s.send_command(0xa7);
+        s.read_buffer();
+        
         Some(s)
+    }
+
+    fn read_buffer(&self) -> u8 {
+        use crate::common::IoReadWrite;
+        self.inner
+            .data_port
+            .access()
+            .sync_lock()
+            .port_read()
     }
 
     /// Send a single byte command to the controller
