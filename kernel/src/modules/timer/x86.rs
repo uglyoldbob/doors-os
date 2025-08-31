@@ -39,7 +39,7 @@ impl super::TimerInstanceInnerTrait for PitInner {
     }
 
     fn get_guard_inner(&self) -> IrqGuardedInner {
-        IrqGuardedInner::new(0, false, true, |_| {}, |_| {})
+        IrqGuardedInner::new(alloc::vec![0], false, true, |_| {}, |_| {})
     }
 
     fn delay_us(&self, _us: u32) {

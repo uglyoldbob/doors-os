@@ -69,7 +69,7 @@ impl X86SerialPort {
         let testval = 0x55u8;
         ports.port(0).port_write(testval);
 
-        let com = common::IrqGuardedInner::new(irq, true, false, |_| {}, |_| {});
+        let com = common::IrqGuardedInner::new(alloc::vec![irq], true, false, |_| {}, |_| {});
 
         let i = Arc::new(X86SerialPortInternal {
             base: IrqGuardedSimple::new(ports, &com),

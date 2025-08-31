@@ -176,7 +176,7 @@ pub struct Scheduler {
 impl Scheduler {
     /// Construct a new scheduler
     pub fn new(id: TaskId) -> Self {
-        let com = IrqGuardedInner::new(0, false, true, |_| {}, |_| {});
+        let com = IrqGuardedInner::new(alloc::vec![0], false, true, |_| {}, |_| {});
         let i = IrqGuarded::new(InnerScheduler::new(id), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),
@@ -266,8 +266,10 @@ impl Scheduler {
     pub fn timer_setup(&self, stack_start: usize, stack_size: usize) {
         use crate::modules::timer::TimerInstanceInnerTrait;
         let s2 = self.i.clone();
-        let irqnum = self.i.0.irq();
-        crate::SYSTEM.read().disable_irq(irqnum);
+        let irqnums = self.i.0.irqs();
+        for i in irqnums {
+            crate::SYSTEM.read().disable_irq(*i);
+        }
         {
             let mut this = self.i.0.interrupt_access();
             {
@@ -281,7 +283,9 @@ impl Scheduler {
             t3.register_handler(move |timer| Self::handle_interrupt(&s2, timer));
             this.timer.replace(t3);
         }
-        crate::SYSTEM.read().enable_irq(irqnum);
+        for i in irqnums {
+            crate::SYSTEM.read().enable_irq(*i);
+        }
         {
             let this = self.i.0.sync_access();
             this.timer.as_ref().unwrap().sync_use().start_oneshot();

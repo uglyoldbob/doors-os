@@ -71,7 +71,7 @@ pub struct NotSafeForInterrupts {}
 
 impl !Interrupt for NotSafeForInterrupts {}
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use crossbeam::queue::ArrayQueue;
 pub use executor::*;
 use spin::RwLock;
@@ -601,9 +601,13 @@ impl<T> IrqGuardedSimple<T> {
             sys.disable_interrupts();
         }
         if self.value.disable_irq {
-            sys.disable_irq(self.value.irqnum);
+            for i in &self.value.irqnums {
+                sys.disable_irq(*i);
+            }
         }
-        (self.value.lock)(self.value.irqnum);
+        for i in &self.value.irqnums {
+            (self.value.lock)(*i);
+        }
         IrqGuardedSimpleUse {
             r: &self.value,
             val: &self.inner,
@@ -650,11 +654,15 @@ impl<'a, T, U> Deref for IrqGuardedSimpleUse<'a, T, U> {
 
 impl<'a, T, U> Drop for IrqGuardedSimpleUse<'a, T, U> {
     fn drop(&mut self) {
-        (self.r.unlock)(self.r.irqnum);
+        for i in &self.r.irqnums {
+            (self.r.unlock)(*i);
+        }
         if self.enable_interrupts {
             let sys = crate::SYSTEM.read();
             if self.enable_irq {
-                sys.enable_irq(self.r.irqnum);
+                for i in &self.r.irqnums {
+                    sys.enable_irq(*i);
+                }
             }
             if self.r.disable_all_interrupts {
                 sys.enable_interrupts();
@@ -676,7 +684,7 @@ pub struct IrqGuarded<T> {
 #[derive(Clone)]
 pub struct IrqGuardedInner {
     /// The irq number used to guard the item
-    irqnum: u8,
+    irqnums: Vec<u8>,
     /// The unlock function
     unlock: Arc<Box<dyn Fn(u8) + Send + Sync>>,
     /// The lock function
@@ -694,14 +702,14 @@ impl IrqGuardedInner {
     /// * lock: The device specific function to disable the desired interrupt for what is being protected
     /// * unlock: The opposite of lock
     pub fn new(
-        irqnum: u8,
+        irqnums: Vec<u8>,
         disable_all_interrupts: bool,
         disable_irq: bool,
         lock: impl Fn(u8) + Send + Sync + 'static,
         unlock: impl Fn(u8) + Send + Sync + 'static,
     ) -> Self {
         Self {
-            irqnum,
+            irqnums,
             unlock: Arc::new(Box::new(unlock)),
             lock: Arc::new(Box::new(lock)),
             disable_all_interrupts,
@@ -727,8 +735,8 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Return the irq number for the user
-    pub fn irq(&self) -> u8 {
-        self.value.irqnum
+    pub fn irqs(&self) -> &Vec<u8> {
+        &self.value.irqnums
     }
 
     /// Use the inner value from a non-interrupt context
@@ -738,10 +746,15 @@ impl<T> IrqGuarded<T> {
             sys.disable_interrupts();
         }
         if self.value.disable_irq {
-            sys.disable_irq(self.value.irqnum);
+            for i in &self.value.irqnums {
+                sys.disable_irq(*i);
+            }
         }
-        (self.value.lock)(self.value.irqnum);
+        for i in &self.value.irqnums {
+            (self.value.lock)(*i);
+        }
         IrqGuardedUse {
+            irqs: &self.value.irqnums,
             r: &self.value,
             val: Some(self.inner.lock().await),
             enable_interrupts: true,
@@ -756,9 +769,14 @@ impl<T> IrqGuarded<T> {
         if self.value.disable_all_interrupts {
             sys.disable_interrupts();
         }
-        sys.disable_irq(self.value.irqnum);
-        (self.value.lock)(self.value.irqnum);
+        for i in &self.value.irqnums {
+            sys.disable_irq(*i);
+        }
+        for i in &self.value.irqnums {
+            (self.value.lock)(*i);
+        }
         IrqGuardedUse {
+            irqs: &self.value.irqnums,
             r: &self.value,
             val: Some(self.inner.sync_lock()),
             enable_interrupts: true,
@@ -770,6 +788,7 @@ impl<T> IrqGuarded<T> {
     /// Use the inner value from an interrupt context
     pub fn interrupt_access(&self) -> IrqGuardedUse<'_, T, SafeForInterrupts> {
         IrqGuardedUse {
+            irqs: &[],
             r: &self.value,
             val: Some(self.inner.sync_lock()),
             enable_interrupts: false,
@@ -785,6 +804,8 @@ pub struct IrqGuardedUse<'a, T, U> {
     r: &'a IrqGuardedInner,
     /// The unlocked data
     val: Option<AsyncLockedMutexGuard<'a, T>>,
+    /// The irqs protected
+    irqs: &'a [u8],
     /// Indicates true when run outside an interrupt context
     enable_interrupts: bool,
     /// Indicates that irqs should be enabled
@@ -811,10 +832,14 @@ impl<'a, T, U> Drop for IrqGuardedUse<'a, T, U> {
         let sys = crate::SYSTEM.read();
         let a = self.val.take();
         drop(a);
-        (self.r.unlock)(self.r.irqnum);
+        for i in &self.r.irqnums {
+            (self.r.unlock)(*i);
+        }
         if self.enable_interrupts {
             if self.enable_irq {
-                sys.enable_irq(self.r.irqnum);
+                for i in self.irqs {
+                    sys.enable_irq(*i);
+                }
             }
             if self.r.disable_all_interrupts {
                 sys.enable_interrupts();

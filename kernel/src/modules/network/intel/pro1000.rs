@@ -1326,7 +1326,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         doors_macros::todo!()
                     }
                 };
-                let com = IrqGuardedInner::new(irqnum, false, true, |_| {}, |_| {});
+                let com = IrqGuardedInner::new(alloc::vec![irqnum], false, true, |_| {}, |_| {});
                 let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
                 let mut d = IntelPro1000Device {
