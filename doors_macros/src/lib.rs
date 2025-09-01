@@ -13,6 +13,7 @@ use std::{
 use quote::quote;
 use syn::parse_macro_input;
 
+mod backtrace;
 mod config;
 use config::KernelConfig;
 
@@ -701,4 +702,15 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
         }
     }
     .into()
+}
+
+/// Include the annotated async function in backtraces and taskdumps.
+#[proc_macro_attribute]
+pub fn framed(
+    args: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    assert!(args.is_empty());
+    // Cloning a `TokenStream` is cheap since it's reference counted internally.
+    backtrace::instrument_precise(item.clone()).unwrap_or_else(|_err| backtrace::instrument_speculative(item))
 }

@@ -3,6 +3,10 @@
 #![no_std]
 #![deny(missing_docs)]
 
+extern crate alloc;
+
+pub mod backtrace;
+
 /// This macro re-exports definitions required to fill out enum variants
 #[macro_export]
 macro_rules! enum_reexport {

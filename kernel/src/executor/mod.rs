@@ -7,6 +7,8 @@ use core::task::{Context, Poll, Waker};
 
 use crate::TaskId;
 
+mod backtrace;
+
 /// An example struct that is non sendable
 pub struct NonSendable {
     /// The non-sendable element
