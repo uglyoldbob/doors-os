@@ -129,6 +129,17 @@ pub extern "x86-interrupt" fn irq0(_isf: InterruptStackFrame) {
     }
 }
 
+/// The irq1 handler
+pub extern "x86-interrupt" fn irq1(_isf: InterruptStackFrame) {
+    let handle = super::IRQ_HANDLERS[1].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
+    finish_irq(1);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
 /// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
     let mut handle = super::IRQ_HANDLERS[3].sync_lock();
@@ -183,7 +194,18 @@ pub extern "x86-interrupt" fn irq11(_isf: InterruptStackFrame) {
     finish_irq(11);
 }
 
-/// The irq11 handler
+/// The irq12 handler
+pub extern "x86-interrupt" fn irq12(_isf: InterruptStackFrame) {
+    let handle = super::IRQ_HANDLERS[12].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
+    finish_irq(12);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq15 handler
 pub extern "x86-interrupt" fn irq15(_isf: InterruptStackFrame) {
     let mut handle = super::IRQ_HANDLERS[15].sync_lock();
     if let Some(h2) = handle.as_mut() {
@@ -207,12 +229,13 @@ extern "x86-interrupt" fn general_protection_handler(isf: InterruptStackFrame, c
 
 ///The handler for segment not present
 extern "x86-interrupt" fn segment_not_present(
-    _sf: x86_64::structures::idt::InterruptStackFrame,
+    isf: x86_64::structures::idt::InterruptStackFrame,
     arg: u64,
 ) {
     crate::VGA.stop_async();
     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-        "Segment not present {:x}\r\n",
+        "Segment not present@{:x} {:x}\r\n",
+        isf.instruction_pointer.as_u64(),
         arg
     ));
     let table = (arg >> 1) & 3;
@@ -598,12 +621,14 @@ pub extern "C" fn start64() -> ! {
             ));
             idt.debug = entry;
             idt[0x20].set_handler_fn(irq0);
+            idt[0x21].set_handler_fn(irq1);
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);
             idt[0x27].set_handler_fn(irq7);
             idt[0x29].set_handler_fn(irq9);
             idt[0x2a].set_handler_fn(irq10);
             idt[0x2b].set_handler_fn(irq11);
+            idt[0x2c].set_handler_fn(irq12);
             idt[0x2f].set_handler_fn(irq15);
         }
     }
