@@ -77,6 +77,7 @@ use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
 
 /// This is an example of a future that is non-Send.
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn non_send_future() {
     let mut nonsend = NonSendable::default();
     crate::VGA.print_str_async("Stuff 1\r\n").await;
@@ -99,6 +100,7 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
 /// Run a network test on the net0 network card, if it exists
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn net_test() {
     crate::VGA
         .print_str_async("Waiting for network card net0\r\n")
@@ -211,7 +213,7 @@ fn main() -> ! {
         }
         let mut executor = Executor::default();
         if doors_macros::config_check_equals!(test, "true") {
-            executor.spawn_closure_local(non_send_future).unwrap();
+            executor.spawn_closure_local(doors_macros2::location!().frame(non_send_future())).unwrap();
         }
         if !doors_macros::config_check_equals!(gdbstub, "true") {
             if true {
@@ -222,7 +224,7 @@ fn main() -> ! {
                     .add_task(scheduler::Task::new(serial_test));
             } else {
                 executor
-                    .spawn_closure(async || {
+                    .spawn_closure(doors_macros2::location!().frame(async {
                         crate::VGA
                             .print_str_async("Waiting for data from second serial port\r\n")
                             .await;
@@ -246,12 +248,13 @@ fn main() -> ! {
                             ser.transmit_str(&alloc::format!("Received a {}\r\n", b as char))
                                 .await;
                         }
-                    })
+                    }))
                     .unwrap();
             }
         }
         executor
-            .spawn_closure(async || {
+            .spawn_closure(doors_macros2::location!().frame(
+                async {
                 crate::VGA
                     .print_str_async("1234567890123456789012345678901234567890DUMMY STUFF\r\n")
                     .await;
@@ -267,7 +270,7 @@ fn main() -> ! {
                     crate::VGA.print_str("This is a test of sync printing\r\n");
                     executor::AsyncTask::yield_now().await;
                 }
-            })
+            }))
             .unwrap();
         if doors_macros::config_check_equals!(network, "true") {
             executor
@@ -275,31 +278,31 @@ fn main() -> ! {
                 .unwrap();
         }
         executor
-            .spawn_closure(async || {
+            .spawn_closure(doors_macros2::location!().frame(async {
                 modules::pci::setup_pci().await;
                 let sys = SYSTEM.read();
                 sys.acpi_debug().await;
-            })
+            }))
             .unwrap();
         executor
-            .spawn_closure(async || {
+            .spawn_closure(doors_macros2::location!().frame(async {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am groot {}\r\n", i))
                         .await;
                     executor::AsyncTask::yield_now().await;
                 }
-            })
+            }))
             .unwrap();
         executor
-            .spawn_closure(async || {
+            .spawn_closure(doors_macros2::location!().frame(async {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am batman {}\r\n", i))
                         .await;
                     executor::AsyncTask::yield_now().await;
                 }
-            })
+            }))
             .unwrap();
         let ge = GlobalExecutor::new(executor);
         crate::kernel::EXECUTOR.write().replace(ge);
