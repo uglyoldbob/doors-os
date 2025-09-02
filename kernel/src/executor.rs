@@ -260,10 +260,9 @@ impl<'a> Executor<'a> {
     /// Spawn a task using a closure
     pub fn spawn_closure_local<F>(&mut self, c: F) -> Result<(), ()>
     where
-        F: AsyncFnOnce() -> (),
-        F::CallOnceFuture: 'a,
+        F: Future<Output = ()> + 'a,
     {
-        let task = LocalAsyncTask::new(c.async_call_once(()));
+        let task = LocalAsyncTask::new(c);
         self.spawn_local(task)
     }
 
@@ -279,10 +278,9 @@ impl<'a> Executor<'a> {
     /// Spawn a task using a closure
     pub fn spawn_closure<F>(&mut self, c: F) -> Result<(), ()>
     where
-        F: AsyncFnOnce() -> (),
-        F::CallOnceFuture: Send + 'a,
+        F: Future<Output = ()> + Send + 'a,
     {
-        let task = AsyncTask::new(c.async_call_once(()));
+        let task = AsyncTask::new(c);
         self.spawn(task)
     }
 
