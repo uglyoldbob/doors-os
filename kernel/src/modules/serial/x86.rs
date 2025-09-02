@@ -371,16 +371,19 @@ impl super::SerialTrait for X86SerialPort {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn transmit(&self, data: &[u8]) {
         self.0.itx.store(true, Ordering::SeqCst);
         AsyncWriter::new(self.0.clone(), data).await
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn transmit_str(&self, data: &str) {
         self.0.itx.store(true, Ordering::SeqCst);
         AsyncWriter::new(self.0.clone(), data.as_bytes()).await;
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&self) {
         while !self.0.tx_queue.access().is_empty() {
             executor::AsyncTask::yield_now().await;

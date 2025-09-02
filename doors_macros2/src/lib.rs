@@ -3,6 +3,17 @@
 #![no_std]
 #![deny(missing_docs)]
 
+extern crate alloc;
+
+#[cfg(feature = "backtrace")]
+pub mod location;
+#[cfg(feature = "backtrace")]
+mod frame;
+#[cfg(feature = "backtrace")]
+mod framed;
+#[cfg(feature = "backtrace")]
+mod linked_list;
+
 /// This macro re-exports definitions required to fill out enum variants
 #[macro_export]
 macro_rules! enum_reexport {
@@ -65,4 +76,83 @@ macro_rules! fixed_string_format {
             }
         }
     };
+}
+
+/// Produces a [`Location`] when invoked in a function body.
+///
+/// ```
+/// use async_backtrace::{location, Location};
+///
+/// #[tokio::main]
+/// async fn main() {
+///     assert_eq!(location!().to_string(), "rust_out::main::{{closure}} at backtrace/src/location.rs:8:16");
+///
+///     async {
+///         assert_eq!(location!().to_string(), "rust_out::main::{{closure}}::{{closure}} at backtrace/src/location.rs:11:20");
+///     }.await;
+///     
+///     (|| async {
+///         assert_eq!(location!().to_string(), "rust_out::main::{{closure}}::{{closure}}::{{closure}} at backtrace/src/location.rs:15:20");
+///     })().await;
+/// }
+/// ```
+#[macro_export]
+macro_rules! location {
+    () => {{
+        macro_rules! fn_name {
+            () => {{
+                fn type_name_of_val<T: ?Sized>(_: &T) -> &'static str {
+                    core::any::type_name::<T>()
+                }
+                type_name_of_val(&|| {})
+                    .strip_suffix("::{{closure}}")
+                    .unwrap()
+            }};
+        }
+        $crate::location::Location::from_components(fn_name!(), &(file!(), line!(), column!()))
+    }};
+}
+
+/// Include the annotated async expression in backtraces and taskdumps.
+///
+/// This, for instance:
+/// ```
+/// # #[tokio::main] async fn main() {
+/// # async fn foo() {}
+/// # async fn bar() {}
+/// tokio::spawn(async_backtrace::frame!(async {
+///     foo().await;
+///     bar().await;
+/// })).await;
+/// # }
+/// ```
+/// ...expands, roughly, to:
+/// ```
+/// # #[tokio::main] async fn main() {
+/// # async fn foo() {}
+/// # async fn bar() {}
+/// tokio::spawn(async_backtrace::location!().frame(async {
+///     foo().await;
+///     bar().await;
+/// })).await;
+/// # }
+/// ```
+#[macro_export]
+macro_rules! frame {
+    ($async_expr:expr) => {
+        $crate::location!().frame($async_expr)
+    };
+}
+
+/// Do some defer stuff
+pub(crate) fn defer<F: FnOnce() -> R, R>(f: F) -> impl Drop {
+    struct Defer<F: FnOnce() -> R, R>(Option<F>);
+
+    impl<F: FnOnce() -> R, R> Drop for Defer<F, R> {
+        fn drop(&mut self) {
+            self.0.take().unwrap()();
+        }
+    }
+
+    Defer(Some(f))
 }

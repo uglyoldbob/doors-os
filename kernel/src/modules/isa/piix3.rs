@@ -35,6 +35,7 @@ impl IsaPiix3BridgeDriver {
 }
 
 impl crate::modules::pci::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn parse_bars(
         &mut self,
         _cs: &mut crate::modules::pci::PciConfigurationSpace,
@@ -46,6 +47,7 @@ impl crate::modules::pci::PciFunctionDriverTrait for IsaPiix3BridgeDriver {
     ) {
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn register(
         &self,
         m: &mut alloc::collections::btree_map::BTreeMap<u32, crate::modules::PciFunctionDriver>,

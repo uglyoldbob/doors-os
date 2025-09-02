@@ -54,6 +54,7 @@ impl<'a> LocalAsyncTask<'a> {
     }
 
     /// Yield the task to other tasks in the same priority
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn yield_now() {
         /// Yield implementation
         struct YieldNow {
@@ -104,6 +105,7 @@ impl<'a> AsyncTask<'a> {
     }
 
     /// Yield the task to other tasks in the same priority
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn yield_now() {
         /// Yield implementation
         struct YieldNow {

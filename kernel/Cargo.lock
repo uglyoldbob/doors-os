@@ -192,6 +192,11 @@ dependencies = [
 [[package]]
 name = "doors_macros2"
 version = "0.1.0"
+dependencies = [
+ "futures",
+ "pin-project-lite",
+ "spin",
+]
 
 [[package]]
 name = "enum_dispatch"
@@ -362,6 +367,7 @@ dependencies = [
  "log",
  "multiboot2",
  "pin-project",
+ "pin-project-lite",
  "radium",
  "raw-cpuid 11.5.0",
  "serde",

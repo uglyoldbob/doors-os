@@ -72,14 +72,17 @@ impl crate::modules::video::TextDisplayTrait for X86VgaTextMode {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_char_async(&mut self, d: char) {
         self.print_char(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_str_async(&mut self, d: &str) {
         self.print_str(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self) {}
 
     fn sync_flush(&mut self) {}

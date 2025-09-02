@@ -1,6 +1,6 @@
 //! Code common to regular kernel and kernel test code
 
-#[path = "executor.rs"]
+#[path = "executor/mod.rs"]
 pub mod executor;
 use core::{
     cell::UnsafeCell,

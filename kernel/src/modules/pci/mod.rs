@@ -107,6 +107,7 @@ impl ConfigurationSpaceStandard {
     }
 
     /// Dump the configuration data contents
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn dump(&self, linestart: &str) {
         for i in 0..6 {
             crate::VGA
@@ -207,6 +208,7 @@ pub struct ConfigurationSpaceBridge {
 
 impl ConfigurationSpaceBridge {
     /// Dump the configuration data contents
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn dump(&self, linestart: &str) {
         crate::VGA
             .print_str_async(&format!("{}PCI Bridge\r\n", linestart))
@@ -375,6 +377,7 @@ pub struct ConfigurationSpaceCardbus {
 
 impl ConfigurationSpaceCardbus {
     /// Dump the configuration data contents
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn dump(&self, linestart: &str) {
         crate::VGA
             .print_str_async(&format!("{}CARDBUS Device\r\n", linestart))
@@ -616,6 +619,7 @@ impl ConfigurationSpace {
     }
 
     /// Dump the configuration space
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn dump(&self, linestart: &str) {
         crate::VGA
             .print_str_async(&format!("{}Configuration space:\r\n", linestart))
@@ -979,6 +983,7 @@ impl BarSpace {
     }
 
     /// Print the bar for analysis
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn print(&self) {
         match self {
             BarSpace::Memory32 {
@@ -1218,6 +1223,7 @@ impl PciFunction {
     }
 
     /// Print the details of this function
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print(&self, pci: &mut PciConfigurationSpace, bus: &PciBus, dev: &PciDevice) {
         let config = self.get_all_configuration(pci, bus, dev);
         config.dump("\t\t\t").await;
@@ -1253,6 +1259,7 @@ impl PciDevice {
     }
 
     /// Print all the functions of the device
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_functions(&self, pci: &mut PciConfigurationSpace, bus: &PciBus) {
         for (i, f) in self.functions.iter().enumerate() {
             crate::VGA
@@ -1302,6 +1309,7 @@ impl PciBus {
     }
 
     /// Print all devices on the bus
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_devices(&self, pci: &mut PciConfigurationSpace) {
         for (i, d) in self.devices.iter().enumerate() {
             crate::VGA
@@ -1312,6 +1320,7 @@ impl PciBus {
     }
 
     /// Run drivers that can be associated with pci functions
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn driver_run(
         &self,
         map: &mut alloc::collections::btree_map::BTreeMap<u32, crate::modules::PciFunctionDriver>,
@@ -1360,6 +1369,7 @@ pub enum Pci {
 
 impl Pci {
     /// Run all drivers for this pci system
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn driver_setup(&mut self) {
         let mut d = PCI_DRIVERS.sync_lock();
         self.driver_run(&mut d).await;
@@ -1386,6 +1396,7 @@ pub enum PciConfigurationSpace {
 }
 
 /// Register all pci drivers with the driver map
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn pci_register_drivers() {
     use PciFunctionDriverTrait;
     let mut drivers = PCI_DRIVERS.lock().await;
@@ -1415,12 +1426,14 @@ impl DummyPciFunctionDriver {
 }
 
 impl PciFunctionDriverTrait for DummyPciFunctionDriver {
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn register(&self, _m: &mut BTreeMap<u32, crate::modules::PciFunctionDriver>) {
         crate::VGA
             .print_str_async("Register dummy pci driver\r\n")
             .await;
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn parse_bars(
         &mut self,
         _cs: &mut PciConfigurationSpace,
@@ -1435,6 +1448,7 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 }
 
 /// Setup the x86 pci space and register all pci drivers
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn setup_pci() {
     let pci = crate::modules::pci::x86::Pci::new();
     if let Some(pci) = pci {
