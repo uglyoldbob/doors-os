@@ -1,7 +1,7 @@
 //! Networking code for the kernel
 
 use alloc::{
-    borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec,
+    borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String,
 };
 
 use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded};
