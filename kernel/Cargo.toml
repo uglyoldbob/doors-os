@@ -58,4 +58,4 @@ debug = true
 
 [features]
 default = ["backtrace"]
-backtrace = ["doors_macros/backtrace"]
+backtrace = ["doors_macros/backtrace", "doors_macros2/backtrace"]

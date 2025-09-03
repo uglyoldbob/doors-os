@@ -344,7 +344,7 @@ impl GlobalExecutor {
     }
 
     /// Get the current task id from an async function
-    pub async fn get_id(&self) -> Option<TaskId> {
+    pub fn get_id(&self) -> Option<TaskId> {
         *self.current_task_id.sync_lock()
     }
 
@@ -387,13 +387,8 @@ impl GlobalExecutor {
 }
 
 /// Get the current task id
-pub async fn get_task_id() -> Option<TaskId> {
-    crate::kernel::EXECUTOR
-        .read()
-        .as_ref()
-        .unwrap()
-        .get_id()
-        .await
+pub fn get_task_id() -> Option<TaskId> {
+    crate::kernel::EXECUTOR.read().as_ref().unwrap().get_id()
 }
 
 /// Spawn a new async task
