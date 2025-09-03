@@ -252,7 +252,8 @@ pub struct Executor<'a> {
 
 impl<'a> Executor<'a> {
     /// Spawn a new task that always runs on this executor
-    pub fn spawn_local(&mut self, task: LocalAsyncTask<'a>) -> Result<(), ()> {
+    pub fn spawn_local<F: Future<Output = ()> + 'a>(&mut self, task: F) -> Result<(), ()> {
+        let task = LocalAsyncTask::new(task);
         let id = task.id;
         if self.local_tasks.insert(id, task).is_some() {
             panic!("Task already spawned");
@@ -260,17 +261,16 @@ impl<'a> Executor<'a> {
         self.basic_tasks.add(id)
     }
 
-    /// Spawn a task using a closure
+    /// Spawn a task using a future
     pub fn spawn_closure_local<F>(&mut self, c: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + 'a,
     {
-        let task = LocalAsyncTask::new(c);
-        self.spawn_local(task)
+        self.spawn_local(c)
     }
 
     /// Spawn a new task
-    pub fn spawn(&mut self, task: AsyncTask<'a>) -> Result<(), ()> {
+    fn spawn_task(&mut self, task: AsyncTask<'a>) -> Result<(), ()> {
         let id = task.id;
         if self.all_tasks.insert(id, task).is_some() {
             panic!("Task already spawned");
@@ -278,13 +278,13 @@ impl<'a> Executor<'a> {
         self.basic_tasks.add(id)
     }
 
-    /// Spawn a task using a closure
-    pub fn spawn_closure<F>(&mut self, c: F) -> Result<(), ()>
+    /// Spawn a future
+    pub fn spawn<F>(&mut self, c: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + Send + 'a,
     {
         let task = AsyncTask::new(c);
-        self.spawn(task)
+        self.spawn_task(task)
     }
 
     /// Runs tasks
@@ -318,6 +318,7 @@ impl<'a> Executor<'a> {
 }
 
 /// Represents the global executor for the kernel
+/// This will become more complicated when multi-processor support is added.
 pub struct GlobalExecutor {
     executor: crate::LockedArc<Executor<'static>>,
     /// The list of all tasks specific to this executor
@@ -360,7 +361,7 @@ impl GlobalExecutor {
     }
 
     /// Get the currently running async task id
-    pub fn get_current_task_id(&self) -> Option<TaskId> {
+    pub async fn get_current_task_id(&self) -> Option<TaskId> {
         *self.current_task_id.sync_lock()
     }
 
@@ -377,12 +378,13 @@ impl GlobalExecutor {
 }
 
 /// Get the currently running async task id
-pub fn get_current_task_id() -> Option<TaskId> {
+pub async fn get_current_task_id() -> Option<TaskId> {
     crate::kernel::EXECUTOR
         .read()
         .as_ref()
         .unwrap()
         .get_current_task_id()
+        .await
 }
 
 /// Spawn a new async task

@@ -132,6 +132,10 @@ async fn net_test() {
             .print_str_async("Done doing stuff with network card\r\n")
             .await;
     }
+    let t = crate::executor::get_current_task_id().await;
+    crate::VGA
+        .print_str_async(&alloc::format!("My task id is {:?}\r\n", t))
+        .await;
 }
 
 /// A test function for the kernel
@@ -159,6 +163,7 @@ fn serial_test() {
         crate::VGA.print_str("Sending data to second serial port\r\n");
         ser.sync_transmit_str(&alloc::format!("Testing {}\r\n", i));
     }
+    let t = crate::executor::get_current_task_id();
 }
 
 fn main() -> ! {
@@ -224,7 +229,7 @@ fn main() -> ! {
                     .add_task(scheduler::Task::new(serial_test));
             } else {
                 executor
-                    .spawn_closure(async {
+                    .spawn(async {
                         crate::VGA
                             .print_str_async("Waiting for data from second serial port\r\n")
                             .await;
@@ -253,7 +258,7 @@ fn main() -> ! {
             }
         }
         executor
-            .spawn_closure(async {
+            .spawn(async {
                 crate::VGA
                     .print_str_async("1234567890123456789012345678901234567890DUMMY STUFF\r\n")
                     .await;
@@ -272,19 +277,17 @@ fn main() -> ! {
             })
             .unwrap();
         if doors_macros::config_check_equals!(network, "true") {
-            executor
-                .spawn(executor::AsyncTask::new(net_test()))
-                .unwrap();
+            executor.spawn(net_test()).unwrap();
         }
         executor
-            .spawn_closure(async {
+            .spawn(async {
                 modules::pci::setup_pci().await;
                 let sys = SYSTEM.read();
                 sys.acpi_debug().await;
             })
             .unwrap();
         executor
-            .spawn_closure(async {
+            .spawn(async {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am groot {}\r\n", i))
@@ -294,7 +297,7 @@ fn main() -> ! {
             })
             .unwrap();
         executor
-            .spawn_closure(async {
+            .spawn(async {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am batman {}\r\n", i))
