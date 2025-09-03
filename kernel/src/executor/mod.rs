@@ -269,7 +269,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Spawn a new task
-    pub fn spawn(&mut self, task: AsyncTask<'a>) -> Result<(), ()> {
+    fn spawn_task(&mut self, task: AsyncTask<'a>) -> Result<(), ()> {
         let id = task.id;
         if self.all_tasks.insert(id, task).is_some() {
             panic!("Task already spawned");
@@ -278,12 +278,12 @@ impl<'a> Executor<'a> {
     }
 
     /// Spawn a task using a closure
-    pub fn spawn_closure<F>(&mut self, c: F) -> Result<(), ()>
+    pub fn spawn<F>(&mut self, c: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + Send + 'a,
     {
         let task = AsyncTask::new(c);
-        self.spawn(task)
+        self.spawn_task(task)
     }
 
     /// Runs tasks
@@ -356,7 +356,11 @@ impl GlobalExecutor {
     }
 
     /// Spawn a new async task
-    pub fn spawn(&self, task: AsyncTask<'static>) -> Result<(), ()> {
+    pub fn spawn<F>(&self, task: F) -> Result<(), ()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let task = AsyncTask::new(task);
         let mut e = self.local_tasks.sync_lock();
         let id = task.id;
         if e.insert(id, task).is_some() {
@@ -367,7 +371,10 @@ impl GlobalExecutor {
 }
 
 /// Spawn a new async task
-pub fn spawn(task: AsyncTask<'static>) -> Result<(), ()> {
+pub fn spawn<F>(task: F) -> Result<(), ()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
     crate::VGA.print_str("Spawning an async task\r\n");
     let r = crate::kernel::EXECUTOR.read().as_ref().unwrap().spawn(task);
     crate::VGA.print_str("DONE Spawning an async task\r\n");

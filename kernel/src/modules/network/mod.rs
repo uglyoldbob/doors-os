@@ -1,8 +1,6 @@
 //! Networking code for the kernel
 
-use alloc::{
-    borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String,
-};
+use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String};
 
 use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded};
 
@@ -731,7 +729,7 @@ impl NetworkTransceiver {
 /// Initialize data required for network operations
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn network_init(i: NetworkTransceiver) {
-    let _ = crate::executor::spawn(crate::AsyncTask::new(async move {
+    let _ = crate::executor::spawn(doors_macros2::location!().frame(async move {
         i.run().await;
     }));
 }

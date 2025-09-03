@@ -706,7 +706,6 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
     .into()
 }
 
-
 #[cfg(feature = "backtrace")]
 ///Include the annotated async function in backtraces and taskdumps.
 #[proc_macro_attribute]
@@ -716,5 +715,6 @@ pub fn framed(
 ) -> proc_macro::TokenStream {
     assert!(args.is_empty());
     // Cloning a `TokenStream` is cheap since it's reference counted internally.
-    backtrace::instrument_precise(item.clone()).unwrap_or_else(|_err| backtrace::instrument_speculative(item))
+    backtrace::instrument_precise(item.clone())
+        .unwrap_or_else(|_err| backtrace::instrument_speculative(item))
 }

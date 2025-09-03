@@ -213,7 +213,9 @@ fn main() -> ! {
         }
         let mut executor = Executor::default();
         if doors_macros::config_check_equals!(test, "true") {
-            executor.spawn_closure_local(doors_macros2::location!().frame(non_send_future())).unwrap();
+            executor
+                .spawn_closure_local(doors_macros2::location!().frame(non_send_future()))
+                .unwrap();
         }
         if !doors_macros::config_check_equals!(gdbstub, "true") {
             if true {
@@ -224,7 +226,7 @@ fn main() -> ! {
                     .add_task(scheduler::Task::new(serial_test));
             } else {
                 executor
-                    .spawn_closure(doors_macros2::location!().frame(async {
+                    .spawn(doors_macros2::location!().frame(async {
                         crate::VGA
                             .print_str_async("Waiting for data from second serial port\r\n")
                             .await;
@@ -253,8 +255,7 @@ fn main() -> ! {
             }
         }
         executor
-            .spawn_closure(doors_macros2::location!().frame(
-                async {
+            .spawn(doors_macros2::location!().frame(async {
                 crate::VGA
                     .print_str_async("1234567890123456789012345678901234567890DUMMY STUFF\r\n")
                     .await;
@@ -274,18 +275,18 @@ fn main() -> ! {
             .unwrap();
         if doors_macros::config_check_equals!(network, "true") {
             executor
-                .spawn(executor::AsyncTask::new(net_test()))
+                .spawn(doors_macros2::location!().frame(net_test()))
                 .unwrap();
         }
         executor
-            .spawn_closure(doors_macros2::location!().frame(async {
+            .spawn(doors_macros2::location!().frame(async {
                 modules::pci::setup_pci().await;
                 let sys = SYSTEM.read();
                 sys.acpi_debug().await;
             }))
             .unwrap();
         executor
-            .spawn_closure(doors_macros2::location!().frame(async {
+            .spawn(doors_macros2::location!().frame(async {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am groot {}\r\n", i))
@@ -295,7 +296,7 @@ fn main() -> ! {
             }))
             .unwrap();
         executor
-            .spawn_closure(doors_macros2::location!().frame(async {
+            .spawn(doors_macros2::location!().frame(async {
                 for i in 0..32 {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am batman {}\r\n", i))
