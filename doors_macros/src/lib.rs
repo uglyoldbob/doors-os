@@ -10,6 +10,9 @@ use std::{
     sync::Mutex,
 };
 
+#[cfg(feature = "backtrace")]
+mod backtrace;
+
 use quote::quote;
 use syn::parse_macro_input;
 
@@ -701,4 +704,27 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
         }
     }
     .into()
+}
+
+#[cfg(feature = "backtrace")]
+/// Used for instrumenting async functions for seeing backtraces
+#[proc_macro_attribute]
+pub fn framed(
+    args: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    assert!(args.is_empty());
+    // Cloning a `TokenStream` is cheap since it's reference counted internally.
+    backtrace::instrument_precise(item.clone())
+        .unwrap_or_else(|_err| backtrace::instrument_speculative(item))
+}
+
+#[cfg(not(feature = "backtrace"))]
+#[proc_macro_attribute]
+/// Used for instrumenting async functions for seeing backtraces, this does nothing since backtraces are not enabled
+pub fn framed(
+    _args: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    item
 }

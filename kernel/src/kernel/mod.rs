@@ -361,6 +361,7 @@ impl SystemTrait for NullSystem {
     fn enable_irq(&self, _irq: u8) {}
     fn disable_irq(&self, _irq: u8) {}
     fn init(&self) {}
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn acpi_debug(&self) {}
     fn main_stack(&self) -> (usize, usize) {
         (0, 0)

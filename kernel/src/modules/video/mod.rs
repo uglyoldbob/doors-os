@@ -354,9 +354,11 @@ pub trait TextDisplayTrait: Sync + Send {
     }
 
     /// Asynchronously print a character
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_char_async(&mut self, d: char);
 
     /// Asynchronously print a string
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_str_async(&mut self, d: &str) {
         for c in d.chars() {
             self.print_char_async(c).await;
@@ -367,6 +369,7 @@ pub trait TextDisplayTrait: Sync + Send {
     fn sync_flush(&mut self);
 
     /// Asynchrouously flush all data
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self);
 }
 
@@ -415,10 +418,12 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_char_async(&mut self, d: char) {
         self.print_char(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self) {}
 
     fn sync_flush(&mut self) {}
@@ -452,10 +457,12 @@ where
         todo!();
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_char_async(&mut self, d: char) {
         self.print_char(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self) {}
 
     fn sync_flush(&mut self) {}
@@ -502,16 +509,19 @@ impl TextDisplayTrait for VideoOverSerial {
         self.port.sync_transmit_str(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_char_async(&mut self, d: char) {
         let mut c = [0; 4];
         let s = d.encode_utf8(&mut c);
         self.port.transmit_str(s).await;
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_str_async(&mut self, d: &str) {
         self.port.transmit_str(d).await;
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self) {
         self.port.flush().await;
     }
@@ -633,6 +643,7 @@ pub fn hex_dump_generic<T>(data: &T, print_address: bool, print_ascii: bool) {
 }
 
 /// prints out a user friendly hex dump of the specified data
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn hex_dump_async(data: &[u8], print_address: bool, print_ascii: bool) {
     let len = data.len();
     let mut addr_len = 1;
@@ -683,6 +694,7 @@ pub async fn hex_dump_async(data: &[u8], print_address: bool, print_ascii: bool)
 }
 
 /// prints out a user friendly hex dump of the specified data
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn hex_dump_generic_async<T>(data: &T, print_address: bool, print_ascii: bool) {
     let len = core::mem::size_of::<T>();
     let data = unsafe { core::slice::from_raw_parts((data as *const T) as *const u8, len) };
@@ -690,6 +702,7 @@ pub async fn hex_dump_generic_async<T>(data: &T, print_address: bool, print_asci
 }
 
 /// prints out a user friendly hex dump of the specified data
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn hex_dump_generic_slice_async<T>(data: &[T], print_address: bool, print_ascii: bool) {
     let len = core::mem::size_of_val(data);
     let data =

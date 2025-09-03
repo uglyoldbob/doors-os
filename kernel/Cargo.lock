@@ -192,6 +192,9 @@ dependencies = [
 [[package]]
 name = "doors_macros2"
 version = "0.1.0"
+dependencies = [
+ "futures",
+]
 
 [[package]]
 name = "enum_dispatch"

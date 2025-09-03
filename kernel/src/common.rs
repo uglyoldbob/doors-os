@@ -1,6 +1,6 @@
 //! Code common to regular kernel and kernel test code
 
-#[path = "executor.rs"]
+#[path = "executor/mod.rs"]
 pub mod executor;
 use core::{
     cell::UnsafeCell,
@@ -209,6 +209,7 @@ impl<A> AsyncLockedArc<A> {
     }
 
     /// Lock the contained mutex asynchronously, returning a protected instance of the contained object
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn lock(&self) -> AsyncLockedMutexGuard<'_, A> {
         self.inner.lock().await
     }
@@ -220,6 +221,7 @@ impl<A> AsyncLockedArc<A> {
     }
 
     /// Replace the contents of the protected instance with another instance of the thing
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn replace(&self, r: A) {
         let mut s = self.inner.lock().await;
         *s = r;
@@ -521,6 +523,7 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
     }
 
     /// Use this function for prints that should be together, but require multiple print calls
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn print_with_async_closure<F>(&self, a: F)
     where
         F: AsyncFnOnce(&mut OwnedDevice<crate::TextDisplay>) -> (),
@@ -553,6 +556,7 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
     }
 
     /// Print a string reference, asynchronously
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn print_str_async(&self, a: &str) {
         let mut v = self.lock().await;
         let vga = v.as_mut();
@@ -740,6 +744,7 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Use the inner value from a non-interrupt context
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn access(&self) -> IrqGuardedUse<'_, T, NotSafeForInterrupts> {
         let sys = crate::SYSTEM.read();
         if self.value.disable_all_interrupts {

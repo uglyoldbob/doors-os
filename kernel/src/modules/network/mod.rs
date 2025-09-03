@@ -22,6 +22,7 @@ lazy_static::lazy_static! {
 }
 
 /// Register a network adapter
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn register_network_adapter(na: NetworkAdapter) {
     let mut nal = NETWORK_ADAPTERS.lock().await;
     //TODO implement an automatic naming scheme
@@ -40,6 +41,7 @@ pub async fn register_network_adapter(na: NetworkAdapter) {
 }
 
 /// Grab a network adapter by name
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn get_network_adapter(s: &str) -> Option<AsyncLockedArc<NetworkAdapter>> {
     let nal = NETWORK_ADAPTERS.lock().await;
     if nal.contains_key(s) {
@@ -115,6 +117,7 @@ pub trait NetworkAdapterTrait {
 
 impl AsyncLockedArc<NetworkAdapter> {
     /// Build a network transceiver
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn make_transceiver(&self) -> NetworkTransceiver {
         NetworkTransceiver {
             receiver: self.lock().await.get_receiver(),
@@ -624,6 +627,7 @@ pub struct NetworkTransceiver {
 
 impl NetworkTransceiver {
     /// Process network packets received
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn run(&self) {
         loop {
             let mut rx = self.receiver.access().await;
@@ -725,6 +729,7 @@ impl NetworkTransceiver {
 }
 
 /// Initialize data required for network operations
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn network_init(i: NetworkTransceiver) {
     let _ = crate::executor::spawn(async move {
         i.run().await;

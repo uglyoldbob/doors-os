@@ -1,6 +1,7 @@
 //! This module holds code for the async executor used in the kernel.
 //! TODO: use a kernel config to specify the size of waker queues
 
+use alloc::collections::BTreeMap;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
@@ -54,6 +55,7 @@ impl<'a> LocalAsyncTask<'a> {
     }
 
     /// Yield the task to other tasks in the same priority
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn yield_now() {
         /// Yield implementation
         struct YieldNow {
@@ -104,6 +106,7 @@ impl<'a> AsyncTask<'a> {
     }
 
     /// Yield the task to other tasks in the same priority
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn yield_now() {
         /// Yield implementation
         struct YieldNow {
@@ -325,6 +328,9 @@ pub struct GlobalExecutor {
     local_tasks: crate::LockedArc<alloc::collections::BTreeMap<TaskId, AsyncTask<'static>>>,
     /// The current task
     current_task_id: crate::LockedArc<Option<TaskId>>,
+    /// Data stored for each task
+    task_data:
+        crate::AsyncLockedArc<BTreeMap<TaskId, doors_macros2::backtrace::location::Location>>,
 }
 
 impl GlobalExecutor {
@@ -334,6 +340,7 @@ impl GlobalExecutor {
             executor: crate::LockedArc::new(executor),
             local_tasks: crate::LockedArc::new(alloc::collections::BTreeMap::new()),
             current_task_id: crate::LockedArc::new(None),
+            task_data: crate::AsyncLockedArc::new(BTreeMap::new()),
         }
     }
 
@@ -361,8 +368,34 @@ impl GlobalExecutor {
     }
 
     /// Get the currently running async task id
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn get_current_task_id(&self) -> Option<TaskId> {
         *self.current_task_id.sync_lock()
+    }
+
+    #[cfg(feature = "backtrace")]
+    /// Register location data for a task
+    pub async fn register_task_location(&self, td: doors_macros2::backtrace::location::Location) {
+        if let Some(t) = *self.current_task_id.sync_lock() {
+            self.task_data.sync_lock().insert(t, td);
+        }
+    }
+
+    /// Print all of the task locations
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
+    pub async fn print_locations(&self) {
+        let p = self.task_data.lock().await;
+        crate::VGA
+            .print_str_async("ASYNC TASK DUMP FOLLOWS\r\n")
+            .await;
+        for data in p.iter() {
+            crate::VGA
+                .print_str_async(&alloc::format!("{:?}", data))
+                .await;
+        }
+        crate::VGA
+            .print_str_async("ASYNC TASK DUMP PRECEDES\r\n")
+            .await;
     }
 
     /// Spawn a new async task
@@ -378,6 +411,7 @@ impl GlobalExecutor {
 }
 
 /// Get the currently running async task id
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn get_current_task_id() -> Option<TaskId> {
     crate::kernel::EXECUTOR
         .read()
@@ -387,10 +421,26 @@ pub async fn get_current_task_id() -> Option<TaskId> {
         .await
 }
 
+#[cfg(feature = "backtrace")]
+/// Register location data for a task
+pub async fn register_location(td: doors_macros2::backtrace::location::Location) {
+    let e = crate::kernel::EXECUTOR.read();
+    let e = e.as_ref().unwrap();
+    e.register_task_location(td).await
+}
+
 /// Spawn a new async task
 pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) -> Result<(), ()> {
-    crate::VGA.print_str("Spawning an async task\r\n");
-    let r = crate::kernel::EXECUTOR.read().as_ref().unwrap().spawn(task);
-    crate::VGA.print_str("DONE Spawning an async task\r\n");
-    return r;
+    crate::kernel::EXECUTOR.read().as_ref().unwrap().spawn(task)
+}
+
+/// Print all of the task locations
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
+pub async fn print_locations() {
+    crate::kernel::EXECUTOR
+        .read()
+        .as_ref()
+        .unwrap()
+        .print_locations()
+        .await;
 }

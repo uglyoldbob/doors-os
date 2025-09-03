@@ -136,6 +136,7 @@ async fn net_test() {
     crate::VGA
         .print_str_async(&alloc::format!("My task id is {:?}\r\n", t))
         .await;
+    crate::executor::print_locations().await;
 }
 
 /// A test function for the kernel

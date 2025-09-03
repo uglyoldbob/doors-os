@@ -74,6 +74,7 @@ impl Pci {
 }
 
 impl super::PciTrait for Pci {
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn setup(&mut self) {
         crate::VGA
             .print_str_async("pci: Probing for pci busses\r\n")
@@ -91,6 +92,7 @@ impl super::PciTrait for Pci {
             .await;
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_devices(&mut self) {
         for (i, bus) in self.busses.iter().enumerate() {
             crate::VGA
@@ -100,6 +102,7 @@ impl super::PciTrait for Pci {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn driver_run(
         &mut self,
         d: &mut alloc::collections::btree_map::BTreeMap<u32, super::PciFunctionDriver>,

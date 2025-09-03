@@ -54,3 +54,7 @@ opt-level=3
 
 [profile.release]
 debug = true
+
+[features]
+default = ["backtrace"]
+backtrace = ["doors_macros/backtrace", "doors_macros2/backtrace"]

@@ -489,6 +489,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         });
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn acpi_debug(&self) {
         crate::VGA.print_str_async("ACPI INFORMATION\r\n").await;
     }

@@ -118,6 +118,7 @@ impl TryFrom<u16> for Model {
 
 impl MemoryOrIo {
     /// Dump the contents of the data as hex
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn hex_dump(&self) {
         match self {
             MemoryOrIo::Memory(_m) => {
@@ -529,6 +530,7 @@ impl Arc<IntelPro1000DeviceInternal> {
     }
 
     /// Update the status of the link from a non-interrupt context
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn update_link_status(&self) {
         let status = self
             .bar0
@@ -763,6 +765,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
         self.internal.packet_receiver.clone()
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn get_mac_address(&mut self) -> MacAddress {
         if self.detect_eeprom().await {
             let v = self.read_from_eeprom(0).await;
@@ -779,6 +782,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
         crate::VGA.print_str_async("Waiting for link up\r\n").await;
         while !self.internal.up.load(Ordering::Relaxed) {
@@ -863,6 +867,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
 
 impl IntelPro1000Device {
     /// Detect the presence of an eeprom and store the result
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn detect_eeprom(&mut self) -> bool {
         if self.eeprom_present.is_none() {
             let mut bar0 = self.internal.bar0.access().await;
@@ -882,6 +887,7 @@ impl IntelPro1000Device {
     }
 
     /// Dump the contents of key registers
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn dump_registers(&self) {
         let regs = &[
             IntelPro1000Registers::Ctrl,
@@ -951,6 +957,7 @@ impl IntelPro1000Device {
     }
 
     /// Set the receive address of the specified index
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn set_receive_mac_address(&mut self, index: u8, ra: &ReceiveAddress) {
         let (low, high) = Self::receive_mac_address_registers(index);
         let mut bar0 = self.internal.bar0.access().await;
@@ -960,6 +967,7 @@ impl IntelPro1000Device {
 
     /// Clear the receive address at the specified index
     #[allow(unused)]
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn clear_receive_mac_address(&mut self, index: u8) {
         let (low, high) = Self::receive_mac_address_registers(index);
         let mut bar0 = self.internal.bar0.access().await;
@@ -969,6 +977,7 @@ impl IntelPro1000Device {
 
     /// Retrieve the existing receive address at the specified index from the device
     #[allow(unused)]
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn get_receive_mac_address(&mut self, index: u8) -> ReceiveAddress {
         let (low, high) = Self::receive_mac_address_registers(index);
         let bar0 = self.internal.bar0.access().await;
@@ -979,6 +988,7 @@ impl IntelPro1000Device {
     }
 
     /// Clear the multicast table array
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn clear_multicast_table_array(&mut self) {
         let base = IntelPro1000Registers::MTA_BASE as u16;
         let end = base + 0x200;
@@ -989,6 +999,7 @@ impl IntelPro1000Device {
     }
 
     /// Read a u16 from the specified phy
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn read_from_phy(&mut self, phy: u8, index: u8) -> Option<u16> {
         let mut bar0 = self.internal.bar0.access().await;
         bar0.write(
@@ -1013,6 +1024,7 @@ impl IntelPro1000Device {
     }
 
     /// Perform a general configuration of the device, to be performed after power-up or after reset.
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn general_config(&mut self) {
         if matches!(
             self.model,
@@ -1033,6 +1045,7 @@ impl IntelPro1000Device {
     }
 
     /// Initialize the rx buffers for the device
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn init_rx(&mut self, mac: &MacAddress) -> Result<(), core::alloc::AllocError> {
         let ra = ReceiveAddress::new(*mac, 0, true);
         crate::VGA
@@ -1096,6 +1109,7 @@ impl IntelPro1000Device {
     }
 
     /// Initialize the tx buffers for the device
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn init_tx(&mut self) -> Result<(), core::alloc::AllocError> {
         if self.txbufs.is_none() {
             let mut bar0 = self.internal.bar0.access().await;
@@ -1183,6 +1197,7 @@ impl IntelPro1000Device {
     }
 
     /// Enable interrupts for the network card
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn enable_interrupts(&mut self, sys: &System, irqnum: u8) {
         crate::VGA
             .print_str_async(&alloc::format!("Enabling interrupts on IRQ {}\r\n", irqnum))
@@ -1216,6 +1231,7 @@ impl IntelPro1000Device {
     }
 
     /// Read a word from the eeprom at the specified address
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn read_from_eeprom(&mut self, addr: u8) -> u16 {
         if self.detect_eeprom().await {
             let mut bar0 = self.internal.bar0.access().await;
@@ -1253,6 +1269,7 @@ impl IntelPro1000 {
 }
 
 impl PciFunctionDriverTrait for IntelPro1000 {
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn register(&self, m: &mut BTreeMap<u32, PciFunctionDriver>) {
         crate::VGA
             .print_str_async("Register intel pro/1000 pci driver\r\n")
@@ -1268,6 +1285,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn parse_bars(
         &mut self,
         cs: &mut PciConfigurationSpace,

@@ -99,14 +99,17 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
         }
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_char_async(&mut self, d: char) {
         self.print_char(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn print_str_async(&mut self, d: &str) {
         self.print_str(d);
     }
 
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self) {}
 
     fn sync_flush(&mut self) {}

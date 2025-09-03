@@ -433,6 +433,7 @@ pub fn sync_run() {
 }
 
 /// asynchonously run the gdb stub over a serial port
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn run() {
     crate::VGA.print_str_async("Starting gdb stub\r\n").await;
     let mut target = DoorsTarget::new();
