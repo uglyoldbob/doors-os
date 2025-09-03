@@ -212,6 +212,7 @@ impl TaskList {
         all_tasks: &mut alloc::collections::BTreeMap<TaskId, AsyncTask>,
         wakers: &mut alloc::collections::BTreeMap<TaskId, Waker>,
         polled: &mut [Option<usize>; 6],
+        current_task_id: &crate::LockedArc<Option<TaskId>>,
     ) {
         while let Some(taskid) = self.tasks.pop() {
             let task = all_tasks.get_mut(&taskid);
@@ -222,6 +223,7 @@ impl TaskList {
                 let mut context = core::task::Context::from_waker(waker);
                 task.polled += 1;
                 self.copy_polls(taskid, task, polled);
+                *current_task_id.sync_lock() = Some(task.id);
                 match task.poll(&mut context) {
                     core::task::Poll::Ready(()) => {
                         all_tasks.remove(&taskid);
@@ -229,13 +231,13 @@ impl TaskList {
                     }
                     core::task::Poll::Pending => {}
                 }
+                *current_task_id.sync_lock() = None;
             }
         }
     }
 }
 
 /// The async executor for the kernel
-#[derive(Default)]
 pub struct Executor<'a> {
     /// The list of all tasks in the executor
     all_tasks: alloc::collections::BTreeMap<TaskId, AsyncTask<'a>>,
@@ -247,6 +249,12 @@ pub struct Executor<'a> {
     basic_tasks: TaskList,
     /// The number of times that tasks have been polled
     polled: [Option<usize>; 6],
+}
+
+impl<'a> Default for Executor<'a> {
+    fn default() -> Self {
+        Self { ..Self::default() }
+    }
 }
 
 impl<'a> Executor<'a> {
@@ -287,9 +295,9 @@ impl<'a> Executor<'a> {
     }
 
     /// Runs tasks
-    fn run_tasks(&mut self) {
+    fn run_tasks(&mut self, cur: &crate::LockedArc<Option<TaskId>>) {
         self.basic_tasks
-            .run(&mut self.all_tasks, &mut self.wakers, &mut self.polled);
+            .run(&mut self.all_tasks, &mut self.wakers, &mut self.polled, cur);
     }
 
     /// Get the polls for all tasks
@@ -310,8 +318,8 @@ impl<'a> Executor<'a> {
     }
 
     /// Run the executor
-    pub fn run(&mut self) {
-        self.run_tasks();
+    pub fn run(&mut self, cur: &crate::LockedArc<Option<TaskId>>) {
+        self.run_tasks(cur);
         self.get_polls();
     }
 }
@@ -321,6 +329,8 @@ pub struct GlobalExecutor {
     executor: crate::LockedArc<Executor<'static>>,
     /// The list of all tasks specific to this executor
     local_tasks: crate::LockedArc<alloc::collections::BTreeMap<TaskId, AsyncTask<'static>>>,
+    /// The current task
+    current_task_id: crate::LockedArc<Option<TaskId>>,
 }
 
 impl GlobalExecutor {
@@ -329,7 +339,13 @@ impl GlobalExecutor {
         Self {
             executor: crate::LockedArc::new(executor),
             local_tasks: crate::LockedArc::new(alloc::collections::BTreeMap::new()),
+            current_task_id: crate::LockedArc::new(None),
         }
+    }
+
+    /// Get the current task id from an async function
+    pub async fn get_id(&self) -> Option<TaskId> {
+        *self.current_task_id.sync_lock()
     }
 
     /// Run the global executor
@@ -337,7 +353,7 @@ impl GlobalExecutor {
         loop {
             {
                 let mut e = self.executor.sync_lock();
-                e.run();
+                e.run(&self.current_task_id);
             }
             {
                 let e = self.executor.sync_lock();
@@ -368,6 +384,16 @@ impl GlobalExecutor {
         }
         Ok(())
     }
+}
+
+/// Get the current task id
+pub async fn get_task_id() -> Option<TaskId> {
+    crate::kernel::EXECUTOR
+        .read()
+        .as_ref()
+        .unwrap()
+        .get_id()
+        .await
 }
 
 /// Spawn a new async task
