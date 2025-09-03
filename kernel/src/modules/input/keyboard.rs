@@ -1,6 +1,31 @@
 //! Covers functionality for keyboards
 
-use crate::{Arc, IoPortRef, IoReadWrite, IrqGuardedInner, Locked};
+use crate::{Arc, IoPortRef, IoReadWrite, IrqGuardedInner, IrqGuardedSimple, Locked};
+use core::task::Waker;
+
+/// A stream struct for receiving serial data
+struct Ps2InputStream {
+    /// The data queue for the stream
+    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
+    /// The wakers for the stream
+    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
+}
+
+impl futures::Stream for Ps2InputStream {
+    type Item = u8;
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let a = self.queue.access().pop();
+        if let Some(b) = a {
+            core::task::Poll::Ready(Some(b))
+        } else {
+            self.wakers.access().push(cx.waker().clone()).unwrap();
+            core::task::Poll::Pending
+        }
+    }
+}
 
 struct Registers {
     /// The data port for the controller
@@ -12,7 +37,11 @@ struct Registers {
 /// THe inner struct for a ps2 struct
 pub struct Ps2Inner {
     /// The registers for the controller
-    registers: crate::IrqGuardedSimple<Locked<Registers>>,
+    registers: IrqGuardedSimple<Locked<Registers>>,
+    /// The receive queue
+    rx_queue: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
+    /// The receive wakers
+    rx_wakers: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
 }
 
 /// Ps2 hardware
@@ -26,13 +55,21 @@ impl Ps2 {
     pub fn new() -> Option<Self> {
         let i = IrqGuardedInner::new(alloc::vec![1, 12], false, true, |_| {}, |_| {});
         let inner = Ps2Inner {
-            registers: crate::IrqGuardedSimple::new(
+            registers: IrqGuardedSimple::new(
                 Locked::new(Registers {
                     data_port: crate::IO_PORT_MANAGER?.get_port(0x60)?,
                     status_command_port: crate::IO_PORT_MANAGER?.get_port(0x64)?,
                 }),
                 &i,
             ),
+            rx_queue: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(30),
+                &i,
+            )),
+            rx_wakers: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(5),
+                &i,
+            )),
         };
         let s = Self {
             inner: Arc::new(inner),
@@ -72,6 +109,14 @@ impl Ps2 {
         Some(s)
     }
 
+    /// Get a read stream for reading from the keyboard
+    pub fn read_stream(&self) -> impl futures::Stream<Item = u8> {
+        Ps2InputStream {
+            queue: self.inner.rx_queue.clone(),
+            wakers: self.inner.rx_wakers.clone(),
+        }
+    }
+
     fn handle_interrupt(s: &Arc<Ps2Inner>) {
         use crate::common::IoReadWrite;
         let b = s
@@ -80,7 +125,10 @@ impl Ps2 {
             .sync_lock()
             .data_port
             .port_read();
-        crate::VGA.print_str(&alloc::format!("KEYBOARD {:X}\r\n", b));
+        let _ = s.rx_queue.interrupt_access().push(b);
+        while let Some(w) = s.rx_wakers.interrupt_access().pop() {
+            w.wake();
+        }
     }
 
     fn read_buffer(&self) -> u8 {

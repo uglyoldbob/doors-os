@@ -69,6 +69,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+use futures::StreamExt;
 use kernel::SystemTrait;
 use modules::network::NetworkAdapterTrait;
 use modules::rng;
@@ -98,6 +99,18 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
+
+async fn keyboard_test() {
+    let p = crate::common::KEYBOARD.read();
+    let k = p.as_ref().unwrap();
+    let mut s = k.read_stream();
+    while let Some(a) = s.next().await {
+        crate::VGA
+            .print_str_async(&alloc::format!("ASYNC RECEIVED A {:x}\r\n", a))
+            .await;
+        crate::executor::print_locations().await;
+    }
+}
 
 /// Run a network test on the net0 network card, if it exists
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
@@ -313,6 +326,7 @@ fn main() -> ! {
                 }
             })
             .unwrap();
+        executor.spawn(keyboard_test()).unwrap();
         let ge = GlobalExecutor::new(executor);
         crate::kernel::EXECUTOR.write().replace(ge);
         crate::kernel::EXECUTOR.read().as_ref().unwrap().run()

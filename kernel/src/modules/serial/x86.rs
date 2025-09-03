@@ -145,7 +145,7 @@ impl X86SerialPort {
                     2 | 6 => {
                         let recvd = s.base.interrupt_access().port(0).port_read();
                         let _ = s.rx_queue.interrupt_access().push(recvd);
-                        while let Some(w) = s.tx_wakers.interrupt_access().pop() {
+                        while let Some(w) = s.rx_wakers.interrupt_access().pop() {
                             w.wake();
                         }
                     }
