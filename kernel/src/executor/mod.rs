@@ -384,18 +384,12 @@ impl GlobalExecutor {
     /// Print all of the task locations
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn print_locations(&self) {
-        let p = self.task_data.lock().await;
-        crate::VGA
-            .print_str_async("ASYNC TASK DUMP FOLLOWS\r\n")
-            .await;
+        let p = self.task_data.sync_lock();
+        crate::VGA.print_str("ASYNC TASK DUMP FOLLOWS\r\n");
         for data in p.iter() {
-            crate::VGA
-                .print_str_async(&alloc::format!("{:?}", data))
-                .await;
+            crate::VGA.print_str(&alloc::format!("{:?}\r\n", data));
         }
-        crate::VGA
-            .print_str_async("ASYNC TASK DUMP PRECEDES\r\n")
-            .await;
+        crate::VGA.print_str("ASYNC TASK DUMP PRECEDES\r\n");
     }
 
     /// Spawn a new async task
