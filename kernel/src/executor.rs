@@ -354,8 +354,9 @@ impl GlobalExecutor {
     }
 
     /// Spawn a new async task
-    pub fn spawn(&self, task: AsyncTask<'static>) -> Result<(), ()> {
+    pub fn spawn<F: Future<Output = ()> + Send + 'static>(&self, task: F) -> Result<(), ()> {
         let mut e = self.local_tasks.sync_lock();
+        let task = AsyncTask::new(task);
         let id = task.id;
         if e.insert(id, task).is_some() {
             return Err(());
@@ -365,7 +366,7 @@ impl GlobalExecutor {
 }
 
 /// Spawn a new async task
-pub fn spawn(task: AsyncTask<'static>) -> Result<(), ()> {
+pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) -> Result<(), ()> {
     crate::VGA.print_str("Spawning an async task\r\n");
     let r = crate::kernel::EXECUTOR.read().as_ref().unwrap().spawn(task);
     crate::VGA.print_str("DONE Spawning an async task\r\n");

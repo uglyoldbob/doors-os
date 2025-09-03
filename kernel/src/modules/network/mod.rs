@@ -726,7 +726,7 @@ impl NetworkTransceiver {
 
 /// Initialize data required for network operations
 async fn network_init(i: NetworkTransceiver) {
-    let _ = crate::executor::spawn(crate::AsyncTask::new(async move {
+    let _ = crate::executor::spawn(async move {
         i.run().await;
-    }));
+    });
 }
