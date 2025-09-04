@@ -8,6 +8,8 @@ macro_rules! frame {
     ($async_expr:expr) => {{
         let l = $crate::location!();
         crate::executor::register_location(l).await;
-        $async_expr
+        let r = $async_expr.await;
+        crate::executor::unregister_location(l).await;
+        r
     }};
 }

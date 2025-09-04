@@ -2,6 +2,7 @@
 //! TODO: use a kernel config to specify the size of waker queues
 
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
@@ -330,7 +331,7 @@ pub struct GlobalExecutor {
     current_task_id: crate::LockedArc<Option<TaskId>>,
     /// Data stored for each task
     task_data:
-        crate::AsyncLockedArc<BTreeMap<TaskId, doors_macros2::backtrace::location::Location>>,
+        crate::AsyncLockedArc<BTreeMap<TaskId, Vec<doors_macros2::backtrace::location::Location>>>,
 }
 
 impl GlobalExecutor {
@@ -377,7 +378,29 @@ impl GlobalExecutor {
     /// Register location data for a task
     pub async fn register_task_location(&self, td: doors_macros2::backtrace::location::Location) {
         if let Some(t) = *self.current_task_id.sync_lock() {
-            self.task_data.sync_lock().insert(t, td);
+            let mut a = self.task_data.sync_lock();
+            let b: &mut BTreeMap<TaskId, Vec<doors_macros2::backtrace::location::Location>> =
+                &mut a;
+            //crate::VGA.print_str(&alloc::format!("Pushing {:?}\r\n", td));
+            if let Some(c) = b.get_mut(&t) {
+                c.push(td);
+            } else {
+                b.insert(t, alloc::vec![td]);
+            }
+        }
+    }
+
+    #[cfg(feature = "backtrace")]
+    /// Register location data for a task
+    pub async fn unregister_task_location(&self, td: doors_macros2::backtrace::location::Location) {
+        if let Some(t) = *self.current_task_id.sync_lock() {
+            let mut a = self.task_data.sync_lock();
+            let b: &mut BTreeMap<TaskId, Vec<doors_macros2::backtrace::location::Location>> =
+                &mut a;
+            if let Some(c) = b.get_mut(&t) {
+                //crate::VGA.print_str(&alloc::format!("Popping {:?}\r\n", td));
+                c.pop_if(|el| *el == td);
+            }
         }
     }
 
@@ -421,6 +444,14 @@ pub async fn register_location(td: doors_macros2::backtrace::location::Location)
     let e = crate::kernel::EXECUTOR.read();
     let e = e.as_ref().unwrap();
     e.register_task_location(td).await
+}
+
+#[cfg(feature = "backtrace")]
+/// Register location data for a task
+pub async fn unregister_location(td: doors_macros2::backtrace::location::Location) {
+    let e = crate::kernel::EXECUTOR.read();
+    let e = e.as_ref().unwrap();
+    e.unregister_task_location(td).await
 }
 
 /// Spawn a new async task

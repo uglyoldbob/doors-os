@@ -100,7 +100,7 @@ fn gen_block<B: ToTokens>(
     // which is `instrument`ed using `tracing-futures`. Otherwise, this will
     // enter the span and then perform the rest of the body.
     if async_context {
-        quote!(doors_macros2::frame!(async move { #block }).await)
+        quote!(doors_macros2::frame!(async move { #block }))
     } else {
         quote_spanned!(block.span() => #block)
     }

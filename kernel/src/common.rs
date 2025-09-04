@@ -556,7 +556,6 @@ impl AsyncLockedArc<Option<crate::kernel::OwnedDevice<crate::TextDisplay>>> {
     }
 
     /// Print a string reference, asynchronously
-    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn print_str_async(&self, a: &str) {
         let mut v = self.lock().await;
         let vga = v.as_mut();
