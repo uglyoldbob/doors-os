@@ -16,6 +16,9 @@ doors_macros::load_config!();
 
 extern crate alloc;
 
+/// A test program
+const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-none/release/test1");
+
 doors_macros::use_doors_test!();
 
 mod common;
@@ -100,6 +103,17 @@ static MULTIBOOT_HEADER: boot::multiboot::Multiboot = boot::multiboot::Multiboot
 /// Used to debug some stuff in the kernel
 pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
+async fn user_binary_test() {
+    crate::VGA
+        .print_str_async(&alloc::format!(
+            "USER BINARY SIZE IS {}\r\n",
+            TEST_PRG.len()
+        ))
+        .await;
+}
+
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn keyboard_test() {
     let p = crate::common::KEYBOARD.read();
     let k = p.as_ref().unwrap();
@@ -327,6 +341,7 @@ fn main() -> ! {
             })
             .unwrap();
         executor.spawn(keyboard_test()).unwrap();
+        executor.spawn(user_binary_test()).unwrap();
         let ge = GlobalExecutor::new(executor);
         crate::kernel::EXECUTOR.write().replace(ge);
         crate::kernel::EXECUTOR.read().as_ref().unwrap().run()

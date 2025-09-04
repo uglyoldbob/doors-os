@@ -7,4 +7,4 @@ members = ["test1"
 opt-level=3
 
 [profile.release]
-debug = true
+strip = "debuginfo"
