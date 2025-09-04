@@ -17,3 +17,10 @@
 fn panic(info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
+
+/// A test function
+#[unsafe(no_mangle)]
+pub extern "C" fn _start() -> i32 {
+    loop {}
+    0
+}
