@@ -209,7 +209,12 @@ impl DiskBuilderTrait for NetworkConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk_deploy\n");
         cmakelists.push_str("\tDEPENDS boot_disk\n");
-        cmakelists.push_str(&format!("\tCOMMAND mkdir -p {}\n", pa.display(),));
+
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str(&format!("\tCOMMAND mkdir {}\n", pa.display(),));
+        } else {
+            cmakelists.push_str(&format!("\tCOMMAND mkdir -p {}\n", pa.display(),));
+        }
         cmakelists.push_str(&format!(
             "\tCOMMAND cp -r {}/* {}\n",
             LocalConfiguration::escape_path(&common.output),
@@ -236,7 +241,12 @@ impl DiskBuilderTrait for NetworkConfiguration {
             "\tBYPRODUCTS {}\n",
             common.output.to_str().unwrap()
         ));
-        cmakelists.push_str("\tCOMMAND mkdir -p build/net/boot\n");
+        let pa = std::path::Path::new("./build/net/boot");
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str(&format!("\tCOMMAND mkdir {}\n", pa.display(),));
+        } else {
+            cmakelists.push_str(&format!("\tCOMMAND mkdir -p {}\n", pa.display(),));
+        }
 
         if cfg!(target_os = "windows") {
             cmakelists.push_str(&format!(
@@ -318,7 +328,12 @@ impl DiskBuilderTrait for CdConfiguration {
             "\tBYPRODUCTS {}\n",
             common.output.to_str().unwrap()
         ));
-        cmakelists.push_str("\tCOMMAND mkdir -p build/iso/boot/grub\n");
+        let pa = std::path::Path::new("./build/iso/boot/grub");
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str(&format!("\tCOMMAND mkdir {}\n", pa.display(),));
+        } else {
+            cmakelists.push_str(&format!("\tCOMMAND mkdir -p {}\n", pa.display(),));
+        }
         cmakelists.push_str("\tCOMMAND cp grub2.lst ./build/iso/boot/grub/grub.cfg\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cp ./kernel/target/{}/release/kernel ./build/iso/boot/kernel\n",
@@ -585,11 +600,37 @@ impl LocalConfiguration {
 }
 
 impl DoorsConfiguration {
+    /// Build the user code for the operating system
+    pub fn build_user(&self, cmakelists: &mut String, target: &str) {
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tuser\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cargo +nightly build --release --target {}\n",
+            target
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tuser_clippy\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND cargo +nightly clippy --target {}\n",
+            target
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tuser_fmt\n");
+        cmakelists.push_str("\tBYPRODUCTS target\n");
+        cmakelists.push_str("\tCOMMAND cargo +nightly fmt\n");
+        cmakelists.push_str(")\n");
+    }
+
     /// Build the kernel for the operating system
     pub fn build_kernel(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel\n");
-        cmakelists.push_str("\tDEPENDS buildscript\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo +nightly build --release --target {} --bin kernel\n",
@@ -623,7 +664,7 @@ impl DoorsConfiguration {
     pub fn build_kernel_disassembly(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdisassemble\n");
-        cmakelists.push_str("\tDEPENDS kernel buildscript\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
         cmakelists.push_str("\tBYPRODUCTS ../disassemble.txt\n");
         cmakelists.push_str(&format!("\tCOMMAND cargo objdump --release --target {} --bin kernel -q -- -d > ../disassemble.txt\n", target));
         cmakelists.push_str(")\n");
@@ -721,6 +762,7 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     use std::io::Write;
     let mut cmakelist = String::new();
     let mut kernel_cmakelist = String::new();
+    let mut user_cmakelist = String::new();
 
     let kernel_binary_path = std::path::PathBuf::from(format!(
         "./kernel/target/{}/release/kernel",
@@ -730,10 +772,11 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
     cmakelist.push_str("project(doors-os)\n");
     cmakelist.push_str("add_subdirectory(kernel)\n");
+    cmakelist.push_str("add_subdirectory(user)\n");
 
     cmakelist.push_str("add_custom_target(\n");
     cmakelist.push_str("\tfmt\n");
-    cmakelist.push_str("\tDEPENDS kernel_fmt\n");
+    cmakelist.push_str("\tDEPENDS kernel_fmt user_fmt\n");
     cmakelist.push_str("\tCOMMAND cargo fmt\n");
     cmakelist.push_str(")\n");
 
@@ -743,24 +786,6 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str(&format!(
         "\tCOMMAND cargo run --bin kernel-stack-analysis -- --name {}\n",
         kernel_binary_path.to_str().unwrap()
-    ));
-    cmakelist.push_str(")\n");
-
-    cmakelist.push_str("add_custom_target(\n");
-    cmakelist.push_str("\tbuildscript\n");
-    cmakelist.push_str(&format!(
-        "\tDEPENDS {} {}\n",
-        args.name.to_str().unwrap(),
-        if let Ok(true) = std::fs::exists("./local_config.toml") {
-            "./local_config.toml"
-        } else {
-            ""
-        },
-    ));
-    cmakelist.push_str("\tBYPRODUCTS CMakeLists.txt kernel/CMakeLists.txt\n");
-    cmakelist.push_str(&format!(
-        "\tCOMMAND cargo run --release --bin builder -- --name {}\n",
-        args.name.to_str().unwrap()
     ));
     cmakelist.push_str(")\n");
 
@@ -775,6 +800,10 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     config
         .os
         .build_kernel_disassembly(&mut kernel_cmakelist, &config.os.kernel_machine);
+
+    config
+        .os
+        .build_user(&mut user_cmakelist, &config.os.kernel_machine);
 
     let disk = config
         .os
@@ -818,6 +847,13 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
         configf
             .write_all(kernel_cmakelist.as_bytes())
             .expect("Failed to save kernel CMakeLists.txt file");
+    }
+    {
+        let mut configf = std::fs::File::create("./user/CMakeLists.txt")
+            .expect("Failed to create user cmake configuration");
+        configf
+            .write_all(user_cmakelist.as_bytes())
+            .expect("Failed to save user CMakeLists.txt file");
     }
 
     write_vscode_configs(&config);
