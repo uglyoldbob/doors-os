@@ -721,9 +721,10 @@ impl NetworkTransceiver {
                         }
                     }
                     crate::VGA.print_str("Done processing packet\r\n");
+                } else {
+                    crate::VGA.print_str("Received invalid ethernet frame\r\n");
                 }
             }
-            crate::executor::AsyncTask::yield_now().await;
         }
     }
 }
