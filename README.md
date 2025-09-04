@@ -8,6 +8,8 @@ Building has been tested on both windows and linux (ubuntu).
 
 *Requirements to build*
 * Rust
+* rustup component add llvm-tools
+* cargo install cargo-binutils
 
 *Linux requirements to build
 * xorriso
@@ -58,6 +60,9 @@ gdbstub = true
 ```
 
 **Windows**
+
+*cmake*
+* rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
 
 *gdb*
 
