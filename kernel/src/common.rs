@@ -726,7 +726,7 @@ pub struct IrqNumbersIter<'a> {
 impl<'a> Iterator for IrqNumbersIter<'a> {
     type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.numbers {
+        let val = match self.numbers {
             IrqNumbers::None => None,
             IrqNumbers::Only1(a) => {
                 if self.index == 0 {
@@ -737,25 +737,23 @@ impl<'a> Iterator for IrqNumbersIter<'a> {
             }
             IrqNumbers::Only2(a) => {
                 let i = self.index;
-                self.index += 1;
                 a.get(i as usize).copied()
             }
             IrqNumbers::Only3(a) => {
                 let i = self.index;
-                self.index += 1;
                 a.get(i as usize).copied()
             }
             IrqNumbers::Only4(a) => {
                 let i = self.index;
-                self.index += 1;
                 a.get(i as usize).copied()
             }
             IrqNumbers::Many(items) => {
                 let i = self.index;
-                self.index += 1;
                 items.get(i as usize).copied()
             }
-        }
+        };
+        self.index += 1;
+        val
     }
 }
 
