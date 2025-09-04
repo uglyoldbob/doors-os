@@ -126,7 +126,7 @@ impl TimerInstance {
         let cb = self.callback.clone();
         crate::SYSTEM
             .read()
-            .register_irq_handler(self.inner.irqs()[0], move || {
+            .register_irq_handler(self.inner.irqs().next().unwrap(), move || {
                 Self::handle_interrupt(&s2, &cb)
             });
     }

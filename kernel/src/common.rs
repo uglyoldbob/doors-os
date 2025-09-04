@@ -9,6 +9,7 @@ use core::{
     ops::{Deref, DerefMut},
     pin::Pin,
     sync::atomic::{AtomicBool, Ordering},
+    task::Waker,
 };
 
 /// Do nothing
@@ -604,12 +605,12 @@ impl<T> IrqGuardedSimple<T> {
             sys.disable_interrupts();
         }
         if self.value.disable_irq {
-            for i in &self.value.irqnums {
-                sys.disable_irq(*i);
+            for i in self.value.irqnums.iter() {
+                sys.disable_irq(i);
             }
         }
-        for i in &self.value.irqnums {
-            (self.value.lock)(*i);
+        for i in self.value.irqnums.iter() {
+            (self.value.lock)(i);
         }
         IrqGuardedSimpleUse {
             r: &self.value,
@@ -657,14 +658,14 @@ impl<'a, T, U> Deref for IrqGuardedSimpleUse<'a, T, U> {
 
 impl<'a, T, U> Drop for IrqGuardedSimpleUse<'a, T, U> {
     fn drop(&mut self) {
-        for i in &self.r.irqnums {
-            (self.r.unlock)(*i);
+        for i in self.r.irqnums.iter() {
+            (self.r.unlock)(i);
         }
         if self.enable_interrupts {
             let sys = crate::SYSTEM.read();
             if self.enable_irq {
-                for i in &self.r.irqnums {
-                    sys.enable_irq(*i);
+                for i in self.r.irqnums.iter() {
+                    sys.enable_irq(i);
                 }
             }
             if self.r.disable_all_interrupts {
@@ -683,11 +684,86 @@ pub struct IrqGuarded<T> {
     inner: AsyncLocked<T>,
 }
 
+/// Holds a number of irq numbers, for a small number of irqs, this eliminates a memory allocation
+#[derive(Clone)]
+pub enum IrqNumbers {
+    /// No irqs at all
+    None,
+    /// One irq
+    Only1(u8),
+    /// Two irq
+    Only2([u8; 2]),
+    /// Three irq
+    Only3([u8; 3]),
+    /// Four irq
+    Only4([u8; 4]),
+    /// Arbitrarily many irq
+    Many(Vec<u8>),
+}
+
+impl IrqNumbers {
+    /// Get an iterator
+    pub fn iter(&self) -> IrqNumbersIter {
+        IrqNumbersIter {
+            index: 0,
+            numbers: self,
+        }
+    }
+}
+
+/// Verifies that a IrqNumbers is the correct size
+const _IRQ_NUMBERS_SPACE_CHECKER: [u8; core::mem::size_of::<Vec<u8>>()] =
+    [0; core::mem::size_of::<IrqNumbers>()];
+
+/// An iterator over irq numbers
+pub struct IrqNumbersIter<'a> {
+    /// The index of iteration
+    index: u8,
+    /// The actual numbers
+    numbers: &'a IrqNumbers,
+}
+
+impl<'a> Iterator for IrqNumbersIter<'a> {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.numbers {
+            IrqNumbers::None => None,
+            IrqNumbers::Only1(a) => {
+                if self.index == 0 {
+                    Some(*a)
+                } else {
+                    None
+                }
+            }
+            IrqNumbers::Only2(a) => {
+                let i = self.index;
+                self.index += 1;
+                a.get(i as usize).copied()
+            }
+            IrqNumbers::Only3(a) => {
+                let i = self.index;
+                self.index += 1;
+                a.get(i as usize).copied()
+            }
+            IrqNumbers::Only4(a) => {
+                let i = self.index;
+                self.index += 1;
+                a.get(i as usize).copied()
+            }
+            IrqNumbers::Many(items) => {
+                let i = self.index;
+                self.index += 1;
+                items.get(i as usize).copied()
+            }
+        }
+    }
+}
+
 /// The inner information for an [IrqGuarded] structure
 #[derive(Clone)]
 pub struct IrqGuardedInner {
     /// The irq number used to guard the item
-    irqnums: Vec<u8>,
+    irqnums: IrqNumbers,
     /// The unlock function
     unlock: Arc<Box<dyn Fn(u8) + Send + Sync>>,
     /// The lock function
@@ -705,7 +781,7 @@ impl IrqGuardedInner {
     /// * lock: The device specific function to disable the desired interrupt for what is being protected
     /// * unlock: The opposite of lock
     pub fn new(
-        irqnums: Vec<u8>,
+        irqnums: IrqNumbers,
         disable_all_interrupts: bool,
         disable_irq: bool,
         lock: impl Fn(u8) + Send + Sync + 'static,
@@ -738,8 +814,8 @@ impl<T> IrqGuarded<T> {
     }
 
     /// Return the irq number for the user
-    pub fn irqs(&self) -> &Vec<u8> {
-        &self.value.irqnums
+    pub fn irqs(&self) -> IrqNumbersIter<'_> {
+        self.value.irqnums.iter()
     }
 
     /// Use the inner value from a non-interrupt context
@@ -750,15 +826,14 @@ impl<T> IrqGuarded<T> {
             sys.disable_interrupts();
         }
         if self.value.disable_irq {
-            for i in &self.value.irqnums {
-                sys.disable_irq(*i);
+            for i in self.irqs() {
+                sys.disable_irq(i);
             }
         }
-        for i in &self.value.irqnums {
-            (self.value.lock)(*i);
+        for i in self.irqs() {
+            (self.value.lock)(i);
         }
         IrqGuardedUse {
-            irqs: &self.value.irqnums,
             r: &self.value,
             val: Some(self.inner.lock().await),
             enable_interrupts: true,
@@ -773,14 +848,13 @@ impl<T> IrqGuarded<T> {
         if self.value.disable_all_interrupts {
             sys.disable_interrupts();
         }
-        for i in &self.value.irqnums {
-            sys.disable_irq(*i);
+        for i in self.irqs() {
+            sys.disable_irq(i);
         }
-        for i in &self.value.irqnums {
-            (self.value.lock)(*i);
+        for i in self.irqs() {
+            (self.value.lock)(i);
         }
         IrqGuardedUse {
-            irqs: &self.value.irqnums,
             r: &self.value,
             val: Some(self.inner.sync_lock()),
             enable_interrupts: true,
@@ -792,7 +866,6 @@ impl<T> IrqGuarded<T> {
     /// Use the inner value from an interrupt context
     pub fn interrupt_access(&self) -> IrqGuardedUse<'_, T, SafeForInterrupts> {
         IrqGuardedUse {
-            irqs: &[],
             r: &self.value,
             val: Some(self.inner.sync_lock()),
             enable_interrupts: false,
@@ -808,8 +881,6 @@ pub struct IrqGuardedUse<'a, T, U> {
     r: &'a IrqGuardedInner,
     /// The unlocked data
     val: Option<AsyncLockedMutexGuard<'a, T>>,
-    /// The irqs protected
-    irqs: &'a [u8],
     /// Indicates true when run outside an interrupt context
     enable_interrupts: bool,
     /// Indicates that irqs should be enabled
@@ -836,18 +907,78 @@ impl<'a, T, U> Drop for IrqGuardedUse<'a, T, U> {
         let sys = crate::SYSTEM.read();
         let a = self.val.take();
         drop(a);
-        for i in &self.r.irqnums {
-            (self.r.unlock)(*i);
+        for i in self.r.irqnums.iter() {
+            (self.r.unlock)(i);
         }
         if self.enable_interrupts {
             if self.enable_irq {
-                for i in self.irqs {
-                    sys.enable_irq(*i);
+                for i in self.r.irqnums.iter() {
+                    sys.enable_irq(i);
                 }
             }
             if self.r.disable_all_interrupts {
                 sys.enable_interrupts();
             }
+        }
+    }
+}
+
+/// A stream struct for sending data in one direction
+#[derive(Clone)]
+pub struct OneWayStream<T> {
+    /// The data queue for the stream
+    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<T>>>,
+    /// The wakers for the stream
+    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
+}
+
+impl<T> OneWayStream<T> {
+    /// Construct a new stream
+    pub fn new(inner: &IrqGuardedInner, queue_size: usize, num_wakers: usize) -> Self {
+        Self {
+            queue: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(queue_size),
+                inner,
+            )),
+            wakers: Arc::new(IrqGuardedSimple::new(
+                crossbeam::queue::ArrayQueue::new(num_wakers),
+                inner,
+            )),
+        }
+    }
+
+    /// Add an element to the stream
+    pub fn push_interrupt(&self, item: T) -> Result<(), ()> {
+        self.queue.interrupt_access().push(item).map_err(|_| ())?;
+        while let Some(w) = self.wakers.interrupt_access().pop() {
+            w.wake();
+        }
+        Ok(())
+    }
+
+    /// Get the next element
+    pub fn get_next(&self) -> Option<T> {
+        while self.queue.access().is_empty() {
+            for _ in 0..1000 {
+                crate::nop();
+            }
+        }
+        self.queue.access().pop()
+    }
+}
+
+impl<T> futures::Stream for OneWayStream<T> {
+    type Item = T;
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let a = self.queue.access().pop();
+        if let Some(b) = a {
+            core::task::Poll::Ready(Some(b))
+        } else {
+            self.wakers.access().push(cx.waker().clone()).unwrap();
+            core::task::Poll::Pending
         }
     }
 }

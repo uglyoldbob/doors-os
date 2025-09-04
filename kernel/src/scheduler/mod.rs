@@ -19,8 +19,8 @@ use spin::RwLock;
 use crate::{
     kernel::SystemTrait,
     modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, NotSafeForInterrupts, SafeForInterrupts,
-    TaskId,
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, NotSafeForInterrupts,
+    SafeForInterrupts, TaskId,
 };
 
 doors_macros::todo_item!("Create a guard page for stack");
@@ -176,7 +176,7 @@ pub struct Scheduler {
 impl Scheduler {
     /// Construct a new scheduler
     pub fn new(id: TaskId) -> Self {
-        let com = IrqGuardedInner::new(alloc::vec![0], false, true, |_| {}, |_| {});
+        let com = IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {});
         let i = IrqGuarded::new(InnerScheduler::new(id), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),
@@ -268,7 +268,7 @@ impl Scheduler {
         let s2 = self.i.clone();
         let irqnums = self.i.0.irqs();
         for i in irqnums {
-            crate::SYSTEM.read().disable_irq(*i);
+            crate::SYSTEM.read().disable_irq(i);
         }
         {
             let mut this = self.i.0.interrupt_access();
@@ -283,8 +283,9 @@ impl Scheduler {
             t3.register_handler(move |timer| Self::handle_interrupt(&s2, timer));
             this.timer.replace(t3);
         }
+        let irqnums = self.i.0.irqs();
         for i in irqnums {
-            crate::SYSTEM.read().enable_irq(*i);
+            crate::SYSTEM.read().enable_irq(i);
         }
         {
             let this = self.i.0.sync_access();

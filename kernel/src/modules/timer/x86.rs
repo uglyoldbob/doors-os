@@ -1,6 +1,6 @@
 //! Code for x86 timers
 
-use crate::{boot::IOPORTS, IoPortRef, IoReadWrite, IrqGuardedInner};
+use crate::{boot::IOPORTS, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers};
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
 
@@ -39,7 +39,7 @@ impl super::TimerInstanceInnerTrait for PitInner {
     }
 
     fn get_guard_inner(&self) -> IrqGuardedInner {
-        IrqGuardedInner::new(alloc::vec![0], false, true, |_| {}, |_| {})
+        IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {})
     }
 
     fn delay_us(&self, _us: u32) {

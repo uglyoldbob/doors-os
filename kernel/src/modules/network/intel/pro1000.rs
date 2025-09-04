@@ -13,7 +13,7 @@ use crate::modules::pci::{
 };
 use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
 use crate::modules::PciFunctionDriver;
-use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner};
+use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 doors_macros2::enum_export_builder! {
@@ -1344,7 +1344,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                         doors_macros::todo!()
                     }
                 };
-                let com = IrqGuardedInner::new(alloc::vec![irqnum], false, true, |_| {}, |_| {});
+                let com =
+                    IrqGuardedInner::new(IrqNumbers::Only1(irqnum), false, true, |_| {}, |_| {});
                 let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
                 let mut d = IntelPro1000Device {
