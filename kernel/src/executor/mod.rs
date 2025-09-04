@@ -67,6 +67,7 @@ impl<'a> LocalAsyncTask<'a> {
         impl Future for YieldNow {
             type Output = ();
 
+            #[track_caller]
             fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
                 if self.yielded {
                     return Poll::Ready(());
@@ -118,6 +119,7 @@ impl<'a> AsyncTask<'a> {
         impl Future for YieldNow {
             type Output = ();
 
+            #[track_caller]
             fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
                 if self.yielded {
                     return Poll::Ready(());

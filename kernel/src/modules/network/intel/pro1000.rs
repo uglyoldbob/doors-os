@@ -13,7 +13,7 @@ use crate::modules::pci::{
 };
 use crate::modules::video::{hex_dump_async, hex_dump_generic_async};
 use crate::modules::PciFunctionDriver;
-use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers};
+use crate::{Arc, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers, OneWayStream};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 doors_macros2::enum_export_builder! {
@@ -514,8 +514,8 @@ struct IntelPro1000DeviceInternal {
     up: AtomicBool,
     /// The rx buffers and the index for the current rx buffer
     rxbufs: crate::IrqGuarded<Option<(RxBuffers, u8)>>,
-    /// The packet receiver in the kernel
-    packet_receiver: Arc<crate::IrqGuarded<super::super::NetworkReceiver>>,
+    /// Packet stream
+    packet_stream: OneWayStream<super::super::RawEthernetPacket>,
 }
 
 impl Arc<IntelPro1000DeviceInternal> {
@@ -549,16 +549,13 @@ impl IntelPro1000DeviceInternal {
             bar0,
             up,
             rxbufs: IrqGuarded::new(None, common),
-            packet_receiver: Arc::new(IrqGuarded::new(
-                super::super::NetworkReceiver::new(),
-                common,
-            )),
+            packet_stream: OneWayStream::new(common, 100, 5),
         }
     }
 
     /// Get a clone of the packet receiver
-    pub fn packet_receiver_clone(&self) -> Arc<IrqGuarded<super::super::NetworkReceiver>> {
-        self.packet_receiver.clone()
+    pub fn packet_receiver_clone(&self) -> OneWayStream<super::super::RawEthernetPacket> {
+        self.packet_stream.clone()
     }
 }
 
@@ -761,8 +758,8 @@ bitfield::bitfield! {
 }
 
 impl NetworkAdapterTrait for IntelPro1000Device {
-    fn get_receiver(&self) -> Arc<IrqGuarded<crate::modules::network::NetworkReceiver>> {
-        self.internal.packet_receiver.clone()
+    fn get_receiver(&self) -> OneWayStream<super::super::RawEthernetPacket> {
+        self.internal.packet_stream.clone()
     }
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
@@ -1178,10 +1175,7 @@ impl IntelPro1000Device {
                         } else {
                             packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                         }
-                        this.packet_receiver
-                            .interrupt_access()
-                            .packets
-                            .push_back(packet.clone());
+                        this.packet_stream.push_interrupt(*packet.clone());
                         let mut t = *index as u32;
                         t = (t + 1) % buffer.bufs.len() as u32;
                         *index = t as u8;

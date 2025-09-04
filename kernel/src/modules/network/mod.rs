@@ -3,8 +3,9 @@
 use alloc::{
     borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec,
 };
+use futures::StreamExt;
 
-use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded};
+use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, OneWayStream};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -112,7 +113,7 @@ pub trait NetworkAdapterTrait {
     /// Send a packet over the network interface
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()>;
     /// Get the receiver clone
-    fn get_receiver(&self) -> Arc<IrqGuarded<NetworkReceiver>>;
+    fn get_receiver(&self) -> OneWayStream<RawEthernetPacket>;
 }
 
 impl AsyncLockedArc<NetworkAdapter> {
@@ -620,7 +621,7 @@ impl NetworkReceiver {
 /// How packets are sent and received on a single network adapter
 pub struct NetworkTransceiver {
     /// How packets are received
-    pub receiver: Arc<IrqGuarded<NetworkReceiver>>,
+    pub receiver: OneWayStream<RawEthernetPacket>,
     /// How packets are sent
     pub sender: AsyncLockedArc<NetworkAdapter>,
 }
@@ -628,11 +629,10 @@ pub struct NetworkTransceiver {
 impl NetworkTransceiver {
     /// Process network packets received
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-    pub async fn run(&self) {
+    pub async fn run(&mut self) {
         loop {
-            let mut rx = self.receiver.access().await;
-            while let Some(packet) = rx.packets.pop_front() {
-                if let Ok(ep) = packet.as_ref().try_into() {
+            while let Some(packet) = self.receiver.next().await {
+                if let Ok(ep) = (&packet).try_into() {
                     let ep: EthernetFrame = ep;
                     crate::VGA
                         .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
@@ -730,7 +730,7 @@ impl NetworkTransceiver {
 
 /// Initialize data required for network operations
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-async fn network_init(i: NetworkTransceiver) {
+async fn network_init(mut i: NetworkTransceiver) {
     let _ = crate::executor::spawn(async move {
         i.run().await;
     });

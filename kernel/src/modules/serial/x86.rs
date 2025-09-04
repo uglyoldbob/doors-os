@@ -392,6 +392,7 @@ impl<'a> AsyncWriter<'a> {
 
 impl Future for AsyncWriter<'_> {
     type Output = ();
+    #[track_caller]
     fn poll(
         mut self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
