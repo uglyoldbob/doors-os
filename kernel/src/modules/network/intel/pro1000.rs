@@ -552,11 +552,6 @@ impl IntelPro1000DeviceInternal {
             packet_stream: OneWayStream::new(common, 100, 5),
         }
     }
-
-    /// Get a clone of the packet receiver
-    pub fn packet_receiver_clone(&self) -> OneWayStream<super::super::RawEthernetPacket> {
-        self.packet_stream.clone()
-    }
 }
 
 #[doors_macros::enum_variant(NetworkAdapter)]
@@ -1175,7 +1170,7 @@ impl IntelPro1000Device {
                         } else {
                             packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                         }
-                        this.packet_stream.push_interrupt(*packet.clone());
+                        let _ = this.packet_stream.push_interrupt(*packet.clone());
                         let mut t = *index as u32;
                         t = (t + 1) % buffer.bufs.len() as u32;
                         *index = t as u8;
