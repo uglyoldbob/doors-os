@@ -79,6 +79,7 @@ use modules::rng;
 use modules::rng::RngTrait;
 use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
+use object::Object;
 
 /// This is an example of a future that is non-Send.
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
@@ -111,6 +112,15 @@ async fn user_binary_test() {
             TEST_PRG.len()
         ))
         .await;
+    let b = object::read::File::parse(TEST_PRG);
+    if let Ok(bin) = b {
+        let text = bin.section_by_name(".text");
+        if let Some(text) = text {
+            crate::VGA
+                .print_str_async(&alloc::format!("USER BINARY test IS {:x?}\r\n", text))
+                .await;
+        }
+    }
 }
 
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
@@ -124,52 +134,6 @@ async fn keyboard_test() {
             .await;
         crate::executor::print_locations().await;
     }
-}
-
-/// Run a network test on the net0 network card, if it exists
-#[cfg_attr(feature = "backtrace", doors_macros::framed)]
-async fn net_test() {
-    crate::VGA
-        .print_str_async("Waiting for network card net0\r\n")
-        .await;
-    while crate::modules::network::get_network_adapter("net0")
-        .await
-        .is_none()
-    {
-        executor::AsyncTask::yield_now().await;
-    }
-    crate::VGA
-        .print_str_async("Waiting for first rng\r\n")
-        .await;
-    while !kernel::RNGS.lock().await.exists(0) {
-        executor::AsyncTask::yield_now().await;
-    }
-    crate::VGA
-        .print_str_async("About to do some stuff with a network card net0\r\n")
-        .await;
-    if let Some(na) = crate::modules::network::get_network_adapter("net0").await {
-        let rng = kernel::RNGS.lock().await.module(0);
-        let mut na = na.lock().await;
-        crate::VGA
-            .print_str_async("About to do some stuff with a network card\r\n")
-            .await;
-        let ma = na.get_mac_address().await;
-        hex_dump_generic_async(&ma, false, false).await;
-        crate::VGA
-            .print_str_async("Done doing stuff with network card\r\n")
-            .await;
-    }
-    let t = crate::executor::get_current_task_id().await;
-    crate::VGA
-        .print_str_async(&alloc::format!("My task id is {:?}\r\n", t))
-        .await;
-    crate::VGA
-        .print_str_async("About to print locations\r\n")
-        .await;
-    crate::executor::print_locations().await;
-    crate::VGA
-        .print_str_async("Done with print locations\r\n")
-        .await;
 }
 
 /// A test function for the kernel
@@ -310,9 +274,6 @@ fn main() -> ! {
                 }
             })
             .unwrap();
-        if doors_macros::config_check_equals!(network, "true") {
-            executor.spawn(net_test()).unwrap();
-        }
         executor
             .spawn(async {
                 modules::pci::setup_pci().await;

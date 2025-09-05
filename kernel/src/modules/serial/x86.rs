@@ -6,6 +6,7 @@ use core::sync::atomic::Ordering;
 use core::task::Waker;
 
 use crate::common;
+use crate::new_stream;
 use crate::Arc;
 
 use crate::executor;
@@ -13,7 +14,8 @@ use crate::IoPortArray;
 use crate::IoReadWrite;
 use crate::IrqGuardedSimple;
 use crate::IrqNumbers;
-use crate::OneWayStream;
+use crate::OneWayStreamReader;
+use crate::OneWayStreamWriter;
 use crate::IO_PORT_MANAGER;
 
 /// The number of elements to store in the tx queue for each serial port
@@ -35,7 +37,7 @@ pub struct X86SerialPortInternal {
     /// The transmit wakers
     tx_wakers: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
     /// The rx stream
-    rx_stream: crate::common::OneWayStream<u8>,
+    rx_stream: (OneWayStreamReader<u8>, OneWayStreamWriter<u8>),
     /// Is the tx interrupt currently enabled?
     tx_enabled: AtomicBool,
     /// Are interrupts enabled?
@@ -81,7 +83,7 @@ impl X86SerialPort {
                 crossbeam::queue::ArrayQueue::new(NUM_WAKERS),
                 &com,
             )),
-            rx_stream: OneWayStream::new(&com, RX_BUFFER_SIZE, NUM_WAKERS),
+            rx_stream: new_stream(&com, RX_BUFFER_SIZE, NUM_WAKERS),
             tx_enabled: AtomicBool::new(false),
             interrupts: AtomicBool::new(false),
             itx: AtomicBool::new(false),
@@ -137,7 +139,7 @@ impl X86SerialPort {
                     }
                     2 | 6 => {
                         let recvd = s.base.interrupt_access().port(0).port_read();
-                        let _ = s.rx_stream.push_interrupt(recvd);
+                        let _ = s.rx_stream.1.push_interrupt(recvd);
                     }
                     3 => {
                         let _: u8 = s.base.interrupt_access().port(5).port_read();
@@ -226,30 +228,6 @@ impl Arc<X86SerialPortInternal> {
     }
 }
 
-/// A stream struct for receiving serial data
-struct X86SerialStream {
-    /// The data queue for the rx stream
-    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
-    /// The wakers for the rx stream
-    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
-}
-
-impl futures::Stream for X86SerialStream {
-    type Item = u8;
-    fn poll_next(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<Self::Item>> {
-        let a = self.queue.access().pop();
-        if let Some(b) = a {
-            core::task::Poll::Ready(Some(b))
-        } else {
-            self.wakers.access().push(cx.waker().clone()).unwrap();
-            core::task::Poll::Pending
-        }
-    }
-}
-
 impl super::SerialTrait for X86SerialPort {
     fn setup(&self, _rate: u32) -> Result<(), ()> {
         todo!();
@@ -260,7 +238,11 @@ impl super::SerialTrait for X86SerialPort {
             while !self.0.can_receive() {}
             self.0.receive().unwrap()
         } else {
-            self.0.rx_stream.get_next().unwrap()
+            loop {
+                if let Some(a) = self.0.rx_stream.0.get_next() {
+                    return a;
+                }
+            }
         }
     }
 
@@ -272,12 +254,12 @@ impl super::SerialTrait for X86SerialPort {
                 None
             }
         } else {
-            self.0.rx_stream.get_next()
+            self.0.rx_stream.0.get_next()
         }
     }
 
     fn read_stream(&self) -> impl futures::Stream<Item = u8> {
-        self.0.rx_stream.clone()
+        &self.0.rx_stream.0
     }
 
     fn stop_async(&self) {

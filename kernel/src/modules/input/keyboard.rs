@@ -1,31 +1,10 @@
 //! Covers functionality for keyboards
 
-use crate::{Arc, IoPortRef, IoReadWrite, IrqGuardedInner, IrqGuardedSimple, IrqNumbers, Locked};
+use crate::{
+    Arc, IoPortRef, IoReadWrite, IrqGuardedInner, IrqGuardedSimple, IrqNumbers, Locked,
+    OneWayStreamReader, OneWayStreamWriter,
+};
 use core::task::Waker;
-
-/// A stream struct for receiving serial data
-struct Ps2InputStream {
-    /// The data queue for the stream
-    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<u8>>>,
-    /// The wakers for the stream
-    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
-}
-
-impl futures::Stream for Ps2InputStream {
-    type Item = u8;
-    fn poll_next(
-        self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<Self::Item>> {
-        let a = self.queue.access().pop();
-        if let Some(b) = a {
-            core::task::Poll::Ready(Some(b))
-        } else {
-            self.wakers.access().push(cx.waker().clone()).unwrap();
-            core::task::Poll::Pending
-        }
-    }
-}
 
 struct Registers {
     /// The data port for the controller
@@ -39,7 +18,7 @@ pub struct Ps2Inner {
     /// The registers for the controller
     registers: IrqGuardedSimple<Locked<Registers>>,
     /// The stream
-    stream: crate::common::OneWayStream<u8>,
+    stream: (OneWayStreamReader<u8>, OneWayStreamWriter<u8>),
 }
 
 /// Ps2 hardware
@@ -60,7 +39,7 @@ impl Ps2 {
                 }),
                 &i,
             ),
-            stream: crate::common::OneWayStream::new(&i, 30, 5),
+            stream: crate::common::new_stream(&i, 30, 5),
         };
         let s = Self {
             inner: Arc::new(inner),
@@ -101,8 +80,8 @@ impl Ps2 {
     }
 
     /// Get a read stream for reading from the keyboard
-    pub fn read_stream(&self) -> impl futures::Stream<Item = u8> {
-        self.inner.stream.clone()
+    pub fn read_stream(&self) -> &OneWayStreamReader<u8> {
+        &self.inner.stream.0
     }
 
     fn handle_interrupt(s: &Arc<Ps2Inner>) {
@@ -113,7 +92,7 @@ impl Ps2 {
             .sync_lock()
             .data_port
             .port_read();
-        let _ = s.stream.push_interrupt(b);
+        let _ = s.stream.1.push_interrupt(b);
     }
 
     fn read_buffer(&self) -> u8 {

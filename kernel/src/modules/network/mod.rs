@@ -5,7 +5,7 @@ use alloc::{
 };
 use futures::StreamExt;
 
-use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, OneWayStream};
+use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, OneWayStreamReader};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -24,7 +24,7 @@ lazy_static::lazy_static! {
 
 /// Register a network adapter
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-pub async fn register_network_adapter(na: NetworkAdapter) {
+pub async fn register_network_adapter(mut na: NetworkAdapter) {
     let mut nal = NETWORK_ADAPTERS.lock().await;
     //TODO implement an automatic naming scheme
     use alloc::string::ToString;
@@ -35,10 +35,17 @@ pub async fn register_network_adapter(na: NetworkAdapter) {
             name
         ))
         .await;
-    let na = AsyncLockedArc::new(na);
-    let rxtx = na.make_transceiver().await;
-    network_init(rxtx).await;
-    nal.insert(name, na);
+    crate::VGA
+        .print_str_async("Spawning network code\r\n")
+        .await;
+    let r = crate::executor::spawn(async move {
+        crate::VGA.print_str_async("Running network code\r\n").await;
+        na.run().await;
+    });
+    crate::VGA
+        .print_str_async(&alloc::format!("RESULT Spawning network code: {:?}\r\n", r))
+        .await;
+    //nal.insert(name, na);
 }
 
 /// Grab a network adapter by name
@@ -113,23 +120,110 @@ pub trait NetworkAdapterTrait {
     /// Send a packet over the network interface
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()>;
     /// Get the receiver clone
-    fn get_receiver(&self) -> OneWayStream<RawEthernetPacket>;
-}
-
-impl AsyncLockedArc<NetworkAdapter> {
-    /// Build a network transceiver
-    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-    pub async fn make_transceiver(&self) -> NetworkTransceiver {
-        NetworkTransceiver {
-            receiver: self.lock().await.get_receiver(),
-            sender: self.clone(),
-        }
-    }
+    fn get_receiver(&self) -> &OneWayStreamReader<RawEthernetPacket>;
 }
 
 /// A network adapter
 #[doors_macros::fill_enum_with_variants(NetworkAdapterTrait)]
 pub enum NetworkAdapter {}
+
+impl NetworkAdapter {
+    /// Process network packets received
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
+    pub async fn run(&mut self) {
+        let mymac = self.get_mac_address().await.address;
+        loop {
+            while let Some(packet) = self.get_receiver().next().await {
+                if let Ok(ep) = (&packet).try_into() {
+                    let ep: EthernetFrame = ep;
+                    crate::VGA
+                        .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
+                        .await;
+                    if let Ok(df) = (&ep).try_into() {
+                        let df: DecodedEthernetFrame = df;
+                        crate::VGA
+                            .print_str_async(&alloc::format!(
+                                "Received packet for: {:02x?}\r\n",
+                                df.header.destination
+                            ))
+                            .await;
+                        match df.contents {
+                            Packet::Ipv4(ipv4_packet) => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received ip packet: {:02x?}\r\n",
+                                        ipv4_packet
+                                    ))
+                                    .await;
+                            }
+                            Packet::Arp(address_resolution_protocol_packet) => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received arp packet: {:02x?}\r\n",
+                                        address_resolution_protocol_packet
+                                    ))
+                                    .await;
+                                if address_resolution_protocol_packet.operation == 1 {
+                                    doors_macros::todo_item!("Populate the actual ip address");
+                                    let myip = [11, 11, 11, 12];
+                                    if address_resolution_protocol_packet.target_protocol_address
+                                        == myip
+                                    {
+                                        let mut packet = [0; 128];
+                                        let p = DecodedEthernetFrame {
+                                            header: EthernetFrameHeader {
+                                                destination: df.header.source,
+                                                source: MacAddress::default(),
+                                                vlan: None,
+                                                ethertype: 2054,
+                                            },
+                                            contents: Packet::Arp(
+                                                AddressResolutionProtocolPacket {
+                                                    htype: address_resolution_protocol_packet.htype,
+                                                    ptype: address_resolution_protocol_packet.ptype,
+                                                    address_length:
+                                                        address_resolution_protocol_packet
+                                                            .address_length,
+                                                    protocol_length:
+                                                        address_resolution_protocol_packet
+                                                            .protocol_length,
+                                                    operation: 2,
+                                                    sender_hardware_address: &mymac,
+                                                    sender_protocol_address: &myip,
+                                                    target_hardware_address:
+                                                        address_resolution_protocol_packet
+                                                            .sender_hardware_address,
+                                                    target_protocol_address:
+                                                        address_resolution_protocol_packet
+                                                            .sender_protocol_address,
+                                                },
+                                            ),
+                                        };
+                                        if let Ok(length) = p.build_packet(&mut packet) {
+                                            let _ =
+                                                self.send_packet(&packet[0..length as usize]).await;
+                                        }
+                                    }
+                                }
+                            }
+                            Packet::Unknown(stuff) => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received unknown packet: {:02x?}\r\n",
+                                        df
+                                    ))
+                                    .await;
+                            }
+                        }
+                    }
+                    crate::VGA.print_str("Done processing packet\r\n");
+                } else {
+                    crate::VGA.print_str("Received invalid ethernet frame\r\n");
+                }
+            }
+        }
+    }
+}
 
 /// The maximim amount of data to receive in a single packet
 const MAX_RX_PACKET_SIZE: usize = 8192;
@@ -601,138 +695,4 @@ impl RawEthernetPacket {
         self.data[0..r.len()].copy_from_slice(r);
         self.length = r.len();
     }
-}
-
-/// A structure to received packets from a network interface
-pub struct NetworkReceiver {
-    /// The list of packets received from the network card
-    packets: alloc::collections::vec_deque::VecDeque<Box<RawEthernetPacket>>,
-}
-
-impl NetworkReceiver {
-    /// Construct a new self
-    fn new() -> Self {
-        Self {
-            packets: alloc::collections::vec_deque::VecDeque::new(),
-        }
-    }
-}
-
-/// How packets are sent and received on a single network adapter
-pub struct NetworkTransceiver {
-    /// How packets are received
-    pub receiver: OneWayStream<RawEthernetPacket>,
-    /// How packets are sent
-    pub sender: AsyncLockedArc<NetworkAdapter>,
-}
-
-impl NetworkTransceiver {
-    /// Process network packets received
-    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-    pub async fn run(&mut self) {
-        loop {
-            while let Some(packet) = self.receiver.next().await {
-                if let Ok(ep) = (&packet).try_into() {
-                    let ep: EthernetFrame = ep;
-                    crate::VGA
-                        .print_str_async(&alloc::format!("Received packet: {:02x?}\r\n", ep))
-                        .await;
-                    if let Ok(df) = (&ep).try_into() {
-                        let df: DecodedEthernetFrame = df;
-                        crate::VGA
-                            .print_str_async(&alloc::format!(
-                                "Received packet for: {:02x?}\r\n",
-                                df.header.destination
-                            ))
-                            .await;
-                        match df.contents {
-                            Packet::Ipv4(ipv4_packet) => {
-                                crate::VGA
-                                    .print_str_async(&alloc::format!(
-                                        "Received ip packet: {:02x?}\r\n",
-                                        ipv4_packet
-                                    ))
-                                    .await;
-                            }
-                            Packet::Arp(address_resolution_protocol_packet) => {
-                                crate::VGA
-                                    .print_str_async(&alloc::format!(
-                                        "Received arp packet: {:02x?}\r\n",
-                                        address_resolution_protocol_packet
-                                    ))
-                                    .await;
-                                if address_resolution_protocol_packet.operation == 1 {
-                                    let mymac =
-                                        self.sender.lock().await.get_mac_address().await.address;
-                                    doors_macros::todo_item!("Populate the actual ip address");
-                                    let myip = [11, 11, 11, 12];
-                                    if address_resolution_protocol_packet.target_protocol_address
-                                        == myip
-                                    {
-                                        let mut packet = [0; 128];
-                                        let p = DecodedEthernetFrame {
-                                            header: EthernetFrameHeader {
-                                                destination: df.header.source,
-                                                source: MacAddress::default(),
-                                                vlan: None,
-                                                ethertype: 2054,
-                                            },
-                                            contents: Packet::Arp(
-                                                AddressResolutionProtocolPacket {
-                                                    htype: address_resolution_protocol_packet.htype,
-                                                    ptype: address_resolution_protocol_packet.ptype,
-                                                    address_length:
-                                                        address_resolution_protocol_packet
-                                                            .address_length,
-                                                    protocol_length:
-                                                        address_resolution_protocol_packet
-                                                            .protocol_length,
-                                                    operation: 2,
-                                                    sender_hardware_address: &mymac,
-                                                    sender_protocol_address: &myip,
-                                                    target_hardware_address:
-                                                        address_resolution_protocol_packet
-                                                            .sender_hardware_address,
-                                                    target_protocol_address:
-                                                        address_resolution_protocol_packet
-                                                            .sender_protocol_address,
-                                                },
-                                            ),
-                                        };
-                                        if let Ok(length) = p.build_packet(&mut packet) {
-                                            let _ = self
-                                                .sender
-                                                .lock()
-                                                .await
-                                                .send_packet(&packet[0..length as usize])
-                                                .await;
-                                        }
-                                    }
-                                }
-                            }
-                            Packet::Unknown(stuff) => {
-                                crate::VGA
-                                    .print_str_async(&alloc::format!(
-                                        "Received unknown packet: {:02x?}\r\n",
-                                        df
-                                    ))
-                                    .await;
-                            }
-                        }
-                    }
-                    crate::VGA.print_str("Done processing packet\r\n");
-                } else {
-                    crate::VGA.print_str("Received invalid ethernet frame\r\n");
-                }
-            }
-        }
-    }
-}
-
-/// Initialize data required for network operations
-#[cfg_attr(feature = "backtrace", doors_macros::framed)]
-async fn network_init(mut i: NetworkTransceiver) {
-    let _ = crate::executor::spawn(async move {
-        i.run().await;
-    });
 }

@@ -921,51 +921,22 @@ impl<'a, T, U> Drop for IrqGuardedUse<'a, T, U> {
     }
 }
 
-/// A stream struct for sending data in one direction
-#[derive(Clone)]
-pub struct OneWayStream<T> {
+/// The reader for a one way stream
+pub struct OneWayStreamReader<T> {
     /// The data queue for the stream
     queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<T>>>,
     /// The wakers for the stream
     wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
 }
 
-impl<T> OneWayStream<T> {
-    /// Construct a new stream
-    pub fn new(inner: &IrqGuardedInner, queue_size: usize, num_wakers: usize) -> Self {
-        Self {
-            queue: Arc::new(IrqGuardedSimple::new(
-                crossbeam::queue::ArrayQueue::new(queue_size),
-                inner,
-            )),
-            wakers: Arc::new(IrqGuardedSimple::new(
-                crossbeam::queue::ArrayQueue::new(num_wakers),
-                inner,
-            )),
-        }
-    }
-
-    /// Add an element to the stream
-    pub fn push_interrupt(&self, item: T) -> Result<(), ()> {
-        self.queue.interrupt_access().push(item).map_err(|_| ())?;
-        while let Some(w) = self.wakers.interrupt_access().pop() {
-            w.wake();
-        }
-        Ok(())
-    }
-
-    /// Get the next element
+impl<T> OneWayStreamReader<T> {
+    /// Get an element synchronously
     pub fn get_next(&self) -> Option<T> {
-        while self.queue.access().is_empty() {
-            for _ in 0..1000 {
-                crate::nop();
-            }
-        }
         self.queue.access().pop()
     }
 }
 
-impl<T> futures::Stream for OneWayStream<T> {
+impl<T> futures::Stream for &OneWayStreamReader<T> {
     type Item = T;
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
@@ -979,4 +950,114 @@ impl<T> futures::Stream for OneWayStream<T> {
             core::task::Poll::Pending
         }
     }
+}
+
+impl<T> futures::Stream for OneWayStreamReader<T> {
+    type Item = T;
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let a = self.queue.access().pop();
+        if let Some(b) = a {
+            core::task::Poll::Ready(Some(b))
+        } else {
+            self.wakers.access().push(cx.waker().clone()).unwrap();
+            core::task::Poll::Pending
+        }
+    }
+}
+
+/// Used for writing data to a OneWayStream
+pub struct OneWayStreamWriteElement<T> {
+    /// The item to write
+    stuff: Option<T>,
+    /// The data queue for the stream
+    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<T>>>,
+    /// The wakers for the stream
+    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
+}
+
+impl<T: Unpin> core::future::Future for OneWayStreamWriteElement<T> {
+    type Output = ();
+    fn poll(
+        mut self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let q = self.queue.access().is_full();
+        if q {
+            let _ = self.wakers.access().push(cx.waker().clone());
+            return core::task::Poll::Pending;
+        } else {
+            if let Some(t) = self.stuff.take() {
+                self.queue.access().push(t);
+                return core::task::Poll::Ready(());
+            } else {
+                return core::task::Poll::Pending;
+            }
+        }
+    }
+}
+
+/// The writer for a one way stream
+pub struct OneWayStreamWriter<T> {
+    /// The data queue for the stream
+    queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<T>>>,
+    /// The wakers for the stream
+    wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
+}
+
+impl<T> Clone for OneWayStreamWriter<T> {
+    fn clone(&self) -> Self {
+        Self {
+            queue: self.queue.clone(),
+            wakers: self.wakers.clone(),
+        }
+    }
+}
+
+impl<T> OneWayStreamWriter<T> {
+    /// Add an element to the stream from an interrupt handler
+    pub fn push_interrupt(&self, item: T) -> Result<(), ()> {
+        self.queue.interrupt_access().push(item).map_err(|_| ())?;
+        while let Some(w) = self.wakers.interrupt_access().pop() {
+            w.wake();
+        }
+        Ok(())
+    }
+
+    /// Add an element to the stream from an async context
+    pub async fn write<'a>(&'a self, val: T) -> OneWayStreamWriteElement<T> {
+        OneWayStreamWriteElement {
+            stuff: Some(val),
+            queue: self.queue.clone(),
+            wakers: self.wakers.clone(),
+        }
+    }
+}
+
+/// Construct a new stream
+pub fn new_stream<T>(
+    inner: &IrqGuardedInner,
+    queue_size: usize,
+    num_wakers: usize,
+) -> (OneWayStreamReader<T>, OneWayStreamWriter<T>) {
+    let queue = Arc::new(IrqGuardedSimple::new(
+        crossbeam::queue::ArrayQueue::new(queue_size),
+        inner,
+    ));
+    let wakers = Arc::new(IrqGuardedSimple::new(
+        crossbeam::queue::ArrayQueue::new(num_wakers),
+        inner,
+    ));
+    (
+        OneWayStreamReader {
+            queue: queue.clone(),
+            wakers: wakers.clone(),
+        },
+        OneWayStreamWriter {
+            queue: queue.clone(),
+            wakers: wakers.clone(),
+        },
+    )
 }
