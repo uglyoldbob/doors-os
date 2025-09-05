@@ -316,6 +316,8 @@ pub trait SystemTrait {
     fn main_stack(&self) -> (usize, usize);
     /// The the single byte opcode (if it exists) for a breakpoint instruction
     fn breakpoint(&self) -> Option<u8>;
+    /// Create a new process
+    fn create_process(&self, b: &object::File);
 }
 
 /// This struct implements the SystemTrait
@@ -377,6 +379,8 @@ impl SystemTrait for NullSystem {
         _handler: F,
     ) {
     }
+
+    fn create_process(&self, b: &object::File) {}
 }
 
 use spin::RwLock;

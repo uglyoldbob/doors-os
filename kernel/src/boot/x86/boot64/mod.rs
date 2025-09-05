@@ -524,6 +524,20 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         let s = self.sync_lock();
         (s.stack_start as usize, MAIN_STACK_SIZE as usize)
     }
+
+    fn create_process(&self, b: &object::File) {
+        use object::Object;
+        let text = b.section_by_name(".text");
+        use object::ObjectSection;
+        if let Some(text) = text {
+            if text.address() == 0x500000 {
+                if let Ok(data) = text.data() {
+                    let mut pt = PAGING_MANAGER.sync_lock().new_table();
+                    crate::VGA.print_str("GOT USER BINARY TEXT data\r\n");
+                }
+            }
+        }
+    }
 }
 
 /// The entry point for the 64 bit x86 kernel

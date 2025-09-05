@@ -179,15 +179,21 @@ struct DiskImageConfigurationCommon {
 impl DiskImageConfigurationCommon {
     /// Get the pathbuf from the config_files member
     pub fn get_config_files(&self) -> Vec<(PathBuf, PathBuf)> {
-        self.config_files.iter().map(|a| {
-            if cfg!(target_os = "windows") {
-                let s1 = a.0.clone();
-                let s2 = a.1.clone();
-                (PathBuf::from(s1.replace("/", "\\")), PathBuf::from(s2.replace("/", "\\")))
-            } else {
-                (PathBuf::from(a.0.clone()), PathBuf::from(a.1.clone()))
-            }
-        }).collect()
+        self.config_files
+            .iter()
+            .map(|a| {
+                if cfg!(target_os = "windows") {
+                    let s1 = a.0.clone();
+                    let s2 = a.1.clone();
+                    (
+                        PathBuf::from(s1.replace("/", "\\")),
+                        PathBuf::from(s2.replace("/", "\\")),
+                    )
+                } else {
+                    (PathBuf::from(a.0.clone()), PathBuf::from(a.1.clone()))
+                }
+            })
+            .collect()
     }
 }
 
@@ -293,17 +299,9 @@ impl DiskBuilderTrait for NetworkConfiguration {
         ));
         for (fname, dest) in common.get_config_files() {
             if cfg!(target_os = "windows") {
-                cmakelists.push_str(&format!(
-                    "\tCOMMAND copy {:?} {:?}\n",
-                    fname,
-                    dest
-                ));
+                cmakelists.push_str(&format!("\tCOMMAND copy {:?} {:?}\n", fname, dest));
             } else {
-                cmakelists.push_str(&format!(
-                    "\tCOMMAND cp {:?} {:?}\n",
-                    fname,
-                    dest
-                ));
+                cmakelists.push_str(&format!("\tCOMMAND cp {:?} {:?}\n", fname, dest));
             }
         }
         if let Some(s) = &common.grub_config {
@@ -358,7 +356,9 @@ impl DiskBuilderTrait for CdConfiguration {
         pa.push("grub");
         if cfg!(target_os = "windows") {
             cmakelists.push_str(&format!("\tCOMMAND mkdir {:?}\n", pa,));
-            cmakelists.push_str("\tCOMMAND copy grub2.lst .\\\\build\\\\iso\\\\boot\\\\grub\\\\grub.cfg\n");
+            cmakelists.push_str(
+                "\tCOMMAND copy grub2.lst .\\\\build\\\\iso\\\\boot\\\\grub\\\\grub.cfg\n",
+            );
             cmakelists.push_str(&format!(
                 "\tCOMMAND copy .\\\\kernel\\\\target\\\\{}\\\\release\\\\kernel .\\\\build\\\\iso\\\\boot\\\\kernel\n",
                 kernel_path
@@ -371,21 +371,13 @@ impl DiskBuilderTrait for CdConfiguration {
                 kernel_path
             ));
         }
-        
+
         cmakelists.push_str("\tCOMMAND rust-strip ./build/iso/boot/kernel\n");
         for (fname, dest) in common.get_config_files() {
             if cfg!(target_os = "windows") {
-                cmakelists.push_str(&format!(
-                    "\tCOMMAND copy {:?} {:?}\n",
-                    fname,
-                    dest
-                ));
+                cmakelists.push_str(&format!("\tCOMMAND copy {:?} {:?}\n", fname, dest));
             } else {
-                cmakelists.push_str(&format!(
-                    "\tCOMMAND cp {:?} {:?}\n",
-                    fname,
-                    dest
-                ));
+                cmakelists.push_str(&format!("\tCOMMAND cp {:?} {:?}\n", fname, dest));
             }
         }
 

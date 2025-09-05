@@ -583,6 +583,25 @@ impl<'a> PagingTableManager<'a> {
         }
     }
 
+    /// Build a new set of page tables, keeping the existing kernel mappings
+    pub fn new_table(&self) -> Self {
+        let a : Box<MaybeUninit<Page>, &Locked<SimpleMemoryManager>> = Box::new_uninit_in(self.mm);
+        let address = crate::address(unsafe { a.as_ref().assume_init_ref() });
+        crate::VGA.print_str(&alloc::format!("BUILD PAGE TABLES: new page physical = {:x?}\r\n", address));
+        let mut mm = self.mm.sync_lock();
+        let pml4_window = mm.get_complete_virtual_page();
+        let pdpt_window = mm.get_complete_virtual_page();
+        let page_directory_window = mm.get_complete_virtual_page();
+        let page_table_window = mm.get_complete_virtual_page();
+        drop(mm);
+        crate::VGA.print_str(&alloc::format!("BUILD PAGE TABLES: {:x} {:x} {:x} {:x}\r\n", pml4_window, pdpt_window, page_directory_window, page_table_window));
+        let mut np = Self::new(self.mm);
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64() as usize;
+        crate::VGA.print_str(&alloc::format!("BUILD PAGE TABLES: cr3 = {:x}\r\n", cr3));
+        np
+    }
+
     /// Lookup the physical address corresponding to the specified address
     fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
@@ -642,8 +661,8 @@ impl<'a> PagingTableManager<'a> {
         &mut pml1.entries[page_table_index]
     }
 
-    /// Initialize the object, allocating physical pages as required.
-    pub fn init(&mut self) {
+    /// Initialize the object assuming some stuff is already setup, allocating physical pages as required.
+    pub fn setup_from_existing(&mut self) {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64();
 

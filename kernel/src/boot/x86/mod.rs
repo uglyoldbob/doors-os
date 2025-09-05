@@ -800,7 +800,7 @@ fn start_common1(
         .sync_lock()
         .stop_allocating(0x3fffff);
 
-    boot::PAGING_MANAGER.sync_lock().init();
+    boot::PAGING_MANAGER.sync_lock().setup_from_existing();
 
     if true {
         if true {
