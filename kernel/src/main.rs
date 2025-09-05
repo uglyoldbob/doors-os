@@ -106,18 +106,20 @@ pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn user_binary_test() {
-    crate::VGA
-        .print_str_async(&alloc::format!(
-            "USER BINARY SIZE IS {}\r\n",
-            TEST_PRG.len()
-        ))
-        .await;
     let b = object::read::File::parse(TEST_PRG);
     if let Ok(bin) = b {
         let text = bin.section_by_name(".text");
+        use object::ObjectSection;
         if let Some(text) = text {
+            if text.address() == 0x500000 {
+                if let Ok(data) = text.data() {
+                    crate::VGA
+                        .print_str_async("GOT USER BINARY TEXT data\r\n")
+                        .await;
+                }
+            }
             crate::VGA
-                .print_str_async(&alloc::format!("USER BINARY test IS {:x?}\r\n", text))
+                .print_str_async(&alloc::format!("USER BINARY test IS {:x?}\r\n", text.address()))
                 .await;
         }
     }
