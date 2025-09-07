@@ -1,8 +1,8 @@
 
 [workspace]
 
-members = [
-    "builder", "kernel-stack-analysis",
+members = [ "bochs-debug",
+    "builder", "imager", "kernel-stack-analysis",
     "network_test",
 ]
 exclude = [

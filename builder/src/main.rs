@@ -864,8 +864,13 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
         &mut cmakelist,
         &config.os.target.config,
         &config.local,
-        kernel_binary_path,
+        kernel_binary_path.clone(),
     );
+    config
+        .os
+        .target
+        .emulator
+        .custom_debug_symbols(&mut cmakelist, kernel_binary_path);
 
     {
         let mut configf = std::fs::File::create("./CMakeLists.txt")

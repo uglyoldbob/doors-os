@@ -1,0 +1,9 @@
+[package]
+name = "bochs-debug"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.30", features = ["derive"] }
+gimli = "0.32.2"
+object = "0.37.3"
