@@ -257,7 +257,7 @@ impl DiskBuilderTrait for NetworkConfiguration {
     ) -> Result<Disk, String> {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk\n");
-        cmakelists.push_str("\tDEPENDS kernel bootloader\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
         cmakelists.push_str(&format!(
             "\tBYPRODUCTS {}\n",
             common.output.to_str().unwrap()
@@ -339,11 +339,16 @@ impl DiskBuilderTrait for CdConfiguration {
     ) -> Result<Disk, String> {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk\n");
-        cmakelists.push_str("\tDEPENDS kernel bootloader\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
         cmakelists.push_str(&format!(
             "\tBYPRODUCTS {}\n",
             common.output.to_str().unwrap()
         ));
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str("\tCOMMAND rmdir /s /q .\\\\build\\\\iso\n");
+        } else {
+            cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
+        }
         let mut pa = std::path::PathBuf::from(".");
         pa.push("build");
         pa.push("iso");
@@ -394,7 +399,11 @@ impl DiskBuilderTrait for CdConfiguration {
         } else {
             panic!();
         }
-        cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
+        if cfg!(target_os = "windows") {
+            cmakelists.push_str("\tCOMMAND rmdir /s /q .\\\\build\\\\iso\n");
+        } else {
+            cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
+        }
         cmakelists.push_str(")\n");
         Ok(Disk::Cd(common.output.clone()))
     }
@@ -800,18 +809,6 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
         kernel_binary_path.to_str().unwrap()
     ));
     cmakelist.push_str(")\n");
-
-    cmakelist.push_str("
-ExternalProject_Add(
-    bootloader
-    PREFIX \"bootloader\"
-    URL https://ftp.gnu.org/gnu/grub/grub-2.12.tar.gz
-    URL_HASH SHA512=029678d9363b5297c79f06fa9f65565986da329636debcd53dc875b727ba1cf4a8d4415915932c513379e6cab7c759bbb4e2bcb9757ece4e4e1b9ecdd4a0d8cf
-    CONFIGURE_COMMAND \"\"
-    BUILD_COMMAND \"\"
-    INSTALL_COMMAND \"\"
-)
-");
 
     kernel_cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
     kernel_cmakelist.push_str("project(doors-kernel)\n\n");

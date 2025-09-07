@@ -22,3 +22,8 @@ disassemble.txt
 expanded.txt
 netboot
 stack.txt
+bootloader
+x64
+user/x64
+kernel/x64
+grub-2.12

@@ -59,5 +59,6 @@ fn make_iso(iso_path: std::path::PathBuf,) -> Result<std::fs::File, ()> {
 
 fn main() {
     let args = Args::parse();
+    extract_grub2_prebuilt("./grub-2.12.tar.gz").inspect_err(|e| eprintln!("ERROR GZIP: {:?}", e)).unwrap();
     make_iso(args.iso_path);
 }
