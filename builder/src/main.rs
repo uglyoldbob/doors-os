@@ -257,7 +257,7 @@ impl DiskBuilderTrait for NetworkConfiguration {
     ) -> Result<Disk, String> {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk\n");
-        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str("\tDEPENDS kernel bootloader\n");
         cmakelists.push_str(&format!(
             "\tBYPRODUCTS {}\n",
             common.output.to_str().unwrap()
@@ -270,12 +270,7 @@ impl DiskBuilderTrait for NetworkConfiguration {
         }
 
         if cfg!(target_os = "windows") {
-            cmakelists.push_str(&format!(
-                "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
-                LocalConfiguration::escape_path(&local.vboximg_path()),
-                LocalConfiguration::escape_path(&common.output),
-                common.disk_label
-            ));
+            todo!();
         } else if cfg!(target_os = "linux") {
             cmakelists.push_str(&format!(
                 "\tCOMMAND cp {}/* ./build/net\n",
@@ -344,7 +339,7 @@ impl DiskBuilderTrait for CdConfiguration {
     ) -> Result<Disk, String> {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk\n");
-        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str("\tDEPENDS kernel bootloader\n");
         cmakelists.push_str(&format!(
             "\tBYPRODUCTS {}\n",
             common.output.to_str().unwrap()
@@ -382,12 +377,14 @@ impl DiskBuilderTrait for CdConfiguration {
         }
 
         if cfg!(target_os = "windows") {
+            cmakelists.push_str("\tCOMMAND cargo +nightly run --bin imager -- --iso-path=build/iso\n");
+        /*
             cmakelists.push_str(&format!(
                 "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
                 LocalConfiguration::escape_path(&local.vboximg_path()),
                 LocalConfiguration::escape_path(&common.output),
                 common.disk_label
-            ));
+            )); */
         } else if cfg!(target_os = "linux") {
             cmakelists.push_str(&format!(
                 "\tCOMMAND grub-mkrescue -o {} build/iso -- -volid \"{}\"\n",
@@ -472,8 +469,6 @@ pub struct LocalConfiguration {
     virtualbox_path: Option<std::path::PathBuf>,
     /// The binary for vboxmanage, to manage virtualbox images
     vboxmanage_path: Option<std::path::PathBuf>,
-    /// The binary for vbox-img, to build images in certain situations
-    vboximg_path: Option<std::path::PathBuf>,
     /// The binary for gdb
     gdb_path: Option<std::path::PathBuf>,
     /// Network devices that can be used by emulators
@@ -500,9 +495,6 @@ impl Default for LocalConfiguration {
             ),
             vboxmanage_path: Some(
                 std::path::PathBuf::from_str("./optional/example/vboxmanage/path/here").unwrap(),
-            ),
-            vboximg_path: Some(
-                std::path::PathBuf::from_str("./optional/example/vboximg/path/here").unwrap(),
             ),
             gdb_path: Some(
                 std::path::PathBuf::from_str("./optional/example/gdb/path/here").unwrap(),
@@ -603,20 +595,6 @@ impl LocalConfiguration {
         self.vboxmanage_path
             .clone()
             .unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\VBoxManage.exe".into())
-    }
-
-    #[cfg(target_os = "linux")]
-    /// Get the path for the vbox-img binary
-    pub fn vboximg_path(&self) -> std::path::PathBuf {
-        self.vboximg_path.clone().unwrap_or("vbox-img".into())
-    }
-
-    #[cfg(target_os = "windows")]
-    /// Get the path for the vbox-img binary
-    pub fn vboximg_path(&self) -> std::path::PathBuf {
-        self.vboximg_path
-            .clone()
-            .unwrap_or("C:\\Program Files\\Oracle\\VirtualBox\\vbox-img.exe".into())
     }
 
     #[cfg(target_os = "linux")]
@@ -804,6 +782,7 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
 
     cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
     cmakelist.push_str("project(doors-os)\n");
+    cmakelist.push_str("include(ExternalProject)\n");
     cmakelist.push_str("add_subdirectory(kernel)\n");
     cmakelist.push_str("add_subdirectory(user)\n");
 
@@ -821,6 +800,18 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
         kernel_binary_path.to_str().unwrap()
     ));
     cmakelist.push_str(")\n");
+
+    cmakelist.push_str("
+ExternalProject_Add(
+    bootloader
+    PREFIX \"bootloader\"
+    URL https://ftp.gnu.org/gnu/grub/grub-2.12.tar.gz
+    URL_HASH SHA512=029678d9363b5297c79f06fa9f65565986da329636debcd53dc875b727ba1cf4a8d4415915932c513379e6cab7c759bbb4e2bcb9757ece4e4e1b9ecdd4a0d8cf
+    CONFIGURE_COMMAND \"\"
+    BUILD_COMMAND \"\"
+    INSTALL_COMMAND \"\"
+)
+");
 
     kernel_cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
     kernel_cmakelist.push_str("project(doors-kernel)\n\n");
