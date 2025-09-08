@@ -82,7 +82,7 @@ These tips for windows to get gdb may be helpful.
 * `./bootstrap`
 * ``./configure --prefix=`pwd`/../grub-files``
 * `make install`
-* `../grub-files/bin/grub-mkimage -d ../grub-files/lib/grub/i386-pc -o ../grubcore.img -O i386-pc -p /boot/grub iso9660 biosdisk multiboot configfile`
+* `../grub-files/bin/grub-mkimage -d ../grub-files/lib/grub/i386-pc -o ../grubcore.img -O i386-pc -p /boot/grub iso9660 biosdisk multiboot2 configfile`
 * `mkdir ../iso`
 * `cat ../grub-files/lib/grub/i386-pc/cdboot.img ../grubcore.img > ../iso/grub-eltorito.img`
 * `make distclean`

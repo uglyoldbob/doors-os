@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.30", features = ["derive"] }
+enum_dispatch = "0.3.13"
 flate2 = "1.1.2"
 hadris-iso = "0.0.2"
+log = "0.4.28"
 simple_logger = "5.0.0"
 tar = "0.4.44"

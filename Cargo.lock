@@ -472,8 +472,10 @@ name = "imager"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "enum_dispatch",
  "flate2",
  "hadris-iso",
+ "log",
  "simple_logger",
  "tar",
 ]

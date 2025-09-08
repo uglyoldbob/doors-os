@@ -31,9 +31,10 @@ fn extract_grub2_prebuilt(path: &str) -> Result<(), std::io::Error> {
 /// Build the bootable iso file
 fn make_iso(iso_path: std::path::PathBuf) -> Result<std::fs::File, ()> {
     let options = FormatOptions::new()
+        .with_volume_name("TESTISO".to_string())
         .with_files(FileInput::from_fs(iso_path).map_err(|_| ())?)
         .with_level(FileInterchange::NonConformant)
-        .with_format_options(PartitionOptions::GPT)
+        .with_format_options(PartitionOptions::MBR)
         .with_boot_options(BootOptions {
             write_boot_catalogue: true,
             default: BootEntryOptions {
@@ -63,5 +64,9 @@ fn make_iso(iso_path: std::path::PathBuf) -> Result<std::fs::File, ()> {
 fn main() {
     let args = Args::parse();
     simple_logger::SimpleLogger::new().init().unwrap();
+    let i = iso9660::Iso9660Image::read_iso("./cd64.iso".into()).inspect_err(|e| log::error!("Failed to read iso: {}", e)).inspect(|_e| log::info!("Success reading iso file"));
+    if let Ok(i) = i {
+        i.write_to_file("./clone.iso".into()).unwrap();
+    }
     make_iso(args.iso_path).unwrap();
 }
