@@ -426,9 +426,13 @@ impl gdbstub::conn::ConnectionExt for OwnedDevice<Serial> {
 pub fn sync_run() {
     let mut target = DoorsTarget::new();
     loop {
-        let c = crate::kernel::SERIAL.take_device(1).unwrap();
-        let gdbstub = gdbstub::stub::GdbStub::new(c);
-        let _ = gdbstub.run_blocking::<GdbstubBlockingEventLoop>(&mut target);
+        if let Some(c) = crate::kernel::SERIAL.take_device(1) {
+            let gdbstub = gdbstub::stub::GdbStub::new(c);
+            let _ = gdbstub.run_blocking::<GdbstubBlockingEventLoop>(&mut target);
+        }
+        else {
+            break;
+        }
     }
 }
 

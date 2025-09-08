@@ -7,4 +7,5 @@ edition = "2024"
 clap = { version = "4.5.30", features = ["derive"] }
 flate2 = "1.1.2"
 hadris-iso = "0.0.2"
+simple_logger = "5.0.0"
 tar = "0.4.44"

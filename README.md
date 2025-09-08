@@ -72,3 +72,21 @@ These tips for windows to get gdb may be helpful.
 * pacman -Syu (until it is fully up to date)
 * pacman -S gdb
 * Add the (mingw path)/usr/bin to your environment variable PATH
+
+**Building grub2**
+
+* This will probably not work on windows, which is the reason for the prebuilt grub2 files in this repository.
+
+* Obtain the grub2 source code `git clone https://git.savannah.gnu.org/git/grub.git`
+* Navigate to the grub directory
+* `./bootstrap`
+* ``./configure --prefix=`pwd`/../grub-files``
+* `make install`
+* `../grub-files/bin/grub-mkimage -d ../grub-files/lib/grub/i386-pc -o ../grubcore.img -O i386-pc -p /boot/grub iso9660 biosdisk multiboot configfile`
+* `mkdir ../iso`
+* `cat ../grub-files/lib/grub/i386-pc/cdboot.img ../grubcore.img > ../iso/grub-eltorito.img`
+* `make distclean`
+* ``./configure --target=x86_64 --with-platform=efi --prefix=`pwd`/../grub-files``
+* `make install`
+* `cd ..`
+* `tar -czvf prebuilt-grub2.12.tar.gz ./grub-files`

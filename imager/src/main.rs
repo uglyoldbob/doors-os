@@ -1,12 +1,14 @@
 use clap::Parser;
+use flate2::read::GzDecoder;
 use hadris_iso::{
     BootEntryOptions, BootOptions, BootSectionOptions, EmulationType, FileInput, FileInterchange,
-    FormatOptions, IsoImage, PlatformId,
+    FormatOptions, IsoImage, PartitionOptions, PlatformId,
 };
-use std::path::PathBuf;
 use std::fs::File;
-use flate2::read::GzDecoder;
+use std::path::PathBuf;
 use tar::Archive;
+
+mod iso9660;
 
 /// Command line arguments for the tool
 #[derive(Parser, Debug)]
@@ -27,15 +29,16 @@ fn extract_grub2_prebuilt(path: &str) -> Result<(), std::io::Error> {
 }
 
 /// Build the bootable iso file
-fn make_iso(iso_path: std::path::PathBuf,) -> Result<std::fs::File, ()> {
+fn make_iso(iso_path: std::path::PathBuf) -> Result<std::fs::File, ()> {
     let options = FormatOptions::new()
         .with_files(FileInput::from_fs(iso_path).map_err(|_| ())?)
         .with_level(FileInterchange::NonConformant)
+        .with_format_options(PartitionOptions::GPT)
         .with_boot_options(BootOptions {
             write_boot_catalogue: true,
             default: BootEntryOptions {
-                boot_image_path: "boot.img".to_string(),
-                load_size: 4,
+                boot_image_path: "grub-eltorito.img".to_string(),
+                load_size: 0,
                 emulation: EmulationType::NoEmulation,
                 boot_info_table: true,
                 grub2_boot_info: true,
@@ -45,10 +48,10 @@ fn make_iso(iso_path: std::path::PathBuf,) -> Result<std::fs::File, ()> {
                     platform_id: PlatformId::UEFI,
                 },
                 BootEntryOptions {
-                    boot_image_path: "uefi-boot.img".to_string(),
+                    boot_image_path: "grub-eltorito.img".to_string(),
                     load_size: 0, // This means the size will be calculated
                     emulation: EmulationType::NoEmulation,
-                    boot_info_table: false,
+                    boot_info_table: true,
                     grub2_boot_info: true,
                 },
             )],
@@ -59,6 +62,6 @@ fn make_iso(iso_path: std::path::PathBuf,) -> Result<std::fs::File, ()> {
 
 fn main() {
     let args = Args::parse();
-    extract_grub2_prebuilt("./grub-2.12.tar.gz").inspect_err(|e| eprintln!("ERROR GZIP: {:?}", e)).unwrap();
-    make_iso(args.iso_path);
+    simple_logger::SimpleLogger::new().init().unwrap();
+    make_iso(args.iso_path).unwrap();
 }

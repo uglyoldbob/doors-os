@@ -382,14 +382,15 @@ impl DiskBuilderTrait for CdConfiguration {
         }
 
         if cfg!(target_os = "windows") {
-            cmakelists.push_str("\tCOMMAND cargo +nightly run --bin imager -- --iso-path=build/iso\n");
+            cmakelists
+                .push_str("\tCOMMAND cargo +nightly run --bin imager -- --iso-path=build/iso\n");
         /*
-            cmakelists.push_str(&format!(
-                "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
-                LocalConfiguration::escape_path(&local.vboximg_path()),
-                LocalConfiguration::escape_path(&common.output),
-                common.disk_label
-            )); */
+        cmakelists.push_str(&format!(
+            "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
+            LocalConfiguration::escape_path(&local.vboximg_path()),
+            LocalConfiguration::escape_path(&common.output),
+            common.disk_label
+        )); */
         } else if cfg!(target_os = "linux") {
             cmakelists.push_str(&format!(
                 "\tCOMMAND grub-mkrescue -o {} build/iso -- -volid \"{}\"\n",
