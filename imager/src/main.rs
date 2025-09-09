@@ -64,8 +64,13 @@ fn make_iso(iso_path: std::path::PathBuf) -> Result<std::fs::File, ()> {
 fn main() {
     let args = Args::parse();
     simple_logger::SimpleLogger::new().init().unwrap();
-    let i = iso9660::Iso9660Image::read_iso("./cd64.iso".into()).inspect_err(|e| log::error!("Failed to read iso: {}", e)).inspect(|_e| log::info!("Success reading iso file"));
+    let i = iso9660::Iso9660Image::read_iso("./cd64.iso".into())
+        .inspect_err(|e| log::error!("Failed to read iso: {}", e))
+        .inspect(|_e| log::info!("Success reading iso file"));
     if let Ok(i) = i {
+        for v in i.volume_descriptors() {
+            log::info!("Volume descriptor: {:?}", v);
+        }
         i.write_to_file("./clone.iso".into()).unwrap();
     }
     make_iso(args.iso_path).unwrap();

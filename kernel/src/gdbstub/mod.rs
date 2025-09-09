@@ -429,8 +429,7 @@ pub fn sync_run() {
         if let Some(c) = crate::kernel::SERIAL.take_device(1) {
             let gdbstub = gdbstub::stub::GdbStub::new(c);
             let _ = gdbstub.run_blocking::<GdbstubBlockingEventLoop>(&mut target);
-        }
-        else {
+        } else {
             break;
         }
     }
