@@ -1,7 +1,5 @@
 use std::io::{Read, Write};
 
-use hadris_iso::VolumeDescriptor;
-
 /// One of the classes of strings defined by is09660
 #[derive(Debug, Default)]
 struct Iso9660StringA(String);
@@ -115,7 +113,7 @@ impl Iso9660VolumeTrait for BootVolume {
 }
 
 #[derive(Debug, Default)]
-pub struct Iso9660RootDirectoryRecord {
+pub struct Iso9660DirectoryRecord {
     /// Length of the record in bytes
     length: u8,
     extended_attribute_length: u8,
@@ -136,7 +134,7 @@ pub struct Iso9660RootDirectoryRecord {
     name: Iso9660StringD,
 }
 
-impl Iso9660RootDirectoryRecord {
+impl Iso9660DirectoryRecord {
     /// Write the contents of Self to the given buffer, returning the actual length used
     fn get_contents(&self, buffer: &mut [u8]) -> usize {
         let mut l = 33 + self.name.0.len();
@@ -169,7 +167,7 @@ impl Iso9660RootDirectoryRecord {
     }
 }
 
-impl TryFrom<&[u8]> for Iso9660RootDirectoryRecord {
+impl TryFrom<&[u8]> for Iso9660DirectoryRecord {
     type Error = String;
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         if value.len() < 34 {
@@ -274,6 +272,132 @@ impl TryFrom<&[u8]> for Iso9660Datetime {
     }
 }
 
+struct PathTable {
+    data: Vec<u8>,
+    /// Is this path table stored in big endian format?
+    be: bool,
+}
+
+impl PathTable {
+    fn iter(&self) -> PathTableIterator<'_> {
+        PathTableIterator {
+            i: 0,
+            data: &self.data,
+            be: self.be,
+        }
+    }
+}
+
+struct PathTableIterator<'a> {
+    i: usize,
+    data: &'a [u8],
+    be: bool,
+}
+
+impl<'a> Iterator for PathTableIterator<'a> {
+    type Item = PathTableEntry;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i < self.data.len() {
+            let p = if self.be {
+                PathTableEntry::from_be_data(&self.data[self.i..])
+            } else {
+                PathTableEntry::from_le_data(&self.data[self.i..])
+            };
+            if let Ok(p) = &p {
+                self.i += p.length();
+            }
+            if let Err(e) = &p {
+                log::error!("Error decoding path table entry: {}", e);
+            }
+            p.ok()
+        } else {
+            None
+        }
+    }
+}
+
+/// An entry in the path table
+#[derive(Debug)]
+struct PathTableEntry {
+    name_length: u8,
+    extended_attribute_length: u8,
+    location_lba: u32,
+    parent_dir: u16,
+    name: Iso9660StringD,
+}
+
+impl PathTableEntry {
+    /// Calculate the length in bytes
+    fn length(&self) -> usize {
+        let mut len = 8;
+        len += self.name_length as usize;
+        if (len % 2) == 1 {
+            len += 1;
+        }
+        len
+    }
+
+    fn directory_entry_location(&self) -> usize {
+        self.location_lba as usize * 2048
+    }
+
+    fn write_data(&self, buf: &mut [u8], be: bool) {
+        buf[0] = self.name_length;
+        buf[1] = self.extended_attribute_length;
+        if be {
+            buf[2..6].copy_from_slice(&self.location_lba.to_be_bytes());
+            buf[6..8].copy_from_slice(&self.parent_dir.to_be_bytes());
+        } else {
+            buf[2..6].copy_from_slice(&self.location_lba.to_le_bytes());
+            buf[6..8].copy_from_slice(&self.parent_dir.to_le_bytes());
+        }
+    }
+
+    /// Build a Self from the buffer holding little endian values
+    fn from_le_data(buf: &[u8]) -> Result<Self, String> {
+        let name_length = buf[0];
+        let name = if name_length == 0 {
+            String::new()
+        } else {
+            let s = str::from_utf8(buf[8..8 + name_length as usize].trim_ascii_end())
+                .map_err(|e| format!("Invalid char in filename: {:?}", e))?;
+            s.trim_end_matches(char::from(0)).to_string()
+        };
+        Ok(Self {
+            name_length,
+            extended_attribute_length: buf[1],
+            location_lba: u32::from_le_bytes(buf[2..6].try_into().unwrap()),
+            parent_dir: u16::from_le_bytes(buf[6..8].try_into().unwrap()),
+            name: name
+                .as_str()
+                .try_into()
+                .map_err(|e| format!("Invalid char in filename {}", e))?,
+        })
+    }
+
+    /// Build a Self from the buffer holding big endian values
+    fn from_be_data(buf: &[u8]) -> Result<Self, String> {
+        let name_length = buf[0];
+        let name = if name_length == 0 {
+            String::new()
+        } else {
+            let s = str::from_utf8(buf[8..8 + name_length as usize].trim_ascii_end())
+                .map_err(|e| format!("Invalid char in filename: {:?}", e))?;
+            s.trim_end_matches(char::from(0)).to_string()
+        };
+        Ok(Self {
+            name_length,
+            extended_attribute_length: buf[1],
+            location_lba: u32::from_be_bytes(buf[2..6].try_into().unwrap()),
+            parent_dir: u16::from_be_bytes(buf[6..8].try_into().unwrap()),
+            name: name
+                .as_str()
+                .try_into()
+                .map_err(|e| format!("Invalid char in filename {}", e))?,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct PrimaryVolume {
     /// The system identifier
@@ -295,7 +419,7 @@ pub struct PrimaryVolume {
     /// optional path table location in lba form
     optional_path_table_location: u32,
     /// The root directory
-    root: Iso9660RootDirectoryRecord,
+    root: Iso9660DirectoryRecord,
     /// volume set id
     volume_set_id: Iso9660StringD,
     /// publisher id
@@ -320,6 +444,8 @@ pub struct PrimaryVolume {
     beginning: Iso9660Datetime,
     /// application specific data
     application_specific: [u8; 512],
+    /// Path table
+    path_table: Vec<PathTableEntry>,
     /// The volume data
     volume_data: Vec<u8>,
 }
@@ -385,6 +511,7 @@ impl TryFrom<&[u8; 2048]> for PrimaryVolume {
                 .try_into()
                 .map_err(|e| format!("Invalid creation date time: {:?}", e))?,
             application_specific: value[883..1395].try_into().unwrap(),
+            path_table: Vec::new(),
             volume_data: Vec::new(),
         })
     }
@@ -402,7 +529,7 @@ impl Default for PrimaryVolume {
             path_table_size: 1,
             path_table_location: 0,
             optional_path_table_location: 0,
-            root: Iso9660RootDirectoryRecord::default(),
+            root: Iso9660DirectoryRecord::default(),
             volume_set_id: Default::default(),
             publisher: Default::default(),
             data_preparer: Default::default(),
@@ -415,6 +542,7 @@ impl Default for PrimaryVolume {
             expiration: Default::default(),
             beginning: Default::default(),
             application_specific: [0; 512],
+            path_table: Vec::new(),
             volume_data: Vec::new(),
         }
     }
@@ -461,8 +589,26 @@ impl Iso9660VolumeTrait for PrimaryVolume {
         descriptor[883..1395].copy_from_slice(&self.application_specific);
     }
 
-    fn read_volume_data(&self, _iso: &[u8]) {
-        todo!();
+    fn read_volume_data(&mut self, iso: &[u8]) {
+        let pt_start = self.path_table_location as usize * 2048;
+        let pt_size = self.path_table_size as usize;
+        let path_table_data = iso[pt_start..pt_start + pt_size].to_vec();
+        let pt = PathTable {
+            data: path_table_data,
+            be: false,
+        };
+        let pt: Vec<PathTableEntry> = pt.iter().collect();
+        log::info!("Showing path table entries");
+        for i in pt.iter() {
+            log::info!("Path table entry: len {} {:02x?}", i.length(), i);
+            let lba = i.directory_entry_location();
+            let size = iso[lba];
+            log::info!("Directory size is {} at {:x}", size, lba);
+            let dir_contents = &iso[lba..lba + size as usize];
+            let d: Iso9660DirectoryRecord = dir_contents.try_into().unwrap();
+            log::info!("Directory record is {:?}", d);
+        }
+        self.path_table = pt;
     }
 }
 
@@ -524,8 +670,8 @@ impl Iso9660VolumeTrait for VolumeTerminator {
 trait Iso9660VolumeTrait {
     /// Write the contents of the volume descriptor to the specified buffer
     fn write_descriptor(&self, descriptor: &mut [u8; 2048]);
-    /// Read the volume contents if applicable
-    fn read_volume_data(&self, _iso: &[u8]) {}
+    /// Read the volume contents if applicable, storing them as necessary
+    fn read_volume_data(&mut self, _iso: &[u8]) {}
     /// Get the contents of the volume, if applicable
     fn get_volume_data(&self) -> Option<Vec<u8>> {
         None
@@ -582,7 +728,7 @@ impl Iso9660Image {
             let mut descriptor = [0u8; 2048];
             s.read_exact(&mut descriptor)
                 .map_err(|e| format!("Unable to read volume descriptor: {}", e))?;
-            let p = Iso9660Volume::try_from(&descriptor)
+            let mut p = Iso9660Volume::try_from(&descriptor)
                 .inspect_err(|e| log::error!("Invalid volume descriptor: {}", e))?;
             p.read_volume_data(b);
             if let Iso9660Volume::Terminator(_) = &p {
