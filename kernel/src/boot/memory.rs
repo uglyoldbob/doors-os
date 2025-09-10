@@ -1,6 +1,26 @@
 //! Generic memory code (to be included from architecture specific memory code and re-exported)
 
+use core::mem::MaybeUninit;
+
 use alloc::alloc::Allocator;
+
+/// Used for indicating memory is virtual
+pub struct VirtualAllocated;
+
+/// Used for indicating memory is physical
+pub struct PhysicalAllocated;
+
+/// Represents a chunk of virtual memory
+pub struct VirtualMemory<T> {
+    /// The data being stored
+    data: MaybeUninit<T>,
+}
+
+/// Represents a chunk of physical memory
+pub struct PhysicalMemory<T> {
+    /// The data being stored
+    data: MaybeUninit<T>,
+}
 
 /// A struct that manages allocation and deallocation of pci memory
 pub struct PciMemory {
