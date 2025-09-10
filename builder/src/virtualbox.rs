@@ -25,7 +25,18 @@ impl super::EmulationTrait for VirtualBox {
         local: &super::LocalConfiguration,
         s: std::path::PathBuf,
     ) {
+
         let _ = std::fs::remove_file("./doors-os-64/doors-os-64.vbox");
+        std::process::Command::new(local.vboxmanage_path())
+            .args([
+                "unregistervm",
+                "doors-os-64",
+                "--delete",
+            ])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
         std::process::Command::new(local.vboxmanage_path())
             .args([
                 "createvm",
