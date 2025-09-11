@@ -529,6 +529,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         use object::Object;
         let text = b.section_by_name(".text");
         use object::ObjectSection;
+        PAGE_ALLOCATOR.sync_lock().debug();
         if let Some(text) = text {
             if text.address() == 0x500000 {
                 if let Ok(data) = text.data() {

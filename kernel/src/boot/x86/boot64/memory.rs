@@ -1,8 +1,8 @@
 //! This module exists to cover memory management for x64 processors.
 
-use core::alloc::Allocator;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::{alloc::Allocator, ops::Deref};
 
 use alloc::{boxed::Box, vec::Vec};
 use multiboot2::{MemoryAreaType, MemoryMapTag};
@@ -10,7 +10,7 @@ use multiboot2::{MemoryAreaType, MemoryMapTag};
 #[path = "../../memory.rs"]
 pub mod generic_memory;
 
-use crate::Locked;
+use crate::{address, Locked};
 
 extern "C" {
     /// A page table for the system to boot with.
@@ -28,7 +28,52 @@ struct BumpAllocation {
 
 /// A bump allocator for the virtual memory address space of the kernel.
 /// It assumes it starts at a given address and own all memory after that point.
-pub struct BumpAllocator {
+pub struct BumpAllocator(Locked<BumpAllocatorInner>);
+
+impl BumpAllocator {
+    /// Create a new bump allocator, starting at the specified address
+    pub const fn new(addr: usize) -> Self {
+        Self(Locked::new(BumpAllocatorInner::new(addr)))
+    }
+
+    /// Allocate some memory not backed by ram, normally used for allocating memory for memory mapped devices like pci bar space
+    pub fn allocate_nonram_memory(
+        &mut self,
+        size: usize,
+        alignment: usize,
+    ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        self.0.sync_lock().allocate_nonram_memory(size, alignment)
+    }
+
+    /// Deallocate memory allocated with [allocate_nonram_memory]
+    fn deallocate_nonram_memory(
+        &mut self,
+        ptr: core::ptr::NonNull<u8>,
+        layout: core::alloc::Layout,
+    ) {
+        self.0.sync_lock().deallocate_nonram_memory(ptr, layout);
+    }
+
+    /// Relocate the bump allocator to a new address, but only if no addresses are currently out
+    pub fn relocate(&mut self, newstart: usize, newend: usize) {
+        self.0.sync_lock().relocate(newstart, newend);
+    }
+
+    /// Indicates that the bump allocator should start allocating 2mb pages as required
+    pub fn start_allocating(&mut self, pt: usize) {
+        self.0.sync_lock().start_allocating(pt);
+    }
+
+    /// Indicates that the bump allocator should no longer allocate large pages.
+    /// It will consider the current end to the end of the current large page to automatically be used.
+    pub fn stop_allocating(&mut self, mask: usize) {
+        self.0.sync_lock().stop_allocating(mask);
+    }
+}
+
+/// A bump allocator for the virtual memory address space of the kernel.
+/// It assumes it starts at a given address and own all memory after that point.
+pub struct BumpAllocatorInner {
     /// The start address for the memory allocation area used by the bump allocator
     start: usize,
     /// The last byte of memory currently allocated by the allocator
@@ -39,7 +84,7 @@ pub struct BumpAllocator {
     allocate_pages: Option<&'static mut PageTable>,
 }
 
-impl BumpAllocator {
+impl BumpAllocatorInner {
     /// Create a new bump allocator, starting at the specified address
     pub const fn new(addr: usize) -> Self {
         Self {
@@ -106,7 +151,7 @@ impl BumpAllocator {
         }
     }
 
-    /// Add a bumpallocation to self, returning both the old and new end addresses for this allocator
+    /// Add a bump allocation to self, returning both the old and new end addresses for this allocator
     fn add_bump_allocation(&mut self, ba: BumpAllocation) -> (usize, usize) {
         for i in 1..5 {
             self.last[i] = self.last[i - 1];
@@ -188,6 +233,36 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocator> {
     fn allocate(
         &self,
         layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+        let alloc = self.sync_lock();
+        alloc.allocate(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let alloc = self.sync_lock();
+        alloc.deallocate(ptr, layout);
+    }
+}
+
+unsafe impl core::alloc::Allocator for BumpAllocator {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+        let mut alloc = self.0.sync_lock();
+        alloc.run_allocation(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let mut alloc = self.0.sync_lock();
+        alloc.run_deallocation(ptr, layout);
+    }
+}
+
+unsafe impl core::alloc::Allocator for Locked<BumpAllocatorInner> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
         let mut alloc = self.sync_lock();
         alloc.run_allocation(layout)
@@ -213,6 +288,10 @@ pub struct Bitmap<'a, T> {
 
 impl<'a, T> Bitmap<'a, T> {
     /// Create a new bitmap that covers a block of contiguous elements.
+    /// # Arguments
+    /// * start - The physical address to start allocations
+    /// * len - The length of the area to allocate from
+    /// * mm - The memory allocator to store the vec of available pages
     fn initialize(start: usize, len: usize, mm: &'a Locked<BumpAllocator>) -> Self {
         let num_pages = len / core::mem::size_of::<T>();
         let num_words = (num_pages + (usize::BITS - 1) as usize) / usize::BITS as usize;
@@ -293,6 +372,21 @@ pub struct Page {
     _data: [u8; 4096],
 }
 
+impl Page {
+    /// Create a pattern of alternating bits
+    pub fn alternating_bits() -> Self {
+        Self {
+            _data: [0xaa; 4096],
+        }
+    }
+}
+
+impl Default for Page {
+    fn default() -> Self {
+        Self { _data: [0; 4096] }
+    }
+}
+
 #[repr(align(2097152))]
 /// A 2 megabyte large page
 pub struct Page2Mb {
@@ -306,7 +400,7 @@ pub struct SimpleMemoryManager<'a> {
     pub bitmaps: Option<Vec<Bitmap<'a, Page>, &'a Locked<BumpAllocator>>>,
     /// The memory manager to get virtual memory, used to allocate space for the bitmaps
     mm: &'a crate::Locked<BumpAllocator>,
-    /// The bump allocator for any additional memory for the system
+    /// The bump allocator for any additional (non-ram) memory for the system, such as pci memory
     extra_mem: BumpAllocator,
 }
 
@@ -317,6 +411,46 @@ impl<'a> SimpleMemoryManager<'a> {
             bitmaps: None,
             mm,
             extra_mem: BumpAllocator::new(0x100000),
+        }
+    }
+
+    /// Temporarily assigns a virtual page to a chunk of physical memory, calls a closure with that virtual page, returns a result
+    pub fn new_physical_memory_with_temporary_mapping<
+        T,
+        U,
+        F: FnMut(Box<MaybeUninit<U>, &Locked<SimpleMemoryManager>>, &mut U) -> T,
+    >(
+        &mut self,
+        phys: Box<MaybeUninit<U>, &Locked<SimpleMemoryManager>>,
+        mut f: F,
+    ) -> T {
+        let va = self.mm.sync_lock();
+        let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
+        crate::VGA.print_str(&alloc::format!(
+            "Temporary vmap is at {:p}\r\n",
+            tvm.as_ptr()
+        ));
+        crate::VGA.print_str(&alloc::format!(
+            "Temporary pmap is at {:p}\r\n",
+            phys.as_ptr()
+        ));
+        f(phys, unsafe { tvm.assume_init_mut() })
+    }
+
+    /// print some debug information about the memory struct
+    pub fn debug(&self) {
+        if let Some(a1) = &self.bitmaps {
+            let a1a = a1.as_ptr();
+            crate::VGA.print_str(&alloc::format!("Bitmaps addr is {:p}\r\n", a1a));
+            let end = unsafe { &super::super::END_OF_KERNEL } as *const u8 as usize;
+            crate::VGA.print_str(&alloc::format!("End of kernel addr is {:x}\r\n", end));
+            for bm in a1 {
+                crate::VGA.print_str(&alloc::format!(
+                    "block from {:x} size {:x}\r\n",
+                    bm.start,
+                    bm.num_blocks * 4096
+                ));
+            }
         }
     }
 
@@ -354,6 +488,7 @@ impl<'a> SimpleMemoryManager<'a> {
     /// Assumes memory currently allocated by the bump allocator, as ram currently in use and marks it appropriately
     pub fn set_kernel_memory_used(&mut self) {
         let mml = self.mm.sync_lock();
+        let mml = mml.0.sync_lock();
 
         if let Some(bitmaps) = &mut self.bitmaps {
             for i in (mml.start..mml.end).step_by(core::mem::size_of::<Bitmap<Page>>()) {
@@ -368,7 +503,7 @@ impl<'a> SimpleMemoryManager<'a> {
         }
     }
 
-    /// Adds a memory area to the memory manager
+    /// Adds a physical memory area to the memory manager. Initializes a new Bitmap in the internal list of bitmaps.
     pub fn add_memory_area(&mut self, ma: &multiboot2::MemoryArea) {
         let mut addr = ma.start_address() as usize;
         let mut size = ma.size() as usize;
@@ -394,12 +529,8 @@ impl<'a> SimpleMemoryManager<'a> {
         self.extra_mem.relocate(highest_address, highest_address);
     }
 
-    /// Peek at the next available memory address
-    pub fn peek(&mut self) -> usize {
-        self.extra_mem.peek()
-    }
-
-    /// Initialize an instance of a physical memory manager
+    /// Initialize an instance of a physical memory manager.
+    /// This sets up the internal bitmap based on the number of memory segments that are available.
     pub fn init(&mut self, d: &MemoryMapTag) {
         let avail = d
             .memory_areas()
@@ -584,12 +715,34 @@ impl<'a> PagingTableManager<'a> {
     }
 
     /// Build a new set of page tables, keeping the existing kernel mappings
-    pub fn new_table(&self) -> Self {
+    pub fn new_table(&mut self) -> Self {
         let a: Box<MaybeUninit<Page>, &Locked<SimpleMemoryManager>> = Box::new_uninit_in(self.mm);
+        let phys_cr3 = {
+            let phys =
+                Box::<Page, &Locked<SimpleMemoryManager>>::new_uninit_in(&super::PAGE_ALLOCATOR);
+            let mut pa = super::PAGE_ALLOCATOR.sync_lock();
+            pa.new_physical_memory_with_temporary_mapping(phys, |phys, vm| {
+                if self
+                    .map_addresses_read_write(
+                        address(vm),
+                        phys.as_ptr() as usize,
+                        core::mem::size_of::<Page>(),
+                    )
+                    .is_ok()
+                {
+                    *vm = Page::default();
+                    self.unmap_mapped_pages(address(vm), core::mem::size_of::<Page>());
+                }
+                let p = Box::<MaybeUninit<Page>, &Locked<SimpleMemoryManager>>::leak(phys);
+                p.as_ptr() as usize
+            })
+        };
+
         let address = crate::address(unsafe { a.as_ref().assume_init_ref() });
         crate::VGA.print_str(&alloc::format!(
-            "BUILD PAGE TABLES: new page physical = {:x?}\r\n",
-            address
+            "BUILD PAGE TABLES: new page physical = {:x?} {:x}\r\n",
+            address,
+            phys_cr3
         ));
         let mut mm = self.mm.sync_lock();
         let pml4_window = mm.get_complete_virtual_page();

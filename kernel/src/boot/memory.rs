@@ -1,25 +1,37 @@
 //! Generic memory code (to be included from architecture specific memory code and re-exported)
 
-use core::mem::MaybeUninit;
+use super::BumpAllocator;
 
-use alloc::alloc::Allocator;
+use core::{marker::PhantomData, mem::MaybeUninit};
 
-/// Used for indicating memory is virtual
-pub struct VirtualAllocated;
+use alloc::{alloc::Allocator, boxed::Box};
 
-/// Used for indicating memory is physical
-pub struct PhysicalAllocated;
-
-/// Represents a chunk of virtual memory
-pub struct VirtualMemory<T> {
-    /// The data being stored
-    data: MaybeUninit<T>,
+/// A destructure form of physical memory
+pub struct DestructuredPhysicalMemory<T> {
+    /// Start address
+    addr: usize,
+    /// phantom to pretend this holds a type T\
+    phantom: PhantomData<T>,
 }
 
-/// Represents a chunk of physical memory
-pub struct PhysicalMemory<T> {
-    /// The data being stored
-    data: MaybeUninit<T>,
+impl<T> DestructuredPhysicalMemory<T> {
+    /// Rebuild the original box with physical memory.
+    /// # Safety - You must use the same allocator as originally used to create the box.
+    pub unsafe fn rebuild(self, mm: &BumpAllocator) -> Box<MaybeUninit<T>, &BumpAllocator> {
+        let raw = self.addr as *mut MaybeUninit<T>;
+        Box::<MaybeUninit<T>, &BumpAllocator>::from_raw_in(raw, mm)
+    }
+}
+
+impl<T> From<Box<MaybeUninit<T>, &BumpAllocator>> for DestructuredPhysicalMemory<T> {
+    fn from(value: Box<MaybeUninit<T>, &BumpAllocator>) -> Self {
+        let a = Box::leak(value);
+        let a = a.as_mut_ptr() as usize;
+        DestructuredPhysicalMemory {
+            addr: a,
+            phantom: PhantomData,
+        }
+    }
 }
 
 /// A struct that manages allocation and deallocation of pci memory
