@@ -293,8 +293,14 @@ impl Scheduler {
         }
     }
 
+    /// Spawn a new thread
+    pub fn spawn_thread(&self, t: fn()) {
+        let task = Task::new(t);
+        self.add_task(task);
+    }
+
     /// Add a task
-    pub fn add_task(&self, task: Task) -> TaskId {
+    fn add_task(&self, task: Task) -> TaskId {
         let mut this = self.i.0.sync_access();
         let tid = TaskId::default();
         this.local_tasks.push((tid, task));

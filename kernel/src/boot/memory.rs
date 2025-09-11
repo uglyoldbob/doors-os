@@ -1,5 +1,7 @@
 //! Generic memory code (to be included from architecture specific memory code and re-exported)
 
+use crate::Locked;
+
 use super::BumpAllocator;
 
 use core::{marker::PhantomData, mem::MaybeUninit};
@@ -10,11 +12,16 @@ use alloc::{alloc::Allocator, boxed::Box};
 pub struct DestructuredPhysicalMemory<T> {
     /// Start address
     addr: usize,
-    /// phantom to pretend this holds a type T\
+    /// phantom to pretend this holds a type T
     phantom: PhantomData<T>,
 }
 
 impl<T> DestructuredPhysicalMemory<T> {
+    /// Returns the physical address
+    pub fn address(&self) -> usize {
+        self.addr
+    }
+
     /// Rebuild the original box with physical memory.
     /// # Safety - You must use the same allocator as originally used to create the box.
     pub unsafe fn rebuild(self, mm: &BumpAllocator) -> Box<MaybeUninit<T>, &BumpAllocator> {
@@ -23,8 +30,10 @@ impl<T> DestructuredPhysicalMemory<T> {
     }
 }
 
-impl<T> From<Box<MaybeUninit<T>, &BumpAllocator>> for DestructuredPhysicalMemory<T> {
-    fn from(value: Box<MaybeUninit<T>, &BumpAllocator>) -> Self {
+impl<'a, T> From<Box<MaybeUninit<T>, &Locked<super::SimpleMemoryManager<'a>>>>
+    for DestructuredPhysicalMemory<T>
+{
+    fn from(value: Box<MaybeUninit<T>, &Locked<super::SimpleMemoryManager<'a>>>) -> Self {
         let a = Box::leak(value);
         let a = a.as_mut_ptr() as usize;
         DestructuredPhysicalMemory {

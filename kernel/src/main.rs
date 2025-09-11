@@ -165,14 +165,17 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
-            let t = scheduler::Task::new(test_function);
-            scheduler::SCHEDULER.read().as_ref().unwrap().add_task(t);
+            scheduler::SCHEDULER
+                .read()
+                .as_ref()
+                .unwrap()
+                .spawn_thread(test_function);
             if doors_macros::config_check_equals!(gdbstub, "true") {
                 scheduler::SCHEDULER
                     .read()
                     .as_ref()
                     .unwrap()
-                    .add_task(scheduler::Task::new(gdbstub::sync_run));
+                    .spawn_thread(gdbstub::sync_run);
             }
             let main_stack = sys.main_stack();
             scheduler::SCHEDULER
@@ -187,7 +190,7 @@ fn main() -> ! {
                 .read()
                 .as_ref()
                 .unwrap()
-                .add_task(scheduler::Task::new(kernel_testing_thread));
+                .spawn_thread(kernel_testing_thread);
         }
         {
             let mut d = kernel::DISPLAYS.sync_lock();
@@ -215,7 +218,7 @@ fn main() -> ! {
                     .read()
                     .as_ref()
                     .unwrap()
-                    .add_task(scheduler::Task::new(serial_test));
+                    .spawn_thread(serial_test);
             } else {
                 executor
                     .spawn(async {

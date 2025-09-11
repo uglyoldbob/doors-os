@@ -1,5 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
+use crate::boot::x86::memory::HeapManagerUserProcess;
+use crate::boot::x86::memory::UserProcessAllocator;
 use crate::kernel;
 use crate::Locked;
 use crate::LockedArc;
@@ -436,6 +438,10 @@ pub struct X86System<'a> {
     stack_start: usize,
 }
 
+fn user_thread() {
+    crate::VGA.print_str("A user process stub function is running\r\n");
+}
+
 impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     fn enable_interrupts(&self) {
         x86_64::instructions::interrupts::enable();
@@ -533,7 +539,19 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         if let Some(text) = text {
             if text.address() == 0x500000 {
                 if let Ok(data) = text.data() {
+                    PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
+                    let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
+                        &PAGING_MANAGER,
+                        0x500000,
+                    ));
+                    PAGE_ALLOCATOR.debug();
+                    crate::VGA.print_str("About to spawn user thread\r\n");
+                    crate::scheduler::SCHEDULER
+                        .read()
+                        .as_ref()
+                        .unwrap()
+                        .spawn_thread(user_thread);
                     crate::VGA.print_str("GOT USER BINARY TEXT data\r\n");
                 }
             }

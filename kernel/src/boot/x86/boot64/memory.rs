@@ -6,11 +6,12 @@ use core::{alloc::Allocator, ops::Deref};
 
 use alloc::{boxed::Box, vec::Vec};
 use multiboot2::{MemoryAreaType, MemoryMapTag};
+use x86_64::registers::control::Cr3Flags;
 
 #[path = "../../memory.rs"]
 pub mod generic_memory;
 
-use crate::{address, Locked};
+use crate::{address, DestructuredPhysicalMemory, Locked};
 
 extern "C" {
     /// A page table for the system to boot with.
@@ -316,6 +317,20 @@ impl<'a, T> Bitmap<'a, T> {
         s
     }
 
+    /// Count the number of free blocks
+    fn num_free_blocks(&self) -> usize {
+        let mut c = 0;
+        for i in 0..self.num_blocks {
+            let index = i / usize::BITS as usize;
+            let offset = i % usize::BITS as usize;
+            let val = self.blocks_free[index] & 1 << offset;
+            if (val != 0) {
+                c += 1;
+            }
+        }
+        c
+    }
+
     /// Used to steal a block of memory from the physical memory manager
     fn steal_block(&mut self, addr: core::ptr::NonNull<u8>) {
         let addr = addr.as_ptr() as usize;
@@ -404,27 +419,42 @@ pub struct SimpleMemoryManager<'a> {
     extra_mem: BumpAllocator,
 }
 
-impl<'a> SimpleMemoryManager<'a> {
-    /// Create a new instance of the physical memory manager.
-    pub const fn new(mm: &'a crate::Locked<BumpAllocator>) -> Self {
-        Self {
-            bitmaps: None,
-            mm,
-            extra_mem: BumpAllocator::new(0x100000),
-        }
+impl<'a> Locked<SimpleMemoryManager<'a>> {
+    /// Do some debugging prints of the memory manager
+    pub fn debug(&self) {
+        let this = self.sync_lock();
+        this.debug();
     }
 
     /// Temporarily assigns a virtual page to a chunk of physical memory, calls a closure with that virtual page, returns a result
-    pub fn new_physical_memory_with_temporary_mapping<
+    pub fn modify_physical_address_with_temporary_mapping<T, U, F: FnMut(usize, &mut U) -> T>(
+        &self,
+        addr: usize,
+        mut f: F,
+    ) -> T {
+        let this = self.sync_lock();
+        let va = this.mm.sync_lock();
+        let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
+        crate::VGA.print_str(&alloc::format!(
+            "Temporary vmap is at {:p}\r\n",
+            tvm.as_ptr()
+        ));
+        crate::VGA.print_str(&alloc::format!("Temporary pmap is at {:x}\r\n", addr));
+        f(addr, unsafe { tvm.assume_init_mut() })
+    }
+
+    /// Temporarily assigns a virtual page to a chunk of physical memory, calls a closure with that virtual page, returns a result
+    pub fn modify_physical_memory_with_temporary_mapping<
         T,
         U,
         F: FnMut(Box<MaybeUninit<U>, &Locked<SimpleMemoryManager>>, &mut U) -> T,
     >(
-        &mut self,
+        &self,
         phys: Box<MaybeUninit<U>, &Locked<SimpleMemoryManager>>,
         mut f: F,
     ) -> T {
-        let va = self.mm.sync_lock();
+        let this = self.sync_lock();
+        let va = this.mm.sync_lock();
         let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
         crate::VGA.print_str(&alloc::format!(
             "Temporary vmap is at {:p}\r\n",
@@ -436,6 +466,17 @@ impl<'a> SimpleMemoryManager<'a> {
         ));
         f(phys, unsafe { tvm.assume_init_mut() })
     }
+}
+
+impl<'a> SimpleMemoryManager<'a> {
+    /// Create a new instance of the physical memory manager.
+    pub const fn new(mm: &'a crate::Locked<BumpAllocator>) -> Self {
+        Self {
+            bitmaps: None,
+            mm,
+            extra_mem: BumpAllocator::new(0x100000),
+        }
+    }
 
     /// print some debug information about the memory struct
     pub fn debug(&self) {
@@ -444,13 +485,19 @@ impl<'a> SimpleMemoryManager<'a> {
             crate::VGA.print_str(&alloc::format!("Bitmaps addr is {:p}\r\n", a1a));
             let end = unsafe { &super::super::END_OF_KERNEL } as *const u8 as usize;
             crate::VGA.print_str(&alloc::format!("End of kernel addr is {:x}\r\n", end));
+            let mut total_unused_pages = 0;
             for bm in a1 {
+                total_unused_pages += bm.num_free_blocks();
                 crate::VGA.print_str(&alloc::format!(
                     "block from {:x} size {:x}\r\n",
                     bm.start,
                     bm.num_blocks * 4096
                 ));
             }
+            crate::VGA.print_str(&alloc::format!(
+                "Num free pages is {}\r\n",
+                total_unused_pages
+            ));
         }
     }
 
@@ -636,6 +683,11 @@ impl PageTable {
         Self { entries: [0; 512] }
     }
 
+    /// Sets the entry as present with the specified address
+    fn set_entry(&mut self, index: usize, addr: usize) {
+        self.entries[index] = addr as u64 | 3;
+    }
+
     /// Returns an address if the entry is marked present
     fn get_entry(&self, index: usize) -> Option<u64> {
         let d = self.entries[index];
@@ -699,6 +751,8 @@ pub struct PagingTableManager<'a> {
     mm: &'a crate::Locked<SimpleMemoryManager<'a>>,
     /// The mask for physical addresses
     physical_mask: usize,
+    /// The cr3 value for this paging table
+    cr3: usize,
 }
 
 impl<'a> PagingTableManager<'a> {
@@ -711,30 +765,59 @@ impl<'a> PagingTableManager<'a> {
             pt1: MaybeUninit::uninit(),
             mm,
             physical_mask: !0,
+            cr3: 0,
+        }
+    }
+
+    /// Copy the kernel map from another paging table into this one.
+    /// Other must the the main kernel paging table
+    fn copy_kernel_map(&mut self, other: &mut Self) {
+        other.setup_cache(0);
+        let table = unsafe { other.pt4.assume_init_ref() };
+        let a = table.table.get_entry(0);
+        if let Some(a) = a {
+            //a is the address of the third level page table for the kernel to copy
+            super::PAGE_ALLOCATOR
+                .modify_physical_address_with_temporary_mapping::<_, PageTable, _>(
+                    self.cr3,
+                    |phys, vm| {
+                        if other
+                            .map_addresses_read_write(
+                                address(vm),
+                                phys,
+                                core::mem::size_of::<PageTable>(),
+                            )
+                            .is_ok()
+                        {
+                            vm.set_entry(0, a as usize);
+                        }
+                    },
+                );
         }
     }
 
     /// Build a new set of page tables, keeping the existing kernel mappings
     pub fn new_table(&mut self) -> Self {
-        let a: Box<MaybeUninit<Page>, &Locked<SimpleMemoryManager>> = Box::new_uninit_in(self.mm);
+        let a: Box<MaybeUninit<PageTable>, &Locked<SimpleMemoryManager>> =
+            Box::new_uninit_in(self.mm);
         let phys_cr3 = {
-            let phys =
-                Box::<Page, &Locked<SimpleMemoryManager>>::new_uninit_in(&super::PAGE_ALLOCATOR);
-            let mut pa = super::PAGE_ALLOCATOR.sync_lock();
-            pa.new_physical_memory_with_temporary_mapping(phys, |phys, vm| {
+            let phys = Box::<PageTable, &Locked<SimpleMemoryManager>>::new_uninit_in(
+                &super::PAGE_ALLOCATOR,
+            );
+            super::PAGE_ALLOCATOR.modify_physical_memory_with_temporary_mapping(phys, |phys, vm| {
                 if self
                     .map_addresses_read_write(
                         address(vm),
                         phys.as_ptr() as usize,
-                        core::mem::size_of::<Page>(),
+                        core::mem::size_of::<PageTable>(),
                     )
                     .is_ok()
                 {
-                    *vm = Page::default();
-                    self.unmap_mapped_pages(address(vm), core::mem::size_of::<Page>());
+                    *vm = PageTable::new();
+                    self.unmap_mapped_pages(address(vm), core::mem::size_of::<PageTable>());
                 }
-                let p = Box::<MaybeUninit<Page>, &Locked<SimpleMemoryManager>>::leak(phys);
-                p.as_ptr() as usize
+                let p: DestructuredPhysicalMemory<PageTable> = phys.into();
+                p
             })
         };
 
@@ -742,33 +825,24 @@ impl<'a> PagingTableManager<'a> {
         crate::VGA.print_str(&alloc::format!(
             "BUILD PAGE TABLES: new page physical = {:x?} {:x}\r\n",
             address,
-            phys_cr3
-        ));
-        let mut mm = self.mm.sync_lock();
-        let pml4_window = mm.get_complete_virtual_page();
-        let pdpt_window = mm.get_complete_virtual_page();
-        let page_directory_window = mm.get_complete_virtual_page();
-        let page_table_window = mm.get_complete_virtual_page();
-        drop(mm);
-        crate::VGA.print_str(&alloc::format!(
-            "BUILD PAGE TABLES: {:x} {:x} {:x} {:x}\r\n",
-            pml4_window,
-            pdpt_window,
-            page_directory_window,
-            page_table_window
+            phys_cr3.address()
         ));
         let mut np = Self::new(self.mm);
+        np.cr3 = phys_cr3.address();
+        np.copy_kernel_map(self);
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64() as usize;
-        crate::VGA.print_str(&alloc::format!("BUILD PAGE TABLES: cr3 = {:x}\r\n", cr3));
+        crate::VGA.print_str(&alloc::format!(
+            "BUILD PAGE TABLES: cr3 = {:x} {:x}\r\n",
+            cr3,
+            self.cr3
+        ));
         np
     }
 
     /// Lookup the physical address corresponding to the specified address
     fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-        self.setup_cache(cr3, addr);
+        self.setup_cache(addr);
         let table = unsafe { self.pt1.assume_init_ref() };
         let offset = (addr >> 12) & 0x1FF;
         let a = table.table.get_entry(offset);
@@ -782,10 +856,7 @@ impl<'a> PagingTableManager<'a> {
 
     /// Map the virtual address as a window to the given physical address. Used in the init function.
     fn map_window(&mut self, vaddr: usize, phys: u64) -> &'static mut u64 {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64();
-
-        let pml4 = unsafe { &mut *((cr3 & !0xFFF) as *mut PageTable) };
+        let pml4 = unsafe { &mut *((self.cr3 as u64 & !0xFFF) as *mut PageTable) };
         let pml4_index = (vaddr >> 39) & 0x1FF;
         let pml3 = pml4.get_entry(pml4_index);
         if pml3.is_none() {
@@ -827,6 +898,7 @@ impl<'a> PagingTableManager<'a> {
     pub fn setup_from_existing(&mut self) {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64();
+        self.cr3 = cr3 as usize;
 
         let mut mm = self.mm.sync_lock();
         let pml4_window = mm.get_complete_virtual_page();
@@ -846,13 +918,27 @@ impl<'a> PagingTableManager<'a> {
         self.pt1 = MaybeUninit::new(PageTableRef::new(page_table_window, d));
     }
 
-    /// Setup the page table pointers with the given cr3 and address value so that page tables can be examined or modified.
-    fn setup_cache(&mut self, cr3: usize, address: usize) {
+    /// Install the table into cr3
+    fn install(&self) {
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64() as usize;
+        if cr3 != self.cr3 {
+            let sa = x86_64::addr::PhysAddr::new(cr3 as u64);
+            let flags = Cr3Flags::PAGE_LEVEL_CACHE_DISABLE;
+            let frame =
+                unsafe { x86_64::structures::paging::PhysFrame::from_start_address_unchecked(sa) };
+            unsafe { x86_64::registers::control::Cr3::write(frame, flags) };
+            x86_64::instructions::tlb::flush_all();
+        }
+    }
+
+    /// Setup the page table pointers with the internally stored cr3 and address value so that page tables can be examined or modified.
+    fn setup_cache(&mut self, address: usize) {
         let pt4_index = (address >> 39) & 0x1FF;
         let pt3_index = (address >> 30) & 0x1FF;
         let pt2_index = (address >> 21) & 0x1FF;
 
-        unsafe { &mut *self.pt4.as_mut_ptr() }.update(cr3 as u64);
+        unsafe { &mut *self.pt4.as_mut_ptr() }.update(self.cr3 as u64);
 
         let pt3 = unsafe { &mut *self.pt4.as_mut_ptr() }
             .table
@@ -900,13 +986,10 @@ impl<'a> PagingTableManager<'a> {
         physical_address: usize,
         size: usize,
     ) -> Result<(), ()> {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-
         for i in (0..size).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
-            self.setup_cache(cr3, vaddr);
+            self.setup_cache(vaddr);
             let pt1_index = (vaddr >> 12) & 0x1FF;
 
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) == 0 {
@@ -927,13 +1010,10 @@ impl<'a> PagingTableManager<'a> {
         physical_address: usize,
         size: usize,
     ) -> Result<(), ()> {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-
         for i in (0..size).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
-            self.setup_cache(cr3, vaddr);
+            self.setup_cache(vaddr);
             let pt1_index = (vaddr >> 12) & 0x1FF;
 
             let newval = paddr as u64 | 0x1;
@@ -953,12 +1033,9 @@ impl<'a> PagingTableManager<'a> {
 
     /// Unmaps some pages that were previously mapped, size is in bytes
     pub fn unmap_mapped_pages(&mut self, virtual_address: usize, size: usize) {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-
         for i in (0..size).step_by(core::mem::size_of::<Page>()).rev() {
             let vaddr = virtual_address + i;
-            self.setup_cache(cr3, vaddr);
+            self.setup_cache(vaddr);
             let pt1_index = (vaddr >> 12) & 0x1FF;
             if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) != 0 {
                 unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] = 0;
@@ -969,10 +1046,7 @@ impl<'a> PagingTableManager<'a> {
 
     /// Unmap a mapped page and deallocate the physical page that is mapped to it.
     pub fn unmap_delete_page(&mut self, address: usize) -> Result<(), ()> {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-
-        self.setup_cache(cr3, address);
+        self.setup_cache(address);
 
         let pt1_index = (address >> 12) & 0x1FF;
 
@@ -993,10 +1067,7 @@ impl<'a> PagingTableManager<'a> {
 
     /// Map a memory address to a page which will be grabbed from the physical memory manager.
     pub fn map_new_page(&mut self, address: usize) -> Result<(), ()> {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-
-        self.setup_cache(cr3, address);
+        self.setup_cache(address);
 
         let pt1_index = (address >> 12) & 0x1FF;
         let value = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index];
