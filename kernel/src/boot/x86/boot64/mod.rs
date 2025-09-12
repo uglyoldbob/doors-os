@@ -16,6 +16,9 @@ pub mod memory;
 
 pub use memory::generic_memory as mem2;
 
+/// Defines the starting address for user space heap
+pub const USER_SPACE_START: usize = 1 << 39;
+
 /// Driver for the APIC on x86 hardware
 pub struct X86Apic {}
 
@@ -438,10 +441,6 @@ pub struct X86System<'a> {
     stack_start: usize,
 }
 
-fn user_thread() {
-    crate::VGA.print_str("A user process stub function is running\r\n");
-}
-
 impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     fn enable_interrupts(&self) {
         x86_64::instructions::interrupts::enable();
@@ -537,21 +536,34 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         use object::ObjectSection;
         PAGE_ALLOCATOR.sync_lock().debug();
         if let Some(text) = text {
-            if text.address() == 0x500000 {
+            if text.address() == USER_SPACE_START as u64 {
                 if let Ok(data) = text.data() {
                     PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
                     let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
                         &PAGING_MANAGER,
-                        0x500000,
+                        USER_SPACE_START,
                     ));
                     PAGE_ALLOCATOR.debug();
+                    crate::VGA.print_str(&alloc::format!(
+                        "About to map pages with {} bytes for user process\r\n",
+                        data.len()
+                    ));
+                    for i in (USER_SPACE_START..(USER_SPACE_START + data.len()))
+                        .step_by(core::mem::size_of::<memory::Page>())
+                    {
+                        crate::VGA.print_str(&alloc::format!("About to map page at {:X}...", i));
+                        let e = pt.map_new_page(i);
+                        crate::VGA.print_str(&alloc::format!("{:?}\r\n", e));
+                    }
                     crate::VGA.print_str("About to spawn user thread\r\n");
                     crate::scheduler::SCHEDULER
                         .read()
                         .as_ref()
                         .unwrap()
-                        .spawn_thread(user_thread);
+                        .spawn_thread(|| {
+                            crate::VGA.print_str("A user process stub function is running\r\n")
+                        });
                     crate::VGA.print_str("GOT USER BINARY TEXT data\r\n");
                 }
             }

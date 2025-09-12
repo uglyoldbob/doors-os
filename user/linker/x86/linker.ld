@@ -1,7 +1,6 @@
 MEMORY
 {
-  ram (!rx) : org = 0x500000, l = 3M
-  debug (r) : org = 0x40000000, l = 1024M
+  ram (!rx) : org = 0x8000000000, l = 3M
 }
 
 SECTIONS
