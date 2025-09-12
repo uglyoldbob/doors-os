@@ -11,7 +11,7 @@ use x86_64::registers::control::Cr3Flags;
 #[path = "../../memory.rs"]
 pub mod generic_memory;
 
-use crate::{address, DestructuredPhysicalMemory, Locked};
+use crate::{address, DestructuredPhysicalMemory, FixedString, Locked};
 
 extern "C" {
     /// A page table for the system to boot with.
@@ -435,11 +435,6 @@ impl<'a> Locked<SimpleMemoryManager<'a>> {
         let this = self.sync_lock();
         let va = this.mm.sync_lock();
         let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
-        crate::VGA.print_str(&alloc::format!(
-            "Temporary vmap is at {:p}\r\n",
-            tvm.as_ptr()
-        ));
-        crate::VGA.print_str(&alloc::format!("Temporary pmap is at {:x}\r\n", addr));
         f(addr, unsafe { tvm.assume_init_mut() })
     }
 
@@ -456,14 +451,6 @@ impl<'a> Locked<SimpleMemoryManager<'a>> {
         let this = self.sync_lock();
         let va = this.mm.sync_lock();
         let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
-        crate::VGA.print_str(&alloc::format!(
-            "Temporary vmap is at {:p}\r\n",
-            tvm.as_ptr()
-        ));
-        crate::VGA.print_str(&alloc::format!(
-            "Temporary pmap is at {:p}\r\n",
-            phys.as_ptr()
-        ));
         f(phys, unsafe { tvm.assume_init_mut() })
     }
 }
@@ -790,6 +777,8 @@ impl<'a> PagingTableManager<'a> {
                             .is_ok()
                         {
                             vm.set_entry(0, a as usize);
+                            other
+                                .unmap_mapped_pages(address(vm), core::mem::size_of::<PageTable>());
                         }
                     },
                 );
@@ -1037,7 +1026,8 @@ impl<'a> PagingTableManager<'a> {
             let vaddr = virtual_address + i;
             self.setup_cache(vaddr);
             let pt1_index = (vaddr >> 12) & 0x1FF;
-            if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) != 0 {
+            let value = &unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index];
+            if *value != 0 {
                 unsafe { &mut *self.pt1.as_mut_ptr() }.table.entries[pt1_index] = 0;
                 x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
             }
@@ -1049,8 +1039,8 @@ impl<'a> PagingTableManager<'a> {
         self.setup_cache(address);
 
         let pt1_index = (address >> 12) & 0x1FF;
-
-        if (unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 1) != 0 {
+        let value = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index];
+        if value != 0 {
             let a = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index] & 0xFFFFFFFFFF000;
             let addr = a as *mut PageTable;
             let entry: Box<PageTable, &'a crate::Locked<SimpleMemoryManager>> =
@@ -1084,6 +1074,11 @@ impl<'a> PagingTableManager<'a> {
             Box::<PageTable, &'a crate::Locked<SimpleMemoryManager>>::leak(entry);
             Ok(())
         } else {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "FAILED TO MAP NEW PAGE {:x} {:x}\r\n",
+                address,
+                value
+            ));
             Err(())
         }
     }

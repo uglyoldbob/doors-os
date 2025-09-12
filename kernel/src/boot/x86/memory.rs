@@ -555,12 +555,17 @@ impl<'a> HeapManager<'a> {
 
         let layout =
             Layout::from_size_align(amount, core::mem::size_of::<Page>()).map_err(|_| ())?;
-        let new_section = self.vmm.allocate(layout).map_err(|_| ())?;
+        let new_section = self
+            .vmm
+            .allocate(layout)
+            .map_err(|_| ())
+            .inspect_err(|e| crate::VGA.print_str("OUT OF MEMORY? 10\r\n"))?;
 
         let sa = new_section.as_ptr() as *mut u8 as usize;
         let mut mm = self.mm.sync_lock();
         for i in (sa..sa + a * core::mem::size_of::<Page>()).step_by(core::mem::size_of::<Page>()) {
-            mm.map_new_page(i)?;
+            mm.map_new_page(i)
+                .inspect_err(|e| crate::VGA.print_str("OUT OF MEMORY? 11\r\n"))?;
         }
         drop(mm);
 
@@ -602,6 +607,7 @@ impl<'a> HeapManager<'a> {
                 .expand_with_physical_memory(layout.size() + layout.align())
                 .is_err()
         {
+            crate::VGA.print_str("OUT OF MEMORY? 1\r\n");
             return core::ptr::null_mut();
         }
 
@@ -734,9 +740,11 @@ impl<'a> HeapManager<'a> {
                     .expand_with_physical_memory(layout.size() + layout.align())
                     .is_err()
             {
+                crate::VGA.print_str("OUT OF MEMORY? 2\r\n");
                 return core::ptr::null_mut();
             }
             if times == 2 {
+                crate::VGA.print_str("OUT OF MEMORY? 3\r\n");
                 return core::ptr::null_mut();
             }
         }

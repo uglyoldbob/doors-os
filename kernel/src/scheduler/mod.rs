@@ -18,7 +18,10 @@ use alloc::vec::Vec;
 use spin::RwLock;
 
 use crate::{
-    kernel::SystemTrait, modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait}, Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, NotSafeForInterrupts, OneWayStreamReader, OneWayStreamWriter, SafeForInterrupts, TaskId
+    kernel::SystemTrait,
+    modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, NotSafeForInterrupts,
+    OneWayStreamReader, OneWayStreamWriter, SafeForInterrupts, TaskId,
 };
 
 doors_macros::todo_item!("Create a guard page for stack");
