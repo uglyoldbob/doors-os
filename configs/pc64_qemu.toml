@@ -5,7 +5,7 @@ disassembly = true
 [kernel_config]
 machine_name = "pc64"
 acpi = true
-gdbstub = true
+gdbstub = false
 mm_debug = false
 test = false
 network = true

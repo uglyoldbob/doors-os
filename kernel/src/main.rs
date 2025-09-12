@@ -297,6 +297,9 @@ fn main() -> ! {
             .unwrap();
         executor.spawn(keyboard_test()).unwrap();
         executor.spawn(user_binary_test()).unwrap();
+        let _ = executor.spawn(async {
+            scheduler::SCHEDULER.read().as_ref().unwrap().task_terminator().await;
+        });
         let ge = GlobalExecutor::new(executor);
         crate::kernel::EXECUTOR.write().replace(ge);
         crate::kernel::EXECUTOR.read().as_ref().unwrap().run()

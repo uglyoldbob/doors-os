@@ -6,6 +6,7 @@ use crate::gdbstub::x86::reg::X86CoreRegs;
 use crate::gdbstub::x86::reg::X86_64CoreRegs;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
+use futures::StreamExt;
 #[cfg(target_arch = "x86_64")]
 use x86_64::*;
 #[cfg(target_arch = "x86")]
@@ -17,10 +18,7 @@ use alloc::vec::Vec;
 use spin::RwLock;
 
 use crate::{
-    kernel::SystemTrait,
-    modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, NotSafeForInterrupts,
-    SafeForInterrupts, TaskId,
+    kernel::SystemTrait, modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait}, Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, NotSafeForInterrupts, OneWayStreamReader, OneWayStreamWriter, SafeForInterrupts, TaskId
 };
 
 doors_macros::todo_item!("Create a guard page for stack");
@@ -122,16 +120,23 @@ pub struct InnerScheduler {
     next_task_index: usize,
     /// The timer instance for the scheduler
     timer: Option<TimerInstance>,
+    /// Completed tasks
+    completed: OneWayStreamWriter<(crate::common::TaskId, Task)>,
+    /// Receiver for completed tasks
+    task_killer: Option<OneWayStreamReader<(crate::common::TaskId, Task)>>,
 }
 
 impl InnerScheduler {
     /// Create a new scheduler, using the specified task id as the starting task
-    pub const fn new(id: TaskId) -> Self {
+    pub fn new(id: TaskId, com: &IrqGuardedInner) -> Self {
+        let cq = crate::common::new_stream(&com, 10, 10);
         Self {
             local_tasks: Vec::new(),
             cur_task: (id, Task::running()),
             next_task_index: 0,
             timer: None,
+            completed: cq.1,
+            task_killer: Some(cq.0),
         }
     }
 
@@ -177,7 +182,7 @@ impl Scheduler {
     /// Construct a new scheduler
     pub fn new(id: TaskId) -> Self {
         let com = IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {});
-        let i = IrqGuarded::new(InnerScheduler::new(id), &com);
+        let i = IrqGuarded::new(InnerScheduler::new(id, &com), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),
         }
@@ -256,7 +261,14 @@ impl Scheduler {
                     return unsafe { Context::thread_restore(&new_context) };
                 }
                 TaskStatus::Completed => {
-                    this.local_tasks.swap_remove(next_task_index);
+                    let a = this.local_tasks.swap_remove(next_task_index);
+                    this.completed.push_interrupt(a);
+                    crate::nop();
+                    crate::nop();
+                    crate::nop();
+                    crate::nop();
+                    crate::nop();
+                    crate::nop();
                 }
             }
         }
@@ -297,6 +309,18 @@ impl Scheduler {
     pub fn spawn_thread(&self, t: fn()) {
         let task = Task::new(t);
         self.add_task(task);
+    }
+
+    /// Start the task terminator
+    pub async fn task_terminator(&self) {
+        let mut this = self.i.0.sync_access();
+        if let Some(mut tk) = this.task_killer.take() {
+            let _ = crate::executor::spawn(async move {
+                while let Some(t) = tk.next().await {
+                    drop(t);
+                }
+            });
+        }
     }
 
     /// Add a task
