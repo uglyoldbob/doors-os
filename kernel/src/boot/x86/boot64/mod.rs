@@ -7,6 +7,7 @@ use crate::Locked;
 use crate::LockedArc;
 use alloc::boxed::Box;
 use core::alloc::Allocator;
+use core::ops::DerefMut;
 use core::ptr::NonNull;
 use lazy_static::lazy_static;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
@@ -530,7 +531,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         (s.stack_start as usize, MAIN_STACK_SIZE as usize)
     }
 
-    fn create_process(&self, b: &object::File) {
+    fn create_process(&self, b: &object::File) -> Result<(), ()> {
         use object::Object;
         let text = b.section_by_name(".text");
         use object::ObjectSection;
@@ -540,6 +541,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                 if let Ok(data) = text.data() {
                     PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
+                    x86_64::instructions::bochs_breakpoint();
                     let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
                         &PAGING_MANAGER,
                         USER_SPACE_START,
@@ -549,13 +551,29 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         "About to map pages with {} bytes for user process\r\n",
                         data.len()
                     ));
-                    for i in (USER_SPACE_START..(USER_SPACE_START + data.len()))
-                        .step_by(core::mem::size_of::<memory::Page>())
-                    {
-                        crate::VGA.print_str(&alloc::format!("About to map page at {:X}...", i));
-                        let e = pt.map_new_page(i);
-                        crate::VGA.print_str(&alloc::format!("{:?}\r\n", e));
+                    for i in (0..data.len()).step_by(core::mem::size_of::<memory::Page>()) {
+                        let user_address = i + USER_SPACE_START;
+                        crate::VGA.print_str(&alloc::format!(
+                            "About to map page {:x} at {:x}...",
+                            i,
+                            user_address
+                        ));
+                        pt.map_new_page(user_address)
+                            .inspect(|_| crate::VGA.print_str("OK\r\n"))
+                            .inspect_err(|_| crate::VGA.print_str("ERR\r\n"))?;
+                        crate::VGA.print_str("Mapped a user page\r\n");
                     }
+                    crate::VGA.print_str("Installing page table for user process\r\n");
+                    loop {}
+                    unsafe {
+                        pt.install();
+                    }
+                    crate::VGA.print_str("About to copy data for user process\r\n");
+                    pt.setup_cache(USER_SPACE_START);
+                    let user_chunk = unsafe {
+                        core::slice::from_raw_parts_mut(USER_SPACE_START as *mut u8, data.len())
+                    };
+                    user_chunk.copy_from_slice(data);
                     crate::VGA.print_str("About to spawn user thread\r\n");
                     crate::scheduler::SCHEDULER
                         .read()
@@ -568,6 +586,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                 }
             }
         }
+        Ok(())
     }
 }
 

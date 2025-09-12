@@ -143,18 +143,6 @@ fn kernel_testing_thread() {
     }
 }
 
-/// Runs a synchronous test on the second serial port
-fn serial_test() {
-    crate::VGA.print_str("Waiting for data from second serial port\r\n");
-    let ser = crate::kernel::SERIAL.take_device(1).unwrap();
-    use crate::modules::serial::SerialTrait;
-    for i in 0..1000 {
-        crate::VGA.print_str("Sending data to second serial port\r\n");
-        ser.sync_transmit_str(&alloc::format!("Testing {}\r\n", i));
-    }
-    let t = crate::executor::get_current_task_id();
-}
-
 fn main() -> ! {
     {
         {
@@ -211,43 +199,6 @@ fn main() -> ! {
         let mut executor = Executor::default();
         if doors_macros::config_check_equals!(test, "true") {
             executor.spawn_closure_local(non_send_future()).unwrap();
-        }
-        if !doors_macros::config_check_equals!(gdbstub, "true") {
-            if true {
-                scheduler::SCHEDULER
-                    .read()
-                    .as_ref()
-                    .unwrap()
-                    .spawn_thread(serial_test);
-            } else {
-                executor
-                    .spawn(async {
-                        crate::VGA
-                            .print_str_async("Waiting for data from second serial port\r\n")
-                            .await;
-                        let ser = crate::kernel::SERIAL.take_device(1).unwrap();
-                        use crate::modules::serial::SerialTrait;
-                        use futures::StreamExt;
-                        for i in 0..1000 {
-                            crate::VGA
-                                .print_str_async("Sending data to second serial port\r\n")
-                                .await;
-                            ser.transmit_str(&alloc::format!("Testing {}\r\n", i)).await;
-                        }
-                        let mut receiver = ser.read_stream();
-                        while let Some(b) = receiver.next().await {
-                            crate::VGA
-                                .print_str_async(&alloc::format!(
-                                    "Received a {} from serial1\r\n",
-                                    b
-                                ))
-                                .await;
-                            ser.transmit_str(&alloc::format!("Received a {}\r\n", b as char))
-                                .await;
-                        }
-                    })
-                    .unwrap();
-            }
         }
         executor
             .spawn(async {

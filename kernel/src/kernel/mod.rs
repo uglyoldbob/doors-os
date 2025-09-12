@@ -320,7 +320,7 @@ pub trait SystemTrait {
     /// The the single byte opcode (if it exists) for a breakpoint instruction
     fn breakpoint(&self) -> Option<u8>;
     /// Create a new process
-    fn create_process(&self, b: &object::File);
+    fn create_process(&self, b: &object::File) -> Result<(), ()>;
 }
 
 /// This struct implements the SystemTrait
@@ -383,7 +383,9 @@ impl SystemTrait for NullSystem {
     ) {
     }
 
-    fn create_process(&self, b: &object::File) {}
+    fn create_process(&self, _b: &object::File) -> Result<(), ()> {
+        Err(())
+    }
 }
 
 use spin::RwLock;

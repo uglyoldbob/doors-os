@@ -1,5 +1,6 @@
 //! This module exists to cover memory management for x64 processors.
 
+use core::hint::black_box;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::{alloc::Allocator, ops::Deref};
@@ -7,6 +8,7 @@ use core::{alloc::Allocator, ops::Deref};
 use alloc::{boxed::Box, vec::Vec};
 use multiboot2::{MemoryAreaType, MemoryMapTag};
 use x86_64::registers::control::Cr3Flags;
+use x86_64::structures::paging::page;
 
 #[path = "../../memory.rs"]
 pub mod generic_memory;
@@ -384,21 +386,32 @@ impl<'a, T> Bitmap<'a, T> {
 #[repr(align(4096))]
 pub struct Page {
     /// The data for a single physical memory page
-    _data: [u8; 4096],
+    data: [u8; 4096],
+}
+
+impl core::ops::Deref for Page {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl core::ops::DerefMut for Page {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
 }
 
 impl Page {
     /// Create a pattern of alternating bits
     pub fn alternating_bits() -> Self {
-        Self {
-            _data: [0xaa; 4096],
-        }
+        Self { data: [0xaa; 4096] }
     }
 }
 
 impl Default for Page {
     fn default() -> Self {
-        Self { _data: [0; 4096] }
+        Self { data: [0; 4096] }
     }
 }
 
@@ -670,9 +683,10 @@ impl PageTable {
         Self { entries: [0; 512] }
     }
 
-    /// Sets the entry as present with the specified address
-    fn set_entry(&mut self, index: usize, addr: usize) {
+    /// Sets the entry as present with the specified address, returns the actual address used
+    fn set_entry(&mut self, index: usize, addr: usize) -> u64 {
         self.entries[index] = addr as u64 | 3;
+        addr as u64
     }
 
     /// Returns an address if the entry is marked present
@@ -756,6 +770,18 @@ impl<'a> PagingTableManager<'a> {
         }
     }
 
+    /// Install the page as the current page table
+    pub unsafe fn install(&self) {
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64() as usize;
+        if cr3 != self.cr3 {
+            let pa = x86_64::PhysAddr::new_unsafe(self.cr3 as u64);
+            let pf = x86_64::structures::paging::PhysFrame::from_start_address_unchecked(pa);
+            x86_64::instructions::bochs_breakpoint();
+            x86_64::registers::control::Cr3::write(pf, Cr3Flags::PAGE_LEVEL_CACHE_DISABLE);
+        }
+    }
+
     /// Copy the kernel map from another paging table into this one.
     /// Other must the the main kernel paging table
     fn copy_kernel_map(&mut self, other: &mut Self) {
@@ -826,6 +852,30 @@ impl<'a> PagingTableManager<'a> {
             cr3,
             self.cr3
         ));
+        let mut mm = self.mm.sync_lock();
+        let pml4_window = mm.get_complete_virtual_page();
+        let pdpt_window = mm.get_complete_virtual_page();
+        let page_directory_window = mm.get_complete_virtual_page();
+        let page_table_window = mm.get_complete_virtual_page();
+        drop(mm);
+
+        crate::VGA.print_str(&alloc::format!(
+            "BUILD PAGE TABLES: vals = {:x} {:x} {:x} {:x}\r\n",
+            pml4_window,
+            pdpt_window,
+            page_directory_window,
+            page_table_window
+        ));
+
+        let a = self.map_window(pml4_window, phys_cr3.address() as u64);
+        let b = self.map_window(pdpt_window, 0);
+        let c = self.map_window(page_directory_window, 0);
+        let d = self.map_window(page_table_window, 0);
+
+        np.pt4 = MaybeUninit::new(PageTableRef::new(pml4_window, a));
+        np.pt3 = MaybeUninit::new(PageTableRef::new(pdpt_window, b));
+        np.pt2 = MaybeUninit::new(PageTableRef::new(page_directory_window, c));
+        np.pt1 = MaybeUninit::new(PageTableRef::new(page_table_window, d));
         np
     }
 
@@ -883,6 +933,11 @@ impl<'a> PagingTableManager<'a> {
         &mut pml1.entries[page_table_index]
     }
 
+    #[inline(never)]
+    fn doodad(&self, val: usize) {
+        black_box(val);
+    }
+
     /// Initialize the object assuming some stuff is already setup, allocating physical pages as required.
     pub fn setup_from_existing(&mut self) {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
@@ -896,6 +951,11 @@ impl<'a> PagingTableManager<'a> {
         let page_table_window = mm.get_complete_virtual_page();
         drop(mm);
 
+        self.doodad(pml4_window);
+        self.doodad(pdpt_window);
+        self.doodad(page_directory_window);
+        self.doodad(page_table_window);
+
         let a = self.map_window(pml4_window, cr3);
         let b = self.map_window(pdpt_window, 0);
         let c = self.map_window(page_directory_window, 0);
@@ -907,49 +967,118 @@ impl<'a> PagingTableManager<'a> {
         self.pt1 = MaybeUninit::new(PageTableRef::new(page_table_window, d));
     }
 
-    /// Install the table into cr3
-    fn install(&self) {
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-        if cr3 != self.cr3 {
-            let sa = x86_64::addr::PhysAddr::new(cr3 as u64);
-            let flags = Cr3Flags::PAGE_LEVEL_CACHE_DISABLE;
-            let frame =
-                unsafe { x86_64::structures::paging::PhysFrame::from_start_address_unchecked(sa) };
-            unsafe { x86_64::registers::control::Cr3::write(frame, flags) };
-            x86_64::instructions::tlb::flush_all();
-        }
+    /// Maps a new physical page for one of the tables in the set of page tables
+    fn new_page_table(&mut self, table: &mut &'static mut PageTable, index: usize) -> u64 {
+        let a = Box::<PageTable, &Locked<SimpleMemoryManager>>::new_uninit_in(self.mm);
+        let paddr = a.as_ptr() as usize;
+        self.mm
+            .modify_physical_address_with_temporary_mapping::<_, PageTable, _>(
+                paddr,
+                |addr, new_page| {
+                    crate::VGA.print_str(&alloc::format!(
+                        "Got page for pt: {:x} {:p}\r\n",
+                        paddr,
+                        new_page
+                    ));
+                    if self
+                        .map_addresses_read_write(
+                            crate::address(new_page),
+                            addr,
+                            core::mem::size_of::<PageTable>(),
+                        )
+                        .is_ok()
+                    {
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "new page table is {:p}\r\n",
+                            new_page
+                        ));
+                        *new_page = PageTable::new();
+                        self.unmap_mapped_pages(
+                            crate::address(new_page),
+                            core::mem::size_of::<PageTable>(),
+                        );
+                    } else {
+                        crate::VGA.print_str("Failed to map new page table\r\n");
+                    }
+                },
+            );
+        table.set_entry(index, paddr)
     }
 
     /// Setup the page table pointers with the internally stored cr3 and address value so that page tables can be examined or modified.
-    fn setup_cache(&mut self, address: usize) {
+    pub fn setup_cache(&mut self, address: usize) {
         let pt4_index = (address >> 39) & 0x1FF;
         let pt3_index = (address >> 30) & 0x1FF;
         let pt2_index = (address >> 21) & 0x1FF;
 
         unsafe { &mut *self.pt4.as_mut_ptr() }.update(self.cr3 as u64);
 
-        let pt3 = unsafe { &mut *self.pt4.as_mut_ptr() }
-            .table
-            .get_entry(pt4_index);
+        if address == super::USER_SPACE_START || address == 0 {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE cr3 {:x} indexes {} {} {}\r\n",
+                self.cr3,
+                pt4_index,
+                pt3_index,
+                pt2_index
+            ));
+        }
+
+        if address == super::USER_SPACE_START || address == 0 {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 1 {:x}\r\n",
+                self.cr3
+            ));
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 1a {:p} {:p}\r\n",
+                self.pt4.as_mut_ptr(),
+                &mut unsafe { &mut *self.pt4.as_mut_ptr() }
+            ));
+        }
+
+        let pt4_table = &mut unsafe { &mut *self.pt4.as_mut_ptr() }.table;
+
+        if address == super::USER_SPACE_START || address == 0 {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 1b {:p}\r\n",
+                pt4_table
+            ));
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 1c {:p}\r\n",
+                &(pt4_table.entries)
+            ));
+        }
+
+        let pt3 = pt4_table.get_entry(pt4_index);
+        if address == super::USER_SPACE_START || address == 0 {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 2 {:x?}\r\n",
+                pt3
+            ));
+        }
         let pt3 = match pt3 {
             Some(e) => e,
-            None => {
-                unimplemented!();
-            }
+            None => self.new_page_table(pt4_table, pt4_index),
         };
+
         unsafe { &mut *self.pt3.as_mut_ptr() }.update(pt3);
+
+        let pt3_table = &mut unsafe { &mut *self.pt3.as_mut_ptr() }.table;
 
         let pt2 = unsafe { &mut *self.pt3.as_mut_ptr() }
             .table
             .get_entry(pt3_index);
         let pt2 = match pt2 {
             Some(e) => e,
-            None => {
-                unimplemented!();
-            }
+            None => self.new_page_table(pt3_table, pt3_index),
         };
         unsafe { &mut *self.pt2.as_mut_ptr() }.update(pt2);
+
+        if address == super::USER_SPACE_START || address == 0 {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 3 {:x}\r\n",
+                pt2
+            ));
+        }
 
         let pt1 = unsafe { &mut *self.pt2.as_mut_ptr() }
             .table
@@ -965,6 +1094,13 @@ impl<'a> PagingTableManager<'a> {
                 eaddr as u64
             }
         };
+
+        if address == super::USER_SPACE_START || address == 0 {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "SETUP CACHE 4 {:x}\r\n",
+                pt1
+            ));
+        }
         unsafe { &mut *self.pt1.as_mut_ptr() }.update(pt1);
     }
 
@@ -1060,13 +1196,25 @@ impl<'a> PagingTableManager<'a> {
         self.setup_cache(address);
 
         let pt1_index = (address >> 12) & 0x1FF;
-        let value = unsafe { &*self.pt1.as_ptr() }.table.entries[pt1_index];
+        let pt1_table = &mut unsafe { &mut *self.pt1.as_mut_ptr() }.table;
+        if address == super::USER_SPACE_START {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "MAP USER PAGE {:p}\r\n",
+                pt1_table
+            ));
+        }
+        let value = pt1_table.entries[pt1_index];
         if (value & 1) == 0 {
             let entry: Box<MaybeUninit<PageTable>, &'a crate::Locked<SimpleMemoryManager>> =
                 Box::new_uninit_in(self.mm);
             let addr = entry.as_ref().as_ptr() as usize;
-            let whatever = unsafe { &mut *self.pt1.as_mut_ptr() };
-            whatever.table.entries[pt1_index] = addr as u64 | 0x3;
+            pt1_table.entries[pt1_index] = addr as u64 | 0x3;
+            if address == super::USER_SPACE_START {
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "MAP USER PAGE entry is {:x}\r\n",
+                    pt1_table.entries[pt1_index]
+                ));
+            }
             x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(address as u64));
             //let pref: &mut PageTable = unsafe { &mut *(address as *mut PageTable) };
             //*pref = PageTable::new();
