@@ -541,7 +541,14 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                 if let Ok(data) = text.data() {
                     PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
-                    let asdf = pt.modify_tables_for_address(0x403000, || {});
+                    let asdf =
+                        pt.modify_tables_for_address(0x403000, |level, index, table| match level {
+                            4 => table.get_entry(index),
+                            3 => table.get_entry(index),
+                            2 => table.get_entry(index),
+                            1 => table.get_entry(index),
+                            _ => unreachable!(),
+                        });
                     loop {}
                     x86_64::instructions::bochs_breakpoint();
                     let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
@@ -571,7 +578,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         pt.install();
                     }
                     crate::VGA.print_str("About to copy data for user process\r\n");
-                    pt.setup_cache(USER_SPACE_START);
                     let user_chunk = unsafe {
                         core::slice::from_raw_parts_mut(USER_SPACE_START as *mut u8, data.len())
                     };

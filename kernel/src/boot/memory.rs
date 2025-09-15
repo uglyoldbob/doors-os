@@ -2,6 +2,9 @@
 
 use crate::{boot::x86::boot64::memory, Locked};
 
+mod variable;
+pub use variable::*;
+
 use super::BumpAllocator;
 
 use core::{marker::PhantomData, mem::MaybeUninit};
