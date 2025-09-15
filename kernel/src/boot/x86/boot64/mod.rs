@@ -541,6 +541,8 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                 if let Ok(data) = text.data() {
                     PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
+                    let asdf = pt.modify_tables_for_address(0x403000, || {});
+                    loop {}
                     x86_64::instructions::bochs_breakpoint();
                     let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
                         &PAGING_MANAGER,

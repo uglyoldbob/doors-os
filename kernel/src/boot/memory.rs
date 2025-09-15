@@ -1,12 +1,12 @@
 //! Generic memory code (to be included from architecture specific memory code and re-exported)
 
-use crate::Locked;
+use crate::{boot::x86::boot64::memory, Locked};
 
 use super::BumpAllocator;
 
 use core::{marker::PhantomData, mem::MaybeUninit};
 
-use alloc::{alloc::Allocator, boxed::Box};
+use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
 
 /// A destructure form of physical memory
 pub struct DestructuredPhysicalMemory<T> {
@@ -258,5 +258,107 @@ impl<T> core::ops::Deref for DmaMemorySlice<T> {
 impl<T> core::ops::DerefMut for DmaMemorySlice<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
+    }
+}
+
+/// Allocates memory of a fixed size
+pub struct FixedSizeAllocator<'a, T> {
+    /// The memory region covered by this allocator
+    memory_region: Vec<u8, &'a dyn Allocator>,
+    /// Defines which blocks are used
+    blocks_used: Vec<usize, &'a dyn Allocator>,
+    /// The number of blocks total
+    number_of_blocks_total: usize,
+    /// The number fo free blocks
+    num_free_blocks: usize,
+    /// A marker to indicate the struct behaves like it contains a block
+    _marker: PhantomData<T>,
+}
+
+impl<'a, T> FixedSizeAllocator<'a, T> {
+    /// Construct a new allocator covering the specified number of elements of `T`, using the specified allocator for getting memory
+    pub fn new(num_blocks: usize, allocator: &'a dyn Allocator) -> Self {
+        let numbits = usize::BITS as usize;
+        let num_words = if num_blocks % numbits == 0 {
+            num_blocks / numbits
+        } else {
+            num_blocks / numbits + 1
+        };
+
+        let mut blocks_used = Vec::with_capacity_in(num_words, allocator);
+        for _ in 0..num_words {
+            blocks_used.push(0usize)
+        }
+        let mut memory_region =
+            Vec::with_capacity_in(num_blocks * core::mem::size_of::<T>(), allocator);
+        for _ in 0..num_blocks * core::mem::size_of::<T>() {
+            memory_region.push(0u8)
+        }
+        Self {
+            memory_region,
+            blocks_used,
+            number_of_blocks_total: num_blocks,
+            num_free_blocks: num_blocks,
+            _marker: PhantomData,
+        }
+    }
+
+    fn run_allocation(
+        &mut self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+        if self.num_free_blocks == 0 {
+            return Err(core::alloc::AllocError);
+        }
+        if align_of::<T>() < layout.align() {
+            return Err(core::alloc::AllocError);
+        }
+        if core::mem::size_of::<T>() < layout.size() {
+            return Err(core::alloc::AllocError);
+        }
+        for i in 0..self.number_of_blocks_total {
+            let word = i / usize::BITS as usize;
+            let bit = i % usize::BITS as usize;
+            if (self.blocks_used[word] & 1 << bit) == 0 {
+                self.blocks_used[word] |= 1 << bit;
+                self.num_free_blocks -= 1;
+                let addr = self.memory_region.as_mut_ptr() as usize + i * core::mem::size_of::<T>();
+                let addr = unsafe {
+                    core::slice::from_raw_parts_mut(addr as *mut u8, core::mem::size_of::<T>())
+                };
+                return Ok(unsafe { core::ptr::NonNull::new_unchecked(addr) });
+            }
+        }
+        return Err(core::alloc::AllocError);
+    }
+
+    unsafe fn run_deallocation(
+        &mut self,
+        ptr: core::ptr::NonNull<u8>,
+        _layout: core::alloc::Layout,
+    ) {
+        let offset = (crate::address(&ptr) - crate::address(&self.memory_region))
+            / core::mem::size_of::<T>();
+        if offset < self.number_of_blocks_total {
+            let word = offset / usize::BITS as usize;
+            let bit = offset % usize::BITS as usize;
+            self.blocks_used[word] &= !1 << bit;
+            self.num_free_blocks += 1;
+        }
+    }
+}
+
+unsafe impl<'a, T> Allocator for Locked<FixedSizeAllocator<'a, T>> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+        let mut alloc = self.sync_lock();
+        alloc.run_allocation(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let mut alloc = self.sync_lock();
+        alloc.run_deallocation(ptr, layout);
     }
 }

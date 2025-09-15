@@ -8,7 +8,6 @@ use core::{alloc::Allocator, ops::Deref};
 use alloc::{boxed::Box, vec::Vec};
 use multiboot2::{MemoryAreaType, MemoryMapTag};
 use x86_64::registers::control::Cr3Flags;
-use x86_64::structures::paging::page;
 
 #[path = "../../memory.rs"]
 pub mod generic_memory;
@@ -437,6 +436,25 @@ impl<'a> Locked<SimpleMemoryManager<'a>> {
     pub fn debug(&self) {
         let this = self.sync_lock();
         this.debug();
+    }
+
+    /// Maps 4 pages for modification of a page table set
+    pub fn modify_four_pages_with_temporary_mapping<
+        T,
+        F: FnMut([Box<MaybeUninit<PageTable>, &BumpAllocator>; 4]) -> T,
+    >(
+        &self,
+        mut f: F,
+    ) -> T {
+        let this = self.sync_lock();
+        let va = this.mm.sync_lock();
+        let pages: [Box<MaybeUninit<PageTable>, &BumpAllocator>; 4] = [
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+        ];
+        f(pages)
     }
 
     /// Temporarily assigns a virtual page to a chunk of physical memory, calls a closure with that virtual page, returns a result
@@ -1003,6 +1021,65 @@ impl<'a> PagingTableManager<'a> {
                 },
             );
         table.set_entry(index, paddr)
+    }
+
+    /// Modify the page table entries for the given address
+    pub fn modify_tables_for_address<T, F: FnMut() -> T>(&mut self, address: usize, mut f: F) -> T {
+        let pt4_index = (address >> 39) & 0x1FF;
+        let pt3_index = (address >> 30) & 0x1FF;
+        let pt2_index = (address >> 21) & 0x1FF;
+        let pt1_index = (address >> 12) & 0x1FF;
+        let _a: Result<(), ()> = self
+            .mm
+            .modify_four_pages_with_temporary_mapping(|mut pages| {
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "MODIFY TABLES cr3 {:x} indexes {:x} {:x} {:x} {:x}\r\n",
+                    self.cr3,
+                    pages[0].as_ptr() as usize,
+                    pages[1].as_ptr() as usize,
+                    pages[2].as_ptr() as usize,
+                    pages[3].as_ptr() as usize,
+                ));
+                self.map_addresses_read_write(
+                    pages[0].as_ptr() as usize,
+                    self.cr3,
+                    core::mem::size_of::<PageTable>(),
+                )?;
+                let pt4 = unsafe { pages[0].assume_init_mut() };
+                let pt3_addr = pt4.get_entry(pt4_index).unwrap_or_else(|| todo!());
+                self.map_addresses_read_write(
+                    pages[1].as_ptr() as usize,
+                    pt3_addr as usize,
+                    core::mem::size_of::<PageTable>(),
+                )?;
+                let pt3 = unsafe { pages[1].assume_init_mut() };
+                let pt2_addr = pt3.get_entry(pt3_index).unwrap_or_else(|| todo!());
+                self.map_addresses_read_write(
+                    pages[2].as_ptr() as usize,
+                    pt2_addr as usize,
+                    core::mem::size_of::<PageTable>(),
+                )?;
+                let pt2 = unsafe { pages[2].assume_init_mut() };
+                let pt1_addr = pt2.get_entry(pt2_index).unwrap_or_else(|| todo!());
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "MODIFY TABLES pt1_addr {:x}\r\n",
+                    pt1_addr
+                ));
+                self.map_addresses_read_write(
+                    pages[3].as_ptr() as usize,
+                    pt1_addr as usize,
+                    core::mem::size_of::<PageTable>(),
+                )?;
+                let pt1 = unsafe { pages[3].assume_init_mut() };
+                let page_entry = pt1.get_entry(pt1_index).unwrap_or_else(|| todo!());
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "MODIFY TABLES pt1 special entry {} - {:x?}\r\n",
+                    pt1_index,
+                    page_entry,
+                ));
+                Ok(())
+            });
+        f()
     }
 
     /// Setup the page table pointers with the internally stored cr3 and address value so that page tables can be examined or modified.
