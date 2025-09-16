@@ -102,6 +102,14 @@ impl super::EmulationTrait for Bochs {
             }
             crate::Disk::Network(_p) => {}
         }
+        #[cfg(target_os = "linux")]
+        {
+            config.push_str("display_library: sdl2\n");
+        }
+        #[cfg(target_os = "windows")]
+        {
+            config.push_str("display_library: win32\n");
+        }
         let f = "./bochs_config.txt";
         let mut configf = std::fs::File::create(f).expect("Failed to create bochs configuration");
         configf
