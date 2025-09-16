@@ -1,6 +1,6 @@
 //! Generic memory code (to be included from architecture specific memory code and re-exported)
 
-use crate::{boot::x86::boot64::memory, Locked};
+use crate::Locked;
 
 mod variable;
 pub use variable::*;

@@ -1,6 +1,10 @@
 //! Code for a variable length chunk memory allocator
 
-use core::ptr::NonNull;
+use core::{marker::PhantomData, ptr::NonNull};
+
+use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
+
+use crate::Locked;
 
 /// A container structure for a heap node
 /// Stores some calculations about how the node can allocate a chunk of memory
@@ -141,17 +145,61 @@ impl HeapNode {
 }
 
 /// The heap manager for the system. It assumes it starts at a given address and expands to the end of known memory.
-pub struct HeapManager {
+pub struct HeapManager<'a, T: Default> {
     /// The beginning of the list of free memory nodes.
     head: Option<NonNull<HeapNode>>,
+    /// The allocator for getting more memory
+    mem: &'a dyn Allocator,
+    /// The number of blocks to add when adding more memory
+    num_blocks: usize,
+    /// The heap manager expands memory in chunks of size of the type T
+    _phantom: PhantomData<T>,
 }
 
-unsafe impl Send for HeapManager {}
+unsafe impl<'a, T: Default> Send for HeapManager<'a, T> {}
 
-impl HeapManager {
+unsafe impl<'a, T: Default> core::alloc::Allocator for Locked<HeapManager<'a, T>> {
+    fn allocate(
+        &self,
+        layout: core::alloc::Layout,
+    ) -> Result<core::ptr::NonNull<[u8]>, alloc::alloc::AllocError> {
+        let mut alloc = self.sync_lock();
+        let r = alloc.run_alloc(layout);
+        if r.is_null() {
+            return Err(alloc::alloc::AllocError);
+        } else {
+            let p = unsafe { core::slice::from_raw_parts(r, layout.size()) };
+            let p = core::ptr::NonNull::from_ref(p);
+            return Ok(p);
+        }
+    }
+
+    unsafe fn deallocate(&self, ptr: core::ptr::NonNull<u8>, layout: core::alloc::Layout) {
+        let mut alloc = self.sync_lock();
+        alloc.run_dealloc(ptr.as_ptr(), layout);
+    }
+}
+
+impl<'a, T: Default> HeapManager<'a, T> {
     /// Create a heap manager.
-    pub const fn new() -> Self {
-        Self { head: None }
+    pub const fn new(
+        start_addr: usize,
+        len: usize,
+        num_blocks: usize,
+        mem: &'a dyn Allocator,
+    ) -> Self {
+        assert!(len > core::mem::size_of::<HeapNode>());
+        let a = start_addr as *mut HeapNode;
+        let mut h = NonNull::from_ref(unsafe { a.as_ref() }.unwrap());
+        let h2 = unsafe { h.as_mut() };
+        h2.size = len;
+        h2.next = None;
+        Self {
+            head: Some(h),
+            mem,
+            num_blocks,
+            _phantom: PhantomData,
+        }
     }
 
     /// Print details of the heap
@@ -190,6 +238,28 @@ impl HeapManager {
         }
     }
 
+    /// Add some memory to the heap from the provided allocator. len is the number of T elements to add.
+    fn add_memory_from_allocator(&mut self) {
+        let new_mem: Vec<T, &'a dyn Allocator> = Vec::with_capacity_in(self.num_blocks, self.mem);
+        let new_mem = Vec::leak(new_mem);
+        let new_addr = crate::slice_address(new_mem);
+        let new_size = new_mem.len() * core::mem::size_of::<T>();
+        let a = new_addr as *mut HeapNode;
+        let mut h = NonNull::from_ref(unsafe { a.as_ref() }.unwrap());
+        let h2 = unsafe { h.as_mut() };
+        h2.size = new_size;
+        h2.next = None;
+
+        let head = self.head;
+        if let Some(head) = head {
+            let mut elem = head;
+            while let Some(n) = unsafe { elem.as_ref() }.next {
+                elem = n;
+            }
+            unsafe { elem.as_mut() }.next = Some(h);
+        }
+    }
+
     /// A function to provide some troubleshooting for memory management functions
     #[inline(never)]
     fn troubleshoot(&self, val: usize, val2: usize) {
@@ -207,10 +277,7 @@ impl HeapManager {
 
     /// Perform an actual allocation
     fn run_alloc(&mut self, layout: core::alloc::Layout) -> *mut u8 {
-        if self.head.is_none() {
-            crate::VGA.print_str("OUT OF MEMORY? 1\r\n");
-            return core::ptr::null_mut();
-        }
+        assert!(!self.head.is_none());
 
         let mut times = 0;
         loop {
@@ -337,8 +404,7 @@ impl HeapManager {
                 return r;
             }
             if times == 1 {
-                crate::VGA.print_str("OUT OF MEMORY? 2\r\n");
-                return core::ptr::null_mut();
+                self.add_memory_from_allocator();
             }
             if times == 2 {
                 crate::VGA.print_str("OUT OF MEMORY? 3\r\n");
@@ -401,4 +467,4 @@ impl HeapManager {
     }
 }
 
-impl !crate::Interrupt for HeapManager {}
+impl<'a, T> !crate::Interrupt for HeapManager<'a, T> {}
