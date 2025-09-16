@@ -541,14 +541,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                 if let Ok(data) = text.data() {
                     PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
-                    let asdf =
-                        pt.modify_tables_for_address(0x403000, |level, index, table| match level {
-                            4 => table.get_entry(index),
-                            3 => table.get_entry(index),
-                            2 => table.get_entry(index),
-                            1 => table.get_entry(index),
-                            _ => unreachable!(),
-                        });
                     loop {}
                     x86_64::instructions::bochs_breakpoint();
                     let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
@@ -606,6 +598,29 @@ pub extern "C" fn start64() -> ! {
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
+    let a = unsafe { &memory::TABLE4 } as *const u64 as usize;
+    let b = unsafe { &memory::TABLE3 } as *const u64 as usize;
+    let c = unsafe { &memory::TABLE2 } as *const u64 as usize;
+    let d = unsafe { &memory::TABLE1 } as *const u64 as usize;
+    let page_entries = [
+        memory::PageTableModifierData {
+            virt: 0x400000,
+            entry: a,
+        },
+        memory::PageTableModifierData {
+            virt: 0x401000,
+            entry: b,
+        },
+        memory::PageTableModifierData {
+            virt: 0x402000,
+            entry: c,
+        },
+        memory::PageTableModifierData {
+            virt: 0x403000,
+            entry: d,
+        },
+    ];
+
     //Copy the boot information header to the end of the kernel, update the end of the kernel variable to reflect the new data
     let bi_size = {
         let boot_info = unsafe {
@@ -652,6 +667,7 @@ pub extern "C" fn start64() -> ! {
         stack_end,
         stack_size,
         unsafe { &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize },
+        page_entries,
     );
 
     {

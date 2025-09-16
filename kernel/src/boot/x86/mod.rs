@@ -1,6 +1,7 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
 use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 
 use crate::modules::serial::SerialTrait;
 use crate::IoReadWrite;
@@ -759,6 +760,14 @@ impl crate::LockedArc<boot::X86System<'_>> {
 }
 
 /// Code that runs on startup that is common to both x86 and x86_64.
+/// # Arguments
+/// * start_kernel - The beginning of the kernel memory
+/// * end_kernel - The end of used kernel memory
+/// * boot_info - A reference to the boot information from the bootloader
+/// * stack_end - The end of the kernel stack already setup
+/// * stack_size - The amount of space reserved for the stack
+/// * virtual_allocate_start - The first address that virtual memory should allocate to
+/// * page_entries - The entries that are used to map page tables. 0 - the address for the usize entry, 1 - the virtual address controlled by the entry
 fn start_common1(
     start_kernel: usize,
     end_kernel: usize,
@@ -766,6 +775,7 @@ fn start_common1(
     stack_end: usize,
     stack_size: usize,
     virtual_allocate_start: usize,
+    page_entries: [boot::memory::PageTableModifierData; 4],
 ) {
     boot::VIRTUAL_MEMORY_ALLOCATOR
         .sync_lock()
@@ -799,9 +809,20 @@ fn start_common1(
     boot::VIRTUAL_MEMORY_ALLOCATOR
         .sync_lock()
         .stop_allocating(0x3fffff);
+    let b1: Box<MaybeUninit<boot::memory::Page>, &dyn alloc::alloc::Allocator> =
+        Box::new_uninit_in(&boot::VIRTUAL_MEMORY_ALLOCATOR);
+    Box::leak(b1);
+    let b1: Box<MaybeUninit<boot::memory::Page>, &dyn alloc::alloc::Allocator> =
+        Box::new_uninit_in(&boot::VIRTUAL_MEMORY_ALLOCATOR);
+    Box::leak(b1);
+    let b1: Box<MaybeUninit<boot::memory::Page>, &dyn alloc::alloc::Allocator> =
+        Box::new_uninit_in(&boot::VIRTUAL_MEMORY_ALLOCATOR);
+    Box::leak(b1);
 
-    boot::PAGING_MANAGER.sync_lock().setup_from_existing();
-
+    boot::PAGING_MANAGER
+        .sync_lock()
+        .setup_from_existing(page_entries);
+    x86_64::instructions::bochs_breakpoint();
     if true {
         if true {
             let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();

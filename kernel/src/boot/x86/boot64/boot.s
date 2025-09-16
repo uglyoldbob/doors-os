@@ -1,6 +1,10 @@
     .section .data
     .global _start
     .global PAGE_DIRECTORY_BOOT1
+    .global TABLE4
+    .global TABLE3
+    .global TABLE2
+    .global TABLE1
     .extern GDT_TABLE_PTR
     .extern start64
     .extern MULTIBOOT2_DATA
@@ -17,9 +21,21 @@
         .quad PAGE_DIRECTORY_BOOT1 + 0x3
         .fill 511, 8, 0
     .align 4096
+    PAGE_TABLE_MAPPING:
+        TABLE4:
+            .quad 0 + 0x3
+        TABLE3:
+            .quad 0
+        TABLE2:
+            .quad 0
+        TABLE1:
+            .quad 0
+        .fill 508, 8, 0
+    .align 4096
     PAGE_DIRECTORY_BOOT1:
         .quad 0x000000 + 0x83
         .quad 0x200000 + 0x83
+        .quad PAGE_TABLE_MAPPING + 0x3
         .fill 510, 8, 0
     .section .text
     .code32
