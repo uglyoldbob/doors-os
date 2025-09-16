@@ -7,7 +7,7 @@ pub use variable::*;
 
 use super::BumpAllocator;
 
-use core::{marker::PhantomData, mem::MaybeUninit};
+use core::{alloc::GlobalAlloc, marker::PhantomData, mem::MaybeUninit};
 
 use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
 

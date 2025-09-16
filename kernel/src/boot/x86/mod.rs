@@ -148,10 +148,8 @@ pub static IOPORTS: Locked<IoPortManager> = Locked::new(IoPortManager::new());
 
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
-static HEAP_MANAGER: Locked<memory::HeapManager> = Locked::new(memory::HeapManager::new(
-    &boot::PAGING_MANAGER,
-    &boot::VIRTUAL_MEMORY_ALLOCATOR,
-));
+static HEAP_MANAGER: Locked<mem2::HeapManager<'_, boot::memory::Page>> =
+    Locked::new(mem2::HeapManager::new(&boot::VIRTUAL_MEMORY_ALLOCATOR));
 
 /// A reference to a single io port
 pub struct IoPortRef<T> {
@@ -822,6 +820,9 @@ fn start_common1(
     boot::PAGING_MANAGER
         .sync_lock()
         .setup_from_existing(page_entries);
+
+    HEAP_MANAGER.sync_lock().init_memory(0x403000, 10);
+
     x86_64::instructions::bochs_breakpoint();
     if true {
         if true {

@@ -1175,7 +1175,12 @@ impl<'a> PagingTableManager<'a> {
                 }
                 1 => {
                     if entry.get_entry(index).is_none() {
-                        loop {}
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
                     }
                     Ok(())
                 }

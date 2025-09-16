@@ -1,6 +1,6 @@
 //! Code for a variable length chunk memory allocator
 
-use core::{marker::PhantomData, ptr::NonNull};
+use core::{alloc::GlobalAlloc, marker::PhantomData, ptr::NonNull};
 
 use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
 
@@ -182,22 +182,11 @@ unsafe impl<'a, T: Default> core::alloc::Allocator for Locked<HeapManager<'a, T>
 
 impl<'a, T: Default> HeapManager<'a, T> {
     /// Create a heap manager.
-    pub const fn new(
-        start_addr: usize,
-        len: usize,
-        num_blocks: usize,
-        mem: &'a dyn Allocator,
-    ) -> Self {
-        assert!(len > core::mem::size_of::<HeapNode>());
-        let a = start_addr as *mut HeapNode;
-        let mut h = NonNull::from_ref(unsafe { a.as_ref() }.unwrap());
-        let h2 = unsafe { h.as_mut() };
-        h2.size = len;
-        h2.next = None;
+    pub const fn new(mem: &'a dyn Allocator) -> Self {
         Self {
-            head: Some(h),
+            head: None,
             mem,
-            num_blocks,
+            num_blocks: 0,
             _phantom: PhantomData,
         }
     }
@@ -273,6 +262,11 @@ impl<'a, T: Default> HeapManager<'a, T> {
             core::hint::black_box(val);
             core::hint::black_box(val2);
         }
+    }
+
+    /// Initialize the actual memory
+    pub fn init_memory(&mut self, start_addr: usize, num_blocks: usize) {
+        doors_macros::todo!("Implement the memory initialization for the heap");
     }
 
     /// Perform an actual allocation
@@ -468,3 +462,15 @@ impl<'a, T: Default> HeapManager<'a, T> {
 }
 
 impl<'a, T> !crate::Interrupt for HeapManager<'a, T> {}
+
+unsafe impl<'a, T: Default> GlobalAlloc for Locked<HeapManager<'a, T>> {
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        let mut this = self.sync_lock();
+        this.run_alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
+        let mut this = self.sync_lock();
+        this.run_dealloc(ptr, layout);
+    }
+}

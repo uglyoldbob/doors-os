@@ -1,8 +1,7 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
 use crate::{
-    boot::x86::{boot64::memory::PagingTableManager, memory::UserProcessAllocator},
-    AsyncLocked, AsyncLockedArc, Locked, LockedArc,
+    boot::x86::boot64::memory::PagingTableManager, AsyncLocked, AsyncLockedArc, Locked, LockedArc,
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;

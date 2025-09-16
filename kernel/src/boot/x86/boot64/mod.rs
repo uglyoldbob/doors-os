@@ -1,13 +1,10 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
-use crate::boot::x86::memory::HeapManagerUserProcess;
-use crate::boot::x86::memory::UserProcessAllocator;
 use crate::kernel;
 use crate::Locked;
 use crate::LockedArc;
 use alloc::boxed::Box;
 use core::alloc::Allocator;
-use core::ops::DerefMut;
 use core::ptr::NonNull;
 use lazy_static::lazy_static;
 use raw_cpuid::{CpuId, CpuIdReaderNative};
@@ -543,10 +540,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
                     loop {}
                     x86_64::instructions::bochs_breakpoint();
-                    let heap = UserProcessAllocator::new(HeapManagerUserProcess::new(
-                        &PAGING_MANAGER,
-                        USER_SPACE_START,
-                    ));
                     PAGE_ALLOCATOR.debug();
                     crate::VGA.print_str(&alloc::format!(
                         "About to map pages with {} bytes for user process\r\n",
