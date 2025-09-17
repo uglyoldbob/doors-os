@@ -350,13 +350,6 @@ impl acpi::AcpiHandler for super::Acpi {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
-        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "MAP_ACPI:{:x}-/{:x}|",
-                physical_address,
-                size
-            ));
-        }
         let size = if size < core::mem::size_of::<T>() {
             core::mem::size_of::<T>()
         } else {
@@ -394,12 +387,6 @@ impl acpi::AcpiHandler for super::Acpi {
             let bufaddr = crate::slice_address(buf.as_ref());
 
             let mut p = self.pageman.sync_lock();
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                ":map {:x} {:x} {:x}:",
-                bufaddr,
-                start,
-                realsize
-            ));
             let e = p.map_addresses_read_only(bufaddr, start, realsize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");

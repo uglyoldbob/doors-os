@@ -844,7 +844,6 @@ fn start_common1(
             &boot::VIRTUAL_MEMORY_ALLOCATOR,
         );
         let a = Box::leak(a);
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("+{:p}+", a));
     }
 
     {

@@ -848,9 +848,6 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
     mut f: F,
 ) -> Result<(), ()> {
     let mut ptm = PAGE_TABLE_MAPPER.sync_lock();
-    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-        crate::VGA.print_str("ASDF");
-    }
     let pt4_index = (address >> 39) & 0x1FF;
     let pt3_index = (address >> 30) & 0x1FF;
     let pt2_index = (address >> 21) & 0x1FF;
@@ -864,9 +861,6 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(4, pt4.table, pt4_index)?;
         pt4.table.get_entry(pt4_index).unwrap() as usize
     };
-    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-        crate::VGA.print_str("1");
-    }
     let a2 = {
         let pt3 = ptm[1].as_mut().unwrap();
         *pt3.entry = a3 | 3;
@@ -876,9 +870,6 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(3, pt3.table, pt3_index)?;
         pt3.table.get_entry(pt3_index).unwrap() as usize
     };
-    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-        crate::VGA.print_str("2");
-    }
     let a1 = {
         let pt2 = ptm[2].as_mut().unwrap();
         *pt2.entry = a2 | 3;
@@ -888,9 +879,6 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(2, pt2.table, pt2_index)?;
         pt2.table.get_entry(pt2_index).unwrap() as usize
     };
-    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-        crate::VGA.print_str("3");
-    }
     let _a0 = {
         let pt1 = ptm[3].as_mut().unwrap();
         *pt1.entry = a1 | 3;
@@ -900,9 +888,6 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(1, pt1.table, pt1_index)?;
         pt1.table.get_entry(pt1_index)
     };
-    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-        crate::VGA.print_str("FDSA\r\n");
-    }
     Ok(())
 }
 
@@ -987,22 +972,9 @@ impl<'a> PagingTableManager<'a> {
             })
         };
 
-        let address = crate::address(unsafe { a.as_ref().assume_init_ref() });
-        crate::VGA.print_str(&alloc::format!(
-            "BUILD PAGE TABLES: new page physical = {:x?} {:x}\r\n",
-            address,
-            phys_cr3.address()
-        ));
         let mut np = Self::new(self.mm);
         np.cr3 = phys_cr3.address();
         np.copy_kernel_map(self);
-        let (cr3, _) = x86_64::registers::control::Cr3::read();
-        let cr3 = cr3.start_address().as_u64() as usize;
-        crate::VGA.print_str(&alloc::format!(
-            "BUILD PAGE TABLES: cr3 = {:x} {:x}\r\n",
-            cr3,
-            self.cr3
-        ));
         np
     }
 
@@ -1088,22 +1060,12 @@ impl<'a> PagingTableManager<'a> {
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
                 4 => {
                     if entry.get_entry(index).is_none() {
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "ALLOCATING {:x} PML4 entry {} at {:p}\r\n",
-                            self.cr3,
-                            index,
-                            entry
-                        ));
                         let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
                         let p = Box::leak(p);
                         let mut flags = PageTableEntryFlags(0);
                         flags.set_writable(true);
                         flags.set_present(true);
                         let adr = p.as_ptr() as usize;
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "ALLOCATING PML4 with {:x}\r\n",
-                            adr
-                        ));
                         entry.set_entry(index, adr, flags);
                         x86_64::instructions::tlb::flush_all();
                     }
@@ -1158,24 +1120,9 @@ impl<'a> PagingTableManager<'a> {
         physical_address: usize,
         size: usize,
     ) -> Result<(), ()> {
-        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                "MAP_RO:{:x}/{:x} {:x}|",
-                virtual_address,
-                physical_address,
-                size
-            ));
-        }
         for i in (0..size).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
-            if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "OA:{:x}/{:x}|",
-                    vaddr,
-                    paddr
-                ));
-            }
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
                 4 => {
                     if entry.get_entry(index).is_none() {
@@ -1301,17 +1248,11 @@ impl<'a> PagingTableManager<'a> {
 
     /// Map a virtual memory address to a page which will be grabbed from the physical memory manager.
     pub fn map_new_page(&mut self, address: usize) -> Result<(), ()> {
-        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PR:{:x}|", address));
-        }
         let physical_page: Box<MaybeUninit<Page>, &'a crate::Locked<SimpleMemoryManager>> =
             Box::new_uninit_in(self.mm);
         let physical_page = unsafe { physical_page.assume_init() };
         let paddr = Box::leak(physical_page);
         let paddr = crate::address(paddr);
-        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PA:{:x}|", paddr));
-        }
         self.map_addresses_read_write(address, paddr, core::mem::size_of::<Page>())
     }
 }
@@ -1331,9 +1272,6 @@ impl<'a> VirtualMemoryMapper<'a> {
 impl<'a> crate::boot::VirtualMemoryMapperTrait for VirtualMemoryMapper<'a> {
     fn allocate_physical_pages(&self, virt: usize, len: usize) -> Result<(), ()> {
         let mut ptm = self.ptm.sync_lock();
-        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
-            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PQ {}", len));
-        }
         for i in (0..len).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virt + i;
             ptm.map_new_page(vaddr)?;
