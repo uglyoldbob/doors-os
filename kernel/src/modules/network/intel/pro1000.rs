@@ -1179,7 +1179,7 @@ impl IntelPro1000Device {
                         doors_macros::todo_item!(
                             "Figure out how to not use memory allocation here"
                         );
-                        //let _ = this.packet_stream.1.push_interrupt(*packet.clone());
+                        let _ = this.packet_stream.1.push_interrupt(**packet);
                         let mut t = *index as u32;
                         t = (t + 1) % buffer.bufs.len() as u32;
                         *index = t as u8;

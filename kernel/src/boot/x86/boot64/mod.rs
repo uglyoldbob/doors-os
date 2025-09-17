@@ -583,9 +583,12 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         .as_ref()
                         .unwrap()
                         .spawn_thread(|| {
-                            crate::VGA.print_str("A user process stub function is running\r\n")
+                            crate::VGA.print_str("A user process stub function is running\r\n");
+                            let ptr = USER_SPACE_START as *const ();
+                            let user_code: extern "C" fn() = unsafe { core::mem::transmute(ptr) };
+                            crate::VGA.print_str("RUNNING USER CODE\r\n");
+                            (user_code)();
                         });
-                    crate::VGA.print_str("GOT USER BINARY TEXT data\r\n");
                 }
             }
         }

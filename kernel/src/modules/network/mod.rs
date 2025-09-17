@@ -630,7 +630,7 @@ impl<'a> TryFrom<&'a EthernetFrame<'a>> for DecodedEthernetFrame<'a> {
 }
 
 /// A raw ethernet packet received from a network card
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct RawEthernetPacket {
     /// The contents of the packet
     data: [u8; MAX_RX_PACKET_SIZE],
