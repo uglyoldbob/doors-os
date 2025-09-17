@@ -1,8 +1,8 @@
 //! Code for a variable length chunk memory allocator
 
-use core::{alloc::GlobalAlloc, marker::PhantomData, ptr::NonNull};
+use core::{alloc::GlobalAlloc, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
 
-use alloc::{alloc::Allocator, vec::Vec};
+use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
 
 use crate::{boot::VirtualMemoryMapperTrait, Locked};
 
@@ -233,11 +233,15 @@ impl<'a, T: Default> HeapManager<'a, T> {
     fn add_memory_from_allocator(&mut self) {
         let new_mem: Vec<T, &'a dyn Allocator> = Vec::with_capacity_in(self.num_blocks, self.mem);
         let new_mem = Vec::leak(new_mem);
-        let new_addr = crate::slice_address(new_mem);
-        let new_size = new_mem.len() * core::mem::size_of::<T>();
+        let new_addr = new_mem.as_ptr() as usize;
+        let new_size = self.num_blocks * core::mem::size_of::<T>();
         if let Some(mapper) = self.mapper {
             mapper.allocate_physical_pages(new_addr, new_size).unwrap();
         }
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+            "GOT MEM {:x}-",
+            new_addr
+        ));
         let a = new_addr as *mut HeapNode;
         let mut h = NonNull::from_ref(unsafe { a.as_ref() }.unwrap());
         let h2 = unsafe { h.as_mut() };
@@ -251,6 +255,8 @@ impl<'a, T: Default> HeapManager<'a, T> {
                 elem = n;
             }
             unsafe { elem.as_mut() }.next = Some(h);
+        } else {
+            self.head = Some(h);
         }
     }
 
@@ -270,7 +276,14 @@ impl<'a, T: Default> HeapManager<'a, T> {
     }
 
     /// Initialize the actual memory
-    pub fn init_memory(&mut self, start_addr: usize, num_blocks: usize) {
+    pub fn init_memory(&mut self, num_blocks: usize) {
+        let a: Box<MaybeUninit<T>, &dyn Allocator> = Box::new_uninit_in(self.mem);
+        let a = Box::leak(a);
+        let start_addr = crate::address(a);
+        for _ in 1..num_blocks {
+            let a: Box<MaybeUninit<T>, &dyn Allocator> = Box::new_uninit_in(self.mem);
+            Box::leak(a);
+        }
         if let Some(mapper) = self.mapper {
             mapper
                 .allocate_physical_pages(start_addr, num_blocks * core::mem::size_of::<T>())
@@ -415,10 +428,12 @@ impl<'a, T: Default> HeapManager<'a, T> {
                 return r;
             }
             if times == 1 {
+                self.print();
                 self.add_memory_from_allocator();
             }
             if times == 2 {
                 crate::VGA.print_str("OUT OF MEMORY? 3\r\n");
+                loop {}
                 return core::ptr::null_mut();
             }
         }

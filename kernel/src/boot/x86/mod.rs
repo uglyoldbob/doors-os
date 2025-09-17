@@ -820,7 +820,7 @@ fn start_common1(
         .sync_lock()
         .setup_from_existing(page_entries);
 
-    HEAP_MANAGER.sync_lock().init_memory(0x404000, 10);
+    HEAP_MANAGER.sync_lock().init_memory(10);
 
     if true {
         if true {
@@ -838,6 +838,14 @@ fn start_common1(
             v.replace(crate::kernel::OwnedDevice::free_range(b));
             drop(v);
         }
+    }
+
+    for _ in 0..4 {
+        let a = Box::<boot::memory::Page, &dyn core::alloc::Allocator>::new_uninit_in(
+            &boot::VIRTUAL_MEMORY_ALLOCATOR,
+        );
+        let a = Box::leak(a);
+        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("+{:p}+", a));
     }
 
     {

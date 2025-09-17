@@ -497,12 +497,6 @@ impl<'a> SimpleMemoryManager<'a> {
         }
     }
 
-    /// Lookup entry address for a given virtual address
-    pub fn get_entry_for_virtual_memory(&self, vaddr: usize) -> usize {
-        todo!();
-        42
-    }
-
     /// Maps 4 pages for modification of a page table set
     pub fn modify_four_pages_with_temporary_mapping<
         T,
@@ -714,7 +708,7 @@ impl<T: Default> generic_memory::DmaMemory<T> {
 
 bitfield::bitfield! {
     /// The possible flags for a page table entry
-    struct PageTableEntryFlags(u16);
+    pub struct PageTableEntryFlags(u16);
     /// Is the item this table refers to present?
     present, set_present: 0;
     /// Is the reference writable?
@@ -764,39 +758,6 @@ impl PageTable {
 
 /// Verifies that a PageTable is the correct size
 const _PAGETABLE_SPACE_CHECKER: [u8; 4096] = [0; core::mem::size_of::<PageTable>()];
-
-/// A reference to a page table, used for the windowing scheme. A page table is mapped into virtual memory and points to a physical page.
-/// This struct keeps track of the window of virtual memory used to examine a page table physically located at physical_address.
-/// This is because the x86 paging scheme uses physical addresses in its page tables instead of virtual addresses.
-struct PageTableRef {
-    ///A reference to the page table
-    table: &'static mut PageTable,
-    /// The entry in a page table that allows the mapping to change
-    virtual_mapping: &'static mut u64,
-}
-
-impl PageTableRef {
-    /// Create a page table ref, fully specified with virtual address and page table entry reference.
-    fn new(virt: usize, v: &'static mut u64) -> Self {
-        Self {
-            table: unsafe { (virt as *mut PageTable).as_mut().unwrap() },
-            virtual_mapping: v,
-        }
-    }
-
-    /// Update the current page table reference to the given physical address if required, return true if any action was required.
-    fn update(&mut self, phys: u64) -> bool {
-        if phys != *self.virtual_mapping {
-            *self.virtual_mapping = phys | 1;
-            x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
-                self.table as *const PageTable as u64,
-            ));
-            true
-        } else {
-            false
-        }
-    }
-}
 
 /// The data for a page table modifier
 pub struct PageTableModifierData {
@@ -1074,47 +1035,6 @@ impl<'a> PagingTableManager<'a> {
         init_page_table_mapper(entries);
     }
 
-    /// Maps a new physical page for one of the tables in the set of page tables
-    fn new_page_table(&mut self, table: &mut &'static mut PageTable, index: usize) -> u64 {
-        let a = Box::<PageTable, &Locked<SimpleMemoryManager>>::new_uninit_in(self.mm);
-        let paddr = a.as_ptr() as usize;
-        self.mm
-            .modify_physical_address_with_temporary_mapping::<_, PageTable, _>(
-                paddr,
-                |addr, new_page| {
-                    crate::VGA.print_str(&alloc::format!(
-                        "Got page for pt: {:x} {:p}\r\n",
-                        paddr,
-                        new_page
-                    ));
-                    if self
-                        .map_addresses_read_write(
-                            crate::address(new_page),
-                            addr,
-                            core::mem::size_of::<PageTable>(),
-                        )
-                        .is_ok()
-                    {
-                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                            "new page table is {:p}\r\n",
-                            new_page
-                        ));
-                        *new_page = PageTable::new();
-                        self.unmap_mapped_pages(
-                            crate::address(new_page),
-                            core::mem::size_of::<PageTable>(),
-                        );
-                    } else {
-                        crate::VGA.print_str("Failed to map new page table\r\n");
-                    }
-                },
-            );
-        let mut flags = PageTableEntryFlags(0);
-        flags.set_present(true);
-        flags.set_writable(true);
-        table.set_entry(index, paddr, flags)
-    }
-
     /// Map the specified range of physical addresses to the specified virtual addresses as read/write. size is in bytes.
     pub fn map_addresses_read_write(
         &mut self,
@@ -1134,6 +1054,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1145,6 +1068,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1156,6 +1082,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1165,6 +1094,7 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, paddr, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
                     }
                     Ok(())
                 }
@@ -1193,6 +1123,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1204,6 +1137,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1215,6 +1151,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1224,6 +1163,10 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, paddr, flags);
+                        x86_64::instructions::bochs_breakpoint();
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
+                    } else {
+                        loop {}
                     }
                     Ok(())
                 }
@@ -1246,6 +1189,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1257,6 +1203,9 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
@@ -1268,13 +1217,17 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
                     }
                     Ok(())
                 }
                 1 => {
                     let mut flags = PageTableEntryFlags(0);
                     entry.set_entry(index, 0, flags);
-                    Err(())
+                    x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
+                    Ok(())
                 }
                 _ => unreachable!(),
             });
