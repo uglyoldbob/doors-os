@@ -24,6 +24,8 @@ const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-none/re
 doors_macros::use_doors_test!();
 
 mod common;
+use core::sync::atomic::AtomicBool;
+
 pub use common::*;
 
 pub mod boot;
@@ -36,6 +38,9 @@ pub mod scheduler;
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
 pub use boot::IoPortRef;
+
+/// a debug value
+pub static SPECIAL_DEBUG: AtomicBool = AtomicBool::new(false);
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "arm")] {

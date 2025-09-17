@@ -330,7 +330,7 @@ pub extern "x86-interrupt" fn unknown_interrupt(_: usize) {
 
 /// The virtual memory allocator. Deleted space from this may not be reclaimable.
 pub static VIRTUAL_MEMORY_ALLOCATOR: Locked<memory::BumpAllocator> =
-    Locked::new(memory::BumpAllocator::new(0x1000));
+    Locked::new(memory::BumpAllocator::new(0x0000));
 
 /// The physical memory manager for the system
 pub static PAGE_ALLOCATOR: Locked<memory::SimpleMemoryManager> =

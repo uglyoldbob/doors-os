@@ -575,7 +575,6 @@ impl boot::X86System<'_> {
                 rsdp1.signature().unwrap().as_ptr(),
                 rsdp1.rsdt_address()
             ));
-            x86_64::instructions::bochs_breakpoint();
             let t = unsafe {
                 acpi::AcpiTables::from_rsdp(
                     self.acpi_handler.clone(),

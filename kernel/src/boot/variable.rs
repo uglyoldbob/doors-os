@@ -1,6 +1,11 @@
 //! Code for a variable length chunk memory allocator
 
-use core::{alloc::GlobalAlloc, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    marker::PhantomData,
+    mem::MaybeUninit,
+    ptr::NonNull,
+};
 
 use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
 
@@ -174,7 +179,7 @@ impl<'a, T: Default> HeapManager<'a, T> {
             head: None,
             mapper: None,
             mem,
-            num_blocks: 0,
+            num_blocks: 10,
             _phantom: PhantomData,
         }
     }
@@ -188,7 +193,7 @@ impl<'a, T: Default> HeapManager<'a, T> {
             head: None,
             mapper: Some(mapper),
             mem,
-            num_blocks: 0,
+            num_blocks: 10,
             _phantom: PhantomData,
         }
     }
@@ -230,18 +235,22 @@ impl<'a, T: Default> HeapManager<'a, T> {
     }
 
     /// Add some memory to the heap from the provided allocator. len is the number of T elements to add.
+    #[inline(never)]
     fn add_memory_from_allocator(&mut self) {
-        let new_mem: Vec<T, &'a dyn Allocator> = Vec::with_capacity_in(self.num_blocks, self.mem);
-        let new_mem = Vec::leak(new_mem);
-        let new_addr = new_mem.as_ptr() as usize;
+        x86_64::instructions::bochs_breakpoint();
         let new_size = self.num_blocks * core::mem::size_of::<T>();
-        if let Some(mapper) = self.mapper {
-            mapper.allocate_physical_pages(new_addr, new_size).unwrap();
-        }
+        let layout = Layout::from_size_align(new_size, core::mem::align_of::<T>()).unwrap();
+        let a = self.mem.allocate(layout).unwrap();
+        let new_addr = crate::slice_address(unsafe { a.as_ref() });
+
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
             "GOT MEM {:x}-",
             new_addr
         ));
+        crate::SPECIAL_DEBUG.store(true, core::sync::atomic::Ordering::SeqCst);
+        if let Some(mapper) = self.mapper {
+            mapper.allocate_physical_pages(new_addr, new_size).unwrap();
+        }
         let a = new_addr as *mut HeapNode;
         let mut h = NonNull::from_ref(unsafe { a.as_ref() }.unwrap());
         let h2 = unsafe { h.as_mut() };
@@ -428,7 +437,6 @@ impl<'a, T: Default> HeapManager<'a, T> {
                 return r;
             }
             if times == 1 {
-                self.print();
                 self.add_memory_from_allocator();
             }
             if times == 2 {

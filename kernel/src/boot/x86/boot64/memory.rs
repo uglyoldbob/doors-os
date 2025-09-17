@@ -189,6 +189,9 @@ impl BumpAllocatorInner {
         &mut self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
+        if crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst) {
+            x86_64::instructions::bochs_breakpoint();
+        }
         let align_mask = layout.align() - 1;
         let align_error = (self.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
@@ -1095,11 +1098,13 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_present(true);
                         entry.set_entry(index, paddr, flags);
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
+                    } else {
+                        loop {}
                     }
                     Ok(())
                 }
                 _ => unreachable!(),
-            });
+            })?;
         }
         Ok(())
     }
@@ -1160,10 +1165,9 @@ impl<'a> PagingTableManager<'a> {
                 1 => {
                     if entry.get_entry(index).is_none() {
                         let mut flags = PageTableEntryFlags(0);
-                        flags.set_writable(true);
+                        flags.set_writable(false);
                         flags.set_present(true);
                         entry.set_entry(index, paddr, flags);
-                        x86_64::instructions::bochs_breakpoint();
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
                     } else {
                         loop {}
@@ -1242,14 +1246,18 @@ impl<'a> PagingTableManager<'a> {
 
     /// Map a virtual memory address to a page which will be grabbed from the physical memory manager.
     pub fn map_new_page(&mut self, address: usize) -> Result<(), ()> {
+        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PR:{:x}|", address));
+        }
         let physical_page: Box<MaybeUninit<Page>, &'a crate::Locked<SimpleMemoryManager>> =
             Box::new_uninit_in(self.mm);
         let physical_page = unsafe { physical_page.assume_init() };
         let paddr = Box::leak(physical_page);
         let paddr = crate::address(paddr);
-
-        self.map_addresses_read_write(address, paddr, core::mem::size_of::<Page>());
-        Ok(())
+        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PA:{:x}|", paddr));
+        }
+        self.map_addresses_read_write(address, paddr, core::mem::size_of::<Page>())
     }
 }
 
@@ -1268,6 +1276,9 @@ impl<'a> VirtualMemoryMapper<'a> {
 impl<'a> crate::boot::VirtualMemoryMapperTrait for VirtualMemoryMapper<'a> {
     fn allocate_physical_pages(&self, virt: usize, len: usize) -> Result<(), ()> {
         let mut ptm = self.ptm.sync_lock();
+        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("PQ {}", len));
+        }
         for i in (0..len).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virt + i;
             ptm.map_new_page(vaddr)?;
