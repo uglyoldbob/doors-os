@@ -891,7 +891,6 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
     let pt3_index = (address >> 30) & 0x1FF;
     let pt2_index = (address >> 21) & 0x1FF;
     let pt1_index = (address >> 12) & 0x1FF;
-    x86_64::instructions::bochs_breakpoint();
     let a3 = {
         let pt4 = ptm[0].as_mut().unwrap();
         *pt4.entry = cr3 | 3;
@@ -960,7 +959,6 @@ impl<'a> PagingTableManager<'a> {
         if cr3 != self.cr3 {
             let pa = x86_64::PhysAddr::new_unsafe(self.cr3 as u64);
             let pf = x86_64::structures::paging::PhysFrame::from_start_address_unchecked(pa);
-            x86_64::instructions::bochs_breakpoint();
             x86_64::registers::control::Cr3::write(pf, Cr3Flags::PAGE_LEVEL_CACHE_DISABLE);
         }
     }
@@ -1074,33 +1072,6 @@ impl<'a> PagingTableManager<'a> {
         let cr3 = cr3.start_address().as_u64();
         self.cr3 = cr3 as usize;
         init_page_table_mapper(entries);
-        modify_page_tables(self.cr3, 0, |level, entry, index| match level {
-            4 => {
-                if entry.get_entry(index).is_none() {
-                    loop {}
-                }
-                Ok(())
-            }
-            3 => {
-                if entry.get_entry(index).is_none() {
-                    loop {}
-                }
-                Ok(())
-            }
-            2 => {
-                if entry.get_entry(index).is_none() {
-                    loop {}
-                }
-                Ok(())
-            }
-            1 => {
-                if entry.get_entry(index).is_none() {
-                    loop {}
-                }
-                Ok(())
-            }
-            _ => unreachable!(),
-        });
     }
 
     /// Maps a new physical page for one of the tables in the set of page tables
@@ -1157,23 +1128,16 @@ impl<'a> PagingTableManager<'a> {
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
                 4 => {
                     if entry.get_entry(index).is_none() {
-                        loop {}
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
                     }
                     Ok(())
                 }
                 3 => {
-                    if entry.get_entry(index).is_none() {
-                        loop {}
-                    }
-                    Ok(())
-                }
-                2 => {
-                    if entry.get_entry(index).is_none() {
-                        loop {}
-                    }
-                    Ok(())
-                }
-                1 => {
                     if entry.get_entry(index).is_none() {
                         let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
                         let p = Box::leak(p);
@@ -1181,6 +1145,26 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                2 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                1 => {
+                    if entry.get_entry(index).is_none() {
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, paddr, flags);
                     }
                     Ok(())
                 }
@@ -1201,12 +1185,50 @@ impl<'a> PagingTableManager<'a> {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
-                4 => Ok(()),
-                3 => Ok(()),
-                2 => Ok(()),
-                1 => Ok(()),
+                4 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                3 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                2 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                1 => {
+                    if entry.get_entry(index).is_none() {
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, paddr, flags);
+                    }
+                    Ok(())
+                }
                 _ => unreachable!(),
-            });
+            })?;
         }
         Ok(())
     }
@@ -1216,10 +1238,44 @@ impl<'a> PagingTableManager<'a> {
         for i in (0..size).step_by(core::mem::size_of::<Page>()).rev() {
             let vaddr = virtual_address + i;
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
-                4 => Ok(()),
-                3 => Ok(()),
-                2 => Ok(()),
-                1 => Ok(()),
+                4 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                3 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                2 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                    }
+                    Ok(())
+                }
+                1 => {
+                    let mut flags = PageTableEntryFlags(0);
+                    entry.set_entry(index, 0, flags);
+                    Err(())
+                }
                 _ => unreachable!(),
             });
         }
@@ -1227,13 +1283,7 @@ impl<'a> PagingTableManager<'a> {
 
     /// Unmap a mapped page and deallocate the physical page that is mapped to it.
     pub fn unmap_delete_page(&mut self, address: usize) -> Result<(), ()> {
-        modify_page_tables(self.cr3, address, |level, entry, index| match level {
-            4 => Ok(()),
-            3 => Ok(()),
-            2 => Ok(()),
-            1 => Ok(()),
-            _ => unreachable!(),
-        });
+        loop {}
         Ok(())
     }
 
@@ -1246,6 +1296,38 @@ impl<'a> PagingTableManager<'a> {
         let paddr = crate::address(paddr);
 
         self.map_addresses_read_write(address, paddr, core::mem::size_of::<Page>());
+        Ok(())
+    }
+}
+
+/// Responsible for mapping physical memory to virtual memory
+pub struct VirtualMemoryMapper<'a> {
+    ptm: &'a Locked<PagingTableManager<'a>>,
+}
+
+impl<'a> VirtualMemoryMapper<'a> {
+    /// Build a new mapper
+    pub const fn new(ptm: &'a Locked<PagingTableManager<'a>>) -> Self {
+        Self { ptm }
+    }
+}
+
+impl<'a> crate::boot::VirtualMemoryMapperTrait for VirtualMemoryMapper<'a> {
+    fn allocate_physical_pages(&self, virt: usize, len: usize) -> Result<(), ()> {
+        let mut ptm = self.ptm.sync_lock();
+        for i in (0..len).step_by(core::mem::size_of::<Page>()) {
+            let vaddr = virt + i;
+            ptm.map_new_page(vaddr)?;
+        }
+        Ok(())
+    }
+
+    fn unallocate_physical_pages(&self, virt: usize, len: usize) -> Result<(), ()> {
+        let mut ptm = self.ptm.sync_lock();
+        for i in (0..len).step_by(core::mem::size_of::<Page>()) {
+            let vaddr = virt + i;
+            ptm.unmap_delete_page(vaddr)?;
+        }
         Ok(())
     }
 }

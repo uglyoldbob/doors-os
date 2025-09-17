@@ -2,9 +2,9 @@
 
 use core::{alloc::GlobalAlloc, marker::PhantomData, ptr::NonNull};
 
-use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
+use alloc::{alloc::Allocator, vec::Vec};
 
-use crate::Locked;
+use crate::{boot::VirtualMemoryMapperTrait, Locked};
 
 /// A container structure for a heap node
 /// Stores some calculations about how the node can allocate a chunk of memory
@@ -108,21 +108,6 @@ impl HeapNode {
         NonNull::<Self>::new_unchecked(node)
     }
 
-    /// Create a heap node, at the specified location, using the specified layout
-    unsafe fn with_nonnull(data: NonNull<u8>, layout: core::alloc::Layout) -> NonNull<Self> {
-        let node = data.as_ptr() as *mut Self;
-        let size = layout.size();
-        let err = size % Self::NODEALIGN;
-        let s = if err != 0 {
-            size + Self::NODEALIGN - err
-        } else {
-            size
-        };
-        (*node).size = s;
-        (*node).next = None;
-        NonNull::<Self>::new_unchecked(node)
-    }
-
     /// Calculate the alignment properties of an allocation for this node.
     /// This fits a chunk of memory of size bytes and align alignment.
     fn calc_alignment(&self, size: usize, align: usize) -> HeapNodeAlign {
@@ -148,6 +133,8 @@ impl HeapNode {
 pub struct HeapManager<'a, T: Default> {
     /// The beginning of the list of free memory nodes.
     head: Option<NonNull<HeapNode>>,
+    /// The optional struct for mapping virtual memory to real memory
+    mapper: Option<&'a crate::boot::VirtualMemoryMapper<'a>>,
     /// The allocator for getting more memory
     mem: &'a dyn Allocator,
     /// The number of blocks to add when adding more memory
@@ -185,6 +172,21 @@ impl<'a, T: Default> HeapManager<'a, T> {
     pub const fn new(mem: &'a dyn Allocator) -> Self {
         Self {
             head: None,
+            mapper: None,
+            mem,
+            num_blocks: 0,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Create a heap manager that also maps virtual memory.
+    pub const fn new_mapping(
+        mem: &'a dyn Allocator,
+        mapper: &'a crate::boot::VirtualMemoryMapper<'a>,
+    ) -> Self {
+        Self {
+            head: None,
+            mapper: Some(mapper),
             mem,
             num_blocks: 0,
             _phantom: PhantomData,
@@ -233,6 +235,9 @@ impl<'a, T: Default> HeapManager<'a, T> {
         let new_mem = Vec::leak(new_mem);
         let new_addr = crate::slice_address(new_mem);
         let new_size = new_mem.len() * core::mem::size_of::<T>();
+        if let Some(mapper) = self.mapper {
+            mapper.allocate_physical_pages(new_addr, new_size).unwrap();
+        }
         let a = new_addr as *mut HeapNode;
         let mut h = NonNull::from_ref(unsafe { a.as_ref() }.unwrap());
         let h2 = unsafe { h.as_mut() };
@@ -266,11 +271,19 @@ impl<'a, T: Default> HeapManager<'a, T> {
 
     /// Initialize the actual memory
     pub fn init_memory(&mut self, start_addr: usize, num_blocks: usize) {
-        let raw = start_addr as *mut HeapNode;
-        let hn = unsafe { raw.as_mut() }.unwrap();
-        hn.next = None;
-        hn.size = num_blocks * core::mem::size_of::<T>();
-        self.head = Some(hn.into());
+        if let Some(mapper) = self.mapper {
+            mapper
+                .allocate_physical_pages(start_addr, num_blocks * core::mem::size_of::<T>())
+                .unwrap();
+        }
+        let hn = unsafe {
+            HeapNode::with_size(
+                start_addr as *mut u8,
+                num_blocks * core::mem::size_of::<T>(),
+                None,
+            )
+        };
+        self.head = Some(hn);
     }
 
     /// Perform an actual allocation

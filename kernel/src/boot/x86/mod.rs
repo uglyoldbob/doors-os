@@ -22,8 +22,6 @@ pub mod boot32;
 #[cfg(target_arch = "x86")]
 pub use boot32 as boot;
 
-pub mod memory;
-
 pub use boot::mem2;
 
 /// The registers for a local apic
@@ -149,7 +147,10 @@ pub static IOPORTS: Locked<IoPortManager> = Locked::new(IoPortManager::new());
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
 static HEAP_MANAGER: Locked<mem2::HeapManager<'_, boot::memory::Page>> =
-    Locked::new(mem2::HeapManager::new(&boot::VIRTUAL_MEMORY_ALLOCATOR));
+    Locked::new(mem2::HeapManager::new_mapping(
+        &boot::VIRTUAL_MEMORY_ALLOCATOR,
+        &crate::boot::VIRT_MEM_MAPPER,
+    ));
 
 /// A reference to a single io port
 pub struct IoPortRef<T> {
@@ -574,7 +575,7 @@ impl boot::X86System<'_> {
                 rsdp1.signature().unwrap().as_ptr(),
                 rsdp1.rsdt_address()
             ));
-
+            x86_64::instructions::bochs_breakpoint();
             let t = unsafe {
                 acpi::AcpiTables::from_rsdp(
                     self.acpi_handler.clone(),
@@ -807,15 +808,13 @@ fn start_common1(
     boot::VIRTUAL_MEMORY_ALLOCATOR
         .sync_lock()
         .stop_allocating(0x3fffff);
-    let b1: Box<MaybeUninit<boot::memory::Page>, &dyn alloc::alloc::Allocator> =
-        Box::new_uninit_in(&boot::VIRTUAL_MEMORY_ALLOCATOR);
-    Box::leak(b1);
-    let b1: Box<MaybeUninit<boot::memory::Page>, &dyn alloc::alloc::Allocator> =
-        Box::new_uninit_in(&boot::VIRTUAL_MEMORY_ALLOCATOR);
-    Box::leak(b1);
-    let b1: Box<MaybeUninit<boot::memory::Page>, &dyn alloc::alloc::Allocator> =
-        Box::new_uninit_in(&boot::VIRTUAL_MEMORY_ALLOCATOR);
-    Box::leak(b1);
+
+    for _ in 0..4 {
+        let a = Box::<boot::memory::Page, &dyn core::alloc::Allocator>::new_uninit_in(
+            &boot::VIRTUAL_MEMORY_ALLOCATOR,
+        );
+        let a = Box::leak(a);
+    }
 
     boot::PAGING_MANAGER
         .sync_lock()
@@ -823,7 +822,6 @@ fn start_common1(
 
     HEAP_MANAGER.sync_lock().init_memory(0x404000, 10);
 
-    x86_64::instructions::bochs_breakpoint();
     if true {
         if true {
             let vga = crate::modules::video::vga::X86VgaMode::get(0xa0000).unwrap();

@@ -376,7 +376,7 @@ impl acpi::AcpiHandler for super::Acpi {
                 0
             };
             let start = physical_address - size_before_allocation;
-            let realsize = size_before_allocation + size + size_after_allocation + 0x1000;
+            let realsize = size_before_allocation + size + size_after_allocation;
 
             let layout = core::alloc::Layout::from_size_align(
                 realsize,
@@ -387,6 +387,12 @@ impl acpi::AcpiHandler for super::Acpi {
             let bufaddr = crate::slice_address(buf.as_ref());
 
             let mut p = self.pageman.sync_lock();
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                ":map {:x} {:x} {:x}:",
+                bufaddr,
+                start,
+                realsize
+            ));
             let e = p.map_addresses_read_only(bufaddr, start, realsize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
