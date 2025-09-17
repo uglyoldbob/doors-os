@@ -237,17 +237,10 @@ impl<'a, T: Default> HeapManager<'a, T> {
     /// Add some memory to the heap from the provided allocator. len is the number of T elements to add.
     #[inline(never)]
     fn add_memory_from_allocator(&mut self) {
-        x86_64::instructions::bochs_breakpoint();
         let new_size = self.num_blocks * core::mem::size_of::<T>();
         let layout = Layout::from_size_align(new_size, core::mem::align_of::<T>()).unwrap();
         let a = self.mem.allocate(layout).unwrap();
         let new_addr = crate::slice_address(unsafe { a.as_ref() });
-
-        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            "GOT MEM {:x}-",
-            new_addr
-        ));
-        crate::SPECIAL_DEBUG.store(true, core::sync::atomic::Ordering::SeqCst);
         if let Some(mapper) = self.mapper {
             mapper.allocate_physical_pages(new_addr, new_size).unwrap();
         }

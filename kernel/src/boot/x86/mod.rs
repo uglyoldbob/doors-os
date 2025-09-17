@@ -1,7 +1,6 @@
 //! The generic x86 module covering both 32 and 64-bit functionality.
 
 use core::marker::PhantomData;
-use core::mem::MaybeUninit;
 
 use crate::modules::serial::SerialTrait;
 use crate::IoReadWrite;
@@ -615,7 +614,8 @@ impl crate::LockedArc<boot::X86System<'_>> {
             ));
 
             crate::VGA.print_str("Trying DSDT\r\n");
-
+            crate::SPECIAL_DEBUG.store(true, core::sync::atomic::Ordering::SeqCst);
+            x86_64::instructions::bochs_breakpoint();
             if true {
                 if let Ok(v) = acpi.dsdt() {
                     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(

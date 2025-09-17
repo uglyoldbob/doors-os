@@ -350,6 +350,13 @@ impl acpi::AcpiHandler for super::Acpi {
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
+        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "MAP_ACPI:{:x}-/{:x}|",
+                physical_address,
+                size
+            ));
+        }
         let size = if size < core::mem::size_of::<T>() {
             core::mem::size_of::<T>()
         } else {
@@ -376,7 +383,7 @@ impl acpi::AcpiHandler for super::Acpi {
                 0
             };
             let start = physical_address - size_before_allocation;
-            let realsize = size_before_allocation + size + size_after_allocation;
+            let realsize = size_before_allocation + size + size_after_allocation + 0x1000;
 
             let layout = core::alloc::Layout::from_size_align(
                 realsize,
@@ -544,8 +551,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                 if let Ok(data) = text.data() {
                     PAGE_ALLOCATOR.debug();
                     let mut pt = PAGING_MANAGER.sync_lock().new_table();
-                    loop {}
-                    x86_64::instructions::bochs_breakpoint();
                     PAGE_ALLOCATOR.debug();
                     crate::VGA.print_str(&alloc::format!(
                         "About to map pages with {} bytes for user process\r\n",
@@ -564,7 +569,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         crate::VGA.print_str("Mapped a user page\r\n");
                     }
                     crate::VGA.print_str("Installing page table for user process\r\n");
-                    loop {}
                     unsafe {
                         pt.install();
                     }

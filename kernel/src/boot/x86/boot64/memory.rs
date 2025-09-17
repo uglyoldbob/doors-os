@@ -189,9 +189,6 @@ impl BumpAllocatorInner {
         &mut self,
         layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, core::alloc::AllocError> {
-        if crate::DEBUG_PRINT.load(core::sync::atomic::Ordering::SeqCst) {
-            x86_64::instructions::bochs_breakpoint();
-        }
         let align_mask = layout.align() - 1;
         let align_error = (self.end + 1) & align_mask;
         let align_pad = if align_error > 0 {
@@ -851,6 +848,9 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
     mut f: F,
 ) -> Result<(), ()> {
     let mut ptm = PAGE_TABLE_MAPPER.sync_lock();
+    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+        crate::VGA.print_str("ASDF");
+    }
     let pt4_index = (address >> 39) & 0x1FF;
     let pt3_index = (address >> 30) & 0x1FF;
     let pt2_index = (address >> 21) & 0x1FF;
@@ -864,6 +864,9 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(4, pt4.table, pt4_index)?;
         pt4.table.get_entry(pt4_index).unwrap() as usize
     };
+    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+        crate::VGA.print_str("1");
+    }
     let a2 = {
         let pt3 = ptm[1].as_mut().unwrap();
         *pt3.entry = a3 | 3;
@@ -873,6 +876,9 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(3, pt3.table, pt3_index)?;
         pt3.table.get_entry(pt3_index).unwrap() as usize
     };
+    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+        crate::VGA.print_str("2");
+    }
     let a1 = {
         let pt2 = ptm[2].as_mut().unwrap();
         *pt2.entry = a2 | 3;
@@ -882,6 +888,9 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
         f(2, pt2.table, pt2_index)?;
         pt2.table.get_entry(pt2_index).unwrap() as usize
     };
+    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+        crate::VGA.print_str("3");
+    }
     let _a0 = {
         let pt1 = ptm[3].as_mut().unwrap();
         *pt1.entry = a1 | 3;
@@ -889,8 +898,11 @@ fn modify_page_tables<F: FnMut(usize, &mut PageTable, usize) -> Result<(), ()>>(
             crate::address(pt1.table) as u64
         ));
         f(1, pt1.table, pt1_index)?;
-        pt1.table.get_entry(pt1_index).unwrap() as usize
+        pt1.table.get_entry(pt1_index)
     };
+    if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+        crate::VGA.print_str("FDSA\r\n");
+    }
     Ok(())
 }
 
@@ -930,7 +942,24 @@ impl<'a> PagingTableManager<'a> {
     /// Copy the kernel map from another paging table into this one.
     /// Other must the the main kernel paging table
     fn copy_kernel_map(&mut self, other: &mut Self) {
-        todo!();
+        let mut tentry = None;
+        modify_page_tables(other.cr3, 0, |level, entry, index| match level {
+            4 => {
+                tentry = entry.get_entry(index);
+                Err(())
+            }
+            _ => Ok(()),
+        });
+        modify_page_tables(self.cr3, 0, |level, entry, index| match level {
+            4 => {
+                let mut flags = PageTableEntryFlags(0);
+                flags.set_writable(true);
+                flags.set_present(true);
+                entry.set_entry(index, tentry.unwrap() as usize, flags);
+                Err(())
+            }
+            _ => Ok(()),
+        });
     }
 
     /// Build a new set of page tables, keeping the existing kernel mappings
@@ -1051,15 +1080,24 @@ impl<'a> PagingTableManager<'a> {
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
                 4 => {
                     if entry.get_entry(index).is_none() {
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "ALLOCATING {:x} PML4 entry {} at {:p}\r\n",
+                            self.cr3,
+                            index,
+                            entry
+                        ));
                         let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
                         let p = Box::leak(p);
                         let mut flags = PageTableEntryFlags(0);
                         flags.set_writable(true);
                         flags.set_present(true);
-                        entry.set_entry(index, p.as_ptr() as usize, flags);
-                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
-                            crate::address(entry) as u64,
+                        let adr = p.as_ptr() as usize;
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "ALLOCATING PML4 with {:x}\r\n",
+                            adr
                         ));
+                        entry.set_entry(index, adr, flags);
+                        x86_64::instructions::tlb::flush_all();
                     }
                     Ok(())
                 }
@@ -1071,9 +1109,7 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
-                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
-                            crate::address(entry) as u64,
-                        ));
+                        x86_64::instructions::tlb::flush_all();
                     }
                     Ok(())
                 }
@@ -1085,9 +1121,7 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
-                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
-                            crate::address(entry) as u64,
-                        ));
+                        x86_64::instructions::tlb::flush_all();
                     }
                     Ok(())
                 }
@@ -1116,9 +1150,24 @@ impl<'a> PagingTableManager<'a> {
         physical_address: usize,
         size: usize,
     ) -> Result<(), ()> {
+        if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "MAP_RO:{:x}/{:x} {:x}|",
+                virtual_address,
+                physical_address,
+                size
+            ));
+        }
         for i in (0..size).step_by(core::mem::size_of::<Page>()) {
             let vaddr = virtual_address + i;
             let paddr = physical_address + i;
+            if crate::SPECIAL_DEBUG.load(core::sync::atomic::Ordering::SeqCst) {
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "OA:{:x}/{:x}|",
+                    vaddr,
+                    paddr
+                ));
+            }
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
                 4 => {
                     if entry.get_entry(index).is_none() {
@@ -1169,8 +1218,6 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_present(true);
                         entry.set_entry(index, paddr, flags);
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
-                    } else {
-                        loop {}
                     }
                     Ok(())
                 }
