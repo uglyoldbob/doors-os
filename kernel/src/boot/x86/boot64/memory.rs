@@ -1008,9 +1008,17 @@ impl<'a> PagingTableManager<'a> {
 
     /// Lookup the physical address corresponding to the specified address
     fn lookup_physical_address(&mut self, addr: usize) -> Option<usize> {
-        //let mut paddr = None;
-        todo!();
-        //paddr.map(|a| (a as usize) | (addr & 0xFFF))
+        let mut paddr = None;
+        modify_page_tables(self.cr3, addr, |level, entry, index| match level {
+            4 | 3 | 2 => Ok(()),
+            1 => {
+                paddr = entry.get_entry(index);
+                Ok(())
+            }
+            _ => unreachable!(),
+        })
+        .ok()?;
+        paddr.map(|a| (a as usize) | (addr & 0xFFF))
     }
 
     /// Set the physical mask according to the number of bits in physical address

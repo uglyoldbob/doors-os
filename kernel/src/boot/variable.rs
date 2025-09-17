@@ -236,8 +236,8 @@ impl<'a, T: Default> HeapManager<'a, T> {
 
     /// Add some memory to the heap from the provided allocator. len is the number of T elements to add.
     #[inline(never)]
-    fn add_memory_from_allocator(&mut self) {
-        let new_size = self.num_blocks * core::mem::size_of::<T>();
+    fn add_memory_from_allocator(&mut self, suggestion: usize) {
+        let new_size = self.num_blocks.max(suggestion) * core::mem::size_of::<T>();
         let layout = Layout::from_size_align(new_size, core::mem::align_of::<T>()).unwrap();
         let a = self.mem.allocate(layout).unwrap();
         let new_addr = crate::slice_address(unsafe { a.as_ref() });
@@ -430,10 +430,16 @@ impl<'a, T: Default> HeapManager<'a, T> {
                 return r;
             }
             if times == 1 {
-                self.add_memory_from_allocator();
+                let blocks = layout.size() / core::mem::size_of::<T>() + 1;
+                self.add_memory_from_allocator(blocks);
             }
             if times == 2 {
                 crate::VGA.print_str("OUT OF MEMORY? 3\r\n");
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "layout: {:?}\r\n",
+                    layout
+                ));
+                self.print();
                 loop {}
                 return core::ptr::null_mut();
             }

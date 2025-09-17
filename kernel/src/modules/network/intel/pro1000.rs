@@ -555,7 +555,7 @@ impl IntelPro1000DeviceInternal {
             bar0,
             up,
             rxbufs: IrqGuarded::new(None, common),
-            packet_stream: new_stream(common, 100, 5),
+            packet_stream: new_stream(common, 10, 5),
         }
     }
 }
