@@ -821,7 +821,7 @@ fn start_common1(
         .sync_lock()
         .setup_from_existing(page_entries);
 
-    HEAP_MANAGER.sync_lock().init_memory(0x403000, 10);
+    HEAP_MANAGER.sync_lock().init_memory(0x404000, 10);
 
     x86_64::instructions::bochs_breakpoint();
     if true {

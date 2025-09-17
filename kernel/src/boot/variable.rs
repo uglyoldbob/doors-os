@@ -266,7 +266,11 @@ impl<'a, T: Default> HeapManager<'a, T> {
 
     /// Initialize the actual memory
     pub fn init_memory(&mut self, start_addr: usize, num_blocks: usize) {
-        doors_macros::todo!("Implement the memory initialization for the heap");
+        let raw = start_addr as *mut HeapNode;
+        let hn = unsafe { raw.as_mut() }.unwrap();
+        hn.next = None;
+        hn.size = num_blocks * core::mem::size_of::<T>();
+        self.head = Some(hn.into());
     }
 
     /// Perform an actual allocation
