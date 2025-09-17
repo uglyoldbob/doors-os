@@ -5,6 +5,9 @@ use core::arch::naked_asm;
 use crate::gdbstub::x86::reg::X86CoreRegs;
 use alloc::vec::Vec;
 
+/// The type for the cr3 register
+pub struct PageTableData(u32);
+
 /// The saved context for a thread
 #[derive(Debug, Default)]
 #[repr(C)]

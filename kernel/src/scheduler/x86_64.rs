@@ -5,6 +5,35 @@ use core::arch::naked_asm;
 use crate::gdbstub::x86::reg::X86_64CoreRegs;
 use alloc::vec::Vec;
 
+/// The type for the cr3 register
+pub struct PageTableData(u64);
+
+impl PageTableData {
+    /// Read the current cr3 from the processor
+    pub fn from_current() -> Self {
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64();
+        Self(cr3)
+    }
+
+    /// Install the page table data, if necessary
+    pub fn install(&self) {
+        let (cr3, _) = x86_64::registers::control::Cr3::read();
+        let cr3 = cr3.start_address().as_u64();
+        if cr3 != self.0 {
+            let pa = unsafe { x86_64::PhysAddr::new_unsafe(self.0) };
+            let pf =
+                unsafe { x86_64::structures::paging::PhysFrame::from_start_address_unchecked(pa) };
+            unsafe {
+                x86_64::registers::control::Cr3::write(
+                    pf,
+                    x86_64::registers::control::Cr3Flags::PAGE_LEVEL_CACHE_DISABLE,
+                );
+            }
+        }
+    }
+}
+
 /// The saved context for a thread
 #[derive(Debug, Default)]
 #[repr(C)]
@@ -58,7 +87,7 @@ const STACK_SIZE: usize = 1024;
 
 impl super::Task {
     /// Create a new task
-    pub fn new(f: fn()) -> Self {
+    pub fn new(ptd: PageTableData, f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
         let mut sc = StackContext::default();
         let mut c = Context::default();
@@ -111,6 +140,7 @@ impl super::Task {
         Self {
             context: Some(c),
             status: super::TaskStatus::Runnable,
+            page_table_data: ptd,
             _f: Some(f),
             stack: Some(s),
         }

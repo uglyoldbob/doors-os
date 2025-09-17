@@ -39,6 +39,8 @@ enum TaskStatus {
 pub struct Task {
     /// The context of the task
     context: Option<Context>,
+    /// The page table data
+    page_table_data: PageTableData,
     /// The status of the task
     status: TaskStatus,
     /// The initial function of the task
@@ -100,10 +102,11 @@ impl Task {
     }
 
     /// Construct a new task from the currently running function
-    const fn running() -> Self {
+    fn running() -> Self {
         Self {
             context: None,
             status: TaskStatus::Runnable,
+            page_table_data: PageTableData::from_current(),
             _f: None,
             stack: None,
         }
@@ -247,7 +250,7 @@ impl Scheduler {
                     } else {
                         t.next_task_index = 0;
                     }
-
+                    t.local_tasks[next_task_index].1.page_table_data.install();
                     let new_context = match t.local_tasks[next_task_index].1.context.take() {
                         Some(c) => c,
                         None => Self::panic(2),
@@ -310,7 +313,7 @@ impl Scheduler {
 
     /// Spawn a new thread
     pub fn spawn_thread(&self, t: fn()) {
-        let task = Task::new(t);
+        let task = Task::new(PageTableData::from_current(), t);
         self.add_task(task);
     }
 
