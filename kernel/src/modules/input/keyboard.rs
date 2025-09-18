@@ -1,10 +1,9 @@
 //! Covers functionality for keyboards
 
 use crate::{
-    Arc, IoPortRef, IoReadWrite, IrqGuardedInner, IrqGuardedSimple, IrqNumbers, Locked,
-    OneWayStreamReader, OneWayStreamWriter,
+    Arc, IoPortRef, IrqGuardedInner, IrqGuardedSimple, IrqNumbers, Locked, OneWayStreamReader,
+    OneWayStreamWriter,
 };
-use core::task::Waker;
 
 struct Registers {
     /// The data port for the controller

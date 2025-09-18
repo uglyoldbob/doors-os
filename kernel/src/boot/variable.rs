@@ -7,7 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
+use alloc::{alloc::Allocator, boxed::Box};
 
 use crate::{boot::VirtualMemoryMapperTrait, Locked};
 

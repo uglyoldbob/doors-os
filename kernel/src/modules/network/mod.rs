@@ -1,11 +1,9 @@
 //! Networking code for the kernel
 
-use alloc::{
-    borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String, vec::Vec,
-};
+use alloc::{borrow::ToOwned, collections::btree_map::BTreeMap, string::String};
 use futures::StreamExt;
 
-use crate::{Arc, AsyncLocked, AsyncLockedArc, IrqGuarded, OneWayStreamReader};
+use crate::{AsyncLocked, AsyncLockedArc, OneWayStreamReader};
 
 doors_macros::declare_enum!(NetworkAdapter);
 
@@ -25,7 +23,7 @@ lazy_static::lazy_static! {
 /// Register a network adapter
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn register_network_adapter(mut na: NetworkAdapter) {
-    let mut nal = NETWORK_ADAPTERS.lock().await;
+    let nal = NETWORK_ADAPTERS.lock().await;
     //TODO implement an automatic naming scheme
     use alloc::string::ToString;
     let name = "net0".to_string();

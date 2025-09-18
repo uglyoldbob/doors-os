@@ -24,7 +24,6 @@ const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-none/re
 doors_macros::use_doors_test!();
 
 mod common;
-use core::sync::atomic::AtomicBool;
 
 pub use common::*;
 
@@ -38,9 +37,6 @@ pub mod scheduler;
 pub use boot::IoPortArray;
 pub use boot::IoPortManager;
 pub use boot::IoPortRef;
-
-/// a debug value
-pub static SPECIAL_DEBUG: AtomicBool = AtomicBool::new(false);
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "arm")] {
@@ -81,12 +77,9 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 use futures::StreamExt;
 use kernel::SystemTrait;
-use modules::network::NetworkAdapterTrait;
 use modules::rng;
 use modules::rng::RngTrait;
-use modules::video::hex_dump_generic_async;
 pub use modules::video::TextDisplay;
-use object::Object;
 
 /// This is an example of a future that is non-Send.
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]

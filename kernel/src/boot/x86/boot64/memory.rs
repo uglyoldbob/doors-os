@@ -1,6 +1,5 @@
 //! This module exists to cover memory management for x64 processors.
 
-use core::hint::black_box;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::{alloc::Allocator, ops::Deref};
@@ -12,7 +11,7 @@ use x86_64::registers::control::Cr3Flags;
 #[path = "../../memory.rs"]
 pub mod generic_memory;
 
-use crate::{address, DestructuredPhysicalMemory, FixedString, Locked};
+use crate::{address, DestructuredPhysicalMemory, Locked};
 
 extern "C" {
     /// A page table for the system to boot with.
@@ -333,7 +332,7 @@ impl<'a, T> Bitmap<'a, T> {
             let index = i / usize::BITS as usize;
             let offset = i % usize::BITS as usize;
             let val = self.blocks_free[index] & 1 << offset;
-            if (val != 0) {
+            if val != 0 {
                 c += 1;
             }
         }

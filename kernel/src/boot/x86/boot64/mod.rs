@@ -344,7 +344,7 @@ pub static PAGING_MANAGER: Locked<memory::PagingTableManager> =
 pub static INTERRUPT_DESCRIPTOR_TABLE: Locked<InterruptDescriptorTable> =
     Locked::new(InterruptDescriptorTable::new());
 
-impl acpi::AcpiHandler for super::Acpi {
+impl acpi::Handler for super::Acpi {
     unsafe fn map_physical_region<T>(
         &self,
         physical_address: usize,
@@ -359,13 +359,13 @@ impl acpi::AcpiHandler for super::Acpi {
             panic!("Received a null pointer request size");
         }
         if physical_address < (1 << 22) {
-            acpi::PhysicalMapping::new(
-                physical_address,
-                NonNull::new(physical_address as *mut T).unwrap(),
-                size,
-                size,
-                self.clone(),
-            )
+            acpi::PhysicalMapping {
+                physical_start: physical_address,
+                virtual_start: NonNull::new(physical_address as *mut T).unwrap(),
+                region_length: size,
+                mapped_length: size,
+                handler: self.clone(),
+            }
         } else {
             let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
             let end_remainder =
@@ -393,35 +393,230 @@ impl acpi::AcpiHandler for super::Acpi {
             }
             let vstart = bufaddr + size_before_allocation;
 
-            acpi::PhysicalMapping::new(
-                physical_address,
-                NonNull::new((vstart) as *mut T).unwrap(),
-                size,
-                size + size_after_allocation + 0x1000,
-                self.clone(),
-            )
+            acpi::PhysicalMapping {
+                physical_start: physical_address,
+                virtual_start: NonNull::new((vstart) as *mut T).unwrap(),
+                region_length: size,
+                mapped_length: size + size_after_allocation + 0x1000,
+                handler: self.clone(),
+            }
         }
     }
 
     fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
-        if region.physical_start() >= (1 << 22) {
-            let acpi = acpi::PhysicalMapping::handler(region);
-            let mut p = region.handler().pageman.sync_lock();
-            let s = region.virtual_start().as_ptr() as usize;
+        if region.physical_start >= (1 << 22) {
+            let mut p = region.handler.pageman.sync_lock();
+            let s = region.virtual_start.as_ptr() as usize;
             let s = s - s % core::mem::size_of::<memory::Page>();
-            let length = region.mapped_length();
+            let length = region.mapped_length;
             p.unmap_mapped_pages(s, length);
             let ptr = s as *mut u8;
             let layout =
                 core::alloc::Layout::from_size_align(length, core::mem::size_of::<memory::Page>())
                     .unwrap();
-            unsafe { acpi.vmm.deallocate(NonNull::new_unchecked(ptr), layout) };
+            unsafe {
+                region
+                    .handler
+                    .vmm
+                    .deallocate(NonNull::new_unchecked(ptr), layout)
+            };
         }
+    }
+
+    fn nanos_since_boot(&self) -> u64 {
+        todo!()
+    }
+
+    fn create_mutex(&self) -> acpi::Handle {
+        todo!()
+    }
+
+    fn acquire(&self, mutex: acpi::Handle, timeout: u16) -> Result<(), acpi::aml::AmlError> {
+        todo!()
+    }
+
+    fn release(&self, mutex: acpi::Handle) {
+        todo!()
+    }
+
+    fn sleep(&self, _milliseconds: u64) {
+        todo!()
+    }
+
+    fn stall(&self, _microseconds: u64) {
+        todo!()
+    }
+
+    fn read_u8(&self, _address: usize) -> u8 {
+        crate::VGA.print_str("r1\r\n");
+        todo!()
+    }
+
+    fn read_u16(&self, _address: usize) -> u16 {
+        crate::VGA.print_str("r2\r\n");
+        todo!()
+    }
+
+    fn read_u32(&self, _address: usize) -> u32 {
+        crate::VGA.print_str("r3\r\n");
+        todo!()
+    }
+
+    fn read_u64(&self, _address: usize) -> u64 {
+        crate::VGA.print_str("r4\r\n");
+        todo!()
+    }
+
+    fn write_u8(&self, _address: usize, _value: u8) {
+        crate::VGA.print_str("w1\r\n");
+        todo!()
+    }
+
+    fn write_u16(&self, _address: usize, _value: u16) {
+        crate::VGA.print_str("w2\r\n");
+        todo!()
+    }
+
+    fn write_u32(&self, _address: usize, _value: u32) {
+        crate::VGA.print_str("w3\r\n");
+        todo!()
+    }
+
+    fn write_u64(&self, _address: usize, _value: u64) {
+        crate::VGA.print_str("w4\r\n");
+        todo!()
+    }
+
+    fn read_io_u8(&self, _port: u16) -> u8 {
+        crate::VGA.print_str("i1\r\n");
+        todo!()
+    }
+
+    fn read_io_u16(&self, _port: u16) -> u16 {
+        crate::VGA.print_str("i2\r\n");
+        todo!()
+    }
+
+    fn read_io_u32(&self, _port: u16) -> u32 {
+        crate::VGA.print_str("i3\r\n");
+        todo!()
+    }
+
+    fn write_io_u8(&self, _port: u16, _value: u8) {
+        crate::VGA.print_str("o1\r\n");
+        todo!()
+    }
+
+    fn write_io_u16(&self, _port: u16, _value: u16) {
+        crate::VGA.print_str("o2\r\n");
+        todo!()
+    }
+
+    fn write_io_u32(&self, _port: u16, _value: u32) {
+        crate::VGA.print_str("o3\r\n");
+        todo!()
+    }
+
+    fn read_pci_u8(&self, address: acpi::PciAddress, offset: u16) -> u8 {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn read_pci_u16(&self, address: acpi::PciAddress, offset: u16) -> u16 {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn read_pci_u32(&self, address: acpi::PciAddress, offset: u16) -> u32 {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn write_pci_u8(&self, address: acpi::PciAddress, offset: u16, value: u8) {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn write_pci_u16(&self, address: acpi::PciAddress, offset: u16, value: u16) {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn write_pci_u32(&self, address: acpi::PciAddress, offset: u16, value: u32) {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
     }
 }
 
 /// Aml processing struct
 pub struct AmlHandler {}
+
+/// The holder for acpi stuff
+pub enum AcpiStuff {
+    /// Holds the acpi object
+    Handler(super::Acpi),
+    /// The acpi object with a table
+    HandlerWithTable {
+        /// The acpi object
+        acpi: super::Acpi,
+        /// The table set
+        table: acpi::AcpiTables<super::Acpi>,
+    },
+    /// Holds the platform info object
+    Platform(acpi::platform::AcpiPlatform<super::Acpi>),
+}
+
+impl AcpiStuff {
+    /// Convert to a platform
+    pub fn to_platform(self) -> Self {
+        match self {
+            Self::Handler(_acpi) => panic!(),
+            Self::HandlerWithTable { acpi, table } => {
+                let p = acpi::platform::AcpiPlatform::new(table, acpi).unwrap();
+                crate::VGA
+                    .print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &p));
+                Self::Platform(p)
+            }
+            Self::Platform(acpi_platform) => Self::Platform(acpi_platform),
+        }
+    }
+
+    /// Get the optional table
+    pub fn table(&self) -> Option<&acpi::AcpiTables<super::Acpi>> {
+        match self {
+            Self::Handler(_acpi) => None,
+            Self::HandlerWithTable { acpi: _, table } => Some(table),
+            Self::Platform(acpi_platform) => Some(&acpi_platform.tables),
+        }
+    }
+
+    /// Adds the acpi table if necessary
+    pub fn add_table(self, table: acpi::AcpiTables<super::Acpi>) -> Self {
+        match self {
+            Self::Handler(acpi) => Self::HandlerWithTable { acpi, table },
+            Self::HandlerWithTable { acpi, table } => Self::HandlerWithTable { acpi, table },
+            Self::Platform(_acpi_platform) => panic!(),
+        }
+    }
+
+    /// Get the acpi handler
+    pub fn handler(&self) -> &super::Acpi {
+        match self {
+            Self::Handler(acpi) => acpi,
+            Self::HandlerWithTable { acpi, table: _ } => acpi,
+            Self::Platform(acpi_platform) => &acpi_platform.handler,
+        }
+    }
+
+    /// Get the acpi handler, mutably
+    pub fn handler_mut(&mut self) -> &mut super::Acpi {
+        match self {
+            AcpiStuff::Handler(acpi) => acpi,
+            Self::HandlerWithTable { acpi, table: _ } => acpi,
+            AcpiStuff::Platform(acpi_platform) => &mut acpi_platform.handler,
+        }
+    }
+}
 
 /// The system boot structure
 #[doors_macros::config_check_struct]
@@ -430,9 +625,8 @@ pub struct X86System<'a> {
     pub boot_info: multiboot2::BootInformation<'a>,
     #[doorsconfig = "acpi"]
     /// Used for acpi
-    pub acpi_handler: super::Acpi,
-    /// The acpi tables element
-    pub acpi: Option<acpi::AcpiTables<super::Acpi>>,
+    pub acpi: Option<AcpiStuff>,
+    #[doorsconfig = "acpi"]
     /// Used for cpuid stuff
     cpuid: CpuId<CpuIdReaderNative>,
     /// The stack beginning
@@ -720,12 +914,11 @@ pub extern "C" fn start64() -> ! {
             X86System {
                 boot_info,
                 #[doorsconfig = "acpi"]
-                acpi_handler: super::Acpi {
+                acpi: Some(AcpiStuff::Handler(super::Acpi {
                     pageman: &PAGING_MANAGER,
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
-                },
+                })),
                 cpuid,
-                acpi: None,
                 stack_start: stack_end - stack_size,
             }
         }
