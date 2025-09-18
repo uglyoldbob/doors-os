@@ -581,6 +581,15 @@ impl AcpiStuff {
         }
     }
 
+    /// Get the platform
+    pub fn platform(&self) -> Option<&acpi::platform::AcpiPlatform<super::Acpi>> {
+        match self {
+            Self::Handler(_acpi) => None,
+            Self::HandlerWithTable { acpi: _, table: _ } => None,
+            Self::Platform(acpi_platform) => Some(&acpi_platform),
+        }
+    }
+
     /// Get the optional table
     pub fn table(&self) -> Option<&acpi::AcpiTables<super::Acpi>> {
         match self {
