@@ -1,4 +1,4 @@
-[target.x86_64-unknown-none]
+[target.x86_64-unknown-doors]
 rustflags = ["-C", "relocation-model=pic", 
     "-C", "link-arg=-no-pie",
     "-C", "force-frame-pointers",
@@ -17,4 +17,4 @@ rustflags = ["-C", "relocation-model=pic",
 runner = 'probe-rs run --chip stm32f769iitx'
 
 [unstable]
-build-std = ["core", "alloc"]
+build-std = ["std", "core", "alloc"]

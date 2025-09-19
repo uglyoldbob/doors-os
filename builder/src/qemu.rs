@@ -142,8 +142,4 @@ impl super::EmulationTrait for Qemu {
         ));
         cmakelists.push_str(")\n");
     }
-
-    fn simple_name(&self) -> &str {
-        "qemu"
-    }
 }

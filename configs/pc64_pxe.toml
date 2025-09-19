@@ -1,4 +1,5 @@
 kernel_machine = "x86_64-unknown-none"
+user_machine = "x86_64-unknown-doors"
 kernel_path = "x86_64-unknown-none"
 disassembly = true
 

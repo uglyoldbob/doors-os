@@ -1,4 +1,5 @@
 kernel_machine = "i386-unknown-none.json"
+user_machine = "i386-unknown-doors"
 kernel_path = "i386-unknown-none"
 disassembly = true
 

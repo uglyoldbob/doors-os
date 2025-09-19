@@ -8,6 +8,7 @@ members = [ "bochs-debug",
 exclude = [
     "kernel",
     "user",
+    "rust",
 ]
 
 [profile.dev]

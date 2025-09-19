@@ -253,8 +253,4 @@ impl super::EmulationTrait for VirtualBox {
         ));
         cmakelists.push_str(")\n");
     }
-
-    fn simple_name(&self) -> &str {
-        "virtualbox"
-    }
 }

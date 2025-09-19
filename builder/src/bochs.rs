@@ -133,8 +133,4 @@ impl super::EmulationTrait for Bochs {
         ));
         cmakelists.push_str(")\n");
     }
-
-    fn simple_name(&self) -> &str {
-        "bochs"
-    }
 }

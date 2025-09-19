@@ -39,8 +39,6 @@ trait EmulationTrait {
         local: &LocalConfiguration,
         s: std::path::PathBuf,
     );
-    /// Get the simple name of the emulator for build purposes
-    fn simple_name(&self) -> &str;
 }
 
 /// An emulation target that does nothing
@@ -64,10 +62,6 @@ impl EmulationTrait for NoEmulator {
         _local: &LocalConfiguration,
         _s: std::path::PathBuf,
     ) {
-    }
-
-    fn simple_name(&self) -> &str {
-        "none"
     }
 }
 
@@ -335,7 +329,7 @@ impl DiskBuilderTrait for CdConfiguration {
         cmakelists: &mut String,
         common: &DiskImageConfigurationCommon,
         kernel_path: &str,
-        local: &LocalConfiguration,
+        _local: &LocalConfiguration,
     ) -> Result<Disk, String> {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk\n");
@@ -423,6 +417,8 @@ pub struct DoorsConfiguration {
     kernel_config: config::KernelConfig,
     /// The machine name to use for building the kernel
     kernel_machine: String,
+    /// The machine name to use for building user programs
+    user_machine: String,
     /// The output path for the machine used to build the kernel
     kernel_path: String,
     /// The configuration required to build a disk image
@@ -627,7 +623,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("\tuser\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
-            "\tCOMMAND cargo +nightly build --release --target {}\n",
+            "\tCOMMAND cargo build --release --target {}\n",
             target
         ));
         cmakelists.push_str(")\n");
@@ -636,7 +632,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("\tuser_clippy\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
-            "\tCOMMAND cargo +nightly clippy --target {}\n",
+            "\tCOMMAND cargo clippy --target {}\n",
             target
         ));
         cmakelists.push_str(")\n");
@@ -644,7 +640,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tuser_fmt\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
-        cmakelists.push_str("\tCOMMAND cargo +nightly fmt\n");
+        cmakelists.push_str("\tCOMMAND cargo fmt\n");
         cmakelists.push_str(")\n");
     }
 
@@ -652,6 +648,7 @@ impl DoorsConfiguration {
     pub fn build_kernel(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel\n");
+        cmakelists.push_str("\tDEPENDS user\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo +nightly build --release --target {} --bin kernel\n",
@@ -779,7 +776,7 @@ impl MasterConfig {
 }
 
 /// Build the cmakelists files from the configuration and the program arguments
-fn build_cmake_files(args: &Args, config: MasterConfig) {
+fn build_cmake_files(_args: &Args, config: MasterConfig) {
     use std::io::Write;
     let mut cmakelist = String::new();
     let mut kernel_cmakelist = String::new();
@@ -796,10 +793,21 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
     cmakelist.push_str("add_subdirectory(kernel)\n");
     cmakelist.push_str("add_subdirectory(user)\n");
 
+    cmakelist.push_str("configure_file(rust_compiler_toolchain.toml ./rust/rustup-toolchain.toml COPYONLY)\n");
+
     cmakelist.push_str("add_custom_target(\n");
     cmakelist.push_str("\tfmt\n");
     cmakelist.push_str("\tDEPENDS kernel_fmt user_fmt\n");
     cmakelist.push_str("\tCOMMAND cargo fmt\n");
+    cmakelist.push_str(")\n");
+
+    cmakelist.push_str("add_custom_target(\n");
+    cmakelist.push_str("\trust_compiler\n");
+    cmakelist.push_str("\tWORKING_DIRECTORY ./rust\n");
+    cmakelist.push_str("\tCOMMAND ${CMAKE_COMMAND} -E remove -f ./bootstrap.toml\n");
+    cmakelist.push_str("\tCOMMAND ./configure --target=x86_64-unknown-doors --prefix=${CMAKE_CURRENT_BINARY_DIR}/rust-install --sysconfdir=./etc\n");
+    cmakelist.push_str("\tCOMMAND make install\n");
+    cmakelist.push_str("\tCOMMAND rustup toolchain link doors-user ${CMAKE_CURRENT_BINARY_DIR}/rust-install\n");
     cmakelist.push_str(")\n");
 
     cmakelist.push_str("add_custom_target(\n");
@@ -825,7 +833,7 @@ fn build_cmake_files(args: &Args, config: MasterConfig) {
 
     config
         .os
-        .build_user(&mut user_cmakelist, &config.os.kernel_machine);
+        .build_user(&mut user_cmakelist, &config.os.user_machine);
 
     let disk = config
         .os
