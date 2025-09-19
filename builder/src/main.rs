@@ -485,11 +485,14 @@ pub struct LocalConfiguration {
     pub tftp_base: Option<std::path::PathBuf>,
     /// where to find the files for the grub command to make the netboot image
     grub_source: std::path::PathBuf,
+    /// The target for the local system
+    target: String,
 }
 
 impl Default for LocalConfiguration {
     fn default() -> Self {
         Self {
+            target: "x86_64-unknown-linux-gnu".to_string(),
             bochs_path: Some(
                 std::path::PathBuf::from_str("./optional/example/bochs/path/here").unwrap(),
             ),
@@ -631,10 +634,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tuser_clippy\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
-        cmakelists.push_str(&format!(
-            "\tCOMMAND cargo clippy --target {}\n",
-            target
-        ));
+        cmakelists.push_str(&format!("\tCOMMAND cargo clippy --target {}\n", target));
         cmakelists.push_str(")\n");
 
         cmakelists.push_str("add_custom_target(\n");
@@ -793,7 +793,9 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("add_subdirectory(kernel)\n");
     cmakelist.push_str("add_subdirectory(user)\n");
 
-    cmakelist.push_str("configure_file(rust_compiler_toolchain.toml ./rust/rustup-toolchain.toml COPYONLY)\n");
+    cmakelist.push_str(
+        "configure_file(rust_compiler_toolchain.toml ./rust/rustup-toolchain.toml COPYONLY)\n",
+    );
 
     cmakelist.push_str("add_custom_target(\n");
     cmakelist.push_str("\tfmt\n");
@@ -805,9 +807,11 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("\trust_compiler\n");
     cmakelist.push_str("\tWORKING_DIRECTORY ./rust\n");
     cmakelist.push_str("\tCOMMAND ${CMAKE_COMMAND} -E remove -f ./bootstrap.toml\n");
-    cmakelist.push_str("\tCOMMAND ./configure --target=x86_64-unknown-doors --prefix=${CMAKE_CURRENT_BINARY_DIR}/rust-install --sysconfdir=./etc\n");
+    cmakelist.push_str(&format!("\tCOMMAND ./configure --target={},{} --prefix=${{CMAKE_CURRENT_BINARY_DIR}}/rust-install --sysconfdir=./etc\n", config.os.user_machine, config.local.target));
     cmakelist.push_str("\tCOMMAND make install\n");
-    cmakelist.push_str("\tCOMMAND rustup toolchain link doors-user ${CMAKE_CURRENT_BINARY_DIR}/rust-install\n");
+    cmakelist.push_str(
+        "\tCOMMAND rustup toolchain link doors-user ${CMAKE_CURRENT_BINARY_DIR}/rust-install\n",
+    );
     cmakelist.push_str(")\n");
 
     cmakelist.push_str("add_custom_target(\n");
