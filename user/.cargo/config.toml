@@ -15,6 +15,3 @@ rustflags = ["-C", "relocation-model=pic",
 rustflags = ["-C", "relocation-model=pic", 
     "-C", "link-arg=-no-pie"]
 runner = 'probe-rs run --chip stm32f769iitx'
-
-[unstable]
-build-std = ["std", "core", "alloc"]
