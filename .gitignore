@@ -28,4 +28,5 @@ user/x64
 kernel/x64
 grub-2.12
 grub-files
+grub-build
 rust-install
