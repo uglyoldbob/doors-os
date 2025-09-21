@@ -781,6 +781,15 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         });
                 }
             }
+            else {
+                crate::VGA.print_str(&alloc::format!(
+                        "Text address is at {:x}\r\n",
+                        text.address()
+                    ));
+            }
+        }
+        else {
+            crate::VGA.print_str("Text segment not found in object\r\n");
         }
         Ok(())
     }
