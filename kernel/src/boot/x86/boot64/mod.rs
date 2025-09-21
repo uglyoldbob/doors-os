@@ -746,6 +746,10 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         "About to map pages with {} bytes for user process\r\n",
                         data.len()
                     ));
+                    crate::VGA.print_str("Installing page table for user process\r\n");
+                    unsafe {
+                        pt.install();
+                    }
                     for i in (0..data.len()).step_by(core::mem::size_of::<memory::Page>()) {
                         let user_address = i + USER_SPACE_START;
                         crate::VGA.print_str(&alloc::format!(
@@ -755,30 +759,37 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         ));
                         pt.map_new_page(user_address)
                             .inspect(|_| crate::VGA.print_str("OK\r\n"))
-                            .inspect_err(|_| crate::VGA.print_str("ERR\r\n"))?;
+                            .inspect_err(|_| {
+                                crate::VGA.print_str("ERR\r\n");
+                                loop {}
+                    })?;
                         crate::VGA.print_str("Mapped a user page\r\n");
-                    }
-                    crate::VGA.print_str("Installing page table for user process\r\n");
-                    unsafe {
-                        pt.install();
                     }
                     crate::VGA.print_str("About to copy data for user process\r\n");
                     let user_chunk = unsafe {
                         core::slice::from_raw_parts_mut(USER_SPACE_START as *mut u8, data.len())
                     };
-                    user_chunk.copy_from_slice(data);
-                    crate::VGA.print_str("About to spawn user thread\r\n");
-                    crate::scheduler::SCHEDULER
-                        .read()
-                        .as_ref()
-                        .unwrap()
-                        .spawn_thread(|| {
-                            crate::VGA.print_str("A user process stub function is running\r\n");
-                            let ptr = USER_SPACE_START as *const ();
-                            let user_code: extern "C" fn() = unsafe { core::mem::transmute(ptr) };
-                            crate::VGA.print_str("RUNNING USER CODE\r\n");
-                            (user_code)();
-                        });
+                    let entry_addr = b.entry() as usize;
+                    crate::VGA.print_str(&alloc::format!(
+                        "About to run user program at {:x}\r\n",
+                        entry_addr
+                    ));
+                    if (USER_SPACE_START..USER_SPACE_START+data.len()).contains(&entry_addr) {
+                        user_chunk.copy_from_slice(data);
+                        crate::VGA.print_str("About to spawn user thread\r\n");
+                        let ptr = b.entry() as *const ();
+                        let user_code: fn() = unsafe { core::mem::transmute(ptr) };
+                        crate::scheduler::SCHEDULER
+                            .read()
+                            .as_ref()
+                            .unwrap()
+                            .spawn_thread(user_code);
+                    } else {
+                        crate::VGA.print_str(&alloc::format!(
+                        "ERROR Start address {:x} not within {:x}..{:x}\r\n",
+                        entry_addr, USER_SPACE_START, USER_SPACE_START+data.len()
+                    ));
+                    }
                 }
             }
             else {
