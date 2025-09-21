@@ -1067,6 +1067,7 @@ impl<'a> PagingTableManager<'a> {
                         let adr = p.as_ptr() as usize;
                         entry.set_entry(index, adr, flags);
                         x86_64::instructions::tlb::flush_all();
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1079,6 +1080,7 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
                         x86_64::instructions::tlb::flush_all();
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1091,6 +1093,7 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
                         x86_64::instructions::tlb::flush_all();
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1102,7 +1105,7 @@ impl<'a> PagingTableManager<'a> {
                         entry.set_entry(index, paddr, flags);
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(vaddr as u64));
                     } else {
-                        loop {}
+                        return Err(());
                     }
                     Ok(())
                 }
@@ -1134,6 +1137,7 @@ impl<'a> PagingTableManager<'a> {
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
                             crate::address(entry) as u64,
                         ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1148,6 +1152,7 @@ impl<'a> PagingTableManager<'a> {
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
                             crate::address(entry) as u64,
                         ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1162,6 +1167,7 @@ impl<'a> PagingTableManager<'a> {
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
                             crate::address(entry) as u64,
                         ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1197,6 +1203,7 @@ impl<'a> PagingTableManager<'a> {
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
                             crate::address(entry) as u64,
                         ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1211,6 +1218,7 @@ impl<'a> PagingTableManager<'a> {
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
                             crate::address(entry) as u64,
                         ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
@@ -1225,6 +1233,7 @@ impl<'a> PagingTableManager<'a> {
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
                             crate::address(entry) as u64,
                         ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
                     }
                     Ok(())
                 }
