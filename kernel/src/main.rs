@@ -19,7 +19,7 @@ doors_macros::todo_item!("Don't use LockedArc in enum_dispatch");
 extern crate alloc;
 
 /// A test program
-const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test1");
+const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test2");
 
 doors_macros::use_doors_test!();
 

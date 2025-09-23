@@ -46,9 +46,9 @@
         mov eax, cr0
         and eax, 0xEFFFFFFF
         mov cr0, eax
-        #enable physical address extensions
+        #enable physical address extensions and SSE support
         mov eax, cr4
-        or eax, 0x20
+        or eax, 0x620
         mov cr4, eax
         #load cr3 with base of PML4
         lea eax, [PAGE_TABLE_PML4_BOOT]
