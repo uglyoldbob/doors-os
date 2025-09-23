@@ -19,7 +19,7 @@ doors_macros::todo_item!("Don't use LockedArc in enum_dispatch");
 extern crate alloc;
 
 /// A test program
-const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test2");
+const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test1");
 
 doors_macros::use_doors_test!();
 
@@ -48,31 +48,52 @@ cfg_if::cfg_if! {
     }
 }
 
-/// The panic handler for the kernel
+/// Enhanced panic handler with DWARF-based unwinding support
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    crate::VGA.print_str("PANIC AT THE DISCO!\r\n");
-    if let Some(t) = info.location() {
-        let f = t.file();
-        let maxlen = f.len();
-        for i in (0..maxlen).step_by(70) {
-            let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
-            crate::VGA.print_str(&f[i..tmax]);
-        }
-        crate::VGA.print_str("\r\n");
+    // Disable interrupts to prevent interference during panic handling
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    unsafe {
+        core::arch::asm!("cli");
+    }
+
+    crate::VGA.print_str("\r\n========== KERNEL PANIC ==========\r\n");
+
+    // Print panic location and message
+    if let Some(location) = info.location() {
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-            " LINE {}\r\n",
-            t.line()
+            "Panic at {}:{}\r\n",
+            location.file(),
+            location.line()
         ));
     }
-    let msg = info.message();
-    if let Some(s) = msg.as_str() {
-        crate::VGA.print_str(s);
+
+    // Print the panic message
+    if let Some(msg) = info.message().as_str() {
+        crate::VGA.print_str("Message: ");
+        crate::VGA.print_str(msg);
+        crate::VGA.print_str("\r\n");
+    } else if let Some(payload) = info.payload().downcast_ref::<&str>() {
+        crate::VGA.print_str("Payload: ");
+        crate::VGA.print_str(payload);
+        crate::VGA.print_str("\r\n");
     }
-    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("{}\r\n", info));
-    crate::VGA.print_str(&alloc::format!("{}\r\n", info));
-    crate::VGA.print_str("PANIC SOMEWHERE ELSE!\r\n");
-    loop {}
+
+    crate::VGA.print_str("\r\n");
+
+    // Initialize and use DWARF-based stack unwinder
+    let _ = kernel::stack::init_unwinder();
+    kernel::stack::print_stack_trace();
+
+    crate::VGA.print_str("\r\n========== END PANIC ==========\r\n");
+
+    // Halt the system
+    loop {
+        #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+        unsafe {
+            core::arch::asm!("hlt");
+        }
+    }
 }
 
 use futures::StreamExt;
@@ -151,6 +172,13 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
+
+            // Initialize stack unwinder for better panic diagnostics
+            if let Err(e) = kernel::stack::init_unwinder() {
+                crate::VGA.print_str("Warning: Failed to initialize stack unwinder: ");
+                crate::VGA.print_str(e);
+                crate::VGA.print_str("\r\n");
+            }
             scheduler::SCHEDULER
                 .read()
                 .as_ref()

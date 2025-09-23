@@ -1,20 +1,38 @@
 [target.x86_64-unknown-none]
-rustflags = ["-C", "relocation-model=pic", 
+rustflags = [
+    "-C", "relocation-model=pic",
     "-C", "link-arg=-no-pie",
     "-C", "force-frame-pointers",
-    "-Z", "emit-stack-sizes",]
+    "-C", "force-unwind-tables",
+    "-C", "debuginfo=2",
+    "-Z", "emit-stack-sizes",
+]
 
 [target.i386-unknown-none]
 linker = "rust-lld"
-rustflags = ["-C", "relocation-model=pic", 
+rustflags = [
+    "-C", "relocation-model=pic",
     "-C", "link-arg=-no-pie",
     "-C", "force-frame-pointers",
-    "-Z", "emit-stack-sizes",]
+    "-C", "debuginfo=2",
+    "-Z", "emit-stack-sizes",
+    "-C", "link-arg=-Wl,--eh-frame-hdr",
+    "-C", "link-arg=-Wl,--build-id=none",
+]
 
 [target.thumbv7em-none-eabihf]
-rustflags = ["-C", "relocation-model=pic", 
-    "-C", "link-arg=-no-pie"]
+rustflags = [
+    "-C", "relocation-model=pic",
+    "-C", "link-arg=-no-pie",
+    "-C", "debuginfo=2",
+]
 runner = 'probe-rs run --chip stm32f769iitx'
 
 [unstable]
 build-std = ["core", "alloc"]
+
+[build]
+rustflags = [
+    "-C", "debuginfo=2",
+    "-Z", "location-detail=line,file,column",
+]

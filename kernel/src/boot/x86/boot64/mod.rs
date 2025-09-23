@@ -762,7 +762,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                             .inspect_err(|_| {
                                 crate::VGA.print_str("ERR\r\n");
                                 loop {}
-                    })?;
+                            })?;
                         crate::VGA.print_str("Mapped a user page\r\n");
                     }
                     crate::VGA.print_str("About to copy data for user process\r\n");
@@ -774,7 +774,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                         "About to run user program at {:x}\r\n",
                         entry_addr
                     ));
-                    if (USER_SPACE_START..USER_SPACE_START+data.len()).contains(&entry_addr) {
+                    if (USER_SPACE_START..USER_SPACE_START + data.len()).contains(&entry_addr) {
                         user_chunk.copy_from_slice(data);
                         crate::VGA.print_str("About to spawn user thread\r\n");
                         let ptr = b.entry() as *const ();
@@ -786,20 +786,20 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
                             .spawn_thread(user_code);
                     } else {
                         crate::VGA.print_str(&alloc::format!(
-                        "ERROR Start address {:x} not within {:x}..{:x}\r\n",
-                        entry_addr, USER_SPACE_START, USER_SPACE_START+data.len()
-                    ));
+                            "ERROR Start address {:x} not within {:x}..{:x}\r\n",
+                            entry_addr,
+                            USER_SPACE_START,
+                            USER_SPACE_START + data.len()
+                        ));
                     }
                 }
-            }
-            else {
+            } else {
                 crate::VGA.print_str(&alloc::format!(
-                        "Text address is at {:x}\r\n",
-                        text.address()
-                    ));
+                    "Text address is at {:x}\r\n",
+                    text.address()
+                ));
             }
-        }
-        else {
+        } else {
             crate::VGA.print_str("Text segment not found in object\r\n");
         }
         Ok(())
@@ -866,11 +866,11 @@ pub extern "C" fn start64() -> ! {
         }
         size
     };
-
     let boot_info = unsafe {
         multiboot2::BootInformation::load(end_kernel as *const multiboot2::BootInformationHeader)
             .unwrap()
     };
+    loop {}
     let end_kernel = end_kernel + bi_size;
 
     let stack_end = unsafe { super::INITIAL_STACK as usize };

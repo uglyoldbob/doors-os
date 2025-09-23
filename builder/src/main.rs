@@ -795,9 +795,7 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str(&format!("set(LOCAL_TARGET {})\n", config.local.target));
     cmakelist.push_str(&format!("set(USER_TARGET {})\n", config.os.user_machine));
 
-    cmakelist.push_str(
-        "configure_file(rust_bootstrap ./rust/bootstrap.toml)\n",
-    );
+    cmakelist.push_str("configure_file(rust_bootstrap ./rust/bootstrap.toml)\n");
     cmakelist.push_str(
         "configure_file(rust_compiler_toolchain.toml ./rust/rustup-toolchain.toml COPYONLY)\n",
     );
