@@ -11,33 +11,46 @@ SECTIONS
   .text :
   {
     KEEP(*(.multiboot));
-
     *(.text);
     *(.text.*);
+    *(.ltext.*);
     *(.got);
     *(.got.plt);
   } > ram
   .dynamic :
   {
-    
+
   } > ram
   .strings : {
     *(.dynstr);
   } > ram
-  .data : { 
+  .data : {
     *(.data);
     *(.data.*);
   } > ram
-  .rodata : { *(.rodata) } > ram
+  .rodata : { 
+    *(.rodata);
+    *(.rodata.*);
+  } > ram
   .rela : { *(.rela.dyn); } > ram
   .strtab : { *(.strtab); } > ram
-  .bss : { 
+  .bss : {
     *(.bss);
     *(.bss.*);
   } > ram
+  .eh_frame_hdr : { 
+    *(.eh_frame_hdr);
+    *(.eh_frame_hdr.*);
+  } > ram
+  .eh_frame : { 
+    *(.eh_frame);
+    *(.eh_frame.*);
+  } > ram
+
   .end_kernel : {
     END_OF_KERNEL = .;
   } > ram
+
   /DISCARD/ :
   {
     *(.dynamic);

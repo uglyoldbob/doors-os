@@ -16,6 +16,7 @@ enum_dispatch = "0.3.13"
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 gdbstub = { version = "0.7.7", default-features = false, features = ["alloc"] }
 gdbstub_arch = "0.3.2"
+gimli = { version = "0.32.3", default-features = false, features = ["read-core"] }
 lazy_static = {version = "1.4.0", features = ["spin_no_std"] }
 log = "0.4.20"
 object = { version = "0.37.3", default-features = false, features = ["read"] }
@@ -51,10 +52,13 @@ test = false
 bench = false
 
 [profile.dev]
-opt-level=3
+opt-level = 3
+debug = 2
 
 [profile.release]
-debug = true
+debug = 2
+lto = "thin"
+codegen-units = 1
 
 [features]
 default = ["backtrace"]

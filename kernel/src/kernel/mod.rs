@@ -4,6 +4,8 @@ use crate::{AsyncLocked, AsyncLockedArc, Locked, LockedArc};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
+pub mod stack;
+
 /// A container of type T for a device that must be returned to its original container
 pub struct OwnedDevice<T> {
     /// The module that is contained
