@@ -792,7 +792,12 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("include(ExternalProject)\n");
     cmakelist.push_str("add_subdirectory(kernel)\n");
     cmakelist.push_str("add_subdirectory(user)\n");
+    cmakelist.push_str(&format!("set(LOCAL_TARGET {})\n", config.local.target));
+    cmakelist.push_str(&format!("set(USER_TARGET {})\n", config.os.user_machine));
 
+    cmakelist.push_str(
+        "configure_file(rust_bootstrap ./rust/bootstrap.toml)\n",
+    );
     cmakelist.push_str(
         "configure_file(rust_compiler_toolchain.toml ./rust/rustup-toolchain.toml COPYONLY)\n",
     );
@@ -806,9 +811,8 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("add_custom_target(\n");
     cmakelist.push_str("\trust_compiler\n");
     cmakelist.push_str("\tWORKING_DIRECTORY ./rust\n");
-    cmakelist.push_str("\tCOMMAND ${CMAKE_COMMAND} -E remove -f ./bootstrap.toml\n");
-    cmakelist.push_str(&format!("\tCOMMAND ./configure --target={},{} --prefix=${{CMAKE_CURRENT_BINARY_DIR}}/rust-install --sysconfdir=./etc\n", config.os.user_machine, config.local.target));
-    cmakelist.push_str("\tCOMMAND make install\n");
+    cmakelist.push_str("\tCOMMAND python ./x.py build\n");
+    cmakelist.push_str("\tCOMMAND python ./x.py install\n");
     cmakelist.push_str(
         "\tCOMMAND rustup toolchain link doors-user ${CMAKE_CURRENT_BINARY_DIR}/rust-install\n",
     );

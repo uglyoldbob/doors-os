@@ -1,0 +1,44 @@
+# Use different pre-set defaults than the global defaults.
+#
+# See `src/bootstrap/defaults` for more information.
+# Note that this has no default value (x.py uses the defaults in `bootstrap.example.toml`).
+profile = 'dist'
+change-id = 146458
+
+[llvm]
+
+[gcc]
+
+[build]
+
+# Which triples to build libraries (core/alloc/std/test/proc_macro) for. Each of these triples will
+# be bootstrapped from the build triple themselves. In other words, this is the list of triples for
+# which to build a library that can CROSS-COMPILE to that triple.
+#
+# Defaults to `host`. If you set this explicitly, you likely want to add all
+# host triples to this list as well in order for those host toolchains to be
+# able to compile programs for their native target.
+target = ['@USER_TARGET@', '@LOCAL_TARGET@']
+
+# Arguments passed to the `./configure` script, used during distcheck. You
+# probably won't fill this in but rather it's filled in by the `./configure`
+# script. Useful for debugging.
+[install]
+
+# Where to install the generated toolchain. Must be an absolute path.
+prefix = '@CMAKE_CURRENT_SOURCE_DIR@/rust-install'
+
+# Where to install system configuration files.
+# If this is a relative path, it will get installed in `prefix` above
+sysconfdir = './etc'
+
+[rust]
+
+# Enable compiler-builtins-c and compiler-builtins-mem features to provide C-style symbols like memcpy
+std-features = ["compiler-builtins-c", "compiler-builtins-mem"]
+
+[dist]
+
+[target.@USER_TARGET@]
+
+[target.@LOCAL_TARGET@]
