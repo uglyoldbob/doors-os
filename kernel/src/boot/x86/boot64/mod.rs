@@ -808,10 +808,29 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
 /// The entry point for the 64 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start64() -> ! {
+    // Early debug output - write directly to VGA memory to show we reached Rust code
+    unsafe {
+        let vga = 0xb8000 as *mut u8;
+        *vga.add(2) = b'R';
+        *vga.add(3) = 0x07;
+    }
+
+
     let cpuid = raw_cpuid::CpuId::new();
+
+    // Debug: Show we got past cpuid
+    unsafe {
+        let vga = 0xb8000 as *mut u8;
+        *vga.add(4) = b'1';
+        *vga.add(5) = 0x07;
+    }
+
 
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
+
+    // Debug: Show we got kernel addresses
+
 
     let a = unsafe { &memory::TABLE4 } as *const u64 as usize;
     let b = unsafe { &memory::TABLE3 } as *const u64 as usize;
@@ -836,41 +855,143 @@ pub extern "C" fn start64() -> ! {
         },
     ];
 
+    // Debug: Show we set up page entries
+    unsafe {
+        let vga = 0xb8000 as *mut u8;
+        *vga.add(6) = b'2';
+        *vga.add(7) = 0x07;
+    }
+
+
     //Copy the boot information header to the end of the kernel, update the end of the kernel variable to reflect the new data
     let bi_size = {
         let boot_info = unsafe {
-            multiboot2::BootInformation::load(
+            // Debug: Show multiboot2 load attempt
+            let vga = 0xb8000 as *mut u8;
+            *vga.add(8) = b'M';
+            *vga.add(9) = 0x07;
+
+            match multiboot2::BootInformation::load(
                 super::MULTIBOOT2_DATA as *const multiboot2::BootInformationHeader,
-            )
-            .unwrap()
+            ) {
+                Ok(info) => {
+                    // Debug: Show multiboot2 load success
+                    *vga.add(10) = b'O';
+                    *vga.add(11) = 0x07;
+                    info
+                }
+                Err(_) => {
+                    // Debug: Show multiboot2 load failed
+                    *vga.add(10) = b'E';
+                    *vga.add(11) = 0x07;
+                    loop {
+                        core::arch::asm!("hlt");
+                    }
+                }
+            }
         };
+
         let size = boot_info.total_size();
-        let dest = unsafe { core::slice::from_raw_parts_mut(end_kernel as *mut u8, size) };
-        let source =
-            unsafe { core::slice::from_raw_parts_mut(boot_info.start_address() as *mut u8, size) };
-        if crate::slice_address(dest) < crate::slice_address(source) {
+
+        // Debug: Show we got the size
+        unsafe {
+            let vga = 0xb8000 as *mut u8;
+            *vga.add(12) = b'Z';
+            *vga.add(13) = 0x07;
+        }
+
+        // Align end_kernel to 8-byte boundary for multiboot2 data
+        let aligned_end_kernel = (end_kernel + 7) & !7;
+
+        let dest = unsafe { core::slice::from_raw_parts_mut(aligned_end_kernel as *mut u8, size) };
+
+        // Debug: Show we created dest slice
+        unsafe {
+            let vga = 0xb8000 as *mut u8;
+            *vga.add(14) = b'D';
+            *vga.add(15) = 0x07;
+        }
+
+        // Use original MULTIBOOT2_DATA address as source, not boot_info.start_address()
+        let source = unsafe {
+            core::slice::from_raw_parts(super::MULTIBOOT2_DATA as *const u8, size)
+        };
+
+        // Debug: Show we created source slice
+        unsafe {
+            let vga = 0xb8000 as *mut u8;
+            *vga.add(16) = b'T';
+            *vga.add(17) = 0x07;
+        }
+
+        // Handle overlapping memory regions properly
+        let source_mut = unsafe {
+            core::slice::from_raw_parts_mut(super::MULTIBOOT2_DATA as *mut u8, size)
+        };
+
+        if crate::slice_address(dest) < crate::slice_address(source_mut) {
             let di = dest.iter_mut();
-            let si = source.iter();
+            let si = source_mut.iter();
             let a = si.zip(di);
             for (s, d) in a {
                 *d = *s;
             }
         } else {
-            let di = dest.iter_mut();
-            let si = source.iter();
-            let a = si.zip(di);
-            for (s, d) in a.rev() {
-                *d = *s;
+            // For overlapping memory, copy from end backwards
+            for i in (0..size).rev() {
+                dest[i] = source_mut[i];
             }
         }
+
+        // Debug: Show copy completed
+        unsafe {
+            let vga = 0xb8000 as *mut u8;
+            *vga.add(18) = b'P';
+            *vga.add(19) = 0x07;
+        }
+
         size
     };
+
+    // Debug: Show about to load from copied location
+    unsafe {
+        let vga = 0xb8000 as *mut u8;
+        *vga.add(20) = b'L';
+        *vga.add(21) = 0x07;
+    }
+
     let boot_info = unsafe {
-        multiboot2::BootInformation::load(end_kernel as *const multiboot2::BootInformationHeader)
-            .unwrap()
+        let aligned_end_kernel = (end_kernel + 7) & !7;
+
+        match multiboot2::BootInformation::load(aligned_end_kernel as *const multiboot2::BootInformationHeader) {
+            Ok(info) => {
+                // Debug: Show second multiboot2 load success
+                let vga = 0xb8000 as *mut u8;
+                *vga.add(22) = b'N';
+                *vga.add(23) = 0x07;
+                info
+            }
+            Err(_) => {
+                // Debug: Show second multiboot2 load failed
+                let vga = 0xb8000 as *mut u8;
+                *vga.add(22) = b'F';
+                *vga.add(23) = 0x07;
+                loop {
+                    core::arch::asm!("hlt");
+                }
+            }
+        }
     };
-    loop {}
+
+    let end_kernel = (end_kernel + 7) & !7; // Use aligned address
     let end_kernel = end_kernel + bi_size;
+
+    // Debug: Show about to call start_common1
+    unsafe {
+        let vga = 0xb8000 as *mut u8;
+        *vga.add(24) = b'S';
+        *vga.add(25) = 0x07;
+    }
 
     let stack_end = unsafe { super::INITIAL_STACK as usize };
     let stack_size = MAIN_STACK_SIZE as usize;
@@ -884,6 +1005,13 @@ pub extern "C" fn start64() -> ! {
         unsafe { &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize },
         page_entries,
     );
+
+    // Debug: Show start_common1 completed
+    unsafe {
+        let vga = 0xb8000 as *mut u8;
+        *vga.add(26) = b'C';
+        *vga.add(27) = 0x07;
+    }
 
     {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
@@ -957,5 +1085,6 @@ pub extern "C" fn start64() -> ! {
     }
 
     *crate::SYSTEM.write() = kernel::System::X86_64(LockedArc::new(sys));
+
     super::main_boot();
 }
