@@ -294,7 +294,6 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         super::serial_interrupts();
         let aml_handler = Box::new(AmlHandler {});
         let mut aml = aml::AmlContext::new(aml_handler, aml::DebugVerbosity::All);
-        aml.initialize_objects().unwrap();
 
         doors_macros::config_check_bool!(acpi, {
             self.handle_acpi(&mut aml);

@@ -552,23 +552,39 @@ impl boot::X86System<'_> {
     /// This function loads the acpi tables if they are present
     #[doors_macros::config_check(acpi, "true")]
     fn load_acpi(&mut self) {
+        crate::VGA.print_str("=== ACPI Initialization Starting ===\r\n");
+        crate::VGA.print_str("Searching for RSDP...\r\n");
         let acpi = if let Some(rsdp2) = self.boot_info.rsdp_v2_tag() {
+            crate::VGA.print_str("Found RSDPv2\r\n");
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "rsdpv2 at {:X} {:x} revision {}\r\n",
                 rsdp2 as *const multiboot2::RsdpV2Tag as usize,
                 rsdp2.xsdt_address(),
                 rsdp2.revision()
             ));
-            Some(
-                unsafe {
-                    acpi::AcpiTables::from_rsdp(
-                        self.acpi.as_ref().unwrap().handler().clone(),
-                        rsdp2 as *const multiboot2::RsdpV2Tag as usize + 8,
-                    )
+            let result = unsafe {
+                acpi::AcpiTables::from_rsdp(
+                    self.acpi.as_ref().unwrap().handler().clone(),
+                    rsdp2 as *const multiboot2::RsdpV2Tag as usize + 8,
+                )
+            };
+            match &result {
+                Ok(tables) => {
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "ACPI tables loaded successfully from RSDPv2, {} tables found\r\n",
+                        tables.table_headers().count()
+                    ));
                 }
-                .unwrap(),
-            )
+                Err(e) => {
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                        "Failed to load ACPI tables from RSDPv2: {:?}\r\n",
+                        e
+                    ));
+                }
+            }
+            Some(result.unwrap())
         } else if let Some(rsdp1) = self.boot_info.rsdp_v1_tag() {
+            crate::VGA.print_str("Found RSDPv1\r\n");
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "rsdpv1 at {:p} {:x}\r\n",
                 rsdp1.signature().unwrap().as_ptr(),
@@ -586,18 +602,22 @@ impl boot::X86System<'_> {
                     e
                 ));
             }
-            if let Ok(t) = &t {
+            if let Ok(tables) = &t {
                 crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                    "ACPI ADDRESS {:p}\r\n",
-                    t
+                    "ACPI tables loaded successfully from RSDPv1, {} tables found\r\n",
+                    tables.table_headers().count()
                 ));
             }
             Some(t.unwrap())
         } else {
+            crate::VGA.print_str("No RSDP found in boot info\r\n");
             None
         };
         if let Some(acpi) = acpi {
+            crate::VGA.print_str("Adding ACPI tables to system\r\n");
             self.acpi = Some(self.acpi.take().unwrap().add_table(acpi));
+        } else {
+            crate::VGA.print_str("No ACPI tables found - RSDP not present\r\n");
         }
     }
 }
@@ -606,8 +626,22 @@ impl crate::LockedArc<boot::X86System<'_>> {
     /// Perform processing necessary for acpi functionality
     #[doors_macros::config_check(acpi, "true")]
     fn handle_acpi(&self, aml: &mut aml::AmlContext) {
+        crate::VGA.print_str("=== ACPI Handler Starting ===\r\n");
         let mut this = self.sync_lock();
-        if let Some(acpi) = this.acpi.as_ref().unwrap().table() {
+        let acpi_system = this.acpi.as_ref();
+        if acpi_system.is_none() {
+            crate::VGA.print_str("ERROR: No ACPI system initialized\r\n");
+            return;
+        }
+
+        let acpi_table = acpi_system.unwrap().table();
+        if acpi_table.is_none() {
+            crate::VGA.print_str("ERROR: No ACPI table available\r\n");
+            return;
+        }
+
+        if let Some(acpi) = acpi_table {
+            crate::VGA.print_str("ACPI tables available for processing\r\n");
             crate::VGA.print_str("Trying DSDT\r\n");
             if true {
                 if let Ok(v) = acpi.dsdt() {
@@ -630,19 +664,76 @@ impl crate::LockedArc<boot::X86System<'_>> {
             }
             if true {
                 crate::VGA.print_str("About to iterate ssdts\r\n");
+                let mut actual_ssdt_count = 0u32;
                 for v in acpi.ssdts() {
+                    actual_ssdt_count += 1;
                     crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                         "ssdt {:x} {:x}\r\n",
                         v.phys_address,
                         v.length
                     ));
-                    boot::PAGING_MANAGER
-                        .sync_lock()
-                        .map_addresses_read_only(v.phys_address, v.phys_address, v.length as usize)
-                        .unwrap();
+
+                    // Validate physical address and length
+                    if v.phys_address == 0 {
+                        crate::VGA.print_str("ERROR: SSDT has null physical address\r\n");
+                        continue;
+                    }
+                    if v.length < 36 {
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "ERROR: SSDT length {} is too small (minimum 36 bytes)\r\n",
+                            v.length
+                        ));
+                        continue;
+                    }
+
+                    // Attempt memory mapping
+                    let map_result = boot::PAGING_MANAGER.sync_lock().map_addresses_read_only(
+                        v.phys_address,
+                        v.phys_address,
+                        v.length as usize,
+                    );
+
+                    match map_result {
+                        Ok(()) => {
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                                "Successfully mapped SSDT at {:x}, length {}\r\n",
+                                v.phys_address,
+                                v.length
+                            ));
+                        }
+                        Err(e) => {
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                                "ERROR: Failed to map SSDT at {:x}: {:?}\r\n",
+                                v.phys_address,
+                                e
+                            ));
+                            continue;
+                        }
+                    }
+
                     let table: &[u8] = unsafe {
                         core::slice::from_raw_parts(v.phys_address as *const u8, v.length as usize)
                     };
+
+                    // Verify table signature
+                    if table.len() >= 4 {
+                        let signature = &table[0..4];
+                        let signature_str = core::str::from_utf8(signature).unwrap_or("????");
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "SSDT signature: '{}'\r\n",
+                            signature_str
+                        ));
+
+                        if signature_str != "SSDT" {
+                            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                                "WARNING: Expected 'SSDT' signature, got '{}'\r\n",
+                                signature_str
+                            ));
+                        }
+                    } else {
+                        crate::VGA
+                            .print_str("ERROR: Cannot read SSDT signature - table too short\r\n");
+                    }
                     match aml.parse_table(table) {
                         Ok(()) => crate::VGA.print_str("SSDT PARSED OK\r\n"),
                         Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -651,13 +742,23 @@ impl crate::LockedArc<boot::X86System<'_>> {
                         )),
                     }
                 }
+                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                    "Actually processed {} SSDT tables via iterator\r\n",
+                    actual_ssdt_count
+                ));
             }
 
+            let table_count = acpi.table_headers().count();
             crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                 "There are {} entries\r\n",
-                acpi.table_headers().count()
+                table_count
             ));
 
+            if table_count == 0 {
+                crate::VGA.print_str("WARNING: No ACPI table headers found!\r\n");
+            }
+
+            let mut ssdt_found_in_headers = 0u32;
             for (address, header) in acpi.table_headers() {
                 crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "sdt {:x} {:X} {} {} {}\r\n",
@@ -667,6 +768,9 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     header.length as usize,
                     header.revision
                 ));
+                if header.signature.as_str() == "SSDT" {
+                    ssdt_found_in_headers += 1;
+                }
                 match header.signature {
                     acpi::sdt::Signature::WAET => {
                         crate::VGA.print_str("TODO Parse the Waet table\r\n");
@@ -686,6 +790,14 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                 doors_macros2::fixed_string_format!("FADT ERROR\r\n"),
                             ),
                         }
+                    }
+                    acpi::sdt::Signature::SSDT => {
+                        let length = header.length; // Copy to avoid packed field reference
+                        crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                            "Found SSDT table at {:x}, length {}\r\n",
+                            address,
+                            length
+                        ));
                     }
                     acpi::sdt::Signature::MADT => {
                         match acpi.find_table::<acpi::sdt::madt::Madt>() {
@@ -746,6 +858,16 @@ impl crate::LockedArc<boot::X86System<'_>> {
         }
         if let Some(acpi) = this.acpi.take() {
             this.acpi = Some(acpi.to_platform());
+        }
+
+        // Initialize AML objects after all tables have been parsed
+        crate::VGA.print_str("Initializing AML objects after table parsing...\r\n");
+        match aml.initialize_objects() {
+            Ok(()) => crate::VGA.print_str("AML objects initialized successfully\r\n"),
+            Err(e) => crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "AML objects initialization failed: {:?}\r\n",
+                e
+            )),
         }
     }
 }
