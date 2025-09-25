@@ -73,10 +73,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         crate::VGA.print_str("Message: ");
         crate::VGA.print_str(msg);
         crate::VGA.print_str("\r\n");
-    } else if let Some(payload) = info.payload().downcast_ref::<&str>() {
-        crate::VGA.print_str("Payload: ");
-        crate::VGA.print_str(payload);
-        crate::VGA.print_str("\r\n");
     }
 
     crate::VGA.print_str("\r\n");
@@ -135,6 +131,9 @@ async fn user_binary_test() {
 
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn keyboard_test() {
+    crate::VGA
+            .print_str_async("Starting keyboard test\r\n")
+            .await;
     let p = crate::common::KEYBOARD.read();
     let k = p.as_ref().unwrap();
     let mut s = k.read_stream();
