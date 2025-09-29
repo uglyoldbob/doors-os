@@ -118,7 +118,6 @@ impl FramebufferTrait<pixels::FullColor<u32>> for SimpleRamFramebuffer {
     }
 
     fn write_pixel(&mut self, x: u16, y: u16, p: pixels::FullColor<u32>) {
-
         //doors_macros2::kernel_print!("Pixel offset {}\r\n", (2 * (self.height as usize * x as usize + y as usize))+2);
         self.buffer[self.height as usize * x as usize + y as usize] = (p.pixel & 0xff) as u8;
         self.buffer[(2 * (self.height as usize * x as usize + y as usize)) + 1] =

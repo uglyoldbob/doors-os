@@ -624,6 +624,7 @@ impl DoorsConfiguration {
     pub fn build_user(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tuser\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./user\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo build --release --target {}\n",
@@ -633,12 +634,14 @@ impl DoorsConfiguration {
 
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tuser_clippy\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./user\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!("\tCOMMAND cargo clippy --target {}\n", target));
         cmakelists.push_str(")\n");
 
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tuser_fmt\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./user\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str("\tCOMMAND cargo fmt\n");
         cmakelists.push_str(")\n");
@@ -648,6 +651,7 @@ impl DoorsConfiguration {
     pub fn build_kernel(&self, cmakelists: &mut String, target: &str) {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
         cmakelists.push_str("\tDEPENDS user\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
@@ -658,6 +662,7 @@ impl DoorsConfiguration {
 
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel_clippy\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo +nightly clippy --target {}\n",
@@ -666,13 +671,25 @@ impl DoorsConfiguration {
         cmakelists.push_str(")\n");
 
         cmakelists.push_str("add_custom_target(\n");
+        cmakelists.push_str("\tkernel_volatility3_symbols\n");
+        cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str("\tBYPRODUCTS symbols/symbols.json\n");
+        cmakelists.push_str(&format!(
+            "\tCOMMAND ./dwarf2json/dwarf2json linux --elf ./kernel/target/{}/release/kernel > ./symbols/symbols.json\n",
+            target
+        ));
+        cmakelists.push_str(")\n");
+
+        cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel_fmt\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str("\tCOMMAND cargo +nightly fmt\n");
         cmakelists.push_str(")\n");
 
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel_expand\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str("\tCOMMAND cargo +nightly expand > ../expanded.txt\n");
         cmakelists.push_str(")\n");
@@ -779,8 +796,6 @@ impl MasterConfig {
 fn build_cmake_files(_args: &Args, config: MasterConfig) {
     use std::io::Write;
     let mut cmakelist = String::new();
-    let mut kernel_cmakelist = String::new();
-    let mut user_cmakelist = String::new();
 
     let kernel_binary_path = std::path::PathBuf::from(format!(
         "./kernel/target/{}/release/kernel",
@@ -790,8 +805,6 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
     cmakelist.push_str("project(doors-os)\n");
     cmakelist.push_str("include(ExternalProject)\n");
-    cmakelist.push_str("add_subdirectory(kernel)\n");
-    cmakelist.push_str("add_subdirectory(user)\n");
     cmakelist.push_str(&format!("set(LOCAL_TARGET {})\n", config.local.target));
     cmakelist.push_str(&format!("set(USER_TARGET {})\n", config.os.user_machine));
 
@@ -825,21 +838,18 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     ));
     cmakelist.push_str(")\n");
 
-    kernel_cmakelist.push_str("cmake_minimum_required(VERSION 3.22)\n");
-    kernel_cmakelist.push_str("project(doors-kernel)\n\n");
-
     write_kernel_config(&config);
 
     config
         .os
-        .build_kernel(&mut kernel_cmakelist, &config.os.kernel_machine);
+        .build_kernel(&mut cmakelist, &config.os.kernel_machine);
     config
         .os
-        .build_kernel_disassembly(&mut kernel_cmakelist, &config.os.kernel_machine);
+        .build_kernel_disassembly(&mut cmakelist, &config.os.kernel_machine);
 
     config
         .os
-        .build_user(&mut user_cmakelist, &config.os.user_machine);
+        .build_user(&mut cmakelist, &config.os.user_machine);
 
     let disk = config
         .os
@@ -881,20 +891,6 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
         configf
             .write_all(cmakelist.as_bytes())
             .expect("Failed to save CMakeLists.txt file");
-    }
-    {
-        let mut configf = std::fs::File::create("./kernel/CMakeLists.txt")
-            .expect("Failed to create kernel cmake configuration");
-        configf
-            .write_all(kernel_cmakelist.as_bytes())
-            .expect("Failed to save kernel CMakeLists.txt file");
-    }
-    {
-        let mut configf = std::fs::File::create("./user/CMakeLists.txt")
-            .expect("Failed to create user cmake configuration");
-        configf
-            .write_all(user_cmakelist.as_bytes())
-            .expect("Failed to save user CMakeLists.txt file");
     }
 
     write_vscode_configs(&config);

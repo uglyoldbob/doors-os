@@ -18,6 +18,9 @@ doors_macros::todo_item!("Don't use LockedArc in enum_dispatch");
 
 extern crate alloc;
 
+/// The string that identifies the kernel in memory
+pub static KERNEL_STRING: &str = "DoorsOsIdentifier";
+
 /// A test program
 const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test2");
 
@@ -132,8 +135,8 @@ async fn user_binary_test() {
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn keyboard_test() {
     crate::VGA
-            .print_str_async("Starting keyboard test\r\n")
-            .await;
+        .print_str_async("Starting keyboard test\r\n")
+        .await;
     let p = crate::common::KEYBOARD.read();
     let k = p.as_ref().unwrap();
     let mut s = k.read_stream();
@@ -171,7 +174,7 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
-
+            crate::VGA.print_str(KERNEL_STRING);
             // Initialize stack unwinder for better panic diagnostics
             if let Err(e) = kernel::stack::init_unwinder() {
                 crate::VGA.print_str("Warning: Failed to initialize stack unwinder: ");

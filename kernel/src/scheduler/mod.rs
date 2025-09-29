@@ -201,9 +201,10 @@ impl Scheduler {
 
     /// Set the status of the current task to completed
     fn task_completed(&self) -> ! {
-        let mut this = self.i.0.sync_access();
-        this.cur_task.1.status = TaskStatus::Completed;
-        drop(this);
+        {
+            let mut this = self.i.0.sync_access();
+            this.cur_task.1.status = TaskStatus::Completed;
+        }
         loop {
             crate::idle();
         }

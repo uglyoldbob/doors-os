@@ -815,7 +815,6 @@ pub extern "C" fn start64() -> ! {
         *vga.add(3) = 0x07;
     }
 
-
     let cpuid = raw_cpuid::CpuId::new();
 
     // Debug: Show we got past cpuid
@@ -825,12 +824,10 @@ pub extern "C" fn start64() -> ! {
         *vga.add(5) = 0x07;
     }
 
-
     let start_kernel = unsafe { &super::START_OF_KERNEL } as *const u8 as usize;
     let end_kernel = unsafe { &super::END_OF_KERNEL } as *const u8 as usize;
 
     // Debug: Show we got kernel addresses
-
 
     let a = unsafe { &memory::TABLE4 } as *const u64 as usize;
     let b = unsafe { &memory::TABLE3 } as *const u64 as usize;
@@ -861,7 +858,6 @@ pub extern "C" fn start64() -> ! {
         *vga.add(6) = b'2';
         *vga.add(7) = 0x07;
     }
-
 
     //Copy the boot information header to the end of the kernel, update the end of the kernel variable to reflect the new data
     let bi_size = {
@@ -913,9 +909,8 @@ pub extern "C" fn start64() -> ! {
         }
 
         // Use original MULTIBOOT2_DATA address as source, not boot_info.start_address()
-        let source = unsafe {
-            core::slice::from_raw_parts(super::MULTIBOOT2_DATA as *const u8, size)
-        };
+        let source =
+            unsafe { core::slice::from_raw_parts(super::MULTIBOOT2_DATA as *const u8, size) };
 
         // Debug: Show we created source slice
         unsafe {
@@ -925,9 +920,8 @@ pub extern "C" fn start64() -> ! {
         }
 
         // Handle overlapping memory regions properly
-        let source_mut = unsafe {
-            core::slice::from_raw_parts_mut(super::MULTIBOOT2_DATA as *mut u8, size)
-        };
+        let source_mut =
+            unsafe { core::slice::from_raw_parts_mut(super::MULTIBOOT2_DATA as *mut u8, size) };
 
         if crate::slice_address(dest) < crate::slice_address(source_mut) {
             let di = dest.iter_mut();
@@ -963,7 +957,9 @@ pub extern "C" fn start64() -> ! {
     let boot_info = unsafe {
         let aligned_end_kernel = (end_kernel + 7) & !7;
 
-        match multiboot2::BootInformation::load(aligned_end_kernel as *const multiboot2::BootInformationHeader) {
+        match multiboot2::BootInformation::load(
+            aligned_end_kernel as *const multiboot2::BootInformationHeader,
+        ) {
             Ok(info) => {
                 // Debug: Show second multiboot2 load success
                 let vga = 0xb8000 as *mut u8;
