@@ -41,7 +41,7 @@ impl Qemu {
                 match s.net_type.as_str() {
                     "tap" => {
                         qemu.push_str(&format!(
-                            "-netdev {},ifname={2},id={1} -device e1000,netdev={1}",
+                            "-netdev {},ifname={2},id={1},script=/etc/qemu-ifup -device e1000,netdev={1} ",
                             s.net_type, uname, s.dev_name
                         ));
                     }
@@ -74,6 +74,7 @@ impl super::EmulationTrait for Qemu {
         qemu.push_str(" -gdb stdio");
 
         config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
+        config.push_str("define dump\n\tmonitor pmemsave 0 0x400000 dump.bin\nend\n");
         config.push_str("define exit\n\tmonitor quit\n\tquit\nend\n");
         config.push_str("disp /i $pc\n");
         config.push_str("target remote :1234\n");

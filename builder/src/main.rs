@@ -700,6 +700,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdisassemble\n");
         cmakelists.push_str("\tDEPENDS kernel\n");
+        cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
         cmakelists.push_str("\tBYPRODUCTS ../disassemble.txt\n");
         cmakelists.push_str(&format!("\tCOMMAND cargo objdump --release --target {} --bin kernel -q -- -d > ../disassemble.txt\n", target));
         cmakelists.push_str(")\n");
