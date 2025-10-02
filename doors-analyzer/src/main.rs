@@ -1,6 +1,8 @@
 use std::io::Read;
 use clap::Parser;
-use object::{Object, ObjectSymbol};
+use crate::os::OperatingSystemTrait;
+
+mod os;
 
 /// Command line arguments for the tool
 #[derive(Parser, Debug)]
@@ -12,6 +14,9 @@ struct Args {
     /// Name of the file to use for kernel symbols
     #[arg(short, long)]
     kernel_symbols: std::path::PathBuf,
+    /// The activity to do with the operating system
+    #[arg(short, long)]
+    activity: String,
 }
 
 enum DumpFile<'a> {
@@ -32,7 +37,7 @@ impl<'a> DumpFile<'a> {
     /// Get a byte at the specified address
     pub fn get_u8(&self, index: usize) -> Option<u8> {
         match self {
-            DumpFile::Elf(file) => todo!(),
+            DumpFile::Elf(_file) => todo!(),
             DumpFile::Raw(items) => {
                 items.get(index).copied()
             }
@@ -42,7 +47,7 @@ impl<'a> DumpFile<'a> {
     /// Get a slice at the specified location
     pub fn get_slice(&self, range: std::ops::Range<usize>) -> Option<Vec<u8>> {
         match self {
-            DumpFile::Elf(file) => todo!(),
+            DumpFile::Elf(_file) => todo!(),
             DumpFile::Raw(items) => {
                 items.get(range).map(|a|a.to_vec())
             }
@@ -55,7 +60,7 @@ impl<'a> DumpFile<'a> {
             return None;
         }
         match self {
-            DumpFile::Elf(file) => todo!(),
+            DumpFile::Elf(_file) => todo!(),
             DumpFile::Raw(items) => {
                 items.windows(needle.len())
                 .position(|window| window == needle)
@@ -72,9 +77,6 @@ fn main() {
     f.read_to_end(&mut contents).unwrap();
 
     let dump = DumpFile::auto_detect(&contents).unwrap();
-
-    let banner_search = dump.find_subslice("DoorsOsIdentifier".as_bytes()).unwrap();
-
     let kernel_contents = {
         let mut f = std::fs::File::open(args.kernel_symbols).unwrap();
         let mut contents = Vec::new();
@@ -82,14 +84,10 @@ fn main() {
         contents
     };
     let kernel = object::File::parse(kernel_contents.as_slice()).unwrap();
-    
-    let banner_symbol = kernel.symbol_by_name("KERNEL_STRING").unwrap();
-    let banner_address = dump.get_slice(banner_symbol.address() as usize..banner_symbol.address() as usize+8).unwrap();
-    let mut ba_buf = [0; 8];
-    ba_buf.copy_from_slice(&banner_address[..]);
-    let banner_address = usize::from_le_bytes(ba_buf);
 
-    if banner_address == banner_search {
-        println!("The kernel identifier is in the right location, at 0x{:x}", banner_address);
+    let osd = os::OperatingSystemDetector::detect_os(&dump, &kernel);
+    println!("OS detected is {:x?}", osd);
+    if let Some(os) = osd {
+        os.activity(&args.activity);
     }
 }

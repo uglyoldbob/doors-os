@@ -285,8 +285,11 @@ name = "doors-analyzer"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "enum_dispatch",
  "gimli",
  "object",
+ "strum",
+ "strum_macros",
 ]
 
 [[package]]

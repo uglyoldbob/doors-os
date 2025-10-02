@@ -5,5 +5,8 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.30", features = ["derive"] }
+enum_dispatch = "0.3.13"
 gimli = "0.32.2"
 object = "0.37.3"
+strum = "0.27"
+strum_macros = "0.27"
