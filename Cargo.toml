@@ -2,7 +2,7 @@
 [workspace]
 
 members = [ "bochs-debug",
-    "builder", "imager", "kernel-stack-analysis",
+    "builder", "doors-analyzer", "imager", "kernel-stack-analysis",
     "network_test",
 ]
 exclude = [

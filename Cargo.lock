@@ -281,6 +281,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "doors-analyzer"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "gimli",
+ "object",
+]
+
+[[package]]
 name = "doors_macros"
 version = "0.1.0"
 dependencies = [
