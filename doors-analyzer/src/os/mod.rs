@@ -5,7 +5,7 @@ use crate::DumpFile;
 
 #[enum_dispatch::enum_dispatch]
 pub trait OperatingSystemTrait {
-    fn activity(&self, data: &DumpFile, action: &str);
+    fn activity(&self, data: &DumpFile, kernel: &object::File<'_>, action: &str);
 }
 
 #[derive(Debug)]

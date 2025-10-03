@@ -58,6 +58,12 @@ impl<'a> DumpFile<'a> {
         }
     }
 
+    /// Get a slice at the specified location, of the specified length
+    pub fn get_slice_with_length(&self, start: usize, len: usize) -> Option<Vec<u8>> {
+        let range = start..start + len;
+        self.get_slice(range)
+    }
+
     /// Get a slice at the specified location
     pub fn get_slice(&self, range: std::ops::Range<usize>) -> Option<Vec<u8>> {
         match self {
@@ -167,6 +173,6 @@ fn main() {
     let osd = os::OperatingSystemDetector::detect_os(&dump, &kernel);
     println!("OS detected is {:x?}", osd);
     if let Some(os) = osd {
-        os.activity(&dump, &args.activity);
+        os.activity(&dump, &kernel, &args.activity);
     }
 }
