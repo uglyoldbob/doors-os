@@ -43,7 +43,7 @@ impl OperatingSystemDetectorTrait for u32 {
 }
 
 impl OperatingSystemDetector {
-    pub fn detect_os(data: &DumpFile,  kernel: &object::File<'_>) -> Option<OperatingSystem> {
+    pub fn detect_os(data: &DumpFile, kernel: &object::File<'_>) -> Option<OperatingSystem> {
         for ost in Self::iter() {
             if ost.detect(data, kernel) {
                 return ost.get_os();
