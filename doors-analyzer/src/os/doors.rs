@@ -7,9 +7,17 @@ use object::{Object, ObjectSymbol};
 pub struct DoorsOs {}
 
 impl super::OperatingSystemTrait for DoorsOs {
-    fn activity(&self, action: &str) {
+    fn activity(&self, data: &DumpFile, action: &str) {
         match action {
-            "version" => {}
+            "version" => {
+                let r = regex::bytes::Regex::new(r"doors version (\d+.\d+.\d+)").unwrap();
+                for a in data.find_with_regex(r) {
+                    println!(
+                        "Found version {}",
+                        str::from_utf8(a.get(1).unwrap().as_bytes()).unwrap()
+                    );
+                }
+            }
             "test" => println!("This is a test action"),
             _ => println!("Unknown action {}", action),
         }

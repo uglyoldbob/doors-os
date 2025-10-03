@@ -26,7 +26,8 @@ pub static KERNEL_STRING: &str = "DoorsOsIdentifier";
 /// A test banner
 #[used]
 #[no_mangle]
-pub static doors_banner: &str = "doors version 0.0.1";
+pub static doors_banner: &str =
+    const_format::concatcp!("doors version ", env!("CARGO_PKG_VERSION"));
 
 /// A test program
 const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test2");

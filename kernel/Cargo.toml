@@ -9,6 +9,7 @@ bitfield = "0.18.1"
 bitflags = "2.4.2"
 cfg-if = "1.0.0"
 conquer-once = { version = "0.4.0", default-features = false }
+const_format = "0.2.34"
 crossbeam = { version = "0.8.4", default-features = false, features = ["alloc"] }
 doors_macros = { path = "../doors_macros", version = "0.1.0", features = ["todo"]}
 doors_macros2 = { path = "../doors_macros2", version = "0.1.0" }

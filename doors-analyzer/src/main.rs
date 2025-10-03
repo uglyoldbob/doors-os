@@ -1,6 +1,7 @@
 use crate::os::OperatingSystemTrait;
 use clap::Parser;
 use object::{Object, ObjectSection, ObjectSegment};
+use regex::bytes::{CaptureMatches, Captures};
 use std::io::Read;
 
 mod os;
@@ -87,6 +88,33 @@ impl<'a> DumpFile<'a> {
         }
     }
 
+    /// Find a slice using a regex
+    pub fn find_with_regex(&self, r: regex::bytes::Regex) -> Vec<Captures> {
+        match self {
+            DumpFile::Elf(file) => {
+                let mut combined = Vec::new();
+                let a = file.segments().map(|s| {
+                    let a = s.data().unwrap();
+                    let b: Vec<Captures> = r.captures_iter(a).collect();
+                    b
+                });
+                let b = file.sections().map(|s| {
+                    let a = s.data().unwrap();
+                    let b: Vec<Captures> = r.captures_iter(a).collect();
+                    b
+                });
+                for mut a in a {
+                    combined.append(&mut a);
+                }
+                for mut a in b {
+                    combined.append(&mut a);
+                }
+                combined
+            }
+            DumpFile::Raw(items) => r.captures_iter(items).collect(),
+        }
+    }
+
     /// Find a slice within a slice
     pub fn find_subslice(&self, needle: &[u8]) -> Option<usize> {
         if needle.is_empty() {
@@ -139,6 +167,6 @@ fn main() {
     let osd = os::OperatingSystemDetector::detect_os(&dump, &kernel);
     println!("OS detected is {:x?}", osd);
     if let Some(os) = osd {
-        os.activity(&args.activity);
+        os.activity(&dump, &args.activity);
     }
 }
