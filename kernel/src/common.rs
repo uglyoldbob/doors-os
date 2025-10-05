@@ -703,7 +703,7 @@ pub enum IrqNumbers {
 
 impl IrqNumbers {
     /// Get an iterator
-    pub fn iter(&self) -> IrqNumbersIter {
+    pub fn iter(&self) -> IrqNumbersIter<'_> {
         IrqNumbersIter {
             index: 0,
             numbers: self,

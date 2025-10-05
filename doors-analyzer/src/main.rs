@@ -1,10 +1,11 @@
 use crate::os::OperatingSystemTrait;
 use clap::Parser;
 use object::{Object, ObjectSection, ObjectSegment};
-use regex::bytes::{CaptureMatches, Captures};
+use regex::bytes::Captures;
 use std::io::Read;
 
 mod os;
+mod symbols;
 
 /// Command line arguments for the tool
 #[derive(Parser, Debug)]
@@ -22,7 +23,7 @@ struct Args {
 }
 
 enum DumpFile<'a> {
-    Elf(object::File<'a>),
+    Qemu(object::File<'a>),
     Raw(&'a [u8]),
 }
 
@@ -30,8 +31,8 @@ impl<'a> DumpFile<'a> {
     /// Try to detect the type of dump file based on the contents
     pub fn auto_detect(c: &'a [u8]) -> Result<Self, String> {
         if let Ok(o) = object::File::parse(c) {
-            println!("Got a valid elf format dump");
-            return Ok(Self::Elf(o));
+            println!("Got a possibly valid qemu format dump");
+            return Ok(Self::Qemu(o));
         }
         Ok(Self::Raw(c))
     }
@@ -39,7 +40,7 @@ impl<'a> DumpFile<'a> {
     /// Get a byte at the specified address
     pub fn get_u8(&self, index: usize) -> Option<u8> {
         match self {
-            DumpFile::Elf(file) => {
+            DumpFile::Qemu(file) => {
                 for s in file.segments() {
                     if (s.address()..s.address() + s.size()).contains(&(index as u64)) {
                         let a = s.data().unwrap();
@@ -67,7 +68,7 @@ impl<'a> DumpFile<'a> {
     /// Get a slice at the specified location
     pub fn get_slice(&self, range: std::ops::Range<usize>) -> Option<Vec<u8>> {
         match self {
-            DumpFile::Elf(file) => {
+            DumpFile::Qemu(file) => {
                 for s in file.segments() {
                     if (s.address()..s.address() + s.size()).contains(&(range.start as u64))
                         && (s.address()..s.address() + s.size()).contains(&(range.end as u64))
@@ -97,7 +98,7 @@ impl<'a> DumpFile<'a> {
     /// Find a slice using a regex
     pub fn find_with_regex(&self, r: regex::bytes::Regex) -> Vec<Captures> {
         match self {
-            DumpFile::Elf(file) => {
+            DumpFile::Qemu(file) => {
                 let mut combined = Vec::new();
                 let a = file.segments().map(|s| {
                     let a = s.data().unwrap();
@@ -127,7 +128,7 @@ impl<'a> DumpFile<'a> {
             return None;
         }
         match self {
-            DumpFile::Elf(file) => {
+            DumpFile::Qemu(file) => {
                 for s in file.segments() {
                     let a = s.data().unwrap();
                     if let Some(d) = a.windows(needle.len()).position(|window| window == needle) {
@@ -163,11 +164,11 @@ fn main() {
         f.read_to_end(&mut contents).unwrap();
         contents
     };
-    let kernel = object::File::parse(kernel_contents.as_slice()).unwrap();
+    let kernel = symbols::Symbols::load(kernel_contents.as_slice()).unwrap();
     println!("Byte at 0x100000 is 0x{:02x?}", dump.get_u8(0x100000));
     println!(
         "Byte at 0x100000 is 0x{:02x?}",
-        dump.get_slice(0x100000..0x101000)
+        dump.get_slice(0x100000..0x100008)
     );
 
     let osd = os::OperatingSystemDetector::detect_os(&dump, &kernel);

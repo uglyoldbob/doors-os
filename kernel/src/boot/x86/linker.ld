@@ -8,18 +8,8 @@ SECTIONS
 {
   . = 0x00100000;
   START_OF_KERNEL = .;
-  .text :
-  {
+  .multiboot : {
     KEEP(*(.multiboot));
-    *(.text);
-    *(.text.*);
-    *(.ltext.*);
-    *(.got);
-    *(.got.plt);
-  } > ram
-  .dynamic :
-  {
-
   } > ram
   .strings : {
     *(.dynstr);
@@ -32,12 +22,24 @@ SECTIONS
     *(.rodata);
     *(.rodata.*);
   } > ram
-  .rela : { *(.rela.dyn); } > ram
-  .strtab : { *(.strtab); } > ram
   .bss : {
     *(.bss);
     *(.bss.*);
   } > ram
+  .strtab : { *(.strtab); } > ram
+  .text :
+  {
+    *(.text);
+    *(.text.*);
+    *(.ltext.*);
+    *(.got);
+    *(.got.plt);
+  } > ram
+  .dynamic :
+  {
+
+  } > ram
+  .rela : { *(.rela.dyn); } > ram
   .eh_frame_hdr : { 
     *(.eh_frame_hdr);
     *(.eh_frame_hdr.*);
