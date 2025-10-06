@@ -1,6 +1,9 @@
     .section .data
     .global _start
     .global MULTIBOOT2_DATA
+    .global TABLE3
+    .global TABLE2
+    .global TABLE1
     .global INITIAL_STACK
     .extern GDT_TABLE_PTR
     .extern start32
@@ -14,6 +17,15 @@
     PAGE_DIRECTORY:
         .quad 0x000000 + 0x83
         .fill 511, 8, 0
+    .align 4096
+    PAGE_TABLE:
+        TABLE3:
+            .quad 0
+        TABLE2:
+            .quad 0
+        TABLE1:
+            .quad 0
+        .fill 509, 8, 0
     .section .text
     .code32
     _start:
