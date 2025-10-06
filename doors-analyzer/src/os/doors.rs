@@ -28,9 +28,14 @@ impl super::OperatingSystemTrait for DoorsOs {
                     format!("{:#}", rustc_demangle::demangle(a))
                 }) {
                     println!("Found symbol for the scheduler {:x}", s.address());
-                    println!("Data is {:02x?}", data.get_slice_with_length(s.address(), 128));
+                    println!(
+                        "Data is {:02x?}",
+                        data.get_slice_with_length(s.address(), 128)
+                    );
                     let addr = s.address() + 8;
-                    let d = data.get_slice_with_length(addr, std::mem::size_of::<usize>()).unwrap();
+                    let d = data
+                        .get_slice_with_length(addr, std::mem::size_of::<usize>())
+                        .unwrap();
                     let mut d2 = [0u8; std::mem::size_of::<usize>()];
                     d2.copy_from_slice(&d);
                     let da = usize::from_le_bytes(d2);

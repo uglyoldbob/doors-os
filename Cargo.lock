@@ -108,8 +108,8 @@ name = "bochs-debug"
 version = "0.1.0"
 dependencies = [
  "clap",
- "gimli",
  "object",
+ "rustc-demangle",
 ]
 
 [[package]]
