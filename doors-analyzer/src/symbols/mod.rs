@@ -1,7 +1,5 @@
 use object::{Object, ObjectSymbol};
 
-use crate::os::OperatingSystemTrait;
-
 pub enum Symbol {
     Address(usize),
 }

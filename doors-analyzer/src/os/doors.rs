@@ -1,14 +1,19 @@
 use super::OperatingSystemDetectorTrait;
 use crate::{DumpFile, symbols::SymbolsTrait};
 
-use object::{Object, ObjectSymbol};
-
 #[derive(Clone, Debug, Default)]
 pub struct DoorsOs {}
 
 impl super::OperatingSystemTrait for DoorsOs {
     fn activity(&self, data: &DumpFile, kernel: &crate::symbols::Symbols<'_>, action: &str) {
         match action {
+            "page_tables" => {
+                if let Some(s) = kernel.find_symbol("PAGE_TABLE_PML4_BOOT", |a| {
+                    format!("{:#}", rustc_demangle::demangle(a))
+                }) {
+                    println!("Found symbol for the page table {:x}", s.address());
+                }
+            }
             "version" => {
                 let r = regex::bytes::Regex::new(r"doors version (\d+.\d+.\d+)").unwrap();
                 for a in data.find_with_regex(r) {
@@ -23,6 +28,13 @@ impl super::OperatingSystemTrait for DoorsOs {
                     format!("{:#}", rustc_demangle::demangle(a))
                 }) {
                     println!("Found symbol for the scheduler {:x}", s.address());
+                    println!("Data is {:02x?}", data.get_slice_with_length(s.address(), 128));
+                    let addr = s.address() + 8;
+                    let d = data.get_slice_with_length(addr, std::mem::size_of::<usize>()).unwrap();
+                    let mut d2 = [0u8; std::mem::size_of::<usize>()];
+                    d2.copy_from_slice(&d);
+                    let da = usize::from_le_bytes(d2);
+                    println!("Got address {:x}", da);
                 }
             }
             "test" => println!("This is a test action"),
