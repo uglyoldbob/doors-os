@@ -309,7 +309,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         Some(0xcc)
     }
 
-    fn create_process(&self,b: &object::File) -> Result<(),()> {
+    fn create_process(&self, b: &object::File) -> Result<(), ()> {
         todo!();
     }
 
@@ -610,9 +610,6 @@ pub static INTERRUPT_DESCRIPTOR_TABLE: crate::Locked<InterruptDescriptorTable> =
 /// The entry point for the 32 bit x86 kernel
 #[no_mangle]
 pub extern "C" fn start32() -> ! {
-    let _page =
-        memory::Page4MbMapped::from_raw(unsafe { super::MULTIBOOT2_DATA as *const () as usize });
-
     let boot_info_addr = unsafe { super::MULTIBOOT2_DATA as usize };
     let boot_info = unsafe {
         multiboot2::BootInformation::load(
@@ -651,7 +648,7 @@ pub extern "C" fn start32() -> ! {
         stack_end,
         stack_size,
         &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize,
-        &page_entries
+        &page_entries,
     );
 
     {

@@ -36,7 +36,7 @@
         .quad 0x000000 + 0x83
         .quad 0x200000 + 0x83
         .quad PAGE_TABLE_MAPPING + 0x3
-        .fill 510, 8, 0
+        .fill 509, 8, 0
     .section .text
     .code32
     _start:

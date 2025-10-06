@@ -281,7 +281,6 @@ unsafe impl core::alloc::Allocator for Locked<BumpAllocatorInner> {
     }
 }
 
-
 /// A structure for managing which pages are free in a block of contiguous chunks of memory
 pub struct Bitmap<'a, T> {
     /// The actual bitmap of available pages, one bit per block
@@ -746,7 +745,7 @@ impl<'a> PagingTableManager<'a> {
                         flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, paddr as u64, flags);
-                        unsafe { x86::tlb::flush(vaddr)};
+                        unsafe { x86::tlb::flush(vaddr) };
                     } else {
                         return Err(());
                     }
@@ -996,6 +995,13 @@ fn init_page_table_mapper(entries: &[PageTableModifierData]) {
         let b = unsafe { (entries[1].entry as *mut u64).as_mut() }.unwrap();
         let p = PageTableModifier { table: a, entry: b };
         ptm[1].replace(p);
+    }
+    if ptm[2].is_none() {
+        let a = entries[2].virt as *mut PageTable;
+        let a = unsafe { a.as_mut() }.unwrap();
+        let b = unsafe { (entries[2].entry as *mut u64).as_mut() }.unwrap();
+        let p = PageTableModifier { table: a, entry: b };
+        ptm[2].replace(p);
     }
 }
 

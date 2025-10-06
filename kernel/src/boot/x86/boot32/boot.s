@@ -16,7 +16,8 @@
     .align 4096
     PAGE_DIRECTORY:
         .quad 0x000000 + 0x83
-        .fill 511, 8, 0
+        .quad 0x200000 + 0x83
+        .fill 510, 8, 0
     .align 4096
     PAGE_TABLE:
         TABLE3:
@@ -40,6 +41,12 @@
         or eax, 0x30
         mov cr4, eax
         #fill out the pdpt entry TODO
+        lea eax, [PAGE_DIRECTORY]
+        or eax, 1
+        mov [PDPT], eax
+        lea eax, [PAGE_TABLE]
+        or eax, 3
+        mov [PAGE_DIRECTORY + 16], eax
         #load cr3 with base of pdpt
         lea eax, [PDPT]
         mov cr3, eax
