@@ -1,6 +1,6 @@
 //! This module contains architecture specific boot code.
 
-use crate::boot::x86::boot64::PAGING_MANAGER;
+use crate::boot::x86::boot::PAGING_MANAGER;
 
 /// The trait for memory managers that need to ensure that virtual memory is mapped to real physical memory.
 #[enum_dispatch::enum_dispatch]
@@ -16,6 +16,9 @@ pub trait VirtualMemoryMapperTrait {
 pub enum VirtualMemoryMapper<'a> {
     /// The 64 bit x86 variant
     #[cfg(target_arch = "x86_64")]
+    X86Mapper(x86::boot::memory::VirtualMemoryMapper<'a>),
+    /// The 32 bit x86 variant
+    #[cfg(target_arch = "x86")]
     X86Mapper(x86::boot::memory::VirtualMemoryMapper<'a>),
 }
 

@@ -888,7 +888,7 @@ fn start_common1(
     stack_end: usize,
     stack_size: usize,
     virtual_allocate_start: usize,
-    page_entries: [boot::memory::PageTableModifierData; 4],
+    page_entries: &[boot::memory::PageTableModifierData],
 ) {
     boot::VIRTUAL_MEMORY_ALLOCATOR
         .sync_lock()

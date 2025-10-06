@@ -999,7 +999,7 @@ pub extern "C" fn start64() -> ! {
         stack_end,
         stack_size,
         unsafe { &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize },
-        page_entries,
+        &page_entries,
     );
 
     // Debug: Show start_common1 completed

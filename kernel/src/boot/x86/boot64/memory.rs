@@ -804,7 +804,7 @@ lazy_static::lazy_static! {
 }
 
 /// Initialize the page table mapper, with a virtual memory allocator. 0 - the address for the usize entry, 1 - the virtual address controlled by the entry
-fn init_page_table_mapper(entries: [PageTableModifierData; 4]) {
+fn init_page_table_mapper(entries: &[PageTableModifierData]) {
     let mut ptm = PAGE_TABLE_MAPPER.sync_lock();
     if ptm[0].is_none() {
         let a = entries[0].virt as *mut PageTable;
@@ -1039,7 +1039,7 @@ impl<'a> PagingTableManager<'a> {
 
     /// Initialize the object assuming some stuff is already setup in cr3.
     /// entries - 0 - the address for the usize entry, 1 - the virtual address controlled by the entry
-    pub fn setup_from_existing(&mut self, entries: [PageTableModifierData; 4]) {
+    pub fn setup_from_existing(&mut self, entries: &[PageTableModifierData]) {
         let (cr3, _) = x86_64::registers::control::Cr3::read();
         let cr3 = cr3.start_address().as_u64();
         self.cr3 = cr3 as usize;
@@ -1192,27 +1192,11 @@ impl<'a> PagingTableManager<'a> {
         for i in (0..size).step_by(core::mem::size_of::<Page>()).rev() {
             let vaddr = virtual_address + i;
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
-                4 => {
-                    if entry.get_entry(index).is_none() {
-                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
-                        let p = Box::leak(p);
-                        let mut flags = PageTableEntryFlags(0);
-                        flags.set_writable(true);
-                        flags.set_present(true);
-                        entry.set_entry(index, p.as_ptr() as usize, flags);
-                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
-                            crate::address(entry) as u64,
-                        ));
-                        *unsafe { p.assume_init_mut() } = Page::default();
-                    }
-                    Ok(())
-                }
                 3 => {
                     if entry.get_entry(index).is_none() {
                         let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
                         let p = Box::leak(p);
                         let mut flags = PageTableEntryFlags(0);
-                        flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(

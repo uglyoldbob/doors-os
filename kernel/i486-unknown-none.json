@@ -1,6 +1,6 @@
 {
     "arch": "x86",
-    "cpu": "i386",
+    "cpu": "i486",
     "crt-static-respected": true,
     "data-layout": "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-i128:128-f64:32:64-f80:32-n8:16:32-S128",
     "dynamic-linking": false,
@@ -9,8 +9,9 @@
     "features": "-sse",
     "has-rpath": true,
     "has-thread-local": true,
-    "llvm-target": "i386-unknown-none",
-    "max-atomic-width": 32,
+    "llvm-target": "i486-unknown-none",
+    "max-atomic-width": 64,
+    "no-default-libraries": true,
     "position-independent-executables": false,
     "pre-link-args": {
       "gcc": [
@@ -36,7 +37,7 @@
       "off"
     ],
     "target-family": [
-      "unix"
+      "none"
     ],
-    "target-pointer-width": "32"
+    "target-pointer-width": 32
   }

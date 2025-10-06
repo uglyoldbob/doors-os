@@ -8,6 +8,21 @@ use alloc::vec::Vec;
 /// The type for the cr3 register
 pub struct PageTableData(u32);
 
+impl PageTableData {
+    /// Read the current cr3 from the processor
+    pub fn from_current() -> Self {
+        Self(unsafe { x86::controlregs::cr3() } as u32)
+    }
+
+    /// Install the page table data, if necessary
+    pub fn install(&self) {
+        let cr3 = unsafe { x86::controlregs::cr3() } as u32;
+        if cr3 != self.0 {
+            unsafe { x86::controlregs::cr3_write(self.0 as u64) };
+        }
+    }
+}
+
 /// The saved context for a thread
 #[derive(Debug, Default)]
 #[repr(C)]
@@ -45,7 +60,7 @@ const STACK_SIZE: usize = 1024;
 
 impl super::Task {
     /// Create a new task
-    pub fn new(f: fn()) -> Self {
+    pub fn new(ptd: PageTableData, f: fn()) -> Self {
         let mut s = Stack::new(STACK_SIZE);
         let mut sc = StackContext::default();
         let mut c = Context::default();
@@ -77,6 +92,7 @@ impl super::Task {
             context: Some(c),
             status: super::TaskStatus::Runnable,
             _f: Some(f),
+            page_table_data: ptd,
             stack: Some(s),
         };
         s

@@ -85,13 +85,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         crate::VGA.print_str(msg);
         crate::VGA.print_str("\r\n");
     }
-
-    crate::VGA.print_str("\r\n");
-
-    // Initialize and use DWARF-based stack unwinder
-    let _ = kernel::stack::init_unwinder();
-    kernel::stack::print_stack_trace();
-
     crate::VGA.print_str("\r\n========== END PANIC ==========\r\n");
 
     // Halt the system
@@ -182,12 +175,6 @@ fn main() -> ! {
             let sys = SYSTEM.read();
             sys.enable_interrupts();
             sys.init();
-            // Initialize stack unwinder for better panic diagnostics
-            if let Err(e) = kernel::stack::init_unwinder() {
-                crate::VGA.print_str("Warning: Failed to initialize stack unwinder: ");
-                crate::VGA.print_str(e);
-                crate::VGA.print_str("\r\n");
-            }
             scheduler::SCHEDULER
                 .read()
                 .as_ref()

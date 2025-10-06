@@ -1,6 +1,6 @@
-kernel_machine = "i386-unknown-none.json"
-user_machine = "i386-unknown-doors"
-kernel_path = "i386-unknown-none"
+kernel_machine = "i486-unknown-none.json"
+user_machine = "i486-unknown-doors"
+kernel_path = "i486-unknown-none"
 disassembly = true
 
 [kernel_config]

@@ -8,9 +8,12 @@
     MULTIBOOT2_DATA: .4byte 0
     INITIAL_STACK: .4byte 0
     .align 4096
+    PDPT:
+        .fill 512, 8, 0
+    .align 4096
     PAGE_DIRECTORY:
-        .4byte 0x000000 + 0x83
-        .fill 1023, 4, 0
+        .quad 0x000000 + 0x83
+        .fill 511, 8, 0
     .section .text
     .code32
     _start:
@@ -20,12 +23,13 @@
         mov eax, cr0
         and eax, 0xEFFFFFFF
         mov cr0, eax
-        #enable 4 mbyte pages
+        #enable 4 mbyte pages, and pae
         mov eax, cr4
-        or eax, 0x10
+        or eax, 0x30
         mov cr4, eax
-        #load cr3 with base of PML4
-        lea eax, [PAGE_DIRECTORY]
+        #fill out the pdpt entry TODO
+        #load cr3 with base of pdpt
+        lea eax, [PDPT]
         mov cr3, eax
         #global descriptor table
         lgdt [GDT_TABLE_PTR]

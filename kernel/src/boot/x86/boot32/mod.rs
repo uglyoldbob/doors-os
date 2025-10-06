@@ -2,6 +2,7 @@
 
 use crate::kernel;
 use crate::LockedArc;
+use alloc::alloc::Allocator;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -77,7 +78,7 @@ lazy_static! {
 }
 
 /// The divide by zero handler
-pub extern "x86-interrupt" fn divide_by_zero_exception() {
+pub extern "x86-interrupt" fn divide_by_zero_exception(_: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Divide by zero\r\n");
     loop {
@@ -86,7 +87,7 @@ pub extern "x86-interrupt" fn divide_by_zero_exception() {
 }
 
 ///The handler for segment not present
-pub extern "x86-interrupt" fn segment_not_present_exception() {
+pub extern "x86-interrupt" fn segment_not_present_exception(_: u32, _code: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Segment not present\r\n");
     loop {
@@ -95,7 +96,7 @@ pub extern "x86-interrupt" fn segment_not_present_exception() {
 }
 
 ///Exception handler
-pub extern "x86-interrupt" fn invalid_opcode_exception() {
+pub extern "x86-interrupt" fn invalid_opcode_exception(_: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Invalid opcode exception\r\n");
     loop {
@@ -104,7 +105,7 @@ pub extern "x86-interrupt" fn invalid_opcode_exception() {
 }
 
 ///Exception handler
-pub extern "x86-interrupt" fn double_fault_exception() {
+pub extern "x86-interrupt" fn double_fault_exception(_: u32, _code: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Double fault excpetion\r\n");
     loop {
@@ -112,7 +113,7 @@ pub extern "x86-interrupt" fn double_fault_exception() {
     }
 }
 ///Exception handler
-pub extern "x86-interrupt" fn gpf_exception() {
+pub extern "x86-interrupt" fn gpf_exception(_: u32, _code: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Gpf exception\r\n");
     loop {
@@ -120,7 +121,7 @@ pub extern "x86-interrupt" fn gpf_exception() {
     }
 }
 ///Exception handler
-pub extern "x86-interrupt" fn page_fault_exception() {
+pub extern "x86-interrupt" fn page_fault_exception(_: u32, _code: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Page fault exception\r\n");
     loop {
@@ -137,7 +138,7 @@ pub fn finish_irq(irqnum: u8) {
 }
 
 /// The irq handler
-pub extern "x86-interrupt" fn irq0() {
+pub extern "x86-interrupt" fn irq0(_: u32) {
     let handle = super::IRQ_HANDLERS[0].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
@@ -148,7 +149,7 @@ pub extern "x86-interrupt" fn irq0() {
 }
 
 /// The irq handler
-pub extern "x86-interrupt" fn irq3() {
+pub extern "x86-interrupt" fn irq3(_: u32) {
     let handle = super::IRQ_HANDLERS[3].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
@@ -159,7 +160,7 @@ pub extern "x86-interrupt" fn irq3() {
 }
 
 /// The irq handler
-pub extern "x86-interrupt" fn irq4() {
+pub extern "x86-interrupt" fn irq4(_: u32) {
     let handle = super::IRQ_HANDLERS[4].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
@@ -170,7 +171,7 @@ pub extern "x86-interrupt" fn irq4() {
 }
 
 /// The irq handler
-pub extern "x86-interrupt" fn irq7() {
+pub extern "x86-interrupt" fn irq7(_: u32) {
     let handle = super::IRQ_HANDLERS[7].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
@@ -181,7 +182,7 @@ pub extern "x86-interrupt" fn irq7() {
 }
 
 /// The irq handler
-pub extern "x86-interrupt" fn irq10() {
+pub extern "x86-interrupt" fn irq10(_: u32) {
     let handle = super::IRQ_HANDLERS[10].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
@@ -192,7 +193,7 @@ pub extern "x86-interrupt" fn irq10() {
 }
 
 /// The irq handler
-pub extern "x86-interrupt" fn irq15() {
+pub extern "x86-interrupt" fn irq15(_: u32) {
     let handle = super::IRQ_HANDLERS[15].sync_lock();
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
@@ -214,6 +215,82 @@ struct Big {
 /// Aml processing struct
 pub struct AmlHandler {}
 
+/// The holder for acpi stuff
+pub enum AcpiStuff {
+    /// Holds the acpi object
+    Handler(super::Acpi),
+    /// The acpi object with a table
+    HandlerWithTable {
+        /// The acpi object
+        acpi: super::Acpi,
+        /// The table set
+        table: acpi::AcpiTables<super::Acpi>,
+    },
+    /// Holds the platform info object
+    Platform(acpi::platform::AcpiPlatform<super::Acpi>),
+}
+
+impl AcpiStuff {
+    /// Convert to a platform
+    pub fn to_platform(self) -> Self {
+        match self {
+            Self::Handler(_acpi) => panic!(),
+            Self::HandlerWithTable { acpi, table } => {
+                let p = acpi::platform::AcpiPlatform::new(table, acpi).unwrap();
+                crate::VGA
+                    .print_fixed_str(doors_macros2::fixed_string_format!("pi: is {:p}\r\n", &p));
+                Self::Platform(p)
+            }
+            Self::Platform(acpi_platform) => Self::Platform(acpi_platform),
+        }
+    }
+
+    /// Get the platform
+    pub fn platform(&self) -> Option<&acpi::platform::AcpiPlatform<super::Acpi>> {
+        match self {
+            Self::Handler(_acpi) => None,
+            Self::HandlerWithTable { acpi: _, table: _ } => None,
+            Self::Platform(acpi_platform) => Some(&acpi_platform),
+        }
+    }
+
+    /// Get the optional table
+    pub fn table(&self) -> Option<&acpi::AcpiTables<super::Acpi>> {
+        match self {
+            Self::Handler(_acpi) => None,
+            Self::HandlerWithTable { acpi: _, table } => Some(table),
+            Self::Platform(acpi_platform) => Some(&acpi_platform.tables),
+        }
+    }
+
+    /// Adds the acpi table if necessary
+    pub fn add_table(self, table: acpi::AcpiTables<super::Acpi>) -> Self {
+        match self {
+            Self::Handler(acpi) => Self::HandlerWithTable { acpi, table },
+            Self::HandlerWithTable { acpi, table } => Self::HandlerWithTable { acpi, table },
+            Self::Platform(_acpi_platform) => panic!(),
+        }
+    }
+
+    /// Get the acpi handler
+    pub fn handler(&self) -> &super::Acpi {
+        match self {
+            Self::Handler(acpi) => acpi,
+            Self::HandlerWithTable { acpi, table: _ } => acpi,
+            Self::Platform(acpi_platform) => &acpi_platform.handler,
+        }
+    }
+
+    /// Get the acpi handler, mutably
+    pub fn handler_mut(&mut self) -> &mut super::Acpi {
+        match self {
+            AcpiStuff::Handler(acpi) => acpi,
+            Self::HandlerWithTable { acpi, table: _ } => acpi,
+            AcpiStuff::Platform(acpi_platform) => &mut acpi_platform.handler,
+        }
+    }
+}
+
 /// The system boot structure
 #[doors_macros::config_check_struct]
 #[allow(unused)]
@@ -222,9 +299,7 @@ pub struct X86System<'a> {
     pub boot_info: multiboot2::BootInformation<'a>,
     #[doorsconfig = "acpi"]
     /// Used for acpi
-    pub acpi_handler: super::Acpi,
-    /// The acpi tables element
-    pub acpi: Option<acpi::AcpiTables<super::Acpi>>,
+    pub acpi: Option<AcpiStuff>,
     /// The stack beginning
     stack_start: usize,
 }
@@ -232,6 +307,10 @@ pub struct X86System<'a> {
 impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     fn breakpoint(&self) -> Option<u8> {
         Some(0xcc)
+    }
+
+    fn create_process(&self,b: &object::File) -> Result<(),()> {
+        todo!();
     }
 
     fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
@@ -306,60 +385,207 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     }
 }
 
-impl acpi::AcpiHandler for super::Acpi {
+impl acpi::Handler for super::Acpi {
     unsafe fn map_physical_region<T>(
         &self,
         physical_address: usize,
         size: usize,
     ) -> acpi::PhysicalMapping<Self, T> {
-        if physical_address < (1 << 22) {
-            acpi::PhysicalMapping::new(
-                physical_address,
-                NonNull::new(physical_address as *mut T).unwrap(),
-                size,
-                size,
-                self.clone(),
-            )
+        let size = if size < core::mem::size_of::<T>() {
+            core::mem::size_of::<T>()
         } else {
-            let start = physical_address - physical_address % core::mem::size_of::<memory::Page>();
-            let presize = (physical_address + size) - start;
-            let err = presize % core::mem::size_of::<memory::Page>();
-            let realsize = if err != 0 {
-                presize + (core::mem::size_of::<memory::Page>() - err)
+            size
+        };
+        if physical_address == 0 {
+            panic!("Received a null pointer request size");
+        }
+        if physical_address < (1 << 22) {
+            acpi::PhysicalMapping {
+                physical_start: physical_address,
+                virtual_start: NonNull::new(physical_address as *mut T).unwrap(),
+                region_length: size,
+                mapped_length: size,
+                handler: self.clone(),
+            }
+        } else {
+            let size_before_allocation = physical_address % core::mem::size_of::<memory::Page>();
+            let end_remainder =
+                (size_before_allocation + size) % core::mem::size_of::<memory::Page>();
+            let size_after_allocation = if end_remainder > 0 {
+                core::mem::size_of::<memory::Page>() - end_remainder
             } else {
-                presize
+                0
             };
+            let start = physical_address - size_before_allocation;
+            let realsize = size_before_allocation + size + size_after_allocation + 0x1000;
 
-            let mut b: Vec<u8, &crate::Locked<memory::BumpAllocator>> =
-                Vec::with_capacity_in(realsize, self.vmm);
+            let layout = core::alloc::Layout::from_size_align(
+                realsize,
+                core::mem::size_of::<memory::Page>(),
+            )
+            .unwrap();
+            let buf = self.vmm.allocate(layout).unwrap();
+            let bufaddr = crate::slice_address(buf.as_ref());
+
             let mut p = self.pageman.sync_lock();
-
-            let e =
-                p.map_addresses_read_only(b.as_ptr() as usize, start as usize, realsize as usize);
+            let e = p.map_addresses_read_only(bufaddr, start, realsize);
             if e.is_err() {
                 panic!("Unable to map acpi memory\r\n");
             }
-            let vstart = b.as_mut_ptr() as usize + err - size;
+            let vstart = bufaddr + size_before_allocation;
 
-            let r = acpi::PhysicalMapping::new(
-                start as usize,
-                NonNull::new(vstart as *mut T).unwrap(),
-                size,
-                realsize,
-                self.clone(),
-            );
-            b.leak();
-            r
+            acpi::PhysicalMapping {
+                physical_start: physical_address,
+                virtual_start: NonNull::new((vstart) as *mut T).unwrap(),
+                region_length: size,
+                mapped_length: size + size_after_allocation + 0x1000,
+                handler: self.clone(),
+            }
         }
     }
 
     fn unmap_physical_region<T>(region: &acpi::PhysicalMapping<Self, T>) {
-        if region.physical_start() >= (1 << 22) {
-            let mut p = region.handler().pageman.sync_lock();
-            let s = region.virtual_start().as_ptr() as usize;
-            let s = s - s % core::mem::size_of::<memory::Page>() as usize;
-            p.unmap_mapped_pages(s, region.mapped_length() as usize);
+        if region.physical_start >= (1 << 22) {
+            let mut p = region.handler.pageman.sync_lock();
+            let s = region.virtual_start.as_ptr() as usize;
+            let s = s - s % core::mem::size_of::<memory::Page>();
+            let length = region.mapped_length;
+            p.unmap_mapped_pages(s, length);
+            let ptr = s as *mut u8;
+            let layout =
+                core::alloc::Layout::from_size_align(length, core::mem::size_of::<memory::Page>())
+                    .unwrap();
+            unsafe {
+                region
+                    .handler
+                    .vmm
+                    .deallocate(NonNull::new_unchecked(ptr), layout)
+            };
         }
+    }
+
+    fn nanos_since_boot(&self) -> u64 {
+        todo!()
+    }
+
+    fn create_mutex(&self) -> acpi::Handle {
+        todo!()
+    }
+
+    fn acquire(&self, mutex: acpi::Handle, timeout: u16) -> Result<(), acpi::aml::AmlError> {
+        todo!()
+    }
+
+    fn release(&self, mutex: acpi::Handle) {
+        todo!()
+    }
+
+    fn sleep(&self, _milliseconds: u64) {
+        todo!()
+    }
+
+    fn stall(&self, _microseconds: u64) {
+        todo!()
+    }
+
+    fn read_u8(&self, _address: usize) -> u8 {
+        crate::VGA.print_str("r1\r\n");
+        todo!()
+    }
+
+    fn read_u16(&self, _address: usize) -> u16 {
+        crate::VGA.print_str("r2\r\n");
+        todo!()
+    }
+
+    fn read_u32(&self, _address: usize) -> u32 {
+        crate::VGA.print_str("r3\r\n");
+        todo!()
+    }
+
+    fn read_u64(&self, _address: usize) -> u64 {
+        crate::VGA.print_str("r4\r\n");
+        todo!()
+    }
+
+    fn write_u8(&self, _address: usize, _value: u8) {
+        crate::VGA.print_str("w1\r\n");
+        todo!()
+    }
+
+    fn write_u16(&self, _address: usize, _value: u16) {
+        crate::VGA.print_str("w2\r\n");
+        todo!()
+    }
+
+    fn write_u32(&self, _address: usize, _value: u32) {
+        crate::VGA.print_str("w3\r\n");
+        todo!()
+    }
+
+    fn write_u64(&self, _address: usize, _value: u64) {
+        crate::VGA.print_str("w4\r\n");
+        todo!()
+    }
+
+    fn read_io_u8(&self, _port: u16) -> u8 {
+        crate::VGA.print_str("i1\r\n");
+        todo!()
+    }
+
+    fn read_io_u16(&self, _port: u16) -> u16 {
+        crate::VGA.print_str("i2\r\n");
+        todo!()
+    }
+
+    fn read_io_u32(&self, _port: u16) -> u32 {
+        crate::VGA.print_str("i3\r\n");
+        todo!()
+    }
+
+    fn write_io_u8(&self, _port: u16, _value: u8) {
+        crate::VGA.print_str("o1\r\n");
+        todo!()
+    }
+
+    fn write_io_u16(&self, _port: u16, _value: u16) {
+        crate::VGA.print_str("o2\r\n");
+        todo!()
+    }
+
+    fn write_io_u32(&self, _port: u16, _value: u32) {
+        crate::VGA.print_str("o3\r\n");
+        todo!()
+    }
+
+    fn read_pci_u8(&self, address: acpi::PciAddress, offset: u16) -> u8 {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn read_pci_u16(&self, address: acpi::PciAddress, offset: u16) -> u16 {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn read_pci_u32(&self, address: acpi::PciAddress, offset: u16) -> u32 {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn write_pci_u8(&self, address: acpi::PciAddress, offset: u16, value: u8) {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn write_pci_u16(&self, address: acpi::PciAddress, offset: u16, value: u16) {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
+    }
+
+    fn write_pci_u32(&self, address: acpi::PciAddress, offset: u16, value: u32) {
+        crate::VGA.print_str("pr1\r\n");
+        todo!()
     }
 }
 
@@ -400,6 +626,24 @@ pub extern "C" fn start32() -> ! {
     let stack_end = unsafe { super::INITIAL_STACK as usize };
     let stack_size = MAIN_STACK_SIZE as usize;
 
+    let b = unsafe { &memory::TABLE3 } as *const u64 as usize;
+    let c = unsafe { &memory::TABLE2 } as *const u64 as usize;
+    let d = unsafe { &memory::TABLE1 } as *const u64 as usize;
+    let page_entries = [
+        memory::PageTableModifierData {
+            virt: 0x400000,
+            entry: b,
+        },
+        memory::PageTableModifierData {
+            virt: 0x401000,
+            entry: c,
+        },
+        memory::PageTableModifierData {
+            virt: 0x402000,
+            entry: d,
+        },
+    ];
+
     super::start_common1(
         start_kernel,
         end_kernel,
@@ -407,23 +651,24 @@ pub extern "C" fn start32() -> ! {
         stack_end,
         stack_size,
         &memory::PAGE_DIRECTORY_BOOT1 as *const memory::PageTable as usize,
+        &page_entries
     );
 
     {
         let mut idt = INTERRUPT_DESCRIPTOR_TABLE.sync_lock();
         unsafe {
-            idt.set_handler(0, divide_by_zero_exception);
-            idt.set_handler(6, invalid_opcode_exception);
+            idt.set_handler_without_arg(0, divide_by_zero_exception);
+            idt.set_handler_without_arg(6, invalid_opcode_exception);
             idt.set_handler(8, double_fault_exception);
             idt.set_handler(11, segment_not_present_exception);
             idt.set_handler(13, gpf_exception);
             idt.set_handler(14, page_fault_exception);
-            idt.set_handler(0x20, irq0);
-            idt.set_handler(0x23, irq3);
-            idt.set_handler(0x24, irq4);
-            idt.set_handler(0x27, irq7);
-            idt.set_handler(0x2a, irq10);
-            idt.set_handler(0x2f, irq15);
+            idt.set_handler_without_arg(0x20, irq0);
+            idt.set_handler_without_arg(0x23, irq3);
+            idt.set_handler_without_arg(0x24, irq4);
+            idt.set_handler_without_arg(0x27, irq7);
+            idt.set_handler_without_arg(0x2a, irq10);
+            idt.set_handler_without_arg(0x2f, irq15);
         }
     }
 
@@ -432,11 +677,10 @@ pub extern "C" fn start32() -> ! {
             X86System {
                 boot_info: boot_info,
                 #[doorsconfig = "acpi"]
-                acpi_handler: super::Acpi {
+                acpi: Some(AcpiStuff::Handler(super::Acpi {
                     pageman: &PAGING_MANAGER,
                     vmm: &VIRTUAL_MEMORY_ALLOCATOR,
-                },
-                acpi: None,
+                })),
                 stack_start: stack_end - stack_size,
             }
         }
