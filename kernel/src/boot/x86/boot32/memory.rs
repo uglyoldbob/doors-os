@@ -1,7 +1,7 @@
 //! This module exists to cover memory management for x86 (32 bit) processors. It assumes the usage of physical address extensions.
 
-use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::{marker::PhantomData, ops::Deref};
 
 use alloc::{alloc::Allocator, boxed::Box, vec::Vec};
 use multiboot2::MemoryMapTag;
@@ -9,7 +9,7 @@ use multiboot2::MemoryMapTag;
 #[path = "../../memory.rs"]
 pub mod memory;
 
-use crate::Locked;
+use crate::{address, DestructuredPhysicalMemory, Locked};
 
 /// The page directory, used for the paging system in PAGE paging.
 pub static PAGE_DIRECTORY_BOOT1: PageTable = PageTable { entries: [0; 512] };
@@ -319,6 +319,20 @@ impl<'a, T> Bitmap<'a, T> {
         s
     }
 
+    /// Count the number of free blocks
+    fn num_free_blocks(&self) -> usize {
+        let mut c = 0;
+        for i in 0..self.num_blocks {
+            let index = i / usize::BITS as usize;
+            let offset = i % usize::BITS as usize;
+            let val = self.blocks_free[index] & 1 << offset;
+            if val != 0 {
+                c += 1;
+            }
+        }
+        c
+    }
+
     /// Used to steal a block of memory from the physical memory manager
     fn steal_block(&mut self, addr: core::ptr::NonNull<u8>) {
         let addr = addr.as_ptr() as usize;
@@ -447,6 +461,54 @@ pub struct SimpleMemoryManager<'a> {
     extra_mem: BumpAllocator,
 }
 
+impl<'a> Locked<SimpleMemoryManager<'a>> {
+    /// Do some debugging prints of the memory manager
+    pub fn debug(&self) {
+        let this = self.sync_lock();
+        this.debug();
+    }
+
+    /// Maps 4 pages for modification of a page table set
+    pub fn modify_four_pages_with_temporary_mapping<
+        T,
+        F: FnMut([Box<MaybeUninit<PageTable>, &BumpAllocator>; 4]) -> T,
+    >(
+        &self,
+        f: F,
+    ) -> T {
+        let this = self.sync_lock();
+        this.modify_four_pages_with_temporary_mapping(f)
+    }
+
+    /// Temporarily assigns a virtual page to a chunk of physical memory, calls a closure with that virtual page, returns a result
+    pub fn modify_physical_address_with_temporary_mapping<T, U, F: FnMut(usize, &mut U) -> T>(
+        &self,
+        addr: usize,
+        mut f: F,
+    ) -> T {
+        let this = self.sync_lock();
+        let va = this.mm.sync_lock();
+        let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
+        f(addr, unsafe { tvm.assume_init_mut() })
+    }
+
+    /// Temporarily assigns a virtual page to a chunk of physical memory, calls a closure with that virtual page, returns a result
+    pub fn modify_physical_memory_with_temporary_mapping<
+        T,
+        U,
+        F: FnMut(Box<MaybeUninit<U>, &Locked<SimpleMemoryManager>>, &mut U) -> T,
+    >(
+        &self,
+        phys: Box<MaybeUninit<U>, &Locked<SimpleMemoryManager>>,
+        mut f: F,
+    ) -> T {
+        let this = self.sync_lock();
+        let va = this.mm.sync_lock();
+        let mut tvm = Box::<U, &BumpAllocator>::new_uninit_in(va.deref());
+        f(phys, unsafe { tvm.assume_init_mut() })
+    }
+}
+
 impl<'a> SimpleMemoryManager<'a> {
     /// Create a new instance of the physical memory manager.
     pub const fn new(mm: &'a crate::Locked<BumpAllocator>) -> Self {
@@ -454,6 +516,47 @@ impl<'a> SimpleMemoryManager<'a> {
             bitmaps: None,
             mm,
             extra_mem: BumpAllocator::new(0x100000),
+        }
+    }
+
+    /// Maps 4 pages for modification of a page table set
+    pub fn modify_four_pages_with_temporary_mapping<
+        T,
+        F: FnMut([Box<MaybeUninit<PageTable>, &BumpAllocator>; 4]) -> T,
+    >(
+        &self,
+        mut f: F,
+    ) -> T {
+        let va = self.mm.sync_lock();
+        let pages: [Box<MaybeUninit<PageTable>, &BumpAllocator>; 4] = [
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+            Box::<PageTable, &BumpAllocator>::new_uninit_in(va.deref()),
+        ];
+        f(pages)
+    }
+
+    /// print some debug information about the memory struct
+    pub fn debug(&self) {
+        if let Some(a1) = &self.bitmaps {
+            let a1a = a1.as_ptr();
+            crate::VGA.print_str(&alloc::format!("Bitmaps addr is {:p}\r\n", a1a));
+            let end = unsafe { &super::super::END_OF_KERNEL } as *const u8 as usize;
+            crate::VGA.print_str(&alloc::format!("End of kernel addr is {:x}\r\n", end));
+            let mut total_unused_pages = 0;
+            for bm in a1 {
+                total_unused_pages += bm.num_free_blocks();
+                crate::VGA.print_str(&alloc::format!(
+                    "block from {:x} size {:x}\r\n",
+                    bm.start,
+                    bm.num_blocks * 4096
+                ));
+            }
+            crate::VGA.print_str(&alloc::format!(
+                "Num free pages is {}\r\n",
+                total_unused_pages
+            ));
         }
     }
 
@@ -685,6 +788,60 @@ impl<'a> PagingTableManager<'a> {
             physical_mask: !0,
             cr3: 0,
         }
+    }
+
+    /// Copy the kernel map from another paging table into this one.
+    /// Other must the the main kernel paging table
+    fn copy_kernel_map(&mut self, other: &mut Self) {
+        let mut tentry = None;
+        modify_page_tables(other.cr3, 0, |level, entry, index| match level {
+            4 => {
+                tentry = entry.get_entry(index);
+                Err(())
+            }
+            _ => Ok(()),
+        });
+        modify_page_tables(self.cr3, 0, |level, entry, index| match level {
+            4 => {
+                let mut flags = PageTableEntryFlags(0);
+                flags.set_writable(true);
+                flags.set_present(true);
+                entry.set_entry(index, tentry.unwrap() as u64, flags);
+                Err(())
+            }
+            _ => Ok(()),
+        });
+    }
+
+    /// Build a new set of page tables, keeping the existing kernel mappings
+    pub fn new_table(&mut self) -> Self {
+        let a: Box<MaybeUninit<PageTable>, &Locked<SimpleMemoryManager>> =
+            Box::new_uninit_in(self.mm);
+        let phys_cr3 = {
+            let phys = Box::<PageTable, &Locked<SimpleMemoryManager>>::new_uninit_in(
+                &super::PAGE_ALLOCATOR,
+            );
+            super::PAGE_ALLOCATOR.modify_physical_memory_with_temporary_mapping(phys, |phys, vm| {
+                if self
+                    .map_addresses_read_write(
+                        address(vm),
+                        phys.as_ptr() as usize,
+                        core::mem::size_of::<PageTable>(),
+                    )
+                    .is_ok()
+                {
+                    *vm = PageTable::new();
+                    self.unmap_mapped_pages(address(vm), core::mem::size_of::<PageTable>());
+                }
+                let p: DestructuredPhysicalMemory<PageTable> = phys.into();
+                p
+            })
+        };
+
+        let mut np = Self::new(self.mm);
+        np.cr3 = phys_cr3.address();
+        np.copy_kernel_map(self);
+        np
     }
 
     /// Install the page as the current page table

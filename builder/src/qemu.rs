@@ -8,6 +8,7 @@ impl Qemu {
     /// Get details common for a qemu run. for both debug and non-debug
     fn get_common_run(
         &self,
+        disk: &crate::Disk,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
     ) -> String {
@@ -16,7 +17,11 @@ impl Qemu {
             "{} ",
             super::LocalConfiguration::escape_path(&local.qemu_path())
         ));
-        qemu.push_str("-cdrom cd64.iso -m 8 ");
+        match disk {
+            crate::Disk::Cd(path_buf) => qemu.push_str(&format!("-cdrom {} ", path_buf.display())),
+            crate::Disk::Network(_path_buf) => {}
+        }
+        qemu.push_str("-m 8 ");
         for serial_id in common.serial_ports.iter() {
             let port = &local.serial_ports[*serial_id];
             match port {
@@ -61,7 +66,7 @@ impl Qemu {
 impl super::EmulationTrait for Qemu {
     fn build_config(
         &self,
-        _disk: &crate::Disk,
+        disk: &crate::Disk,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
         s: std::path::PathBuf,
@@ -70,7 +75,7 @@ impl super::EmulationTrait for Qemu {
         let mut config = String::new();
 
         let mut qemu = String::new();
-        qemu.push_str(&self.get_common_run(common, local));
+        qemu.push_str(&self.get_common_run(disk, common, local));
         qemu.push_str(" -gdb stdio");
 
         config.push_str(&format!("add-symbol-file {}\n", s.to_str().unwrap()));
@@ -102,13 +107,14 @@ impl super::EmulationTrait for Qemu {
     fn run(
         &self,
         cmakelists: &mut String,
+        disk: &crate::Disk,
         common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
         _s: std::path::PathBuf,
     ) {
         let mut qemu = String::new();
         qemu.push_str("\tCOMMAND ");
-        qemu.push_str(&self.get_common_run(common, local));
+        qemu.push_str(&self.get_common_run(disk, common, local));
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\trun\n");
         cmakelists.push_str("\tDEPENDS boot_disk disassemble\n");
@@ -117,7 +123,7 @@ impl super::EmulationTrait for Qemu {
 
         let mut qemu = String::new();
         qemu.push_str("\tCOMMAND ");
-        qemu.push_str(&self.get_common_run(common, local));
+        qemu.push_str(&self.get_common_run(disk, common, local));
         qemu.push_str(" -s -S");
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdebug\n");

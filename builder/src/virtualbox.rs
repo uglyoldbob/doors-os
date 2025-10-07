@@ -222,6 +222,7 @@ impl super::EmulationTrait for VirtualBox {
     fn run(
         &self,
         cmakelists: &mut String,
+        _disk: &crate::Disk,
         _common: &super::EmulatorConfig,
         local: &super::LocalConfiguration,
         _s: std::path::PathBuf,

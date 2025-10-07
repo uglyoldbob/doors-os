@@ -35,6 +35,7 @@ trait EmulationTrait {
     fn run(
         &self,
         cmakelists: &mut String,
+        disk: &crate::Disk,
         common: &EmulatorConfig,
         local: &LocalConfiguration,
         s: std::path::PathBuf,
@@ -58,6 +59,7 @@ impl EmulationTrait for NoEmulator {
     fn run(
         &self,
         _cmakelist: &mut String,
+        _disk: &crate::Disk,
         _common: &EmulatorConfig,
         _local: &LocalConfiguration,
         _s: std::path::PathBuf,
@@ -876,6 +878,7 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     );
     config.os.target.emulator.run(
         &mut cmakelist,
+        &disk,
         &config.os.target.config,
         &config.local,
         kernel_binary_path.clone(),

@@ -16,6 +16,9 @@ pub mod memory;
 
 pub use memory::memory as mem2;
 
+/// Defines the starting address for user space heap
+pub const USER_SPACE_START: usize = 1 << 30;
+
 use x86::segmentation::Descriptor;
 
 /// Driver for the APIC on x86 hardware
@@ -310,7 +313,82 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     }
 
     fn create_process(&self, b: &object::File) -> Result<(), ()> {
-        todo!();
+        use object::Object;
+        let text = b.section_by_name(".text");
+        use object::ObjectSection;
+        PAGE_ALLOCATOR.sync_lock().debug();
+        if let Some(text) = text {
+            crate::VGA.print_str(&alloc::format!(
+                "About to run user process at {:x} {:x}\r\n",
+                text.address(),
+                USER_SPACE_START
+            ));
+            if text.address() == USER_SPACE_START as u64 {
+                if let Ok(data) = text.data() {
+                    PAGE_ALLOCATOR.debug();
+                    let mut pt = PAGING_MANAGER.sync_lock().new_table();
+                    PAGE_ALLOCATOR.debug();
+                    crate::VGA.print_str(&alloc::format!(
+                        "About to map pages with {} bytes for user process\r\n",
+                        data.len()
+                    ));
+                    crate::VGA.print_str("Installing page table for user process\r\n");
+                    unsafe {
+                        pt.install();
+                    }
+                    for i in (0..data.len()).step_by(core::mem::size_of::<memory::Page>()) {
+                        let user_address = i + USER_SPACE_START;
+                        crate::VGA.print_str(&alloc::format!(
+                            "About to map page {:x} at {:x}...",
+                            i,
+                            user_address
+                        ));
+                        pt.map_new_page(user_address)
+                            .inspect(|_| crate::VGA.print_str("OK\r\n"))
+                            .inspect_err(|_| {
+                                crate::VGA.print_str("ERR\r\n");
+                                loop {}
+                            })?;
+                        crate::VGA.print_str("Mapped a user page\r\n");
+                    }
+                    crate::VGA.print_str("About to copy data for user process\r\n");
+                    let user_chunk = unsafe {
+                        core::slice::from_raw_parts_mut(USER_SPACE_START as *mut u8, data.len())
+                    };
+                    let entry_addr = b.entry() as usize;
+                    crate::VGA.print_str(&alloc::format!(
+                        "About to run user program at {:x}\r\n",
+                        entry_addr
+                    ));
+                    if (USER_SPACE_START..USER_SPACE_START + data.len()).contains(&entry_addr) {
+                        user_chunk.copy_from_slice(data);
+                        crate::VGA.print_str("About to spawn user thread\r\n");
+                        let ptr = b.entry() as *const ();
+                        let user_code: fn() = unsafe { core::mem::transmute(ptr) };
+                        crate::scheduler::SCHEDULER
+                            .read()
+                            .as_ref()
+                            .unwrap()
+                            .spawn_thread(user_code);
+                    } else {
+                        crate::VGA.print_str(&alloc::format!(
+                            "ERROR Start address {:x} not within {:x}..{:x}\r\n",
+                            entry_addr,
+                            USER_SPACE_START,
+                            USER_SPACE_START + data.len()
+                        ));
+                    }
+                }
+            } else {
+                crate::VGA.print_str(&alloc::format!(
+                    "Text address is at {:x}\r\n",
+                    text.address()
+                ));
+            }
+        } else {
+            crate::VGA.print_str("Text segment not found in object\r\n");
+        }
+        Ok(())
     }
 
     fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
