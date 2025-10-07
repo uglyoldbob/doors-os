@@ -116,9 +116,23 @@ pub extern "x86-interrupt" fn double_fault_exception(_: u32, _code: u32) {
     }
 }
 ///Exception handler
-pub extern "x86-interrupt" fn gpf_exception(_: u32, _code: u32) {
+pub extern "x86-interrupt" fn gpf_exception(c1: u32, code: u32) {
     crate::VGA.stop_async();
     crate::VGA.print_str("Gpf exception\r\n");
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+        "{:x} {:x}\r\n",
+        c1,
+        code
+    ));
+    let table = (code >> 1) & 3;
+    match table {
+        0 => crate::VGA.print_str("GDT, "),
+        2 => crate::VGA.print_str("LDT, "),
+        _ => crate::VGA.print_str("IDT, "),
+    }
+    let index = (code >> 3) & 0x1FFF;
+    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("0x{:x}\r\n", index));
+    crate::VGA.sync_flush();
     loop {
         unsafe { x86::halt() };
     }
@@ -146,6 +160,17 @@ pub extern "x86-interrupt" fn irq0(_: u32) {
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(0);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq1(_: u32) {
+    let handle = super::IRQ_HANDLERS[1].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
+    finish_irq(1);
     if let Some(h2) = h3 {
         h2();
     }
@@ -190,6 +215,17 @@ pub extern "x86-interrupt" fn irq10(_: u32) {
     let h3 = unsafe { handle.unsafe_destroy() };
     let h3 = unsafe { h3.as_mut().unwrap() };
     finish_irq(10);
+    if let Some(h2) = h3 {
+        h2();
+    }
+}
+
+/// The irq handler
+pub extern "x86-interrupt" fn irq11(_: u32) {
+    let handle = super::IRQ_HANDLERS[11].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
+    finish_irq(11);
     if let Some(h2) = h3 {
         h2();
     }
@@ -739,10 +775,12 @@ pub extern "C" fn start32() -> ! {
             idt.set_handler(13, gpf_exception);
             idt.set_handler(14, page_fault_exception);
             idt.set_handler_without_arg(0x20, irq0);
+            idt.set_handler_without_arg(0x21, irq1);
             idt.set_handler_without_arg(0x23, irq3);
             idt.set_handler_without_arg(0x24, irq4);
             idt.set_handler_without_arg(0x27, irq7);
             idt.set_handler_without_arg(0x2a, irq10);
+            idt.set_handler_without_arg(0x2b, irq11);
             idt.set_handler_without_arg(0x2f, irq15);
         }
     }

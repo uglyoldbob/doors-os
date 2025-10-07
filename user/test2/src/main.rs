@@ -9,11 +9,6 @@ fn main() {
     let mut x = 42u32;
     let mut y = 0u32;
 
-    unsafe {
-        let addr = 0x9000000000 as *mut u8;
-        core::ptr::write_volatile(&mut *addr, 42);
-    }
-
     for i in 0..100 {
         x = x.wrapping_add(i);
         y = y.wrapping_mul(2);
