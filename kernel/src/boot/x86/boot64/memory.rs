@@ -1192,11 +1192,27 @@ impl<'a> PagingTableManager<'a> {
         for i in (0..size).step_by(core::mem::size_of::<Page>()).rev() {
             let vaddr = virtual_address + i;
             modify_page_tables(self.cr3, vaddr, |level, entry, index| match level {
+                4 => {
+                    if entry.get_entry(index).is_none() {
+                        let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
+                        let p = Box::leak(p);
+                        let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
+                        flags.set_present(true);
+                        entry.set_entry(index, p.as_ptr() as usize, flags);
+                        x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
+                            crate::address(entry) as u64,
+                        ));
+                        *unsafe { p.assume_init_mut() } = Page::default();
+                    }
+                    Ok(())
+                }
                 3 => {
                     if entry.get_entry(index).is_none() {
                         let p: Box<MaybeUninit<Page>, &dyn Allocator> = Box::new_uninit_in(self.mm);
                         let p = Box::leak(p);
                         let mut flags = PageTableEntryFlags(0);
+                        flags.set_writable(true);
                         flags.set_present(true);
                         entry.set_entry(index, p.as_ptr() as usize, flags);
                         x86_64::instructions::tlb::flush(x86_64::addr::VirtAddr::new(
