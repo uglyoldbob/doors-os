@@ -10,6 +10,7 @@ gdbstub = true
 mm_debug = false
 test = false
 network = true
+modules = ["intelpro100"]
 
 [disk.unique.Cd]
 kernel_path = "./build/iso/boot/kernel"

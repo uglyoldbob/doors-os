@@ -10,6 +10,7 @@
 #![feature(async_fn_traits)]
 #![feature(auto_traits)]
 #![feature(negative_impls)]
+#![feature(proc_macro_hygiene)]
 #![feature(type_alias_impl_trait)]
 
 doors_macros::load_config!();
@@ -68,8 +69,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         core::arch::asm!("cli");
     }
 
-    crate::VGA.print_str("\r\n========== KERNEL PANIC ==========\r\n");
-
     // Print panic location and message
     if let Some(location) = info.location() {
         crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -85,7 +84,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         crate::VGA.print_str(msg);
         crate::VGA.print_str("\r\n");
     }
-    crate::VGA.print_str("\r\n========== END PANIC ==========\r\n");
 
     // Halt the system
     loop {
@@ -129,7 +127,7 @@ pub static DEBUG_STUFF: Locked<[u32; 82]> = Locked::new([0; 82]);
 async fn user_binary_test() {
     let b = object::read::File::parse(TEST_PRG);
     if let Ok(bin) = b {
-        crate::SYSTEM.read().create_process(&bin);
+        //crate::SYSTEM.read().create_process(&bin);
     }
 }
 

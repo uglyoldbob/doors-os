@@ -1,5 +1,7 @@
 //! This is the configuration module it contains configuration entries for the kernel
 
+use std::collections::HashSet;
+
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct KernelConfig {
     /// The convenience name of the machine
@@ -14,6 +16,8 @@ pub struct KernelConfig {
     pub test: bool,
     /// Should network functionality be included?
     pub network: bool,
+    /// What modules should be compiled into the kernel
+    pub modules: HashSet<String>,
 }
 
 impl KernelConfig {

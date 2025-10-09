@@ -212,6 +212,21 @@ impl syn::parse::Parse for ConfigCheckBlock {
     }
 }
 
+struct ConfigCheckBlock2 {
+    ident: syn::Ident,
+    block: syn::Expr,
+}
+
+impl syn::parse::Parse for ConfigCheckBlock2 {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let ident = syn::Ident::parse(input)?;
+        syn::token::Comma::parse(input)?;
+        let block = syn::Expr::parse(input)?;
+        let s = Self { ident, block };
+        Ok(s)
+    }
+}
+
 /// Check a boolean value from the kernel config to enable code
 #[proc_macro_attribute]
 pub fn config_check(
@@ -270,6 +285,51 @@ pub fn config_check_equals_attr(
         quote!().into()
     }
 }
+
+/// Conditionally enable an item with an equals comparision from the kernel config
+#[proc_macro_attribute]
+pub fn module_builtin_attr(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(attr as syn::Ident);
+    let check = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref()
+            .map(|a| a.modules.contains(&f.to_string()))
+    };
+    let val = check.unwrap();
+    
+    if val {
+        let item: proc_macro2::TokenStream = item.into();
+        quote!(#item).into()
+    } else {
+        // Remove the module declaration entirely
+        quote!().into()
+    }
+}
+
+/// Check modules to compile from the kernel config and use it to enable a block of code
+#[proc_macro]
+pub fn module_builtin(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(input as ConfigCheckBlock2);
+    print!("CHECKING Include the block for {}", f.ident);
+    let check = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref()
+            .map(|a| a.modules.contains(&f.ident.to_string()))
+    };
+    let val = check.unwrap();
+    let block = f.block;
+    if val {
+        print!("Including the block for {}", f.ident);
+        quote!(#block).into()
+    } else {
+        print!("NOT Including the block for {}", f.ident);
+        quote!().into()
+    }
+}
+
 
 /// Retrieve a boolean value from the kernel config and use it to enable a block of code
 #[proc_macro]
