@@ -29,6 +29,14 @@ pub struct FontData {
     left: i8,
     /// Represents a parameter of how to print the character. TODO
     top: i8,
+    /// Minimum x coordinate for the char
+    bounds_xmin: u8,
+    /// Minimum y coordinate for the char
+    bounds_ymin: u8,
+    /// Maximum x coordinate for the char
+    bounds_xmax: u8,
+    /// Maximum y coordinate for the char
+    bounds_ymax: u8,
     /// The font data for a single character
     data: &'static [u8],
 }
@@ -363,6 +371,9 @@ pub trait TextDisplayTrait: Sync + Send {
     /// Asynchrouously flush all data
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&mut self);
+
+    /// Clear the screen if possible
+    fn clear(&mut self) {}
 }
 
 /// Draws text onto a framebuffer

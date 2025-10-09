@@ -4,7 +4,6 @@ use crate::kernel;
 use crate::LockedArc;
 use alloc::alloc::Allocator;
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::ptr::NonNull;
 use lazy_static::lazy_static;
 

@@ -69,10 +69,17 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
                     self.row += 20;
                 }
             }
+            let top_coord = if a.height < 17 { 17 - a.height } else { 0 };
             for x in 0..a.width {
-                for y in 0..a.height {
-                    let val = if a.data[y as usize * a.width as usize + x as usize] != 0 {
-                        0
+                for y in 0..top_coord + a.height {
+                    let val = if y > (top_coord) {
+                        if a.data[(y as usize - top_coord as usize) * a.width as usize + x as usize]
+                            != 0
+                        {
+                            0
+                        } else {
+                            0x32
+                        }
                     } else {
                         0x32
                     };
@@ -115,6 +122,10 @@ impl super::TextDisplayTrait for X86VgaWithFont<super::pixels::Palette<u8>> {
     fn sync_flush(&mut self) {}
 
     fn stop_async(&mut self) {}
+
+    fn clear(&mut self) {
+        self.clear_screen();
+    }
 }
 
 /// The default palette for vga operations

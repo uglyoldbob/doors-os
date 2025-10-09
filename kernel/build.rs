@@ -11,6 +11,10 @@ struct FontData {
     height: u8,
     left: i8,
     top: i8,
+    bounds_xmin: u8,
+    bounds_ymin: u8,
+    bounds_xmax: u8,
+    bounds_ymax: u8,
     data: Vec<u8>,
 }
 
@@ -33,6 +37,10 @@ fn generate_font_table(font: &[u8]) -> Vec<FontData> {
             height: a.height as u8,
             left: a.ymin as i8,
             top: a.xmin as i8,
+            bounds_xmin: a.bounds.xmin as u8,
+            bounds_ymin: a.bounds.ymin as u8,
+            bounds_xmax: (a.bounds.xmin + a.bounds.width) as u8,
+            bounds_ymax: (a.bounds.ymin + a.bounds.height) as u8,
             data: b.clone(),
         };
         font_bitmap.push(fd);
@@ -54,11 +62,23 @@ fn write_font_source(name: String, table: Vec<FontData>) {
     let mtable = table.iter().map(|a| {
         let d: Vec<String> = a.data.iter().map(|n| format!("{}", n)).collect();
         let s = format!(
-            "FontData {{ width: {}, height: {}, left: {}, top: {}, data: &[{}],}}",
+            "FontData {{ width: {}, 
+    height: {}, 
+    left: {}, 
+    top: {}, 
+    bounds_xmin: {}, 
+    bounds_ymin: {}, 
+    bounds_xmax: {}, 
+    bounds_ymax: {},
+    data: &[{}],}}",
             a.width,
             a.height,
             a.left,
             a.top,
+            a.bounds_xmin,
+            a.bounds_ymin,
+            a.bounds_xmax,
+            a.bounds_ymax,
             d.join(", ")
         );
         (a.c, s)
