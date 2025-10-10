@@ -1,12 +1,6 @@
 //! Code for function 0 of the PIIX3 ISA bridge
 //! <https://theretroweb.com/chip/documentation/82371sb-intelcorporation-62f8fda6daac0627455529.pdf>
 
-doors_macros2::enum_export_builder! {
-    doors_macros2::enum_export!(PciFunctionDriver, IsaPiix3BridgeDriver);
-    doors_macros2::enum_export!(IsaBus, IsaPiix3Bridge);
-}
-
-#[doors_macros::enum_variant(IsaBus)]
 /// The main struct for the isa bridge
 pub struct IsaPiix3Bridge {}
 
@@ -17,7 +11,6 @@ impl super::IsaBusTrait for IsaPiix3Bridge {
 }
 
 #[derive(Clone)]
-#[doors_macros::enum_variant(PciFunctionDriver)]
 /// The pci driver for the bridge
 pub struct IsaPiix3BridgeDriver {}
 

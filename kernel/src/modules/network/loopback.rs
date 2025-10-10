@@ -1,11 +1,6 @@
 //! Contains the definition for a loopback network device
 
-doors_macros2::enum_export_builder! {
-    doors_macros2::enum_export!(NetworkAdapter, NetworkLoopback);
-}
-
 #[derive(Clone, Default)]
-#[doors_macros::enum_variant(NetworkAdapter)]
 /// Loopback network driver
 pub struct NetworkLoopback {}
 

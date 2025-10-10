@@ -1,8 +1,7 @@
 //! Kernel modules belong in this module. A lot of the enums will have a dummy provider so that the code will compile.
 
-doors_macros::declare_enum!(PciFunctionDriver);
-
 pub mod clock;
+pub mod dummy;
 pub mod gpio;
 pub mod input;
 pub mod isa;
@@ -18,14 +17,9 @@ pub mod video;
 #[doors_macros::config_check_equals_attr(network, "true")]
 pub mod network;
 
-#[doors_macros::config_check_equals_attr(network, "true")]
-doors_macros2::enum_export_builder! {
-    doors_macros2::enum_reexport!(PciFunctionDriver, network, isa);
-}
-
 #[doors_macros::config_check_equals_attr(network, "false")]
 doors_macros2::enum_export_builder! {
-    doors_macros2::enum_reexport!(PciFunctionDriver, isa);
+    doors_macros2::enum_reexport!(PciFunctionDriver, dummy, isa);
 }
 
 /// The trait implemented for all devices
@@ -73,5 +67,16 @@ use pci::{
 };
 
 /// Represents a device driver for a pci function
-#[doors_macros::fill_enum_with_variants_clonable(PciFunctionDriverTrait)]
-pub enum PciFunctionDriver {}
+#[doors_macros::enum_module_filter]
+#[derive(Clone)]
+#[doors_macros::vec_builder]
+#[enum_dispatch::enum_dispatch(PciFunctionDriverTrait)]
+pub enum PciFunctionDriver {
+    /// The piix3 isa bridge driver
+    Piix3(isa::piix3::IsaPiix3BridgeDriver),
+    /// The intel pro1000 pci driver
+    #[doors_module = "intelpro1000"]
+    IntelPro1000(network::intel::pro1000::IntelPro1000),
+    /// A dummy pic function driver
+    Dummy(pci::DummyPciFunctionDriver),
+}

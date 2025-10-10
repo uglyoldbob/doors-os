@@ -40,8 +40,6 @@ static TODOLIST: Mutex<Option<TodoList>> = Mutex::new(Some(TodoList::new()));
 
 /// The number of test functions in the kernel
 static TEST_CALL_QUANTITY: Mutex<Option<usize>> = Mutex::new(None);
-/// The enum builder data
-static ENUM_BUILDER: Mutex<BTreeMap<String, EnumData>> = Mutex::new(BTreeMap::new());
 /// The kernel config
 static KERNEL_CONFIG: Mutex<Option<KernelConfig>> = Mutex::new(None);
 
@@ -286,16 +284,94 @@ pub fn config_check_equals_attr(
     }
 }
 
-/// Conditionally enable an item with an equals comparision from the kernel config
+/// Conditionally enable modules in an enum based on the value of the entry in the modules variable
+#[proc_macro_attribute]
+pub fn enum_module_filter(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let item2 = item.clone();
+    let m = KERNEL_CONFIG.lock().unwrap();
+    let m = m.as_ref().unwrap();
+    let mut f = parse_macro_input!(item2 as syn::ItemEnum);
+    let mut new_variants = syn::punctuated::Punctuated::new();
+    for v in &mut f.variants {
+        let name = &v.ident;
+        let mut include_me = false;
+        let mut found_attr = false;
+        for a in &v.attrs {
+            let p = &a.meta;
+            let ca = if let syn::Meta::NameValue(n) = p {
+                let mut found_module_filt = false;
+                for s in &n.path.segments {
+                    if s.ident == "doors_module" {
+                        found_module_filt = true;
+                    }
+                }
+                if found_module_filt {
+                    if let syn::Expr::Lit(l) = &n.value {
+                        if let syn::Lit::Str(l) = &l.lit {
+                            Some(l.value())
+                        } else {
+                            panic!("Expected a string literal");
+                        }
+                    } else {
+                        panic!("Expected a string literal");
+                    }
+                } else {
+                    None
+                }
+            } else {
+                panic!("Expected the form doors_module = \"something\"");
+            };
+            if let Some(ca) = ca {
+                found_attr = true;
+                if m.modules.contains(&ca) {
+                    include_me = true;
+                }
+            }
+        }
+        let t = v
+            .attrs
+            .clone()
+            .into_iter()
+            .filter(|attr| {
+                if let Some(a) = attr.path().get_ident() {
+                    *a != "doors_module"
+                } else {
+                    true
+                }
+            })
+            .collect();
+        v.attrs = t;
+        if !found_attr || include_me {
+            if !new_variants.is_empty() {
+                new_variants.push_punct(syn::token::Comma::default());
+            }
+            new_variants.push(v.clone());
+        }
+    }
+    f.variants = new_variants;
+    quote!(#f).into()
+}
+
+/// Conditionally enable an item with an equals comparision from the kernel config for a module
 #[proc_macro_attribute]
 pub fn module_builtin_attr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let f = parse_macro_input!(attr as syn::Ident);
+    let f = parse_macro_input!(attr as ConfigCheckValue);
     let check = {
         let m = KERNEL_CONFIG.lock().unwrap();
-        m.as_ref().map(|a| a.modules.contains(&f.to_string()))
+        let cv = f.val.value();
+        let mv = match cv.as_str() {
+            "false" => false,
+            "true" => true,
+            _ => panic!("Invalid value {}", cv),
+        };
+        m.as_ref()
+            .map(|a| mv == a.modules.contains(&f.ident.to_string()))
     };
     let val = check.unwrap();
 
@@ -508,137 +584,6 @@ pub fn config_check_struct(
         }
     };
     quote!(#f).into()
-}
-
-/// A macro that declares that an enum will be created
-#[proc_macro]
-pub fn declare_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let f = parse_macro_input!(input as syn::Ident);
-    let c = {
-        let mut e = ENUM_BUILDER.lock().unwrap();
-        let n = f.to_string();
-        let n2 = n.clone();
-        if let std::collections::btree_map::Entry::Vacant(e) = e.entry(n) {
-            e.insert(EnumData {
-                variants: Vec::new(),
-                variant_names: HashSet::new(),
-            });
-            Ok(())
-        } else {
-            Err(format!("Enum {} was already declared", n2))
-        }
-    };
-    if let Err(e) = c {
-        panic!("{}", e);
-    }
-    quote!().into()
-}
-
-/// A macro that adds a variant to an enum
-#[proc_macro_attribute]
-pub fn enum_variant(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let f = parse_macro_input!(attr as syn::Ident);
-    let item2 = item.clone();
-    let i = parse_macro_input!(item2 as syn::ItemStruct);
-    let varname = {
-        let mut e = ENUM_BUILDER
-            .lock()
-            .expect("Unable to lock the enum builder");
-        let entry = e.get_mut(&f.to_string());
-        if let Some(entry) = entry {
-            let index = entry.variants.len();
-            let varname = i.ident;
-            let comments = i.attrs;
-            let newid = if entry.variant_names.contains(&varname.to_string()) {
-                quote::format_ident!("{}{}", varname, index)
-            } else {
-                quote::format_ident!("{}", varname)
-            };
-            let q = quote! {
-                #(#comments)*
-                #newid(doors_enum_variants::#f::#varname)
-            };
-            entry.variants.push(q.to_string());
-            Ok(varname)
-        } else {
-            Err(())
-        }
-    };
-    varname.expect("Failed to load enum");
-    let item: proc_macro2::TokenStream = item.into();
-    quote! {
-        #item
-    }
-    .into()
-}
-
-/// A macro that adds the previously defined variants into the enum, adding an enum_dispatch for a given trait
-#[proc_macro_attribute]
-pub fn fill_enum_with_variants(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let dispatch = parse_macro_input!(attr as syn::Ident);
-    let mut f = parse_macro_input!(item as syn::ItemEnum);
-    let name = f.ident.clone();
-    let vars = &mut f.variants;
-    let n = name.to_string();
-    let data = {
-        let mut e = ENUM_BUILDER.lock().unwrap();
-        e.remove(&n)
-    }
-    .unwrap();
-    if data.variants.is_empty() {
-        panic!("No variants defined for {}", n);
-    }
-    for d in &data.variants {
-        let ts = proc_macro::TokenStream::from_str(d).unwrap();
-        let v = parse_macro_input!(ts as syn::Variant);
-        vars.push(v);
-    }
-    let fts = quote::ToTokens::into_token_stream(f);
-    quote! {
-        #[enum_dispatch::enum_dispatch(#dispatch)]
-        #fts
-    }
-    .into()
-}
-
-/// A macro that adds the previously defined variants into the enum, adding an enum_dispatch for a given trait, and also making the enum clonable
-#[proc_macro_attribute]
-pub fn fill_enum_with_variants_clonable(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let dispatch = parse_macro_input!(attr as syn::Ident);
-    let mut f = parse_macro_input!(item as syn::ItemEnum);
-    let name = f.ident.clone();
-    let vars = &mut f.variants;
-    let n = name.to_string();
-    let data = {
-        let mut e = ENUM_BUILDER.lock().unwrap();
-        e.remove(&n)
-    }
-    .unwrap();
-    if data.variants.is_empty() {
-        panic!("No variants defined for {}", n);
-    }
-    for d in &data.variants {
-        let ts = proc_macro::TokenStream::from_str(d).unwrap();
-        let v = parse_macro_input!(ts as syn::Variant);
-        vars.push(v);
-    }
-    let fts = quote::ToTokens::into_token_stream(f);
-    quote! {
-        #[derive(Clone)]
-        #[doors_macros::vec_builder]
-        #[enum_dispatch::enum_dispatch(#dispatch)]
-        #fts
-    }
-    .into()
 }
 
 /// A macro that builds an iterator over all the variations of an enum

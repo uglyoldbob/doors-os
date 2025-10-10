@@ -19,11 +19,6 @@ use crate::{
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 
-doors_macros2::enum_export_builder! {
-    doors_macros2::enum_export!(PciFunctionDriver, IntelPro1000);
-    doors_macros2::enum_export!(NetworkAdapter, IntelPro1000Device);
-}
-
 /// Holds either memory or io space
 enum MemoryOrIo {
     /// Regular memory
@@ -288,7 +283,6 @@ bitfield::bitfield! {
 }
 
 #[derive(Clone, Default)]
-#[doors_macros::enum_variant(PciFunctionDriver)]
 /// Ethernet driver for the intel pro/1000 ethernet controller on pci
 pub struct IntelPro1000 {}
 
@@ -560,7 +554,6 @@ impl IntelPro1000DeviceInternal {
     }
 }
 
-#[doors_macros::enum_variant(NetworkAdapter)]
 /// The actual intel pro/1000 device
 pub struct IntelPro1000Device {
     /// The internal structure used in interrupt handler and regular code

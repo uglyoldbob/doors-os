@@ -5,16 +5,8 @@ use futures::StreamExt;
 
 use crate::{AsyncLocked, AsyncLockedArc, OneWayStreamReader};
 
-doors_macros::declare_enum!(NetworkAdapter);
-
 pub mod intel;
 mod loopback;
-use loopback::NetworkLoopback;
-
-doors_macros2::enum_export_builder! {
-    doors_macros2::enum_reexport!(PciFunctionDriver, intel);
-    doors_macros2::enum_reexport!(NetworkAdapter, intel, loopback);
-}
 
 lazy_static::lazy_static! {
     /// Represents all network adapters for the kernel
@@ -124,8 +116,15 @@ pub trait NetworkAdapterTrait {
 }
 
 /// A network adapter
-#[doors_macros::fill_enum_with_variants(NetworkAdapterTrait)]
-pub enum NetworkAdapter {}
+#[doors_macros::enum_module_filter]
+#[enum_dispatch::enum_dispatch(NetworkAdapterTrait)]
+pub enum NetworkAdapter {
+    /// The intel pro 1000 device
+    #[doors_module = "intelpro1000"]
+    IntelPro1000(intel::pro1000::IntelPro1000Device),
+    /// a loopback device
+    Loopback(loopback::NetworkLoopback),
+}
 
 impl NetworkAdapter {
     /// Process network packets received
