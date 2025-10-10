@@ -7,7 +7,6 @@ pub mod gpio;
 pub mod input;
 pub mod isa;
 pub mod memory;
-pub mod network;
 pub mod pci;
 pub mod power;
 pub mod reset;
@@ -16,8 +15,17 @@ pub mod serial;
 pub mod timer;
 pub mod video;
 
+#[doors_macros::config_check_equals_attr(network, "true")]
+pub mod network;
+
+#[doors_macros::config_check_equals_attr(network, "true")]
 doors_macros2::enum_export_builder! {
     doors_macros2::enum_reexport!(PciFunctionDriver, network, isa);
+}
+
+#[doors_macros::config_check_equals_attr(network, "false")]
+doors_macros2::enum_export_builder! {
+    doors_macros2::enum_reexport!(PciFunctionDriver, isa);
 }
 
 /// The trait implemented for all devices

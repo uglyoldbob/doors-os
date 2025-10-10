@@ -295,11 +295,10 @@ pub fn module_builtin_attr(
     let f = parse_macro_input!(attr as syn::Ident);
     let check = {
         let m = KERNEL_CONFIG.lock().unwrap();
-        m.as_ref()
-            .map(|a| a.modules.contains(&f.to_string()))
+        m.as_ref().map(|a| a.modules.contains(&f.to_string()))
     };
     let val = check.unwrap();
-    
+
     if val {
         let item: proc_macro2::TokenStream = item.into();
         quote!(#item).into()
@@ -316,8 +315,7 @@ pub fn module_builtin(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     print!("CHECKING Include the block for {}", f.ident);
     let check = {
         let m = KERNEL_CONFIG.lock().unwrap();
-        m.as_ref()
-            .map(|a| a.modules.contains(&f.ident.to_string()))
+        m.as_ref().map(|a| a.modules.contains(&f.ident.to_string()))
     };
     let val = check.unwrap();
     let block = f.block;
@@ -329,7 +327,6 @@ pub fn module_builtin(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         quote!().into()
     }
 }
-
 
 /// Retrieve a boolean value from the kernel config and use it to enable a block of code
 #[proc_macro]
@@ -745,25 +742,35 @@ pub fn define_doors_test_runner(_input: proc_macro::TokenStream) -> proc_macro::
         let mut testa = TEST_CALL_QUANTITY.lock().unwrap();
         testa.take()
     };
-    let testa = check.unwrap();
+    if let Some(testa) = check {
+        let i = 0..testa;
+        let calls = i.into_iter().map(|i| {
+            let ident = quote::format_ident!("test_{}", i);
+            quote!(Self::#ident)
+        });
 
-    let i = 0..testa;
-    let calls = i.into_iter().map(|i| {
-        let ident = quote::format_ident!("test_{}", i);
-        quote!(Self::#ident)
-    });
-
-    quote! {
-        impl DoorsTester {
-            fn doors_test_main() -> Result<(),()> {
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("Running all {} Doors tests\r\n", #testa));
-                #(#calls()?;)*
-                crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("All {} tests passed\r\n", #testa));
-                Ok(())
+        quote! {
+            impl DoorsTester {
+                fn doors_test_main() -> Result<(),()> {
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("Running all {} Doors tests\r\n", #testa));
+                    #(#calls()?;)*
+                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!("All {} tests passed\r\n", #testa));
+                    Ok(())
+                }
             }
         }
+        .into()
+    } else {
+        quote! {
+            impl DoorsTester {
+                fn doors_test_main() -> Result<(),()> {
+                    crate::VGA.print_str("No Doors tests to run\r\n");
+                    Ok(())
+                }
+            }
+        }
+        .into()
     }
-    .into()
 }
 
 #[cfg(feature = "backtrace")]

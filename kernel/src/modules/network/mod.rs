@@ -8,10 +8,12 @@ use crate::{AsyncLocked, AsyncLockedArc, OneWayStreamReader};
 doors_macros::declare_enum!(NetworkAdapter);
 
 pub mod intel;
+mod loopback;
+use loopback::NetworkLoopback;
 
 doors_macros2::enum_export_builder! {
     doors_macros2::enum_reexport!(PciFunctionDriver, intel);
-    doors_macros2::enum_reexport!(NetworkAdapter, intel);
+    doors_macros2::enum_reexport!(NetworkAdapter, intel, loopback);
 }
 
 lazy_static::lazy_static! {
