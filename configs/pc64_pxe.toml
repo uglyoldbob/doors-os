@@ -10,6 +10,7 @@ gdbstub = true
 mm_debug = false
 test = false
 network = false
+modules = ["intelpro1000"]
 
 [disk.unique.Network]
 tftp_relative = ""

@@ -10,6 +10,7 @@ gdbstub = true
 mm_debug = false
 test = false
 network = false
+modules = []
 
 [disk.unique.Cd]
 kernel_path = "./build/iso/boot/kernel"
