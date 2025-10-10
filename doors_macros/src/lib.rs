@@ -385,10 +385,8 @@ pub fn module_builtin(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let val = check.unwrap();
     let block = f.block;
     if val {
-        print!("Including the block for {}", f.ident);
         quote!(#block).into()
     } else {
-        print!("NOT Including the block for {}", f.ident);
         quote!().into()
     }
 }
