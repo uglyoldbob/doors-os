@@ -3,12 +3,7 @@
 
 //! This crate defines various macros used in the Doors kernel.
 
-use std::{
-    collections::{BTreeMap, HashSet},
-    io::Read,
-    str::FromStr,
-    sync::Mutex,
-};
+use std::{io::Read, str::FromStr, sync::Mutex};
 
 #[cfg(feature = "backtrace")]
 mod backtrace;
@@ -18,12 +13,6 @@ use syn::parse_macro_input;
 
 mod config;
 use config::KernelConfig;
-
-#[derive(Debug)]
-struct EnumData {
-    variants: Vec<String>,
-    variant_names: HashSet<String>,
-}
 
 struct TodoList {
     items: Vec<String>,
