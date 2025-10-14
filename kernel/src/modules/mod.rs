@@ -17,11 +17,6 @@ pub mod video;
 #[doors_macros::config_check_equals_attr(network, "true")]
 pub mod network;
 
-#[doors_macros::config_check_equals_attr(network, "false")]
-doors_macros2::enum_export_builder! {
-    doors_macros2::enum_reexport!(PciFunctionDriver, dummy, isa);
-}
-
 /// The trait implemented for all devices
 #[enum_dispatch::enum_dispatch]
 pub trait DeviceTrait {}
