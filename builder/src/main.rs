@@ -627,6 +627,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tuser\n");
         cmakelists.push_str("\tWORKING_DIRECTORY ./user\n");
+        cmakelists.push_str("\tDEPENDS ready_user\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo build --release --target {}\n",
@@ -654,7 +655,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel\n");
         cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
-        cmakelists.push_str("\tDEPENDS user\n");
+        cmakelists.push_str("\tDEPENDS user ready_kernel\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo +nightly build --release --target {} --bin kernel\n",
@@ -822,6 +823,33 @@ fn build_cmake_files(_args: &Args, config: MasterConfig) {
     cmakelist.push_str("\tCOMMAND cargo fmt\n");
     cmakelist.push_str(")\n");
 
+    cmakelist.push_str(
+        "
+add_custom_command(
+    OUTPUT ready_kernel
+    WORKING_DIRECTORY ./kernel
+    COMMAND cargo clean
+    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ready_kernel
+)
+add_custom_command(
+    OUTPUT ready_user
+    WORKING_DIRECTORY ./user
+    COMMAND cargo clean
+    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ready_user
+)
+add_custom_command(
+    OUTPUT ready_normal
+    COMMAND cargo clean
+    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ready_normal
+)
+add_custom_command(
+    OUTPUT ready
+    DEPENDS ready_kernel ready_normal ready_user
+    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ready
+)
+",
+    );
+
     cmakelist.push_str("add_custom_target(\n");
     cmakelist.push_str("\trust_compiler\n");
     cmakelist.push_str("\tWORKING_DIRECTORY ./rust\n");
@@ -959,4 +987,15 @@ fn main() {
 
     let config = MasterConfig::build(local, config);
     build_cmake_files(&args, config);
+    for p in [
+        "./ready_kernel",
+        "./ready_user",
+        "./ready_normal",
+        "./ready",
+    ] {
+        let p = std::path::Path::new(p);
+        if p.exists() {
+            std::fs::remove_file(p).unwrap();
+        }
+    }
 }
