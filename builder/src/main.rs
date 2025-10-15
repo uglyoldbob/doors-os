@@ -829,13 +829,13 @@ add_custom_command(
     OUTPUT ready_kernel
     WORKING_DIRECTORY ./kernel
     COMMAND cargo clean
-    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ready_kernel
+    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ../ready_kernel
 )
 add_custom_command(
     OUTPUT ready_user
     WORKING_DIRECTORY ./user
     COMMAND cargo clean
-    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ready_user
+    COMMAND ${CMAKE_COMMAND} -E echo \"ready\" > ../ready_user
 )
 add_custom_command(
     OUTPUT ready_normal

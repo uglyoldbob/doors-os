@@ -1026,6 +1026,17 @@ impl<T> OneWayStreamWriter<T> {
         Ok(())
     }
 
+    /// Add an element to the stream from a sync context
+    pub fn write_sync<'a>(&'a self, val: T) {
+        loop {
+            let q = self.queue.access().is_full();
+            if !q {
+                let _ = self.queue.access().push(val);
+                break;
+            }
+        }
+    }
+
     /// Add an element to the stream from an async context
     pub async fn write<'a>(&'a self, val: T) -> OneWayStreamWriteElement<T> {
         OneWayStreamWriteElement {

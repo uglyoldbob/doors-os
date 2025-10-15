@@ -6,7 +6,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
 
 use crate::kernel::System;
-use crate::modules::network::{MacAddress, NetworkAdapterTrait};
+use crate::modules::network::{MacAddress, NetworkAdapterTrait, RawEthernetFrame};
 use crate::modules::pci::PciFunctionDriverTrait;
 use crate::modules::pci::{
     BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
@@ -572,6 +572,10 @@ pub struct IntelPro1000Device {
     model: Model,
     /// The mac address
     mac_address: MacAddress,
+    /// The receiver for packets to send out
+    recvr: OneWayStreamReader<super::super::RawEthernetPacket>,
+    /// The sender half for packets to send out
+    sendr: OneWayStreamWriter<super::super::RawEthernetPacket>,
 }
 
 bitflags::bitflags! {
@@ -752,8 +756,19 @@ bitfield::bitfield! {
 }
 
 impl NetworkAdapterTrait for IntelPro1000Device {
-    fn get_receiver(&self) -> &OneWayStreamReader<super::super::RawEthernetPacket> {
-        &self.internal.packet_stream.0
+    fn get_receiver(&self) -> Option<OneWayStreamReader<super::super::RawEthernetPacket>> {
+        todo!()
+        //&self.internal.packet_stream.0
+    }
+
+    fn get_sender(&self) -> OneWayStreamWriter<crate::modules::network::RawEthernetPacket> {
+        self.sendr.clone()
+    }
+
+    async fn send_pending_packets(&mut self) {
+        while let Some(p) = self.recvr.get_next() {
+            self.send_packet(&p.data[0..p.length]).await;
+        }
     }
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
@@ -772,7 +787,9 @@ impl NetworkAdapterTrait for IntelPro1000Device {
             todo!();
         }
     }
+}
 
+impl IntelPro1000Device {
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn send_packet(&mut self, packet: &[u8]) -> Result<(), ()> {
         crate::VGA.print_str_async("Waiting for link up\r\n").await;
@@ -854,9 +871,7 @@ impl NetworkAdapterTrait for IntelPro1000Device {
             doors_macros::todo_item_panic!("Packets larger than 8192 bytes not yet handled");
         }
     }
-}
 
-impl IntelPro1000Device {
     /// Detect the presence of an eeprom and store the result
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn detect_eeprom(&mut self) -> bool {
@@ -1339,6 +1354,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     IrqGuardedInner::new(IrqNumbers::Only1(irqnum), false, true, |_| {}, |_| {});
                 let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
+                let ps = crate::common::new_stream(&com, 10, 10);
                 let mut d = IntelPro1000Device {
                     internal: Arc::new(IntelPro1000DeviceInternal::new(m, up, &com)),
                     _bars: bars,
@@ -1348,6 +1364,8 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     txbufindex: None,
                     model,
                     mac_address: MacAddress::default(),
+                    recvr: ps.0,
+                    sendr: ps.1,
                 };
                 f.set_bus_mastering(cs, bus, dev, true);
                 {

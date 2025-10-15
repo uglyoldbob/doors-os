@@ -10,11 +10,15 @@ impl super::NetworkAdapterTrait for NetworkLoopback {
         super::MacAddress::from(&a[..])
     }
 
-    async fn send_packet(&mut self, _packet: &[u8]) -> Result<(), ()> {
+    fn get_receiver(&self) -> Option<crate::OneWayStreamReader<super::RawEthernetPacket>> {
         todo!()
     }
 
-    fn get_receiver(&self) -> &crate::OneWayStreamReader<super::RawEthernetPacket> {
+    fn get_sender(&self) -> crate::OneWayStreamWriter<super::RawEthernetPacket> {
+        todo!()
+    }
+
+    async fn send_pending_packets(&mut self) {
         todo!()
     }
 }
