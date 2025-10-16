@@ -14,8 +14,8 @@ use crate::modules::pci::{
 use crate::modules::video::hex_dump_generic_async;
 use crate::modules::PciFunctionDriver;
 use crate::{
-    new_stream, Arc, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers, OneWayStreamReader,
-    OneWayStreamWriter,
+    new_irq_stream, Arc, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers, IrqStreamReader,
+    IrqStreamWriter,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -513,8 +513,8 @@ struct IntelPro1000DeviceInternal {
     rxbufs: crate::IrqGuarded<Option<(RxBuffers, u8)>>,
     /// Packet stream
     packet_stream: (
-        OneWayStreamReader<super::super::RawEthernetPacket>,
-        OneWayStreamWriter<super::super::RawEthernetPacket>,
+        IrqStreamReader<super::super::RawEthernetPacket>,
+        IrqStreamWriter<super::super::RawEthernetPacket>,
     ),
 }
 
@@ -549,7 +549,7 @@ impl IntelPro1000DeviceInternal {
             bar0,
             up,
             rxbufs: IrqGuarded::new(None, common),
-            packet_stream: new_stream(common, 10, 5),
+            packet_stream: new_irq_stream(common, 10, 5),
         }
     }
 }
@@ -573,9 +573,9 @@ pub struct IntelPro1000Device {
     /// The mac address
     mac_address: MacAddress,
     /// The receiver for packets to send out
-    recvr: OneWayStreamReader<super::super::RawEthernetPacket>,
+    recvr: IrqStreamReader<super::super::RawEthernetPacket>,
     /// The sender half for packets to send out
-    sendr: OneWayStreamWriter<super::super::RawEthernetPacket>,
+    sendr: IrqStreamWriter<super::super::RawEthernetPacket>,
 }
 
 bitflags::bitflags! {
@@ -756,12 +756,12 @@ bitfield::bitfield! {
 }
 
 impl NetworkAdapterTrait for IntelPro1000Device {
-    fn get_receiver(&self) -> Option<OneWayStreamReader<super::super::RawEthernetPacket>> {
+    fn get_receiver(&self) -> Option<IrqStreamReader<super::super::RawEthernetPacket>> {
         todo!()
         //&self.internal.packet_stream.0
     }
 
-    fn get_sender(&self) -> OneWayStreamWriter<crate::modules::network::RawEthernetPacket> {
+    fn get_sender(&self) -> IrqStreamWriter<crate::modules::network::RawEthernetPacket> {
         self.sendr.clone()
     }
 
@@ -1354,7 +1354,7 @@ impl PciFunctionDriverTrait for IntelPro1000 {
                     IrqGuardedInner::new(IrqNumbers::Only1(irqnum), false, true, |_| {}, |_| {});
                 let m = IrqGuarded::new(m, &com);
                 let up = AtomicBool::new(false);
-                let ps = crate::common::new_stream(&com, 10, 10);
+                let ps = crate::common::new_irq_stream(&com, 10, 10);
                 let mut d = IntelPro1000Device {
                     internal: Arc::new(IntelPro1000DeviceInternal::new(m, up, &com)),
                     _bars: bars,

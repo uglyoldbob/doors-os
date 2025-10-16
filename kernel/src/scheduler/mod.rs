@@ -20,8 +20,8 @@ use spin::RwLock;
 use crate::{
     kernel::SystemTrait,
     modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, NotSafeForInterrupts,
-    OneWayStreamReader, OneWayStreamWriter, SafeForInterrupts, TaskId,
+    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, IrqStreamReader, IrqStreamWriter,
+    NotSafeForInterrupts, SafeForInterrupts, TaskId,
 };
 
 doors_macros::todo_item!("Create a guard page for stack");
@@ -127,15 +127,15 @@ pub struct InnerScheduler {
     /// The timer instance for the scheduler
     timer: Option<TimerInstance>,
     /// Completed tasks
-    completed: OneWayStreamWriter<(crate::common::TaskId, Task)>,
+    completed: IrqStreamWriter<(crate::common::TaskId, Task)>,
     /// Receiver for completed tasks
-    task_killer: Option<OneWayStreamReader<(crate::common::TaskId, Task)>>,
+    task_killer: Option<IrqStreamReader<(crate::common::TaskId, Task)>>,
 }
 
 impl InnerScheduler {
     /// Create a new scheduler, using the specified task id as the starting task
     pub fn new(id: TaskId, com: &IrqGuardedInner) -> Self {
-        let cq = crate::common::new_stream(&com, 10, 10);
+        let cq = crate::common::new_irq_stream(&com, 10, 10);
         Self {
             local_tasks: Vec::new(),
             cur_task: (id, Task::running()),

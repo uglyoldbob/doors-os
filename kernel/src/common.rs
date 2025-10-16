@@ -63,12 +63,12 @@ pub fn idle_if(mut f: impl FnMut() -> bool) {
 pub auto trait Interrupt {}
 
 /// This is a marker type that is safe to use in interrupt contexts
-pub struct SafeForInterrupts {}
+pub struct SafeForInterrupts;
 
 impl Interrupt for SafeForInterrupts {}
 
 /// This is a marker type that is NOT safe to use in interrupt contexts
-pub struct NotSafeForInterrupts {}
+pub struct NotSafeForInterrupts;
 
 impl !Interrupt for NotSafeForInterrupts {}
 
@@ -922,21 +922,21 @@ impl<'a, T, U> Drop for IrqGuardedUse<'a, T, U> {
 }
 
 /// The reader for a one way stream
-pub struct OneWayStreamReader<T> {
+pub struct IrqStreamReader<T> {
     /// The data queue for the stream
     queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<T>>>,
     /// The wakers for the stream
     wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
 }
 
-impl<T> OneWayStreamReader<T> {
+impl<T> IrqStreamReader<T> {
     /// Get an element synchronously
     pub fn get_next(&self) -> Option<T> {
         self.queue.access().pop()
     }
 }
 
-impl<T> futures::Stream for &OneWayStreamReader<T> {
+impl<T> futures::Stream for &IrqStreamReader<T> {
     type Item = T;
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
@@ -952,7 +952,7 @@ impl<T> futures::Stream for &OneWayStreamReader<T> {
     }
 }
 
-impl<T> futures::Stream for OneWayStreamReader<T> {
+impl<T> futures::Stream for IrqStreamReader<T> {
     type Item = T;
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
@@ -969,7 +969,7 @@ impl<T> futures::Stream for OneWayStreamReader<T> {
 }
 
 /// Used for writing data to a OneWayStream
-pub struct OneWayStreamWriteElement<T> {
+pub struct IrqWriteElement<T> {
     /// The item to write
     stuff: Option<T>,
     /// The data queue for the stream
@@ -978,7 +978,7 @@ pub struct OneWayStreamWriteElement<T> {
     wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
 }
 
-impl<T: Unpin> core::future::Future for OneWayStreamWriteElement<T> {
+impl<T: Unpin> core::future::Future for IrqWriteElement<T> {
     type Output = ();
     fn poll(
         mut self: Pin<&mut Self>,
@@ -1000,14 +1000,14 @@ impl<T: Unpin> core::future::Future for OneWayStreamWriteElement<T> {
 }
 
 /// The writer for a one way stream
-pub struct OneWayStreamWriter<T> {
+pub struct IrqStreamWriter<T> {
     /// The data queue for the stream
     queue: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<T>>>,
     /// The wakers for the stream
     wakers: Arc<IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
 }
 
-impl<T> Clone for OneWayStreamWriter<T> {
+impl<T> Clone for IrqStreamWriter<T> {
     fn clone(&self) -> Self {
         Self {
             queue: self.queue.clone(),
@@ -1016,7 +1016,7 @@ impl<T> Clone for OneWayStreamWriter<T> {
     }
 }
 
-impl<T> OneWayStreamWriter<T> {
+impl<T> IrqStreamWriter<T> {
     /// Add an element to the stream from an interrupt handler
     pub fn push_interrupt(&self, item: T) -> Result<(), ()> {
         self.queue.interrupt_access().push(item).map_err(|_| ())?;
@@ -1038,8 +1038,8 @@ impl<T> OneWayStreamWriter<T> {
     }
 
     /// Add an element to the stream from an async context
-    pub async fn write<'a>(&'a self, val: T) -> OneWayStreamWriteElement<T> {
-        OneWayStreamWriteElement {
+    pub async fn write<'a>(&'a self, val: T) -> IrqWriteElement<T> {
+        IrqWriteElement {
             stuff: Some(val),
             queue: self.queue.clone(),
             wakers: self.wakers.clone(),
@@ -1047,12 +1047,12 @@ impl<T> OneWayStreamWriter<T> {
     }
 }
 
-/// Construct a new stream
-pub fn new_stream<T>(
+/// Construct a new stream for use in irq handlers
+pub fn new_irq_stream<T>(
     inner: &IrqGuardedInner,
     queue_size: usize,
     num_wakers: usize,
-) -> (OneWayStreamReader<T>, OneWayStreamWriter<T>) {
+) -> (IrqStreamReader<T>, IrqStreamWriter<T>) {
     let queue = Arc::new(IrqGuardedSimple::new(
         crossbeam::queue::ArrayQueue::new(queue_size),
         inner,
@@ -1062,13 +1062,152 @@ pub fn new_stream<T>(
         inner,
     ));
     (
-        OneWayStreamReader {
+        IrqStreamReader {
             queue: queue.clone(),
             wakers: wakers.clone(),
         },
-        OneWayStreamWriter {
+        IrqStreamWriter {
             queue: queue.clone(),
             wakers: wakers.clone(),
+        },
+    )
+}
+
+/// Used for writing data to a OneWayStream
+pub struct StreamWriteElement<T> {
+    /// The item to write
+    stuff: Option<T>,
+    /// The data queue for the stream
+    queue: Arc<crossbeam::queue::ArrayQueue<T>>,
+    /// The wakers for the stream
+    wakers: Arc<crossbeam::queue::ArrayQueue<Waker>>,
+}
+
+impl<T: Unpin> core::future::Future for StreamWriteElement<T> {
+    type Output = ();
+    fn poll(
+        mut self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let q = self.queue.is_full();
+        if q {
+            let _ = self.wakers.push(cx.waker().clone());
+            return core::task::Poll::Pending;
+        } else {
+            if let Some(t) = self.stuff.take() {
+                self.queue.push(t);
+                return core::task::Poll::Ready(());
+            } else {
+                return core::task::Poll::Pending;
+            }
+        }
+    }
+}
+
+/// The writer for a one way stream
+pub struct StreamWriter<T> {
+    /// The data queue for the stream
+    queue: Arc<crossbeam::queue::ArrayQueue<T>>,
+    /// The wakers for the stream
+    wakers: Arc<crossbeam::queue::ArrayQueue<Waker>>,
+    /// the marker for no interrupts
+    _marker: NotSafeForInterrupts,
+}
+
+impl<T> StreamWriter<T> {
+    /// Add an element to the stream from an interrupt handler
+    pub fn push_interrupt(&self, item: T) -> Result<(), ()> {
+        self.queue.push(item).map_err(|_| ())?;
+        while let Some(w) = self.wakers.pop() {
+            w.wake();
+        }
+        Ok(())
+    }
+
+    /// Add an element to the stream from a sync context
+    pub fn write_sync<'a>(&'a self, val: T) {
+        loop {
+            let q = self.queue.is_full();
+            if !q {
+                let _ = self.queue.push(val);
+                break;
+            }
+        }
+    }
+
+    /// Add an element to the stream from an async context
+    pub async fn write<'a>(&'a self, val: T) -> StreamWriteElement<T> {
+        StreamWriteElement {
+            stuff: Some(val),
+            queue: self.queue.clone(),
+            wakers: self.wakers.clone(),
+        }
+    }
+}
+
+/// The reader for a one way stream
+pub struct StreamReader<T> {
+    /// The data queue for the stream
+    queue: Arc<crossbeam::queue::ArrayQueue<T>>,
+    /// The wakers for the stream
+    wakers: Arc<crossbeam::queue::ArrayQueue<Waker>>,
+    /// the marker for no interrupts
+    _marker: NotSafeForInterrupts,
+}
+
+impl<T> StreamReader<T> {
+    /// Get an element synchronously
+    pub fn get_next(&self) -> Option<T> {
+        self.queue.pop()
+    }
+}
+
+impl<T> futures::Stream for &StreamReader<T> {
+    type Item = T;
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let a = self.queue.pop();
+        if let Some(b) = a {
+            core::task::Poll::Ready(Some(b))
+        } else {
+            self.wakers.push(cx.waker().clone()).unwrap();
+            core::task::Poll::Pending
+        }
+    }
+}
+
+impl<T> futures::Stream for StreamReader<T> {
+    type Item = T;
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let a = self.queue.pop();
+        if let Some(b) = a {
+            core::task::Poll::Ready(Some(b))
+        } else {
+            self.wakers.push(cx.waker().clone()).unwrap();
+            core::task::Poll::Pending
+        }
+    }
+}
+
+/// Construct a new stream for general use entirely outside of irq handlers
+pub fn new_stream<T>(queue_size: usize, num_wakers: usize) -> (StreamReader<T>, StreamWriter<T>) {
+    let queue = Arc::new(crossbeam::queue::ArrayQueue::new(queue_size));
+    let wakers = Arc::new(crossbeam::queue::ArrayQueue::new(num_wakers));
+    (
+        StreamReader {
+            queue: queue.clone(),
+            wakers: wakers.clone(),
+            _marker: NotSafeForInterrupts,
+        },
+        StreamWriter {
+            queue: queue.clone(),
+            wakers: wakers.clone(),
+            _marker: NotSafeForInterrupts,
         },
     )
 }

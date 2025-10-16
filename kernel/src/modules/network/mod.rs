@@ -2,21 +2,29 @@
 
 use alloc::{
     borrow::ToOwned,
+    boxed::Box,
     collections::btree_map::BTreeMap,
     string::{String, ToString},
     vec::Vec,
 };
 use futures::{future, StreamExt};
 
-use crate::{AsyncLocked, AsyncLockedArc, Locked, OneWayStreamReader, OneWayStreamWriter};
+use crate::{
+    new_stream, AsyncLocked, AsyncLockedArc, IrqStreamReader, IrqStreamWriter, Locked,
+    StreamReader, StreamWriter,
+};
 
 pub mod intel;
 mod loopback;
 
 lazy_static::lazy_static! {
     /// Represents all network adapters for the kernel
-    static ref NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, OneWayStreamWriter<RawEthernetPacket>>> =
+    static ref NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, IrqStreamWriter<RawEthernetPacket>>> =
         AsyncLocked::new(BTreeMap::new());
+    /// The lookup table to convert ip addresses to mac addresses
+    static ref IP_TO_MAC_TABLE: Locked<BTreeMap<core::net::IpAddr, Option<MacAddress>>> = Locked::new(BTreeMap::new());
+    /// The list of udp ports expecting data
+    static ref UDP_PORTS_INCOMING: AsyncLockedArc<BTreeMap<u16, StreamWriter<UdpPacket>>> = AsyncLockedArc::new(BTreeMap::new());
 }
 
 /// Register a network adapter
@@ -48,7 +56,7 @@ pub async fn register_network_adapter(mut na: NetworkAdapter) {
 
 /// Grab a network adapter by name
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-pub async fn get_network_adapter(s: &str) -> Option<OneWayStreamWriter<RawEthernetPacket>> {
+pub async fn get_network_adapter(s: &str) -> Option<IrqStreamWriter<RawEthernetPacket>> {
     let nal = NETWORK_ADAPTERS.lock().await;
     if nal.contains_key(s) {
         Some(nal.get(s).unwrap().to_owned())
@@ -117,22 +125,15 @@ fn mac_address_conversion_test() -> Result<(), ()> {
     Ok(())
 }
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    /// The lookup table to convert ip addresses to mac addresses
-    pub static ref IP_TO_MAC_TABLE: Locked<BTreeMap<core::net::IpAddr, MacAddress>> = Locked::new(BTreeMap::new());
-}
-
 /// The trait that defines common functionality for network adapters
 #[enum_dispatch::enum_dispatch]
 pub trait NetworkAdapterTrait {
     /// Retrieve the mac address for the network adapter
     async fn get_mac_address(&mut self) -> MacAddress;
     /// Get the receiver
-    fn get_receiver(&self) -> Option<OneWayStreamReader<RawEthernetPacket>>;
+    fn get_receiver(&self) -> Option<IrqStreamReader<RawEthernetPacket>>;
     /// Get a new packet sender queue clone
-    fn get_sender(&self) -> OneWayStreamWriter<RawEthernetPacket>;
+    fn get_sender(&self) -> IrqStreamWriter<RawEthernetPacket>;
     /// Sends pending packets
     async fn send_pending_packets(&mut self);
 }
@@ -151,8 +152,8 @@ pub enum NetworkAdapter {
 /// Process network packets received
 pub async fn receive_packets(
     mymac: MacAddress,
-    mut r: OneWayStreamReader<RawEthernetPacket>,
-    s: OneWayStreamWriter<RawEthernetPacket>,
+    mut r: IrqStreamReader<RawEthernetPacket>,
+    s: IrqStreamWriter<RawEthernetPacket>,
 ) {
     loop {
         while let Some(packet) = r.next().await {
@@ -170,14 +171,24 @@ pub async fn receive_packets(
                         ))
                         .await;
                     match df.contents {
-                        PacketReference::Ipv4(ipv4_packet) => {
-                            crate::VGA
-                                .print_str_async(&alloc::format!(
-                                    "Received ip packet: {:02x?}\r\n",
-                                    ipv4_packet
-                                ))
-                                .await;
-                        }
+                        PacketReference::Ipv4(ipv4_packet) => match ipv4_packet.data {
+                            IpPacketData::Udp(d) => {
+                                if let Some(port) =
+                                    UDP_PORTS_INCOMING.sync_lock().get(&d.header.destination)
+                                {
+                                    let d = d.to_owned();
+                                    port.write(d).await;
+                                }
+                            }
+                            _ => {
+                                crate::VGA
+                                    .print_str_async(&alloc::format!(
+                                        "Received unhandled ip packet: {:02x?}\r\n",
+                                        ipv4_packet
+                                    ))
+                                    .await;
+                            }
+                        },
                         PacketReference::Arp(address_resolution_protocol_packet) => {
                             crate::VGA
                                 .print_str_async(&alloc::format!(
@@ -194,7 +205,7 @@ pub async fn receive_packets(
                                     if let Some(mac) =
                                         address_resolution_protocol_packet.get_sender_mac_address()
                                     {
-                                        table.insert(ip, mac);
+                                        table.insert(ip, Some(mac));
                                     }
                                 }
                             } else if address_resolution_protocol_packet.operation == 1 {
@@ -203,7 +214,6 @@ pub async fn receive_packets(
                                 if address_resolution_protocol_packet.target_protocol_address
                                     == myip
                                 {
-                                    let mut packet = [0; 128];
                                     let p = EthernetFrame {
                                         header: EthernetFrameHeader {
                                             destination: df.header.source,
@@ -303,9 +313,9 @@ impl EthernetFrameHeader {
     }
 }
 
-/// A udp packet
-#[derive(Debug)]
-pub struct UdpPacket<'a> {
+/// A udp packet header
+#[derive(Debug, Default)]
+pub struct UdpPacketHeader {
     /// the source port
     source: u16,
     /// the destination port
@@ -314,11 +324,25 @@ pub struct UdpPacket<'a> {
     length: u16,
     /// The packet checksum
     checksum: u16,
+}
+
+/// A udp packet
+#[derive(Debug)]
+pub struct UdpPacket {
+    header: UdpPacketHeader,
+    /// The actual packet data
+    data: Box<[u8]>,
+}
+
+/// A udp packet
+#[derive(Debug)]
+pub struct UdpPacketReference<'a> {
+    header: UdpPacketHeader,
     /// The actual packet data
     data: &'a [u8],
 }
 
-impl<'a> UdpPacket<'a> {
+impl UdpPacketHeader {
     /// Send some data in an ethernet packet
     pub fn make_raw_packet(&self, rp: &mut RawEthernetPacket) {
         rp.data[rp.length..rp.length + 2].copy_from_slice(&self.source.to_be_bytes());
@@ -329,19 +353,43 @@ impl<'a> UdpPacket<'a> {
         rp.length += 2;
         rp.data[rp.length..rp.length + 2].copy_from_slice(&self.checksum.to_be_bytes());
         rp.length += 2;
-        rp.data[rp.length..rp.length + self.data.len()].copy_from_slice(&self.data);
-        rp.length += self.data.len();
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for UdpPacket<'a> {
+impl<'a> UdpPacketReference<'a> {
+    /// Send some data in an ethernet packet
+    pub fn make_raw_packet(&self, rp: &mut RawEthernetPacket) {
+        self.header.make_raw_packet(rp);
+        rp.data[rp.length..rp.length + self.data.len()].copy_from_slice(&self.data);
+        rp.length += self.data.len();
+    }
+
+    /// Convert to an owned packet
+    pub fn to_owned(self) -> UdpPacket {
+        UdpPacket {
+            header: self.header,
+            data: Box::from(self.data),
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for UdpPacketHeader {
     type Error = ();
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self {
             source: u16::from_be_bytes([value[0], value[1]]),
             destination: u16::from_be_bytes([value[2], value[3]]),
             length: u16::from_be_bytes([value[4], value[5]]),
             checksum: u16::from_be_bytes([value[6], value[7]]),
+        })
+    }
+}
+
+impl<'a> TryFrom<&'a [u8]> for UdpPacketReference<'a> {
+    type Error = ();
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        Ok(Self {
+            header: UdpPacketHeader::try_from(value)?,
             data: value.get(8..).ok_or(())?,
         })
     }
@@ -419,7 +467,7 @@ pub enum IpPacketData<'a> {
     /// Transmission control protocol
     Tcp(TcpPacket<'a>),
     /// User datagram protocol
-    Udp(UdpPacket<'a>),
+    Udp(UdpPacketReference<'a>),
     /// Ipv6 encapsulated packet
     Ipv6Encapsulated(&'a [u8]),
     /// open shortest path first
@@ -512,7 +560,11 @@ impl Ipv4PacketHeader {
             rp.data[rp.length] = a;
             rp.length += 1;
         }
-        for a in self.options.iter().take((self.header_size as usize - 20) / 4) {
+        for a in self
+            .options
+            .iter()
+            .take((self.header_size as usize - 20) / 4)
+        {
             for a in a.to_be_bytes() {
                 rp.data[rp.length] = a;
                 rp.length += 1;
@@ -648,9 +700,14 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
 
     /// Build the packet ontop of an ethernet layer
     pub fn send_raw_packet(&self, layer: &EthernetLayer, rp: &mut RawEthernetPacket) {
-        layer.send_raw_packet(0x0806, rp, |h| {}, |rp| {
-            self.build_packet(rp);
-        });
+        layer.send_raw_packet(
+            0x0806,
+            rp,
+            |h| {},
+            |rp| {
+                self.build_packet(rp);
+            },
+        );
     }
 
     /// construct a packet in the specified raw packet
@@ -665,13 +722,17 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
         rp.length += 1;
         (&mut rp.data[rp.length..rp.length + 2]).copy_from_slice(&self.operation.to_be_bytes());
         rp.length += 2;
-        (&mut rp.data[rp.length..rp.length + self.address_length as usize]).copy_from_slice(&self.sender_hardware_address);
+        (&mut rp.data[rp.length..rp.length + self.address_length as usize])
+            .copy_from_slice(&self.sender_hardware_address);
         rp.length += self.address_length as usize;
-        (&mut rp.data[rp.length..rp.length + self.protocol_length as usize]).copy_from_slice(&self.sender_protocol_address);
+        (&mut rp.data[rp.length..rp.length + self.protocol_length as usize])
+            .copy_from_slice(&self.sender_protocol_address);
         rp.length += self.protocol_length as usize;
-        (&mut rp.data[rp.length..rp.length + self.address_length as usize]).copy_from_slice(&self.target_hardware_address);
+        (&mut rp.data[rp.length..rp.length + self.address_length as usize])
+            .copy_from_slice(&self.target_hardware_address);
         rp.length += self.address_length as usize;
-        (&mut rp.data[rp.length..rp.length + self.protocol_length as usize]).copy_from_slice(&self.target_protocol_address);
+        (&mut rp.data[rp.length..rp.length + self.protocol_length as usize])
+            .copy_from_slice(&self.target_protocol_address);
         rp.length += self.protocol_length as usize;
     }
 }
@@ -831,12 +892,45 @@ pub struct UdpLayer {
     ipv4: Ip4Layer,
     source: u16,
     destin: u16,
+    /// The receiver side of packets sent to us
+    recv: StreamReader<UdpPacket>,
 }
 
 impl UdpLayer {
+    /// Construct a new layer for sending packets
+    pub fn new(ipv4: Ip4Layer, source: u16, destin: u16) -> Self {
+        let c = new_stream(5, 1);
+        let mut u = UDP_PORTS_INCOMING.sync_lock();
+        if !u.contains_key(&source) {
+            u.insert(source, c.1);
+        }
+        Self {
+            ipv4,
+            source,
+            destin,
+            recv: c.0,
+        }
+    }
+
     /// Send some data in an ethernet packet
-    pub fn send_raw_packet(&self, data: &[u8], rp: &mut RawEthernetPacket) {
-        todo!();
+    pub fn send_raw_packet<F: FnMut(&mut UdpPacketHeader), G: FnMut(&mut RawEthernetPacket)>(
+        &self,
+        rp: &mut RawEthernetPacket,
+        mut f: F,
+        mut g: G,
+    ) {
+        let mut header = UdpPacketHeader::default();
+        f(&mut header);
+        header.source = self.source;
+        header.destination = self.destin;
+        self.ipv4.send_raw_packet(
+            |ipv4| {},
+            |rp| {
+                header.make_raw_packet(rp);
+                g(rp);
+            },
+            rp,
+        );
     }
 }
 
@@ -849,21 +943,25 @@ pub struct Ip4Layer {
 
 impl Ip4Layer {
     /// Build a new ipv4 layer
-    pub fn new(ethernet: EthernetLayer, dest: core::net::IpAddr,
-        src: core::net::IpAddr,) -> Self {
-        Self { ethernet, dest, src, }
+    pub fn new(ethernet: EthernetLayer, dest: core::net::IpAddr, src: core::net::IpAddr) -> Self {
+        Self {
+            ethernet,
+            dest,
+            src,
+        }
     }
 
     /// Send some data in an ethernet packet
-    pub fn send_raw_packet<F: FnMut(&mut Ipv4PacketHeader), G: FnMut(&mut RawEthernetPacket)>(&self, mut f: F, mut g: G, rp: &mut RawEthernetPacket) {
+    pub fn send_raw_packet<F: FnMut(&mut Ipv4PacketHeader), G: FnMut(&mut RawEthernetPacket)>(
+        &self,
+        mut f: F,
+        mut g: G,
+        rp: &mut RawEthernetPacket,
+    ) {
         let mut header = Ipv4PacketHeader::default();
         loop {
-            let mac_lookup = IP_TO_MAC_TABLE.sync_lock();
+            let mut mac_lookup = IP_TO_MAC_TABLE.sync_lock();
             let look_dst = !mac_lookup.contains_key(&self.dest);
-            let look_src = !mac_lookup.contains_key(&self.src);
-            if !look_dst && !look_src {
-                break;
-            }
             if look_dst {
                 let arp_req = AddressResolutionProtocolPacket {
                     htype: 1,
@@ -872,34 +970,28 @@ impl Ip4Layer {
                     protocol_length: 4,
                     operation: 1,
                     sender_hardware_address: &self.ethernet.src.address,
-                    sender_protocol_address: &[11,11,11,12],
+                    sender_protocol_address: self.src.as_octets(),
                     target_hardware_address: &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
                     target_protocol_address: self.dest.as_octets(),
                 };
                 let mut rp2 = RawEthernetPacket::new_box();
+                mac_lookup.insert(self.dest, None);
                 arp_req.send_raw_packet(&self.ethernet, &mut rp2);
             }
-            if look_src {
-                let arp_req = AddressResolutionProtocolPacket {
-                    htype: 1,
-                    ptype: 0x0800,
-                    address_length: 6,
-                    protocol_length: 4,
-                    operation: 1,
-                    sender_hardware_address: &self.ethernet.src.address,
-                    sender_protocol_address: &[11,11,11,12],
-                    target_hardware_address: &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
-                    target_protocol_address: self.src.as_octets(),
-                };
-                let mut rp2 = RawEthernetPacket::new_box();
-                arp_req.send_raw_packet(&self.ethernet, &mut rp2);
+            if let Some(Some(_)) = mac_lookup.get(&self.dest) {
+                break;
             }
         }
         f(&mut header);
-        self.ethernet.send_raw_packet(0x0800, rp, |p| {}, |rp| {
-            header.add_to_packet(rp);
-            g(rp);
-        });
+        self.ethernet.send_raw_packet(
+            0x0800,
+            rp,
+            |p| {},
+            |rp| {
+                header.add_to_packet(rp);
+                g(rp);
+            },
+        );
     }
 }
 
@@ -908,7 +1000,7 @@ pub struct EthernetLayer {
     dest: MacAddress,
     src: MacAddress,
     /// The sender to send packets with
-    sender: OneWayStreamWriter<RawEthernetPacket>,
+    sender: IrqStreamWriter<RawEthernetPacket>,
 }
 
 impl EthernetLayer {
@@ -916,7 +1008,7 @@ impl EthernetLayer {
     pub fn new(
         dest: MacAddress,
         src: MacAddress,
-        sender: OneWayStreamWriter<RawEthernetPacket>,
+        sender: IrqStreamWriter<RawEthernetPacket>,
     ) -> Self {
         Self { dest, src, sender }
     }
@@ -927,7 +1019,13 @@ impl EthernetLayer {
     /// * rp - The RawEthernetPacket to build the packet with
     /// * f - The closure used to optionally modify the ethernet frame header
     /// * g - The closure used to append the data to the packet
-    pub fn send_raw_packet<F: FnMut(&mut EthernetFrameHeader), G: FnMut(&mut RawEthernetPacket)>(&self, t: u16, rp: &mut RawEthernetPacket, mut f: F, mut g: G) {
+    pub fn send_raw_packet<F: FnMut(&mut EthernetFrameHeader), G: FnMut(&mut RawEthernetPacket)>(
+        &self,
+        t: u16,
+        rp: &mut RawEthernetPacket,
+        mut f: F,
+        mut g: G,
+    ) {
         let mut header = EthernetFrameHeader {
             destination: self.dest,
             source: self.src,
@@ -946,60 +1044,4 @@ impl EthernetLayer {
         }
         self.sender.write_sync(*rp);
     }
-}
-
-/// The trait for sending and receiving packets
-#[enum_dispatch::enum_dispatch]
-pub trait PacketTransceiverTrait<'a> {
-    /// Used to send a packet of data
-    async fn send_packet(&mut self, packet: PacketReference<'a>);
-    /// Register the channel for receiving packets
-    fn register_receiver(&mut self, rcv: OneWayStreamWriter<PacketReference<'a>>);
-}
-
-/// A struct for sending packets to self
-pub struct LoopbackTransceiver<'a> {
-    rcv: Option<OneWayStreamWriter<PacketReference<'a>>>,
-}
-
-impl<'a> PacketTransceiverTrait<'a> for LoopbackTransceiver<'a> {
-    fn register_receiver(&mut self, rcv: OneWayStreamWriter<PacketReference<'a>>) {
-        self.rcv = Some(rcv);
-    }
-
-    async fn send_packet(&mut self, packet: PacketReference<'a>) {
-        if let Some(r) = &self.rcv {
-            r.write(packet).await;
-        }
-    }
-}
-
-/// The transceiver for a network adapter
-pub struct NetworkAdapterTransceiver<'a> {
-    snd: OneWayStreamWriter<RawEthernetPacket>,
-    rcv: Option<OneWayStreamWriter<PacketReference<'a>>>,
-}
-
-impl<'a> PacketTransceiverTrait<'a> for NetworkAdapterTransceiver<'a> {
-    fn register_receiver(&mut self, rcv: OneWayStreamWriter<PacketReference<'a>>) {
-        self.rcv = Some(rcv);
-    }
-
-    async fn send_packet(&mut self, packet: PacketReference<'a>) {
-        let mut p = RawEthernetPacket::new_box();
-        p.length = todo!();
-        let _ = self.snd.write(*p).await;
-    }
-}
-
-/// Used to send and receive packets
-#[enum_dispatch::enum_dispatch(PacketTransceiverTrait)]
-pub enum PacketTransceiver<'a> {
-    /// A loopback object that receives what is sent
-    Loopback(LoopbackTransceiver<'a>),
-}
-
-/// Attempt to get an object for sending and receiving network packets
-pub fn get_packet_transceiver() -> Option<u32> {
-    None
 }

@@ -6,7 +6,7 @@ use core::sync::atomic::Ordering;
 use core::task::Waker;
 
 use crate::common;
-use crate::new_stream;
+use crate::new_irq_stream;
 use crate::Arc;
 
 use crate::executor;
@@ -14,8 +14,8 @@ use crate::IoPortArray;
 use crate::IoReadWrite;
 use crate::IrqGuardedSimple;
 use crate::IrqNumbers;
-use crate::OneWayStreamReader;
-use crate::OneWayStreamWriter;
+use crate::IrqStreamReader;
+use crate::IrqStreamWriter;
 use crate::IO_PORT_MANAGER;
 
 /// The number of elements to store in the tx queue for each serial port
@@ -37,7 +37,7 @@ pub struct X86SerialPortInternal {
     /// The transmit wakers
     tx_wakers: Arc<crate::IrqGuardedSimple<crossbeam::queue::ArrayQueue<Waker>>>,
     /// The rx stream
-    rx_stream: (OneWayStreamReader<u8>, OneWayStreamWriter<u8>),
+    rx_stream: (IrqStreamReader<u8>, IrqStreamWriter<u8>),
     /// Is the tx interrupt currently enabled?
     tx_enabled: AtomicBool,
     /// Are interrupts enabled?
@@ -83,7 +83,7 @@ impl X86SerialPort {
                 crossbeam::queue::ArrayQueue::new(NUM_WAKERS),
                 &com,
             )),
-            rx_stream: new_stream(&com, RX_BUFFER_SIZE, NUM_WAKERS),
+            rx_stream: new_irq_stream(&com, RX_BUFFER_SIZE, NUM_WAKERS),
             tx_enabled: AtomicBool::new(false),
             interrupts: AtomicBool::new(false),
             itx: AtomicBool::new(false),

@@ -1,8 +1,8 @@
 //! Covers functionality for keyboards
 
 use crate::{
-    Arc, IoPortRef, IrqGuardedInner, IrqGuardedSimple, IrqNumbers, Locked, OneWayStreamReader,
-    OneWayStreamWriter,
+    Arc, IoPortRef, IrqGuardedInner, IrqGuardedSimple, IrqNumbers, IrqStreamReader,
+    IrqStreamWriter, Locked,
 };
 
 struct Registers {
@@ -17,7 +17,7 @@ pub struct Ps2Inner {
     /// The registers for the controller
     registers: IrqGuardedSimple<Locked<Registers>>,
     /// The stream
-    stream: (OneWayStreamReader<u8>, OneWayStreamWriter<u8>),
+    stream: (IrqStreamReader<u8>, IrqStreamWriter<u8>),
 }
 
 /// Ps2 hardware
@@ -38,7 +38,7 @@ impl Ps2 {
                 }),
                 &i,
             ),
-            stream: crate::common::new_stream(&i, 30, 5),
+            stream: crate::common::new_irq_stream(&i, 30, 5),
         };
         let s = Self {
             inner: Arc::new(inner),
@@ -79,7 +79,7 @@ impl Ps2 {
     }
 
     /// Get a read stream for reading from the keyboard
-    pub fn read_stream(&self) -> &OneWayStreamReader<u8> {
+    pub fn read_stream(&self) -> &IrqStreamReader<u8> {
         &self.inner.stream.0
     }
 
