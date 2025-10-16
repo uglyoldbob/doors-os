@@ -134,6 +134,23 @@ async fn user_binary_test() {
 }
 
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
+async fn tftp_test() {
+    let udp = {
+        loop {
+            let udp = modules::network::get_udp(
+                core::net::IpAddr::parse_ascii("11.11.11.11".as_bytes()).unwrap(),
+                69,
+            );
+            if let Some(udp) = udp {
+                crate::VGA.print_str("GOT A UDP OBJECT\r\n");
+                break udp;
+            }
+            executor::AsyncTask::yield_now().await;
+        }
+    };
+}
+
+#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn keyboard_test() {
     crate::VGA
         .print_str_async("Starting keyboard test\r\n")
@@ -221,6 +238,9 @@ fn main() -> ! {
         let mut executor = Executor::default();
         if doors_macros::config_check_equals!(test, "true") {
             executor.spawn_closure_local(non_send_future()).unwrap();
+        }
+        if doors_macros::config_check_equals!(network, "true") {
+            executor.spawn(tftp_test()).unwrap();
         }
         executor
             .spawn(async {

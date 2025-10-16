@@ -18,7 +18,7 @@ impl super::NetworkAdapterTrait for NetworkLoopback {
         todo!()
     }
 
-    async fn send_pending_packets(&mut self) {
+    async fn send_pending_packets(mut self) {
         todo!()
     }
 }

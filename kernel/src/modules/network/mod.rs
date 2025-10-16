@@ -1,13 +1,9 @@
 //! Networking code for the kernel
 
-use alloc::{
-    borrow::ToOwned,
-    boxed::Box,
-    collections::btree_map::BTreeMap,
-    string::{String, ToString},
-    vec::Vec,
-};
-use futures::{future, StreamExt};
+use core::net::IpAddr;
+
+use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String};
+use futures::StreamExt;
 
 use crate::{
     new_stream, AsyncLocked, AsyncLockedArc, IrqStreamReader, IrqStreamWriter, Locked,
@@ -60,6 +56,26 @@ pub async fn get_network_adapter(s: &str) -> Option<IrqStreamWriter<RawEthernetP
     let nal = NETWORK_ADAPTERS.lock().await;
     if nal.contains_key(s) {
         Some(nal.get(s).unwrap().to_owned())
+    } else {
+        None
+    }
+}
+
+/// Get an object for sending and receiving udp traffic
+pub fn get_udp(ip: core::net::IpAddr, dest: u16) -> Option<UdpLayer> {
+    let nal = NETWORK_ADAPTERS.sync_lock();
+    if let Some(a) = nal.first_key_value() {
+        let el = EthernetLayer::new(
+            MacAddress::broadcast(),
+            MacAddress::broadcast(),
+            a.1.clone(),
+        );
+        let ip = Ip4Layer::new(
+            el,
+            ip,
+            IpAddr::parse_ascii("11.11.11.12".as_bytes()).unwrap(),
+        );
+        Some(UdpLayer::new(ip, 12345, dest))
     } else {
         None
     }
@@ -135,7 +151,7 @@ pub trait NetworkAdapterTrait {
     /// Get a new packet sender queue clone
     fn get_sender(&self) -> IrqStreamWriter<RawEthernetPacket>;
     /// Sends pending packets
-    async fn send_pending_packets(&mut self);
+    async fn send_pending_packets(self);
 }
 
 /// A network adapter
@@ -265,17 +281,14 @@ pub async fn receive_packets(
 
 impl NetworkAdapter {
     /// Process network packets received
-    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-    pub async fn run(&mut self) {
+    pub async fn run(mut self) {
         let mymac = self.get_mac_address().await;
         let r = self.get_receiver();
         if let Some(r) = r {
             let s = self.get_sender();
             crate::executor::spawn(receive_packets(mymac, r, s));
         }
-        loop {
-            self.send_pending_packets().await;
-        }
+        crate::executor::spawn(self.send_pending_packets());
     }
 }
 

@@ -15,7 +15,7 @@ use crate::modules::video::hex_dump_generic_async;
 use crate::modules::PciFunctionDriver;
 use crate::{
     new_irq_stream, Arc, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers, IrqStreamReader,
-    IrqStreamWriter,
+    IrqStreamWriter, Locked,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -512,10 +512,8 @@ struct IntelPro1000DeviceInternal {
     /// The rx buffers and the index for the current rx buffer
     rxbufs: crate::IrqGuarded<Option<(RxBuffers, u8)>>,
     /// Packet stream
-    packet_stream: (
-        IrqStreamReader<super::super::RawEthernetPacket>,
-        IrqStreamWriter<super::super::RawEthernetPacket>,
-    ),
+    packet_stream_rx: Locked<Option<IrqStreamReader<super::super::RawEthernetPacket>>>,
+    packet_stream_tx: IrqStreamWriter<super::super::RawEthernetPacket>,
 }
 
 impl Arc<IntelPro1000DeviceInternal> {
@@ -545,11 +543,13 @@ impl Arc<IntelPro1000DeviceInternal> {
 impl IntelPro1000DeviceInternal {
     /// Create a new Self
     fn new(bar0: crate::IrqGuarded<MemoryOrIo>, up: AtomicBool, common: &IrqGuardedInner) -> Self {
+        let p = new_irq_stream(common, 10, 5);
         Self {
             bar0,
             up,
             rxbufs: IrqGuarded::new(None, common),
-            packet_stream: new_irq_stream(common, 10, 5),
+            packet_stream_rx: Locked::new(Some(p.0)),
+            packet_stream_tx: p.1,
         }
     }
 }
@@ -757,17 +757,19 @@ bitfield::bitfield! {
 
 impl NetworkAdapterTrait for IntelPro1000Device {
     fn get_receiver(&self) -> Option<IrqStreamReader<super::super::RawEthernetPacket>> {
-        todo!()
-        //&self.internal.packet_stream.0
+        let mut a = self.internal.packet_stream_rx.sync_lock();
+        a.take()
     }
 
     fn get_sender(&self) -> IrqStreamWriter<crate::modules::network::RawEthernetPacket> {
         self.sendr.clone()
     }
 
-    async fn send_pending_packets(&mut self) {
-        while let Some(p) = self.recvr.get_next() {
-            self.send_packet(&p.data[0..p.length]).await;
+    async fn send_pending_packets(mut self) {
+        loop {
+            while let Some(p) = self.recvr.get_next() {
+                self.send_packet(&p.data[0..p.length]).await;
+            }
         }
     }
 
@@ -1184,10 +1186,7 @@ impl IntelPro1000Device {
                         } else {
                             packet.copy(&buffer.dmas[*index as usize][0..rxbuf.length as usize]);
                         }
-                        doors_macros::todo_item!(
-                            "Figure out how to not use memory allocation here"
-                        );
-                        let _ = this.packet_stream.1.push_interrupt(**packet);
+                        let _ = this.packet_stream_tx.push_interrupt(**packet);
                         let mut t = *index as u32;
                         t = (t + 1) % buffer.bufs.len() as u32;
                         *index = t as u8;
