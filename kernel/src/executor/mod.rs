@@ -355,17 +355,16 @@ impl GlobalExecutor {
                 e.run(&self.current_task_id);
             }
             {
+                let mut e = self.executor.sync_lock();
+                let mut t = self.local_tasks.sync_lock();
+                while let Some(t) = t.pop_first() {
+                    e.spawn_task(t.1).unwrap();
+                }
+            }
+            {
                 let e = self.executor.sync_lock();
                 let t = self.local_tasks.sync_lock();
                 crate::idle_if(|| e.task_list_empty() && t.is_empty());
-            }
-            {
-                let mut e = self.executor.sync_lock();
-                let mut t = self.local_tasks.sync_lock();
-                if let Some(t) = t.pop_first() {
-                    e.all_tasks.insert(t.0, t.1);
-                    e.basic_tasks.add(t.0);
-                }
             }
         }
     }
@@ -462,7 +461,6 @@ pub fn spawn<F: Future<Output = ()> + Send + 'static>(task: F) -> Result<(), ()>
 }
 
 /// Print all of the task locations
-#[cfg_attr(feature = "backtrace", doors_macros::framed)]
 pub async fn print_locations() {
     crate::kernel::EXECUTOR
         .read()

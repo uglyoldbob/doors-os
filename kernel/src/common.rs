@@ -1035,6 +1035,9 @@ impl<T> IrqStreamWriter<T> {
                 break;
             }
         }
+        while let Some(w) = self.wakers.interrupt_access().pop() {
+            w.wake();
+        }
     }
 
     /// Add an element to the stream from an async context

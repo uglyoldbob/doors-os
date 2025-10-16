@@ -4,6 +4,7 @@
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::format;
+use futures::StreamExt;
 
 use crate::kernel::System;
 use crate::modules::network::{MacAddress, NetworkAdapterTrait, RawEthernetFrame};
@@ -766,10 +767,20 @@ impl NetworkAdapterTrait for IntelPro1000Device {
     }
 
     async fn send_pending_packets(mut self) {
+        let mut index = 0;
         loop {
-            while let Some(p) = self.recvr.get_next() {
+            if index == 0 {
+                crate::VGA.print_str_async("Packet sending loop running\r\n").await;
+            }
+            index += 1;
+            if index > 100 {
+                index = 0;
+            }
+            if let Some(p) = self.recvr.next().await {
+                crate::VGA.print_str_async("Sending a packet out\r\n").await;
                 self.send_packet(&p.data[0..p.length]).await;
             }
+            crate::executor::AsyncTask::yield_now().await;
         }
     }
 

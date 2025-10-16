@@ -148,6 +148,9 @@ async fn tftp_test() {
             executor::AsyncTask::yield_now().await;
         }
     };
+    let mut rp = crate::modules::network::RawEthernetPacket::new_box();
+    udp.send_raw_packet(&mut rp, |a| {}, |b| {}).await;
+    crate::VGA.print_str("DONE WITH UDP TEST\r\n");
 }
 
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
@@ -155,6 +158,9 @@ async fn keyboard_test() {
     crate::VGA
         .print_str_async("Starting keyboard test\r\n")
         .await;
+    crate::executor::spawn(async {
+        crate::VGA.print_str_async("Running spawn test\r\n").await;
+    });
     let p = crate::common::KEYBOARD.read();
     let k = p.as_ref().unwrap();
     let mut s = k.read_stream();

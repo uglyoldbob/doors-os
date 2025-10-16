@@ -18,14 +18,14 @@ lazy_static::lazy_static! {
     static ref NETWORK_ADAPTERS: AsyncLocked<BTreeMap<String, IrqStreamWriter<RawEthernetPacket>>> =
         AsyncLocked::new(BTreeMap::new());
     /// The lookup table to convert ip addresses to mac addresses
-    static ref IP_TO_MAC_TABLE: Locked<BTreeMap<core::net::IpAddr, Option<MacAddress>>> = Locked::new(BTreeMap::new());
+    static ref IP_TO_MAC_TABLE: AsyncLockedArc<BTreeMap<core::net::IpAddr, Option<MacAddress>>> = AsyncLockedArc::new(BTreeMap::new());
     /// The list of udp ports expecting data
     static ref UDP_PORTS_INCOMING: AsyncLockedArc<BTreeMap<u16, StreamWriter<UdpPacket>>> = AsyncLockedArc::new(BTreeMap::new());
 }
 
 /// Register a network adapter
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
-pub async fn register_network_adapter(mut na: NetworkAdapter) {
+pub async fn register_network_adapter(na: NetworkAdapter) {
     let mut nal = NETWORK_ADAPTERS.lock().await;
     //TODO implement an automatic naming scheme
     use alloc::string::ToString;
@@ -40,10 +40,15 @@ pub async fn register_network_adapter(mut na: NetworkAdapter) {
         .print_str_async("Spawning network code\r\n")
         .await;
     let nas = na.get_sender();
+    crate::print_locations().await;
+    crate::executor::spawn(async {
+        crate::VGA.print_str_async("Running network1 code\r\n").await;
+    }).unwrap();
     let r = crate::executor::spawn(async move {
         crate::VGA.print_str_async("Running network code\r\n").await;
         na.run().await;
     });
+    crate::print_locations().await;
     crate::VGA
         .print_str_async(&alloc::format!("RESULT Spawning network code: {:?}\r\n", r))
         .await;
@@ -276,19 +281,26 @@ pub async fn receive_packets(
                 crate::VGA.print_str("Received invalid ethernet frame\r\n");
             }
         }
+        crate::executor::AsyncTask::yield_now().await;
     }
 }
 
 impl NetworkAdapter {
     /// Process network packets received
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn run(mut self) {
+        crate::VGA.print_str_async("Starting packet stuff for network interface\r\n").await;
         let mymac = self.get_mac_address().await;
+        crate::VGA.print_str_async("packet2\r\n").await;
         let r = self.get_receiver();
+        crate::VGA.print_str_async("packet3\r\n").await;
         if let Some(r) = r {
             let s = self.get_sender();
-            crate::executor::spawn(receive_packets(mymac, r, s));
+            crate::executor::spawn(receive_packets(mymac, r, s)).unwrap();
         }
-        crate::executor::spawn(self.send_pending_packets());
+        crate::VGA.print_str_async("packet5\r\n").await;
+        crate::executor::spawn(self.send_pending_packets()).unwrap();
+        crate::VGA.print_str_async("Started packet stuff for network interface\r\n").await;
     }
 }
 
@@ -712,7 +724,7 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
     /// Get the mac address of the sender
 
     /// Build the packet ontop of an ethernet layer
-    pub fn send_raw_packet(&self, layer: &EthernetLayer, rp: &mut RawEthernetPacket) {
+    pub async fn send_raw_packet(&self, layer: &EthernetLayer, rp: &mut RawEthernetPacket) {
         layer.send_raw_packet(
             0x0806,
             rp,
@@ -720,7 +732,7 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
             |rp| {
                 self.build_packet(rp);
             },
-        );
+        ).await;
     }
 
     /// construct a packet in the specified raw packet
@@ -884,7 +896,7 @@ impl core::fmt::Debug for RawEthernetPacket {
 
 impl RawEthernetPacket {
     /// Construct a new boxed empty packet, without allocating any memory on the stack
-    fn new_box() -> alloc::boxed::Box<Self> {
+    pub fn new_box() -> alloc::boxed::Box<Self> {
         unsafe {
             let layout = alloc::alloc::Layout::new::<Self>();
             let ptr = alloc::alloc::alloc(layout) as *mut Self;
@@ -926,7 +938,7 @@ impl UdpLayer {
     }
 
     /// Send some data in an ethernet packet
-    pub fn send_raw_packet<F: FnMut(&mut UdpPacketHeader), G: FnMut(&mut RawEthernetPacket)>(
+    pub async fn send_raw_packet<F: FnMut(&mut UdpPacketHeader), G: FnMut(&mut RawEthernetPacket)>(
         &self,
         rp: &mut RawEthernetPacket,
         mut f: F,
@@ -943,7 +955,7 @@ impl UdpLayer {
                 g(rp);
             },
             rp,
-        );
+        ).await;
     }
 }
 
@@ -965,7 +977,7 @@ impl Ip4Layer {
     }
 
     /// Send some data in an ethernet packet
-    pub fn send_raw_packet<F: FnMut(&mut Ipv4PacketHeader), G: FnMut(&mut RawEthernetPacket)>(
+    pub async fn send_raw_packet<F: FnMut(&mut Ipv4PacketHeader), G: FnMut(&mut RawEthernetPacket)>(
         &self,
         mut f: F,
         mut g: G,
@@ -976,6 +988,7 @@ impl Ip4Layer {
             let mut mac_lookup = IP_TO_MAC_TABLE.sync_lock();
             let look_dst = !mac_lookup.contains_key(&self.dest);
             if look_dst {
+                crate::VGA.print_str("NEED TO GET MAC ADDRESS\r\n");
                 let arp_req = AddressResolutionProtocolPacket {
                     htype: 1,
                     ptype: 0x0800,
@@ -989,12 +1002,14 @@ impl Ip4Layer {
                 };
                 let mut rp2 = RawEthernetPacket::new_box();
                 mac_lookup.insert(self.dest, None);
-                arp_req.send_raw_packet(&self.ethernet, &mut rp2);
+                arp_req.send_raw_packet(&self.ethernet, &mut rp2).await;
             }
             if let Some(Some(_)) = mac_lookup.get(&self.dest) {
                 break;
             }
+            crate::executor::AsyncTask::yield_now().await;
         }
+        crate::VGA.print_str("GOT MAC ADDRESS\r\n");
         f(&mut header);
         self.ethernet.send_raw_packet(
             0x0800,
@@ -1004,7 +1019,7 @@ impl Ip4Layer {
                 header.add_to_packet(rp);
                 g(rp);
             },
-        );
+        ).await;
     }
 }
 
@@ -1032,7 +1047,7 @@ impl EthernetLayer {
     /// * rp - The RawEthernetPacket to build the packet with
     /// * f - The closure used to optionally modify the ethernet frame header
     /// * g - The closure used to append the data to the packet
-    pub fn send_raw_packet<F: FnMut(&mut EthernetFrameHeader), G: FnMut(&mut RawEthernetPacket)>(
+    pub async fn send_raw_packet<F: FnMut(&mut EthernetFrameHeader), G: FnMut(&mut RawEthernetPacket)>(
         &self,
         t: u16,
         rp: &mut RawEthernetPacket,
@@ -1055,6 +1070,7 @@ impl EthernetLayer {
             rp.data[rp.length..rp.length + 4].copy_from_slice(&c[0..4]);
             rp.length += 4;
         }
-        self.sender.write_sync(*rp);
+        self.sender.write(*rp).await;
+        crate::VGA.print_str("QUEUED A PACKET TO SEND\r\n");
     }
 }
