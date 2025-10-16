@@ -1032,6 +1032,7 @@ impl IntelPro1000Device {
             if mdic.ready() {
                 break;
             }
+            crate::executor::AsyncTask::yield_now().await;
         }
         let v = bar0.read(IntelPro1000Registers::Mdic as u16);
         let mdic = MdicRegister(v);
@@ -1260,6 +1261,7 @@ impl IntelPro1000Device {
                 if (a & (0x10)) != 0 {
                     return (a >> 16) as u16;
                 }
+                crate::executor::AsyncTask::yield_now().await;
             }
         } else {
             let mut bar0 = self.internal.bar0.access().await;
@@ -1272,6 +1274,7 @@ impl IntelPro1000Device {
                 if (a & (0x2)) != 0 {
                     return (a >> 16) as u16;
                 }
+                crate::executor::AsyncTask::yield_now().await;
             }
         }
     }

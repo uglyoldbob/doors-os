@@ -721,8 +721,6 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
         }
     }
 
-    /// Get the mac address of the sender
-
     /// Build the packet ontop of an ethernet layer
     pub async fn send_raw_packet(&self, layer: &EthernetLayer, rp: &mut RawEthernetPacket) {
         layer.send_raw_packet(

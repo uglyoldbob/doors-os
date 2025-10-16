@@ -218,7 +218,7 @@ impl TaskList {
         polled: &mut [Option<usize>; 6],
         current_task_id: &crate::LockedArc<Option<TaskId>>,
     ) {
-        while let Some(taskid) = self.tasks.pop() {
+        if let Some(taskid) = self.tasks.pop() {
             let task = all_tasks.get_mut(&taskid);
             if let Some(task) = task {
                 let waker = wakers
