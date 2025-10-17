@@ -5,7 +5,6 @@
 #![allow(async_fn_in_trait)]
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
-#![feature(addr_parse_ascii)]
 #![feature(allocator_api)]
 #![feature(abi_x86_interrupt)]
 #![feature(async_fn_traits)]
@@ -38,6 +37,9 @@ const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/r
 doors_macros::use_doors_test!();
 
 mod common;
+
+use core::net::IpAddr;
+use core::str::FromStr;
 
 pub use common::*;
 
@@ -137,10 +139,7 @@ async fn user_binary_test() {
 async fn tftp_test() {
     let udp = {
         loop {
-            let udp = modules::network::get_udp(
-                core::net::IpAddr::parse_ascii("11.11.11.11".as_bytes()).unwrap(),
-                69,
-            );
+            let udp = modules::network::get_udp(IpAddr::from_str("11.11.11.11").unwrap(), 69);
             if let Some(udp) = udp {
                 crate::VGA.print_str("GOT A UDP OBJECT\r\n");
                 break udp;
@@ -149,7 +148,14 @@ async fn tftp_test() {
         }
     };
     let mut rp = crate::modules::network::RawEthernetPacket::new_box();
-    udp.send_raw_packet(&mut rp, |a| {}, |b| {}).await;
+    udp.send_raw_packet(
+        &mut rp,
+        |a| {
+            crate::VGA.print_str(&alloc::format!("Preparing udp header {:?}\r\n", a));
+        },
+        |b| {},
+    )
+    .await;
     crate::VGA.print_str("DONE WITH UDP TEST\r\n");
 }
 

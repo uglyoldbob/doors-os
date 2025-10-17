@@ -770,7 +770,9 @@ impl NetworkAdapterTrait for IntelPro1000Device {
         let mut index = 0;
         loop {
             if index == 0 {
-                crate::VGA.print_str_async("Packet sending loop running\r\n").await;
+                crate::VGA
+                    .print_str_async("Packet sending loop running\r\n")
+                    .await;
             }
             index += 1;
             if index > 100 {
@@ -780,7 +782,6 @@ impl NetworkAdapterTrait for IntelPro1000Device {
                 crate::VGA.print_str_async("Sending a packet out\r\n").await;
                 self.send_packet(&p.data[0..p.length]).await;
             }
-            crate::executor::AsyncTask::yield_now().await;
         }
     }
 

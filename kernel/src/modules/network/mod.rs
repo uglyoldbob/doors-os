@@ -1,6 +1,6 @@
 //! Networking code for the kernel
 
-use core::net::IpAddr;
+use core::{net::IpAddr, str::FromStr};
 
 use alloc::{borrow::ToOwned, boxed::Box, collections::btree_map::BTreeMap, string::String};
 use futures::StreamExt;
@@ -42,8 +42,11 @@ pub async fn register_network_adapter(na: NetworkAdapter) {
     let nas = na.get_sender();
     crate::print_locations().await;
     crate::executor::spawn(async {
-        crate::VGA.print_str_async("Running network1 code\r\n").await;
-    }).unwrap();
+        crate::VGA
+            .print_str_async("Running network1 code\r\n")
+            .await;
+    })
+    .unwrap();
     let r = crate::executor::spawn(async move {
         crate::VGA.print_str_async("Running network code\r\n").await;
         na.run().await;
@@ -75,11 +78,7 @@ pub fn get_udp(ip: core::net::IpAddr, dest: u16) -> Option<UdpLayer> {
             MacAddress::broadcast(),
             a.1.clone(),
         );
-        let ip = Ip4Layer::new(
-            el,
-            ip,
-            IpAddr::parse_ascii("11.11.11.12".as_bytes()).unwrap(),
-        );
+        let ip = Ip4Layer::new(el, ip, IpAddr::from_str("11.11.11.12").unwrap());
         Some(UdpLayer::new(ip, 12345, dest))
     } else {
         None
@@ -223,9 +222,18 @@ pub async fn receive_packets(
                                 if let Some(ip) =
                                     address_resolution_protocol_packet.get_sender_protocol_address()
                                 {
+                                    crate::VGA
+                                        .print_str_async(&alloc::format!(
+                                            "Processing arp reply for {}\r\n",
+                                            ip
+                                        ))
+                                        .await;
                                     if let Some(mac) =
                                         address_resolution_protocol_packet.get_sender_mac_address()
                                     {
+                                        crate::VGA
+                                            .print_str_async("Processing arp reply\r\n")
+                                            .await;
                                         table.insert(ip, Some(mac));
                                     }
                                 }
@@ -289,7 +297,9 @@ impl NetworkAdapter {
     /// Process network packets received
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     pub async fn run(mut self) {
-        crate::VGA.print_str_async("Starting packet stuff for network interface\r\n").await;
+        crate::VGA
+            .print_str_async("Starting packet stuff for network interface\r\n")
+            .await;
         let mymac = self.get_mac_address().await;
         crate::VGA.print_str_async("packet2\r\n").await;
         let r = self.get_receiver();
@@ -300,7 +310,9 @@ impl NetworkAdapter {
         }
         crate::VGA.print_str_async("packet5\r\n").await;
         crate::executor::spawn(self.send_pending_packets()).unwrap();
-        crate::VGA.print_str_async("Started packet stuff for network interface\r\n").await;
+        crate::VGA
+            .print_str_async("Started packet stuff for network interface\r\n")
+            .await;
     }
 }
 
@@ -537,54 +549,34 @@ pub struct Ipv4PacketHeader {
 }
 
 impl Ipv4PacketHeader {
+    /// Put the header into the given chunk of data
+    pub fn construct_header_without_checksum(&self, d: &mut [u8]) {
+        d[0] = (self.version << 4) | (self.header_size & 0xF);
+        d[1] = (self.dscp << 2) | (self.ecn & 0x3);
+        d[2..=3].copy_from_slice(&self.total_length.to_be_bytes());
+        d[4..=5].copy_from_slice(&self.id.to_be_bytes());
+        let b = ((self.flags as u16) << 13) | self.fragment_offset;
+        d[6..=7].copy_from_slice(&b.to_be_bytes());
+        d[8] = self.ttl;
+        d[9] = self.protocol;
+    }
+
     /// Add the header to the given packet
     pub fn add_to_packet(&mut self, rp: &mut RawEthernetPacket) {
         self.checksum = 0;
-        let mut sum = self.version as u16;
-        sum = sum.overflowing_add(self.header_size as u16).0;
-        sum = sum.overflowing_add(self.dscp as u16).0;
-        sum = sum.overflowing_add(self.ecn as u16).0;
-        for a in self.total_length.to_be_bytes() {
-            sum = sum.overflowing_add(a as u16).0;
+        let mut header = [0; 12];
+        self.construct_header_without_checksum(&mut header);
+        for b in &header {
+            self.checksum = self.checksum.wrapping_add(*b as u16);
         }
-        for a in self.id.to_be_bytes() {
-            sum = sum.overflowing_add(a as u16).0;
-        }
-        sum = sum.overflowing_add(self.flags as u16).0;
-        for a in self.fragment_offset.to_be_bytes() {
-            sum = sum.overflowing_add(a as u16).0;
-        }
-        sum = sum.overflowing_add(self.ttl as u16).0;
-        sum = sum.overflowing_add(self.protocol as u16).0;
-        self.checksum = sum ^ 0xffff;
-        rp.data[rp.length] = self.version;
-        rp.length += 1;
-        rp.data[rp.length] = self.dscp;
-        rp.length += 1;
-        rp.data[rp.length] = self.ecn;
-        rp.length += 1;
-        for a in self.total_length.to_be_bytes() {
-            rp.data[rp.length] = a;
-            rp.length += 1;
-        }
-        for a in self.id.to_be_bytes() {
-            rp.data[rp.length] = a;
-            rp.length += 1;
-        }
-        rp.data[rp.length] = self.flags;
-        rp.length += 1;
-        for a in self.fragment_offset.to_be_bytes() {
-            rp.data[rp.length] = a;
-            rp.length += 1;
-        }
-        rp.data[rp.length] = self.ttl;
-        rp.length += 1;
-        rp.data[rp.length] = self.protocol;
-        rp.length += 1;
-        for a in self.checksum.to_be_bytes() {
-            rp.data[rp.length] = a;
-            rp.length += 1;
-        }
+        self.checksum ^= 0xffff;
+        header[10..=11].copy_from_slice(&self.checksum.to_be_bytes());
+        rp.data[rp.length..rp.length + 12].copy_from_slice(&header);
+        rp.length += 12;
+        rp.data[rp.length..rp.length + 4].copy_from_slice(&self.source.to_be_bytes());
+        rp.length += 4;
+        rp.data[rp.length..rp.length + 4].copy_from_slice(&self.destination.to_be_bytes());
+        rp.length += 4;
         for a in self
             .options
             .iter()
@@ -703,8 +695,21 @@ pub struct AddressResolutionProtocolPacket<'a> {
 impl<'a> AddressResolutionProtocolPacket<'a> {
     /// Get the ip address in ip format
     pub fn get_sender_protocol_address(&self) -> Option<core::net::IpAddr> {
+        crate::VGA.print_str(&alloc::format!(
+            "Processing arp reply for type {:x} {:x?}\r\n",
+            self.ptype,
+            self.sender_protocol_address
+        ));
         if self.ptype == 0x0800 {
-            core::net::IpAddr::parse_ascii(self.sender_protocol_address).ok()
+            let ip = [
+                self.sender_protocol_address[0],
+                self.sender_protocol_address[1],
+                self.sender_protocol_address[2],
+                self.sender_protocol_address[3],
+            ];
+            let a = core::net::IpAddr::from(ip);
+            crate::VGA.print_str(&alloc::format!("Processing arp reply with {:?}\r\n", a));
+            Some(a)
         } else {
             None
         }
@@ -723,14 +728,16 @@ impl<'a> AddressResolutionProtocolPacket<'a> {
 
     /// Build the packet ontop of an ethernet layer
     pub async fn send_raw_packet(&self, layer: &EthernetLayer, rp: &mut RawEthernetPacket) {
-        layer.send_raw_packet(
-            0x0806,
-            rp,
-            |h| {},
-            |rp| {
-                self.build_packet(rp);
-            },
-        ).await;
+        layer
+            .send_raw_packet(
+                0x0806,
+                rp,
+                |h| {},
+                |rp| {
+                    self.build_packet(rp);
+                },
+            )
+            .await;
     }
 
     /// construct a packet in the specified raw packet
@@ -936,7 +943,10 @@ impl UdpLayer {
     }
 
     /// Send some data in an ethernet packet
-    pub async fn send_raw_packet<F: FnMut(&mut UdpPacketHeader), G: FnMut(&mut RawEthernetPacket)>(
+    pub async fn send_raw_packet<
+        F: FnMut(&mut UdpPacketHeader),
+        G: FnMut(&mut RawEthernetPacket),
+    >(
         &self,
         rp: &mut RawEthernetPacket,
         mut f: F,
@@ -946,14 +956,18 @@ impl UdpLayer {
         f(&mut header);
         header.source = self.source;
         header.destination = self.destin;
-        self.ipv4.send_raw_packet(
-            |ipv4| {},
-            |rp| {
-                header.make_raw_packet(rp);
-                g(rp);
-            },
-            rp,
-        ).await;
+        self.ipv4
+            .send_raw_packet(
+                |ipv4| {
+                    ipv4.protocol = 17;
+                },
+                |rp| {
+                    header.make_raw_packet(rp);
+                    g(rp);
+                },
+                rp,
+            )
+            .await;
     }
 }
 
@@ -975,7 +989,10 @@ impl Ip4Layer {
     }
 
     /// Send some data in an ethernet packet
-    pub async fn send_raw_packet<F: FnMut(&mut Ipv4PacketHeader), G: FnMut(&mut RawEthernetPacket)>(
+    pub async fn send_raw_packet<
+        F: FnMut(&mut Ipv4PacketHeader),
+        G: FnMut(&mut RawEthernetPacket),
+    >(
         &self,
         mut f: F,
         mut g: G,
@@ -983,41 +1000,57 @@ impl Ip4Layer {
     ) {
         let mut header = Ipv4PacketHeader::default();
         loop {
-            let mut mac_lookup = IP_TO_MAC_TABLE.sync_lock();
-            let look_dst = !mac_lookup.contains_key(&self.dest);
-            if look_dst {
-                crate::VGA.print_str("NEED TO GET MAC ADDRESS\r\n");
-                let arp_req = AddressResolutionProtocolPacket {
-                    htype: 1,
-                    ptype: 0x0800,
-                    address_length: 6,
-                    protocol_length: 4,
-                    operation: 1,
-                    sender_hardware_address: &self.ethernet.src.address,
-                    sender_protocol_address: self.src.as_octets(),
-                    target_hardware_address: &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
-                    target_protocol_address: self.dest.as_octets(),
-                };
-                let mut rp2 = RawEthernetPacket::new_box();
-                mac_lookup.insert(self.dest, None);
-                arp_req.send_raw_packet(&self.ethernet, &mut rp2).await;
-            }
-            if let Some(Some(_)) = mac_lookup.get(&self.dest) {
-                break;
+            {
+                let mut mac_lookup = IP_TO_MAC_TABLE.sync_lock();
+                let look_dst = !mac_lookup.contains_key(&self.dest);
+                if look_dst {
+                    crate::VGA.print_str("NEED TO GET MAC ADDRESS\r\n");
+                    let arp_req = AddressResolutionProtocolPacket {
+                        htype: 1,
+                        ptype: 0x0800,
+                        address_length: 6,
+                        protocol_length: 4,
+                        operation: 1,
+                        sender_hardware_address: &self.ethernet.src.address,
+                        sender_protocol_address: self.src.as_octets(),
+                        target_hardware_address: &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+                        target_protocol_address: self.dest.as_octets(),
+                    };
+                    let mut rp2 = RawEthernetPacket::new_box();
+                    mac_lookup.insert(self.dest, None);
+                    arp_req.send_raw_packet(&self.ethernet, &mut rp2).await;
+                }
+                if let Some(Some(_)) = mac_lookup.get(&self.dest) {
+                    break;
+                }
             }
             crate::executor::AsyncTask::yield_now().await;
         }
         crate::VGA.print_str("GOT MAC ADDRESS\r\n");
+        header.version = 4;
+        header.header_size = 5;
+        let i = self.src.as_octets();
+        let srcip = [i[0], i[1], i[2], i[3]];
+        header.source = u32::from_be_bytes(srcip);
+        let i = self.dest.as_octets();
+        let destip = [i[0], i[1], i[2], i[3]];
+        header.destination = u32::from_be_bytes(destip);
+        header.ttl = 40;
         f(&mut header);
-        self.ethernet.send_raw_packet(
-            0x0800,
-            rp,
-            |p| {},
-            |rp| {
-                header.add_to_packet(rp);
-                g(rp);
-            },
-        ).await;
+        crate::VGA
+            .print_str_async(&alloc::format!("Ip4 header {:?}\r\n", header))
+            .await;
+        self.ethernet
+            .send_raw_packet(
+                0x0800,
+                rp,
+                |p| {},
+                |rp| {
+                    header.add_to_packet(rp);
+                    g(rp);
+                },
+            )
+            .await;
     }
 }
 
@@ -1045,7 +1078,10 @@ impl EthernetLayer {
     /// * rp - The RawEthernetPacket to build the packet with
     /// * f - The closure used to optionally modify the ethernet frame header
     /// * g - The closure used to append the data to the packet
-    pub async fn send_raw_packet<F: FnMut(&mut EthernetFrameHeader), G: FnMut(&mut RawEthernetPacket)>(
+    pub async fn send_raw_packet<
+        F: FnMut(&mut EthernetFrameHeader),
+        G: FnMut(&mut RawEthernetPacket),
+    >(
         &self,
         t: u16,
         rp: &mut RawEthernetPacket,
