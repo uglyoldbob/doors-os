@@ -991,6 +991,9 @@ impl<T: Unpin> core::future::Future for IrqWriteElement<T> {
         } else {
             if let Some(t) = self.stuff.take() {
                 self.queue.access().push(t);
+                while let Some(w) = self.wakers.interrupt_access().pop() {
+                    w.wake();
+                }
                 return core::task::Poll::Ready(());
             } else {
                 return core::task::Poll::Pending;

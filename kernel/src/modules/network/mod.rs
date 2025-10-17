@@ -382,6 +382,7 @@ pub struct UdpPacketReference<'a> {
 impl UdpPacketHeader {
     /// Send some data in an ethernet packet
     pub fn make_raw_packet(&self, rp: &mut RawEthernetPacket) {
+        crate::VGA.print_str(&alloc::format!("ADDING UDP HEADER: {:?}\r\n", self));
         rp.data[rp.length..rp.length + 2].copy_from_slice(&self.source.to_be_bytes());
         rp.length += 2;
         rp.data[rp.length..rp.length + 2].copy_from_slice(&self.destination.to_be_bytes());
@@ -577,11 +578,7 @@ impl Ipv4PacketHeader {
         rp.length += 4;
         rp.data[rp.length..rp.length + 4].copy_from_slice(&self.destination.to_be_bytes());
         rp.length += 4;
-        for a in self
-            .options
-            .iter()
-            .take((self.header_size as usize - 20) / 4)
-        {
+        for a in self.options.iter().take(self.header_size as usize - 5) {
             for a in a.to_be_bytes() {
                 rp.data[rp.length] = a;
                 rp.length += 1;
@@ -858,6 +855,15 @@ pub struct RawEthernetPacket {
     length: usize,
 }
 
+impl RawEthernetPacket {
+    /// Push some data to the packet
+    pub fn push_data(&mut self, d: &[u8]) {
+        let len = d.len();
+        self.data[self.length..self.length + len].copy_from_slice(d);
+        self.length += len;
+    }
+}
+
 impl<'a> TryFrom<&'a RawEthernetPacket> for RawEthernetFrame<'a> {
     type Error = ();
     fn try_from(value: &'a RawEthernetPacket) -> Result<Self, Self::Error> {
@@ -944,7 +950,7 @@ impl UdpLayer {
 
     /// Send some data in an ethernet packet
     pub async fn send_raw_packet<
-        F: FnMut(&mut UdpPacketHeader),
+        F: FnMut(&mut UdpPacketHeader) -> u16,
         G: FnMut(&mut RawEthernetPacket),
     >(
         &self,
@@ -953,17 +959,31 @@ impl UdpLayer {
         mut g: G,
     ) {
         let mut header = UdpPacketHeader::default();
-        f(&mut header);
+        let len = f(&mut header);
         header.source = self.source;
         header.destination = self.destin;
+        header.length = len + 8;
         self.ipv4
             .send_raw_packet(
                 |ipv4| {
                     ipv4.protocol = 17;
+                    len + 8
                 },
                 |rp| {
+                    crate::VGA.print_str(&alloc::format!(
+                        "PACKET IS CURRENT1 {} bytes\r\n",
+                        rp.length
+                    ));
                     header.make_raw_packet(rp);
+                    crate::VGA.print_str(&alloc::format!(
+                        "PACKET IS CURRENT2 {} bytes\r\n",
+                        rp.length
+                    ));
                     g(rp);
+                    crate::VGA.print_str(&alloc::format!(
+                        "PACKET IS CURRENT3 {} bytes\r\n",
+                        rp.length
+                    ));
                 },
                 rp,
             )
@@ -990,7 +1010,7 @@ impl Ip4Layer {
 
     /// Send some data in an ethernet packet
     pub async fn send_raw_packet<
-        F: FnMut(&mut Ipv4PacketHeader),
+        F: FnMut(&mut Ipv4PacketHeader) -> u16,
         G: FnMut(&mut RawEthernetPacket),
     >(
         &self,
@@ -1036,7 +1056,7 @@ impl Ip4Layer {
         let destip = [i[0], i[1], i[2], i[3]];
         header.destination = u32::from_be_bytes(destip);
         header.ttl = 40;
-        f(&mut header);
+        header.total_length = f(&mut header) + header.header_size as u16 * 4;
         crate::VGA
             .print_str_async(&alloc::format!("Ip4 header {:?}\r\n", header))
             .await;
@@ -1046,8 +1066,20 @@ impl Ip4Layer {
                 rp,
                 |p| {},
                 |rp| {
+                    crate::VGA.print_str(&alloc::format!(
+                        "IP PACKET IS CURRENT1 {} bytes\r\n",
+                        rp.length
+                    ));
                     header.add_to_packet(rp);
+                    crate::VGA.print_str(&alloc::format!(
+                        "IP PACKET IS CURRENT2 {} bytes\r\n",
+                        rp.length
+                    ));
                     g(rp);
+                    crate::VGA.print_str(&alloc::format!(
+                        "IP PACKET IS CURRENT3 {} bytes\r\n",
+                        rp.length
+                    ));
                 },
             )
             .await;

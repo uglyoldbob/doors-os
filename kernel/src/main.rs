@@ -152,8 +152,12 @@ async fn tftp_test() {
         &mut rp,
         |a| {
             crate::VGA.print_str(&alloc::format!("Preparing udp header {:?}\r\n", a));
+            17
         },
-        |b| {},
+        |b| {
+            let a = [0; 17];
+            b.push_data(&a);
+        },
     )
     .await;
     crate::VGA.print_str("DONE WITH UDP TEST\r\n");
