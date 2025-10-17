@@ -148,18 +148,7 @@ async fn tftp_test() {
         }
     };
     let mut rp = crate::modules::network::RawEthernetPacket::new_box();
-    udp.send_raw_packet(
-        &mut rp,
-        |a| {
-            crate::VGA.print_str(&alloc::format!("Preparing udp header {:?}\r\n", a));
-            17
-        },
-        |b| {
-            let a = [0; 17];
-            b.push_data(&a);
-        },
-    )
-    .await;
+    udp.send_data(&[1, 2, 3, 4]).await;
     crate::VGA.print_str("DONE WITH UDP TEST\r\n");
 }
 

@@ -948,6 +948,29 @@ impl UdpLayer {
         }
     }
 
+    /// Send the specified data in a udp packet
+    pub async fn send_data(&self, d: &[u8]) {
+        let mut header = UdpPacketHeader::default();
+        let mut rp = RawEthernetPacket::new_box();
+        let len = d.len() as u16;
+        header.source = self.source;
+        header.destination = self.destin;
+        header.length = len + 8;
+        self.ipv4
+            .send_raw_packet(
+                |ipv4| {
+                    ipv4.protocol = 17;
+                    len + 8
+                },
+                |rp| {
+                    header.make_raw_packet(rp);
+                    rp.push_data(d);
+                },
+                &mut rp,
+            )
+            .await;
+    }
+
     /// Send some data in an ethernet packet
     pub async fn send_raw_packet<
         F: FnMut(&mut UdpPacketHeader) -> u16,
