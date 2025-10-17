@@ -1041,7 +1041,7 @@ impl<T> IrqStreamWriter<T> {
     }
 
     /// Add an element to the stream from an async context
-    pub async fn write<'a>(&'a self, val: T) -> IrqWriteElement<T> {
+    pub fn write<'a>(&'a self, val: T) -> IrqWriteElement<T> {
         IrqWriteElement {
             stuff: Some(val),
             queue: self.queue.clone(),
