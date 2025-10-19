@@ -12,6 +12,7 @@
 #![feature(ip_as_octets)]
 #![feature(negative_impls)]
 #![feature(proc_macro_hygiene)]
+#![feature(stmt_expr_attributes)]
 #![feature(type_alias_impl_trait)]
 
 doors_macros::load_config!();
@@ -135,6 +136,7 @@ async fn user_binary_test() {
     }
 }
 
+#[doors_macros::config_check_equals_attr(network, "true")]
 #[cfg_attr(feature = "backtrace", doors_macros::framed)]
 async fn tftp_test() {
     let udp = {
@@ -244,7 +246,8 @@ fn main() -> ! {
         if doors_macros::config_check_equals!(test, "true") {
             executor.spawn_closure_local(non_send_future()).unwrap();
         }
-        if doors_macros::config_check_equals!(network, "true") {
+        #[doors_macros::config_check_equals_attr(network, "true")]
+        {
             executor.spawn(tftp_test()).unwrap();
         }
         executor
