@@ -834,8 +834,9 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                         ),
                                     );
                                 }
-                                acpi::sdt::madt::MadtEntry::IoApic(_ioapic) => {
-                                    crate::VGA.print_str("madt ioapic entry\r\n");
+                                acpi::sdt::madt::MadtEntry::IoApic(ioapic) => {
+                                    let addr = ioapic.io_apic_address;
+                                    crate::VGA.print_str(&alloc::format!("madt ioapic entry {:x}\r\n", addr));
                                 }
                                 acpi::sdt::madt::MadtEntry::InterruptSourceOverride(_i) => {
                                     crate::VGA.print_str("madt int source override\r\n");

@@ -165,6 +165,13 @@ impl super::EmulationTrait for VirtualBox {
                 .unwrap();
         }
 
+        std::process::Command::new(local.vboxmanage_path())
+            .args(["modifyvm", "doors-os-64", "--hpet", "on"])
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+
         match disk {
             super::Disk::Network(_p) => {}
             super::Disk::Cd(p) => {
