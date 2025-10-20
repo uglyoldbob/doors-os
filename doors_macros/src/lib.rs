@@ -311,7 +311,7 @@ pub fn enum_module_filter(
                     None
                 }
             } else {
-                panic!("Expected the form doors_module = \"something\"");
+                None
             };
             if let Some(ca) = ca {
                 found_attr = true;

@@ -476,30 +476,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         if let Some(r) = &mut s.reset {
             r.set_output();
             r.write_output(false);
-
-            {
-                use crate::modules::timer::TimerTrait;
-                let mut timers = crate::kernel::TIMERS.sync_lock();
-                let tp = timers.module(0);
-                drop(timers);
-                let mut tpl = tp.sync_lock();
-                let timer = tpl.get_timer(0).unwrap();
-                drop(tpl);
-                timer.sync_use().delay_ms(40);
-            }
-
+            crate::modules::timer::delay_ms_sync(40);
             r.write_output(true);
 
-            {
-                use crate::modules::timer::TimerTrait;
-                let mut timers = crate::kernel::TIMERS.sync_lock();
-                let tp = timers.module(0);
-                drop(timers);
-                let mut tpl = tp.sync_lock();
-                let timer = tpl.get_timer(0).unwrap();
-                drop(tpl);
-                timer.sync_use().delay_ms(240);
-            }
+            crate::modules::timer::delay_ms_sync(240);
         }
 
         //enter command 2 mode, enable parameter shift
@@ -508,28 +488,10 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         s.write_command(dsi, 0xff80, &[0x80, 9])?;
         //porch and non-display area are gnd
         s.write_command(dsi, 0xc480, &[0x30])?;
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.sync_lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.sync_lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            timer.sync_use().delay_ms(10);
-        }
+        crate::modules::timer::delay_ms_sync(10);
         //unknown
         s.write_command(dsi, 0xc48a, &[0x40])?;
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.sync_lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.sync_lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            timer.sync_use().delay_ms(10);
-        }
+        crate::modules::timer::delay_ms_sync(10);
         //power control 4 setting, sets te level, ledon level, vcom sample
         s.write_command(dsi, 0xc5b1, &[0xa9])?;
         //charge pump settings
@@ -648,16 +610,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
         dsi.dcs_basic_command(0, DcsCommandType::Nop)?;
         dsi.dcs_basic_command(0, DcsCommandType::ExitSleep)?;
 
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.sync_lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.sync_lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            timer.sync_use().delay_ms(120);
-        }
+        crate::modules::timer::delay_ms_sync(120);
 
         let data = [DcsCommandType::SetAddressMode as u8, 0];
         dsi.dcs_write_buffer(0, &data)?;
@@ -683,16 +636,7 @@ impl DsiPanelTrait for LockedArc<OrisetechOtm8009a> {
 
         dsi.dcs_basic_command(0, DcsCommandType::WriteControlDisplay)?;
 
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.sync_lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.sync_lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            timer.sync_use().delay_ms(10);
-        }
+        crate::modules::timer::delay_ms_sync(10);
         Ok(())
     }
 }

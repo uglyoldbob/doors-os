@@ -187,6 +187,11 @@ impl TimerHandler {
         Self { timerp: Vec::new() }
     }
 
+    /// Get an interator over all of the timers
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<LockedArc<crate::modules::timer::Timer>> {
+        self.timerp.iter_mut()
+    }
+
     /// Add a serial module to the system
     pub fn register_timer(&mut self, m: crate::modules::timer::Timer) {
         self.timerp.push(LockedArc::new(m));

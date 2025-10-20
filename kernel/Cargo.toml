@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 arraystring = {version = "0.3.0", default-features=false }
+async-trait = "0.1.89"
 bitfield = "0.18.1"
 bitflags = "2.4.2"
 cfg-if = "1.0.0"

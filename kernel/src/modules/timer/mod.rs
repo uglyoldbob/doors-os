@@ -1,5 +1,7 @@
 //! Timer related code
 
+use core::marker::PhantomData;
+
 use alloc::boxed::Box;
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
@@ -11,6 +13,9 @@ use crate::{
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
+#[doors_macros::module_builtin_attr(hpet, "true")]
+pub mod hpet;
+
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod x86;
 
@@ -19,13 +24,36 @@ pub mod x86;
 pub enum TimerError {
     /// The timer desired is in use
     TimerIsAlreadyUsed,
+    /// Invalid timer number specified
+    InvalidTimerIndex,
 }
 
-/// The trait implemented by timer provider implementations
+/// An iterator over timer channels
+pub enum TimerIterator<'a> {
+    /// A dummy iterator
+    Dummy(DummyTimerIterator<'a>),
+    /// hpet iterator
+    Hpet(hpet::HpetTimerIterator<'a>),
+    /// The pit iterator
+    Pit(DummyTimerIterator<'a>),
+}
+
+impl<'a> Iterator for TimerIterator<'a> {
+    type Item = &'a mut TimerInstanceInner;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Dummy(t) => t.next(),
+            Self::Hpet(t) => t.next(),
+            Self::Pit(t) => t.next(),
+        }
+    }
+}
+
+/// The trait implemented by timer provider implementations. A timer provider provides one or more timer instances,
 #[enum_dispatch::enum_dispatch]
 pub trait TimerTrait {
-    /// Return the inner timer
-    fn return_timer_inner(&mut self, i: u8, t: TimerInstanceInner);
+    /// Iterate over all timer channels
+    fn iter_mut(&mut self) -> TimerIterator<'_>;
     /// Get an inner timer
     fn get_timer_inner(&mut self, i: u8) -> Result<TimerInstanceInner, TimerError>;
     /// Get a timer instance
@@ -36,32 +64,76 @@ pub trait TimerTrait {
     }
 }
 
+/// Implemented by timers that can delay for arbitrary periods of time
+#[async_trait::async_trait]
+pub trait ArbitraryTimerTrait {
+    /// Delay a specified number of milliseconds. This will be eventually deprecated and removed.
+    fn delay_ms_sync(&self, ms: u32);
+    /// Delay a specified number of microseconds. This will be eventually deprecated and removed.
+    fn delay_us_sync(&self, us: u32);
+    /// Asynchronously delay the specified number of milliseconds
+    async fn delay_ms_async(&self, ms: u32);
+}
+
+/// Delay the specified number of milliseconds asynchronously.
+pub async fn delay_ms_async(ms: u32) {
+    let mut timers = crate::kernel::TIMERS.sync_lock();
+    for t in timers.iter_mut() {
+        let mut t = t.sync_lock();
+        for tm in t.iter_mut() {
+            if let Some(tmm) = tm.supports_arbitrary_timing() {
+                tmm.delay_ms_async(ms).await;
+                return;
+            }
+        }
+    }
+    panic!()
+}
+
+/// Delay a specified number of milliseconds. This will eventually be deprecated and removed
+pub fn delay_ms_sync(ms: u32) {
+    let mut timers = crate::kernel::TIMERS.sync_lock();
+    for t in timers.iter_mut() {
+        let mut t = t.sync_lock();
+        for tm in t.iter_mut() {
+            if let Some(tmm) = tm.supports_arbitrary_timing() {
+                tmm.delay_ms_sync(ms);
+                return;
+            }
+        }
+    }
+    panic!()
+}
+
 /// The inner trait implemented by a single timer instance
 #[enum_dispatch::enum_dispatch]
 pub trait TimerInstanceInnerTrait {
-    /// Delay a specified number of milliseconds
-    fn delay_ms(&self, ms: u32);
-    /// Delay a specified number of microseconds
-    fn delay_us(&self, us: u32);
+    /// Does the timer support arbitrary timing
+    fn supports_arbitrary_timing(&self) -> Option<&dyn ArbitraryTimerTrait>;
     /// Start or restart a oneshot timer
     fn start_oneshot(&mut self);
-    /// Get the irq guard inner
+    /// Get the irq guard inner, used to construct an individual timer channel
     fn get_guard_inner(&self) -> IrqGuardedInner;
     /// Handle the hardware interrupt, and return which channel fired the interrupt
     fn hardware_interrupt(&self) -> u8;
 }
 
 /// An enumeration the types of timer instances
+#[doors_macros::enum_module_filter]
 #[enum_dispatch::enum_dispatch(TimerInstanceInnerTrait)]
 pub enum TimerInstanceInner {
     /// The pit timer instance for x86
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     X86PitTimer(x86::PitInner),
+    /// A single channel for the hpet timer
+    #[doors_module = "hpet"]
+    HpetChannel(hpet::HpetChannel),
     /// A dummy timer inner instance
     DummyInner(DummyTimerInner),
 }
 
 /// An enumeration of all the types of timers
+#[doors_macros::enum_module_filter]
 #[enum_dispatch::enum_dispatch(TimerTrait)]
 pub enum Timer {
     /// The stm32f769 timer module
@@ -70,6 +142,9 @@ pub enum Timer {
     /// The pit timer for x86
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     X86Pit(x86::Pit),
+    /// The hpet timer (usually for x86 platforms)
+    #[doors_module = "hpet"]
+    Hpet(hpet::Hpet),
     /// The dummy implementation
     Dummy(DummyTimer),
 }
@@ -142,23 +217,35 @@ impl From<TimerInstanceInner> for TimerInstance {
     }
 }
 
+/// An iterator over nothing
+pub struct DummyTimerIterator<'a> {
+    phantom: PhantomData<&'a usize>,
+}
+
+impl<'a> Iterator for DummyTimerIterator<'a> {
+    type Item = &'a mut TimerInstanceInner;
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
 /// A dummy implementation of a timer
 pub struct DummyTimer {}
 
 /// An inner implementation for a dummy timer
 pub struct DummyTimerInner {}
 
+impl Drop for DummyTimerInner {
+    fn drop(&mut self) {}
+}
+
 impl TimerInstanceInnerTrait for DummyTimerInner {
     fn hardware_interrupt(&self) -> u8 {
         panic!();
     }
 
-    fn delay_ms(&self, _ms: u32) {
-        panic!();
-    }
-
-    fn delay_us(&self, _us: u32) {
-        panic!();
+    fn supports_arbitrary_timing(&self) -> Option<&dyn ArbitraryTimerTrait> {
+        None
     }
 
     fn start_oneshot(&mut self) {
@@ -175,7 +262,9 @@ impl TimerTrait for DummyTimer {
         Err(TimerError::TimerIsAlreadyUsed)
     }
 
-    fn return_timer_inner(&mut self, _i: u8, _t: TimerInstanceInner) {
-        panic!();
+    fn iter_mut(&mut self) -> TimerIterator<'_> {
+        TimerIterator::Dummy(DummyTimerIterator {
+            phantom: PhantomData,
+        })
     }
 }

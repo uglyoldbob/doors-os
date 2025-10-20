@@ -469,3 +469,18 @@ pub async fn print_locations() {
         .print_locations()
         .await;
 }
+
+/// A dummy future that is always done
+pub struct DummyFuture {}
+
+impl core::future::Future for DummyFuture {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Ready(())
+    }
+}
+
+/// Returns a dummy future that is always done
+pub fn dummy_future() -> DummyFuture {
+    DummyFuture {}
+}

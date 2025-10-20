@@ -1,5 +1,7 @@
 //! Code for x86 timers
 
+use core::marker::PhantomData;
+
 use crate::{boot::IOPORTS, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers};
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
@@ -29,21 +31,21 @@ impl PitInner {
     }
 }
 
+impl Drop for PitInner {
+    fn drop(&mut self) {}
+}
+
 impl super::TimerInstanceInnerTrait for PitInner {
     fn hardware_interrupt(&self) -> u8 {
         0
     }
 
-    fn delay_ms(&self, _ms: u32) {
-        doors_macros::todo!();
+    fn supports_arbitrary_timing(&self) -> Option<&dyn super::ArbitraryTimerTrait> {
+        None
     }
 
     fn get_guard_inner(&self) -> IrqGuardedInner {
         IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {})
-    }
-
-    fn delay_us(&self, _us: u32) {
-        doors_macros::todo!();
     }
 
     fn start_oneshot(&mut self) {
@@ -80,10 +82,9 @@ impl super::TimerTrait for Pit {
         }
     }
 
-    fn return_timer_inner(&mut self, i: u8, t: super::TimerInstanceInner) {
-        assert_eq!(i, 0);
-        if let super::TimerInstanceInner::X86PitTimer(a) = t {
-            self.i.replace(a);
-        }
+    fn iter_mut(&mut self) -> super::TimerIterator<'_> {
+        super::TimerIterator::Pit(super::DummyTimerIterator {
+            phantom: PhantomData,
+        })
     }
 }

@@ -10,14 +10,14 @@ gdbstub = true
 mm_debug = false
 test = false
 network = false
-modules = []
+modules = ["hpet"]
 
 [disk.unique.Network]
 tftp_relative = ""
 
 [disk.common]
 output = "./netboot"
-disk_label = "Doors OS"
+disk_label = "DoorsOS"
 config_files = []
 grub_config = "grub2pxe.lst"
 

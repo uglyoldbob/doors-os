@@ -759,6 +759,29 @@ impl crate::LockedArc<boot::X86System<'_>> {
             }
 
             let mut ssdt_found_in_headers = 0u32;
+
+            #[doors_macros::module_builtin_attr(hpet, "true")]
+            if let Ok(info) = acpi::sdt::hpet::HpetInfo::new(acpi) {
+                let vm = boot::VIRTUAL_MEMORY_ALLOCATOR
+                    .sync_lock()
+                    .allocate_nonram_memory(0x1000, 0x1000)
+                    .unwrap();
+                let vaddr = crate::slice_address(unsafe { vm.as_ref() });
+                crate::VGA.print_str(&alloc::format!(
+                    "Initializing HPET with {} channels at {:x}, v{:x}\r\n",
+                    info.num_comparators + 1,
+                    info.base_address,
+                    vaddr
+                ));
+                boot::PAGING_MANAGER
+                    .sync_lock()
+                    .map_addresses_read_write(vaddr, info.base_address, 0x1000)
+                    .unwrap();
+                let hpet = crate::modules::timer::hpet::Hpet::new(vaddr, info.num_comparators + 1);
+                let mut timers = crate::kernel::TIMERS.sync_lock();
+                timers.register_timer(hpet.into());
+            }
+
             for (address, header) in acpi.table_headers() {
                 crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
                     "sdt {:x} {:X} {} {} {}\r\n",
@@ -775,14 +798,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     acpi::sdt::Signature::WAET => {
                         crate::VGA.print_str("TODO Parse the Waet table\r\n");
                     }
-                    acpi::sdt::Signature::HPET => {
-                        match acpi.find_table::<acpi::sdt::hpet::HpetTable>() {
-                            Some(_hpet) => crate::VGA.print_str("TODO Parse the Hpet table\r\n"),
-                            None => crate::VGA.print_fixed_str(
-                                doors_macros2::fixed_string_format!("HPET ERROR\r\n"),
-                            ),
-                        }
-                    }
+                    acpi::sdt::Signature::HPET => {}
                     acpi::sdt::Signature::FADT => {
                         match acpi.find_table::<acpi::sdt::fadt::Fadt>() {
                             Some(_fadt) => crate::VGA.print_str("TODO Parse the Fadt\r\n"),

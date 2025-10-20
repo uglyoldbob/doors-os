@@ -10,14 +10,14 @@ gdbstub = true
 mm_debug = false
 test = false
 network = true
-modules = ["intelpro1000"]
+modules = ["hpet", "intelpro1000"]
 
 [disk.unique.Cd]
 kernel_path = "./build/iso/boot/kernel"
 
 [disk.common]
 output = "cd64.iso"
-disk_label = "Doors OS"
+disk_label = "DoorsOS"
 config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
 
 [target.config]
