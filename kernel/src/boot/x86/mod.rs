@@ -813,8 +813,18 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                     );
                                 }
                                 acpi::sdt::madt::MadtEntry::IoApic(ioapic) => {
-                                    let addr = ioapic.io_apic_address;
-                                    crate::VGA.print_str(&alloc::format!("madt ioapic entry {:x}\r\n", addr));
+                                    let paddr = ioapic.io_apic_address as usize;
+                                    let vm = boot::VIRTUAL_MEMORY_ALLOCATOR
+                                        .sync_lock()
+                                        .allocate_nonram_memory(0x1000, 0x1000)
+                                        .unwrap();
+                                    let vaddr = crate::slice_address(unsafe { vm.as_ref() });
+                                    boot::PAGING_MANAGER
+                                        .sync_lock()
+                                        .map_addresses_read_write(vaddr, paddr, 0x1000)
+                                        .unwrap();
+                                    crate::VGA.print_str(&alloc::format!("madt ioapic entry {:x} {:x}\r\n", paddr, vaddr));
+                                    let ioapic = crate::modules::interrupt::IoApic::new(vaddr);
                                 }
                                 acpi::sdt::madt::MadtEntry::InterruptSourceOverride(_i) => {
                                     crate::VGA.print_str("madt int source override\r\n");

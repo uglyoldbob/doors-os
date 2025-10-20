@@ -4,6 +4,7 @@ pub mod clock;
 pub mod dummy;
 pub mod gpio;
 pub mod input;
+pub mod interrupt;
 pub mod isa;
 pub mod memory;
 pub mod pci;
