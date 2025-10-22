@@ -396,3 +396,7 @@ use spin::RwLock;
 
 /// The global executor for the kernel
 pub static EXECUTOR: RwLock<Option<crate::GlobalExecutor>> = RwLock::new(None);
+
+/// The interrupt controller
+pub static INTERRUPT_CONTROLLER: RwLock<Option<crate::modules::interrupt::InterruptController>> =
+    RwLock::new(None);

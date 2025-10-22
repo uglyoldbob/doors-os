@@ -31,106 +31,6 @@ struct LocalApicRegister {
     _regs: [u32; 256],
 }
 
-/// The programmable interrupt controller
-struct Pic {
-    /// The first pic
-    pic1: super::IoPortArray<'static>,
-    /// The second pic
-    pic2: super::IoPortArray<'static>,
-}
-
-impl Pic {
-    /// Get a pic object.
-    pub fn new() -> Option<Self> {
-        Some(Self {
-            pic1: super::IOPORTS.get_ports(0x20, 2)?,
-            pic2: super::IOPORTS.get_ports(0xa0, 2)?,
-        })
-    }
-
-    /// Signal end of interrupt for the specified irq
-    pub fn end_of_interrupt(&self, irq: u8) {
-        if irq >= 8 {
-            self.pic2.port(0).port_write(0x20u8);
-        }
-        self.pic1.port(0).port_write(0x20u8);
-    }
-
-    /// Disable all interrupts for both pics
-    pub fn disable(&self) {
-        use crate::IoReadWrite;
-        self.pic1.port(1).port_write(0xffu8);
-        self.pic2.port(1).port_write(0xffu8);
-    }
-
-    /// Enable the specified irq
-    #[inline(never)]
-    pub fn enable_irq(&self, irq: u8) {
-        if irq < 8 {
-            let data: u8 = self.pic1.port(1).port_read();
-            self.pic1.port(1).port_write(data & !(1 << irq));
-        } else {
-            let irq = irq - 8;
-            let data: u8 = self.pic2.port(1).port_read();
-            self.pic2.port(1).port_write(data & !(1 << irq));
-        }
-    }
-
-    /// Disable the specified irq
-    #[inline(never)]
-    pub fn disable_irq(&self, irq: u8) {
-        if irq < 8 {
-            let data: u8 = self.pic1.port(1).port_read();
-            self.pic1.port(1).port_write(data | (1 << irq));
-        } else {
-            let irq = irq - 8;
-            let data: u8 = self.pic2.port(1).port_read();
-            self.pic2.port(1).port_write(data | (1 << irq));
-        }
-    }
-
-    /// Perform a remap of the pic interrupts
-    /// # Arguments
-    /// * offset1 - The amount to offset pic1 vectors by
-    /// * offset2 - The amount to offset pic2 vectors by
-    pub fn remap(&self, offset1: u8, offset2: u8) {
-        use crate::IoReadWrite;
-        let mut delay: super::IoPortRef<u8> = super::IOPORTS.get_port(0x80).unwrap();
-
-        let mut pic1_cmd: super::IoPortRef<u8> = self.pic1.port(0);
-        let mut pic1_data: super::IoPortRef<u8> = self.pic1.port(1);
-        let mut pic2_cmd: super::IoPortRef<u8> = self.pic2.port(0);
-        let mut pic2_data: super::IoPortRef<u8> = self.pic2.port(1);
-
-        let mask1 = pic1_data.port_read();
-        let mask2 = pic2_data.port_read();
-        pic1_cmd.port_write(0x11);
-        delay.port_write(0);
-        pic2_cmd.port_write(0x11);
-        delay.port_write(0);
-        pic1_data.port_write(offset1);
-        delay.port_write(0);
-        pic2_data.port_write(offset2);
-        delay.port_write(0);
-        pic1_data.port_write(4);
-        delay.port_write(0);
-        pic2_data.port_write(2);
-        delay.port_write(0);
-        pic1_data.port_write(1);
-        delay.port_write(0);
-        pic2_data.port_write(1);
-        delay.port_write(0);
-
-        pic1_data.port_write(mask1);
-        pic2_data.port_write(mask2);
-        self.disable();
-        self.enable_irq(2); //enable the interrupt for the second pic
-    }
-}
-
-/// The interrupt controller
-static INTERRUPT_CONTROLLER: RwLock<Option<Pic>> = RwLock::new(None);
-
 /// A generic interrupt or exception handler
 type Handler = dyn FnMut() + Send + Sync;
 
@@ -824,10 +724,10 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                         .map_addresses_read_write(vaddr, paddr, 0x1000)
                                         .unwrap();
                                     crate::VGA.print_str(&alloc::format!("madt ioapic entry {:x} {:x}\r\n", paddr, vaddr));
-                                    let ioapic = crate::modules::interrupt::IoApic::new(vaddr);
+                                    let ioapic = crate::modules::interrupt::x86::IoApic::new(vaddr);
                                 }
-                                acpi::sdt::madt::MadtEntry::InterruptSourceOverride(_i) => {
-                                    crate::VGA.print_str("madt int source override\r\n");
+                                acpi::sdt::madt::MadtEntry::InterruptSourceOverride(i) => {
+                                    crate::VGA.print_str(&alloc::format!("madt int source override {:?}\r\n", i));
                                 }
                                 acpi::sdt::madt::MadtEntry::NmiSource(_) => todo!(),
                                 acpi::sdt::madt::MadtEntry::LocalApicNmi(_) => {
@@ -984,10 +884,12 @@ fn start_common1(
     }
 
     {
-        let pic = Pic::new().unwrap();
+        let pic = crate::modules::interrupt::x86::Pic::new().unwrap();
         pic.disable();
         pic.remap(0x20, 0x28);
-        INTERRUPT_CONTROLLER.write().replace(pic);
+        crate::kernel::INTERRUPT_CONTROLLER
+            .write()
+            .replace(pic.into());
     }
 }
 

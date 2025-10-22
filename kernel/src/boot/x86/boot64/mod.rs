@@ -1,6 +1,7 @@
 //! This is the 64 bit module for x86 hardware. It contains the entry point for the 64-bit kernnel on x86.
 
 use crate::kernel;
+use crate::modules::interrupt::InterruptControllerTrait;
 use crate::Locked;
 use crate::LockedArc;
 use alloc::boxed::Box;
@@ -115,7 +116,7 @@ extern "x86-interrupt" fn breakpoint_exception(_isf: InterruptStackFrame) {
 
 /// The ending portion of an irq handler
 pub fn finish_irq(irqnum: u8) {
-    let p = super::INTERRUPT_CONTROLLER.read();
+    let p = crate::kernel::INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(irqnum)
     }
@@ -653,7 +654,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
 
     fn enable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let p = super::INTERRUPT_CONTROLLER.read();
+            let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.enable_irq(irq)
             }
@@ -688,7 +689,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
 
     fn disable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let p = super::INTERRUPT_CONTROLLER.read();
+            let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.disable_irq(irq)
             }

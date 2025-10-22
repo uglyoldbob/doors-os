@@ -1,37 +1,26 @@
 //! This module is for code that directly handles interrupt mechanisms.
 
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-/// The io apic for x86
-pub struct IoApic {
-    reg_sel: &'static mut u8,
-    data: &'static mut u32,
+pub mod x86;
+
+/// The trait implemented by interrupt controllers in the system
+#[enum_dispatch::enum_dispatch]
+pub trait InterruptControllerTrait {
+    /// Indicate end of interrupt to the controller
+    fn end_of_interrupt(&self, num: u8);
+    /// enable the specified irq
+    fn enable_irq(&self, num: u8);
+    /// disable the specified irq
+    fn disable_irq(&self, num: u8);
 }
 
-#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-impl IoApic {
-    fn read_register(&mut self, index: u8) -> u32 {
-        *self.reg_sel = index;
-        *self.data
-    }
-
-    /// Construct a new module wit the specified base address for registers
-    pub fn new(addr: usize) -> Self {
-        let mut s = Self {
-            reg_sel: unsafe { &mut *(addr as *mut u8) },
-            data: unsafe { &mut *((addr + 0x10) as *mut u32) },
-        };
-        crate::VGA.print_str(&alloc::format!(
-            "IOAPIC ID is {:x}\r\n",
-            s.read_register(0) >> 24
-        ));
-        for i in 0..3 {
-            crate::VGA.print_str(&alloc::format!("IOAPIC {:x}\r\n", i));
-            crate::VGA.print_str(&alloc::format!("\t{:x}\r\n", s.read_register(i as u8)));
-        }
-        for i in 16..64 {
-            crate::VGA.print_str(&alloc::format!("IOAPIC {:x}\r\n", i));
-            crate::VGA.print_str(&alloc::format!("\t{:x}\r\n", s.read_register(i as u8)));
-        }
-        s
-    }
+/// An interrupt controller for the system
+#[enum_dispatch::enum_dispatch(InterruptControllerTrait)]
+pub enum InterruptController {
+    /// The x86 ioapic
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    IoApic(x86::IoApic),
+    /// the x86 pic
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    Pic(x86::Pic),
 }
