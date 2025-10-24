@@ -778,6 +778,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                 }
                                 acpi::sdt::madt::MadtEntry::InterruptSourceOverride(i) => {
                                     crate::VGA.print_str(&alloc::format!("madt int source override {:?}\r\n", i));
+                                    crate::VGA.sync_flush();
                                     if let Some(ioapic) = &mut ioapic {
                                         ioapic.register_override(i.irq, i.global_system_interrupt);
                                     }

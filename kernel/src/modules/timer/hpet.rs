@@ -3,6 +3,8 @@
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
+use crate::{Arc, IrqGuarded, IrqGuardedInner};
+
 #[repr(C)]
 struct HpetChannelRegisters {
     /// configuration and capabilities of the channel
@@ -46,29 +48,33 @@ struct HpetRegisters {
 /// Verifies that a PageTable is the correct size
 const _HPET_SIZE_CHECKER: [u8; 0x100 + 0x20 * 32] = [0; core::mem::size_of::<HpetRegisters>()];
 
-/// The main struct for the hpet implementation
-pub struct Hpet {
-    registers: &'static mut HpetRegisters,
+struct HpetInternal {
+    registers: crate::IrqGuarded<&'static mut HpetRegisters>,
     /// The number of channels present for the hpet
     num_channels: u8,
+}
+
+/// The main struct for the hpet implementation
+pub struct Hpet {
+    internal: Arc<HpetInternal>,
 }
 
 impl Hpet {
     /// Construct a new timer module
     pub fn new(addr: usize, num_channels: u8) -> Self {
-        let mut s = Self {
-            registers: unsafe { &mut *(addr as *mut HpetRegisters) },
-            num_channels,
-        };
-        s.init_comparators();
-        s
-    }
-
-    fn init_comparators(&mut self) {
-        for i in 0..self.num_channels {
-            let creg = &mut self.registers.channels[i as usize];
+        let r = unsafe { &mut *(addr as *mut HpetRegisters) };
+        for i in 0..num_channels {
+            let creg = &mut r.channels[i as usize];
             let rcap = (creg.config >> 32) as u32;
             crate::VGA.print_str(&alloc::format!("HPET CHANNEL {} CONFIG {:x}\r\n", i, rcap));
+        }
+        let com = IrqGuardedInner::new(crate::IrqNumbers::None, false, false, |_| {}, |_| {});
+        let s = HpetInternal {
+            registers: IrqGuarded::new(r, &com),
+            num_channels,
+        };
+        Self {
+            internal: Arc::new(s),
         }
     }
 }
@@ -130,7 +136,7 @@ impl<'a> Iterator for HpetTimerIterator<'a> {
 
 impl super::TimerTrait for Hpet {
     fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstanceInner, super::TimerError> {
-        if i < self.num_channels {
+        if i < self.internal.num_channels {
             let h = HpetChannel { index: i };
             Ok(h.into())
         } else {
@@ -141,7 +147,7 @@ impl super::TimerTrait for Hpet {
     fn iter_mut(&mut self) -> super::TimerIterator<'_> {
         super::TimerIterator::Hpet(HpetTimerIterator {
             cur: 0,
-            max: self.num_channels,
+            max: self.internal.num_channels,
             phantom: PhantomData,
         })
     }
