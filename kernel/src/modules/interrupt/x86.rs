@@ -229,8 +229,8 @@ impl IoApic {
             self.overrides.insert(irq, sys_irq);
             self.map_irq(
                 InterruptMode::Physical { processors: 0 },
-                irq,
-                32 + sys_irq as u8,
+                sys_irq as u8,
+                32 + irq as u8,
             );
         }
     }
