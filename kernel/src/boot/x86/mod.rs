@@ -2,12 +2,15 @@
 
 use core::marker::PhantomData;
 
+use crate::kernel::SystemTrait;
+use crate::modules::interrupt::InterruptControllerTrait;
 use crate::modules::serial::SerialTrait;
 use crate::IoReadWrite;
 use crate::Locked;
 
 #[cfg(target_arch = "x86_64")]
 pub mod boot64;
+use acpi::AcpiTables;
 use alloc::boxed::Box;
 #[cfg(target_arch = "x86_64")]
 pub use boot64 as boot;
@@ -22,14 +25,6 @@ pub mod boot32;
 pub use boot32 as boot;
 
 pub use boot::mem2;
-
-/// The registers for a local apic
-#[allow(unused)]
-#[repr(align(16))]
-struct LocalApicRegister {
-    /// The apic registers
-    _regs: [u32; 256],
-}
 
 /// A generic interrupt or exception handler
 type Handler = dyn FnMut() + Send + Sync;
@@ -522,6 +517,79 @@ impl boot::X86System<'_> {
     }
 }
 
+impl boot::X86System<'_> {
+    fn get_lapic(
+        &self,
+        acpi: &AcpiTables<Acpi>,
+    ) -> Option<crate::modules::interrupt::x86::LocalApic> {
+        for (address, header) in acpi.table_headers() {
+            match header.signature {
+                acpi::sdt::Signature::WAET => {}
+                acpi::sdt::Signature::HPET => {}
+                acpi::sdt::Signature::FADT => {}
+                acpi::sdt::Signature::SSDT => {}
+                acpi::sdt::Signature::MADT => match acpi.find_table::<acpi::sdt::madt::Madt>() {
+                    None => {}
+                    Some(madt) => {
+                        let madt = madt.get();
+                        for e in madt.entries() {
+                            match e {
+                                acpi::sdt::madt::MadtEntry::LocalApic(llapic) => {
+                                    return Some(crate::modules::interrupt::x86::LocalApic::new());
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn get_ioapic(
+        &self,
+        acpi: &AcpiTables<Acpi>,
+    ) -> Option<crate::modules::interrupt::x86::IoApic> {
+        for (address, header) in acpi.table_headers() {
+            match header.signature {
+                acpi::sdt::Signature::WAET => {}
+                acpi::sdt::Signature::HPET => {}
+                acpi::sdt::Signature::FADT => {}
+                acpi::sdt::Signature::SSDT => {}
+                acpi::sdt::Signature::MADT => match acpi.find_table::<acpi::sdt::madt::Madt>() {
+                    None => {}
+                    Some(madt) => {
+                        let madt = madt.get();
+                        for e in madt.entries() {
+                            match e {
+                                acpi::sdt::madt::MadtEntry::IoApic(ioapic) => {
+                                    let paddr = ioapic.io_apic_address as usize;
+                                    let vm = boot::VIRTUAL_MEMORY_ALLOCATOR
+                                        .sync_lock()
+                                        .allocate_nonram_memory(0x1000, 0x1000)
+                                        .unwrap();
+                                    let vaddr = crate::slice_address(unsafe { vm.as_ref() });
+                                    boot::PAGING_MANAGER
+                                        .sync_lock()
+                                        .map_addresses_read_write(vaddr, paddr, 0x1000)
+                                        .unwrap();
+                                    let ioapic = crate::modules::interrupt::x86::IoApic::new(vaddr);
+                                    return Some(ioapic);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                },
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
 impl crate::LockedArc<boot::X86System<'_>> {
     /// Perform processing necessary for acpi functionality
     #[doors_macros::config_check(acpi, "true")]
@@ -659,6 +727,8 @@ impl crate::LockedArc<boot::X86System<'_>> {
             }
 
             let mut ssdt_found_in_headers = 0u32;
+            let mut lapic = this.get_lapic(acpi);
+            let mut ioapic = this.get_ioapic(acpi);
 
             for (address, header) in acpi.table_headers() {
                 crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
@@ -702,32 +772,15 @@ impl crate::LockedArc<boot::X86System<'_>> {
                                 let madt = madt.get();
                                 for e in madt.entries() {
                                     match e {
-                                acpi::sdt::madt::MadtEntry::LocalApic(lapic) => {
-                                    crate::VGA.print_fixed_str(
-                                        doors_macros2::fixed_string_format!(
-                                            "madt lapic entry {:x} {:x} {:x}\r\n",
-                                            lapic.processor_id,
-                                            lapic.apic_id,
-                                            { lapic.flags }
-                                        ),
-                                    );
+                                acpi::sdt::madt::MadtEntry::LocalApic(_llapic) => {
                                 }
-                                acpi::sdt::madt::MadtEntry::IoApic(ioapic) => {
-                                    let paddr = ioapic.io_apic_address as usize;
-                                    let vm = boot::VIRTUAL_MEMORY_ALLOCATOR
-                                        .sync_lock()
-                                        .allocate_nonram_memory(0x1000, 0x1000)
-                                        .unwrap();
-                                    let vaddr = crate::slice_address(unsafe { vm.as_ref() });
-                                    boot::PAGING_MANAGER
-                                        .sync_lock()
-                                        .map_addresses_read_write(vaddr, paddr, 0x1000)
-                                        .unwrap();
-                                    crate::VGA.print_str(&alloc::format!("madt ioapic entry {:x} {:x}\r\n", paddr, vaddr));
-                                    let ioapic = crate::modules::interrupt::x86::IoApic::new(vaddr);
+                                acpi::sdt::madt::MadtEntry::IoApic(_ioapic) => {
                                 }
                                 acpi::sdt::madt::MadtEntry::InterruptSourceOverride(i) => {
                                     crate::VGA.print_str(&alloc::format!("madt int source override {:?}\r\n", i));
+                                    if let Some(ioapic) = &mut ioapic {
+                                        ioapic.register_override(i.irq, i.global_system_interrupt);
+                                    }
                                 }
                                 acpi::sdt::madt::MadtEntry::NmiSource(_) => todo!(),
                                 acpi::sdt::madt::MadtEntry::LocalApicNmi(_) => {
@@ -754,6 +807,24 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     }
                     _ => {}
                 }
+            }
+
+            if let Some(mut lapic) = lapic {
+                if let Some(ioapic) = ioapic {
+                    crate::VGA.print_str("Registering ioapic\r\n");
+                    lapic.register_ioapic(ioapic);
+                }
+                crate::VGA.print_str("Registering pic\r\n");
+                crate::SYSTEM.read().disable_interrupts();
+                let pic = crate::kernel::INTERRUPT_CONTROLLER.write().take();
+                if let Some(crate::modules::interrupt::InterruptController::Pic(p)) = pic {
+                    lapic.register_pic(p);
+                }
+                crate::kernel::INTERRUPT_CONTROLLER
+                    .write()
+                    .replace(lapic.into());
+                crate::SYSTEM.read().enable_interrupts();
+                crate::VGA.print_str("Registering pic done\r\n");
             }
 
             #[doors_macros::module_builtin_attr(hpet, "true")]

@@ -1,30 +1,271 @@
 //! x86 or x64 interrupt code
 
-use crate::IoReadWrite;
+use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+
+use crate::{
+    kernel::SystemTrait, modules::interrupt::InterruptControllerTrait, IoReadWrite, IrqGuarded,
+    IrqGuardedInner,
+};
+
+#[repr(C)]
+struct LocalApicRegisters {
+    registers: [u32; 256],
+}
+
+bitfield::bitfield! {
+    /// The data used to configure an entry in the ioapic
+    struct IoApicRedirection(u64);
+    impl Debug;
+    /// The destination for the interrupt
+    u8, destination, set_destination: 63, 56;
+    /// The interrupt should be masked
+    mask, set_mask: 16;
+    /// The trigger mode is level sensitive, false means edge sensitive
+    mode, set_mode: 15;
+    /// remote irr, set when the interrupt is sent, cleared when eoi is received by lapic
+    remote_irr, _: 14;
+    /// The polarity of the interrupt, true means low active
+    polarity, set_polarity: 13;
+    /// The delivery status, true means the interrupt send is pending for some reason
+    delivery_status, _: 12;
+    /// The destination is logical instead of physical when true
+    destination_mode, set_destination_mode: 11;
+    /// The delivery mode
+    /// 0 - fixed - deliver to all processors listed with INTR
+    /// 1 - lowest priority - deliver to processor running with lowest priority on INTR
+    /// 2 - smi - requires edge trigger mode, vector must be 0 for future compatibility
+    /// 3 - reserved
+    /// 4 - nmi - requires edge trigger mode, ignores vector information, delivers nmi signal to all processor cores listed
+    /// 5 - init - requires edge trigger mode, deliver an init signal to all processor cores listed
+    /// 6 - reserved
+    /// 7 - extint - deliver to an 8259 pic with INTR, requires edge mode trigger
+    u8, delivery_mode, set_delivery_mode: 10, 8;
+    /// The vector to deliver to
+    u8, vector, set_vector: 7, 0;
+    /// The lower 32 bits, stored in the first 4 bytes of the register for the ioapic
+    u32, lower_half, _: 31, 0;
+    /// the upper 32 bits, stored in the second 4 bytes of the register for the ioapic
+    u32, upper_half, _: 63, 32;
+}
+
+/// The local apic struct
+pub struct LocalApic {
+    regs: IrqGuarded<&'static mut LocalApicRegisters>,
+    ioapic: Option<IoApic>,
+    pic: Option<Pic>,
+}
+
+impl super::InterruptControllerTrait for LocalApic {
+    fn end_of_interrupt(&self, _num: u8) {
+        self.regs.interrupt_access().registers[0x2c] = 0;
+    }
+
+    fn enable_irq(&self, num: u8) {
+        if let Some(ioapic) = &self.ioapic {
+            if let Some(sysirq) = ioapic.overrides.get(&num) {
+                let irq = *sysirq as u8;
+                ioapic.enable_irq(irq);
+            } else {
+                ioapic.enable_irq(num);
+            }
+        }
+    }
+
+    fn disable_irq(&self, num: u8) {
+        if let Some(ioapic) = &self.ioapic {
+            if let Some(sysirq) = ioapic.overrides.get(&num) {
+                let irq = *sysirq as u8;
+                ioapic.disable_irq(irq);
+            } else {
+                ioapic.disable_irq(num);
+            }
+        }
+    }
+
+    fn is_irq_enabled(&self, irq: u8) -> bool {
+        false
+    }
+}
+
+impl LocalApic {
+    ///get the apic base address
+    #[cfg(target_arch = "x86_64")]
+    fn get_base() -> usize {
+        x86_64::registers::model_specific::ApicBase::read()
+            .0
+            .start_address()
+            .as_u64() as usize
+    }
+
+    #[cfg(target_arch = "x86")]
+    fn get_base() -> usize {
+        todo!()
+    }
+
+    /// Register the io apic with the local apic
+    pub fn register_ioapic(&mut self, ioapic: IoApic) {
+        self.ioapic = Some(ioapic);
+    }
+
+    /// Register the original pic object
+    pub fn register_pic(&mut self, pic: Pic) {
+        for i in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] {
+            if pic.is_irq_enabled(i) {
+                pic.disable_irq(i);
+                self.enable_irq(i);
+            }
+        }
+        pic.disable_irq(2);
+        self.pic = Some(pic);
+        self.regs.sync_access().registers[0x3c] |= 0x100;
+        #[cfg(target_arch = "x86_64")]
+        {
+            let mut bv = x86_64::registers::model_specific::ApicBase::read();
+            bv.1 |= x86_64::registers::model_specific::ApicBaseFlags::LAPIC_ENABLE;
+            unsafe {
+                x86_64::registers::model_specific::ApicBase::write(bv.0, bv.1);
+            }
+        }
+    }
+
+    /// construct a new self
+    pub fn new() -> Self {
+        let paddr = Self::get_base();
+        let vm = crate::boot::x86::boot::VIRTUAL_MEMORY_ALLOCATOR
+            .sync_lock()
+            .allocate_nonram_memory(0x1000, 0x1000)
+            .unwrap();
+        let vaddr = crate::slice_address(unsafe { vm.as_ref() });
+        crate::boot::x86::boot::PAGING_MANAGER
+            .sync_lock()
+            .map_addresses_read_write(vaddr, paddr, 0x1000)
+            .unwrap();
+        crate::VGA.print_str(&alloc::format!("lapic at {:x} {:x}\r\n", paddr, vaddr));
+        let regs = unsafe { &mut *(vaddr as *mut LocalApicRegisters) };
+        let com = IrqGuardedInner::new(crate::IrqNumbers::None, true, false, |_| {}, |_| {});
+        let s = Self {
+            regs: IrqGuarded::new(regs, &com),
+            ioapic: None,
+            pic: None,
+        };
+        s
+    }
+}
 
 /// The io apic for x86
-pub struct IoApic {
+pub struct IoApicInner {
     reg_sel: &'static mut u8,
     data: &'static mut u32,
     last_register: u8,
     num_irq: u8,
 }
 
-impl super::InterruptControllerTrait for IoApic {
-    fn end_of_interrupt(&self, num: u8) {}
+/// The io apic for x86
+pub struct IoApic {
+    inner: crate::IrqGuarded<IoApicInner>,
+    overrides: BTreeMap<u8, u32>,
+}
 
-    fn enable_irq(&self, num: u8) {}
-
-    fn disable_irq(&self, num: u8) {}
+enum InterruptMode {
+    Logical { apic_id: u8 },
+    Physical { processors: u8 },
 }
 
 impl IoApic {
-    fn read_register(&mut self, index: u8) -> u32 {
+    /// Construct a new module wit the specified base address for registers
+    pub fn new(addr: usize) -> Self {
+        let mut i = IoApicInner::new(addr);
+        let com = IrqGuardedInner::new(crate::IrqNumbers::None, true, false, |_| {}, |_| {});
+        let r = i.read_register(1);
+        let max = (r >> 16) + 1;
+        crate::VGA.print_str(&alloc::format!("IOAPIC HAS {} entries with {:x}\r\n", max, r));
+        let mut s = Self {
+            inner: IrqGuarded::new(i, &com),
+            overrides: BTreeMap::new(),
+        };
+        for x in 0..max {
+            s.map_irq(InterruptMode::Logical { apic_id: 0 }, x as u8, 32 + x as u8);
+        }
+        s
+    }
+
+    fn map_irq(&mut self, mode: InterruptMode, irq: u8, dest: u8) {
+        let mut this = self.inner.interrupt_access();
+        let mut data: u64 = 0;
+        let o1 = this.read_register(0x10 + 2 * irq);
+        let o2 = this.read_register(0x10 + 2 * irq + 1);
+        data |= o1 as u64;
+        data |= (o2 as u64) << 32;
+        let mut entry = IoApicRedirection(data);
+        match mode {
+            InterruptMode::Logical { apic_id } => {
+                entry.set_destination_mode(true);
+                entry.set_destination(apic_id & 0xF);
+            }
+            InterruptMode::Physical { processors } => {
+                entry.set_destination_mode(false);
+                entry.set_destination(processors);
+            }
+        }
+        entry.set_mask(true); //disable irq when mapping it
+        entry.set_vector(dest);
+        let db1 = entry.lower_half();
+        let db2 = entry.upper_half();
+        this.write_register(0x10 + 2 * irq, db1);
+        this.write_register(0x10 + 2 * irq + 1, db2);
+    }
+
+    /// Register an interrupt override
+    pub fn register_override(&mut self, irq: u8, sys_irq: u32) {
+        if irq as u32 != sys_irq {
+            self.overrides.insert(irq, sys_irq);
+            self.map_irq(InterruptMode::Logical { apic_id: 0 }, irq, 32+sys_irq as u8);
+        }
+    }
+
+    /// Enable the specified irq
+    fn enable_irq(&self, irq: u8) {
+        let mut this = self.inner.interrupt_access();
+        let mut data: u64 = 0;
+        let o1 = this.read_register(0x10 + 2 * irq);
+        let o2 = this.read_register(0x10 + 2 * irq + 1);
+        data |= o1 as u64;
+        data |= (o2 as u64) << 32;
+        let mut entry = IoApicRedirection(data);
+        entry.set_mask(false);
+        this.write_register(0x10 + 2 * irq, entry.lower_half() as u32);
+    }
+
+    /// Disable the specified irq
+    fn disable_irq(&self, irq: u8) {
+        let mut this = self.inner.interrupt_access();
+        let mut data: u64 = 0;
+        let o1 = this.read_register(0x10 + 2 * irq);
+        let o2 = this.read_register(0x10 + 2 * irq + 1);
+        data |= o1 as u64;
+        data |= (o2 as u64) << 32;
+        let mut entry = IoApicRedirection(data);
+        entry.set_mask(true);
+        this.write_register(0x10 + 2 * irq, entry.lower_half() as u32);
+    }
+}
+
+impl IoApicInner {
+    fn switch_registers(&mut self, index: u8) {
         if self.last_register != index {
             self.last_register = index;
             *self.reg_sel = index;
         }
+    }
+
+    fn read_register(&mut self, index: u8) -> u32 {
+        self.switch_registers(index);
         *self.data
+    }
+
+    fn write_register(&mut self, index: u8, val: u32) {
+        self.switch_registers(index);
+        *self.data = val;
     }
 
     /// Construct a new module wit the specified base address for registers
@@ -35,20 +276,8 @@ impl IoApic {
             last_register: 3,
             num_irq: 24,
         };
-        crate::VGA.print_str(&alloc::format!(
-            "IOAPIC ID is {:x}\r\n",
-            (s.read_register(0) >> 24) & 0xf
-        ));
         let num_irq = 1 + ((s.read_register(1) >> 16) & 0xFF) as u8;
         s.num_irq = num_irq;
-        for i in 0..3 {
-            crate::VGA.print_str(&alloc::format!("IOAPIC {:x}\r\n", i));
-            crate::VGA.print_str(&alloc::format!("\t{:x}\r\n", s.read_register(i as u8)));
-        }
-        for i in 16..64 {
-            crate::VGA.print_str(&alloc::format!("IOAPIC {:x}\r\n", i));
-            crate::VGA.print_str(&alloc::format!("\t{:x}\r\n", s.read_register(i as u8)));
-        }
         s
     }
 }
@@ -59,10 +288,6 @@ pub struct Pic {
     pic1: crate::IoPortArray<'static>,
     /// The second pic
     pic2: crate::IoPortArray<'static>,
-}
-
-impl Drop for Pic {
-    fn drop(&mut self) {}
 }
 
 impl Pic {
@@ -175,5 +400,16 @@ impl super::InterruptControllerTrait for Pic {
 
     fn disable_irq(&self, num: u8) {
         self.pic_disable_irq(num);
+    }
+
+    fn is_irq_enabled(&self, irq: u8) -> bool {
+        if irq < 8 {
+            let data: u8 = self.pic1.port(1).port_read();
+            ((data >> irq) & 1) == 0
+        } else {
+            let irq = irq - 8;
+            let data: u8 = self.pic2.port(1).port_read();
+            ((data >> irq) & 1) == 0
+        }
     }
 }
