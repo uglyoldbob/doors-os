@@ -144,6 +144,15 @@ pub extern "x86-interrupt" fn irq1(_isf: InterruptStackFrame) {
     }
 }
 
+/// The irq2 handler
+pub extern "x86-interrupt" fn irq2(_isf: InterruptStackFrame) {
+    let mut handle = super::IRQ_HANDLERS[2].sync_lock();
+    if let Some(h2) = handle.as_mut() {
+        h2();
+    }
+    finish_irq(2);
+}
+
 /// The irq3 handler
 pub extern "x86-interrupt" fn irq3(_isf: InterruptStackFrame) {
     let mut handle = super::IRQ_HANDLERS[3].sync_lock();
@@ -667,24 +676,34 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         &self,
         irq: u8,
         handler: F,
-    ) {
+    ) -> bool {
         let a = Box::new(handler);
         let mut irqs = super::IRQ_HANDLERS[irq as usize].sync_lock();
-        irqs.replace(a);
+        irqs.replace(a).is_none()
     }
 
     fn breakpoint(&self) -> Option<u8> {
         Some(0xcc)
     }
 
+    unsafe fn unregister_irq_handler(&self, irq: u8) {
+        let mut irqs = super::IRQ_HANDLERS[irq as usize].sync_lock();
+        irqs.take();
+    }
+
+    unsafe fn unregister_exception_handler(&self, exception: u8) {
+        let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
+        irqs.take();
+    }
+
     fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         exception: u8,
         handler: F,
-    ) {
+    ) -> bool {
         let a = Box::new(handler);
         let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
-        irqs.replace(a);
+        irqs.replace(a).is_none()
     }
 
     fn disable_irq(&self, irq: u8) {
@@ -1051,6 +1070,7 @@ pub extern "C" fn start64() -> ! {
             idt.debug = entry;
             idt[0x20].set_handler_fn(irq0);
             idt[0x21].set_handler_fn(irq1);
+            idt[0x22].set_handler_fn(irq2);
             idt[0x23].set_handler_fn(irq3);
             idt[0x24].set_handler_fn(irq4);
             idt[0x27].set_handler_fn(irq7);

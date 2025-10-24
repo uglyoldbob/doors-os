@@ -1,9 +1,9 @@
 //! For the hpet (high performance timer) - normally found in x86 platforms
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use core::marker::PhantomData;
 
-use crate::{Arc, IrqGuarded, IrqGuardedInner};
+use crate::{kernel::SystemTrait, Arc, IrqGuarded, IrqGuardedInner};
 
 #[repr(C)]
 struct HpetChannelRegisters {
@@ -57,25 +57,74 @@ struct HpetInternal {
 /// The main struct for the hpet implementation
 pub struct Hpet {
     internal: Arc<HpetInternal>,
+    irqs: Vec<u8>,
 }
 
 impl Hpet {
     /// Construct a new timer module
     pub fn new(addr: usize, num_channels: u8) -> Self {
         let r = unsafe { &mut *(addr as *mut HpetRegisters) };
+        let mut irqs = Vec::with_capacity(32);
         for i in 0..num_channels {
             let creg = &mut r.channels[i as usize];
             let rcap = (creg.config >> 32) as u32;
             crate::VGA.print_str(&alloc::format!("HPET CHANNEL {} CONFIG {:x}\r\n", i, rcap));
+            for index in 1..24 {
+                if crate::SYSTEM.read().register_irq_handler(index, || {}) {
+                    if !irqs.contains(&index) {
+                        irqs.push(index);
+                    }
+                    unsafe {
+                        crate::SYSTEM.read().unregister_irq_handler(index);
+                    }
+                    if ((rcap >> index) & 1) != 0 {
+                        crate::VGA.print_str(&alloc::format!(
+                            "HPET CHANNEL {} USE IRQ {}\r\n",
+                            i,
+                            index
+                        ));
+                        break;
+                    }
+                }
+            }
         }
-        let com = IrqGuardedInner::new(crate::IrqNumbers::None, false, false, |_| {}, |_| {});
+        let irqnums = crate::IrqNumbers::Many(irqs.clone());
+        let com = IrqGuardedInner::new(irqnums, false, true, |_| {}, |_| {});
+        r.config |= 1;
         let s = HpetInternal {
             registers: IrqGuarded::new(r, &com),
             num_channels,
         };
-        Self {
+        let s = Self {
             internal: Arc::new(s),
+            irqs,
+        };
+        s
+    }
+
+    /// Test the hpet functionality
+    pub fn test(&self) {
+        let sys = crate::SYSTEM.read();
+        for i in &self.irqs {
+            let s2 = self.internal.clone();
+            sys.register_irq_handler(*i, move || Self::handle_interrupt(&s2));
+            sys.enable_irq(*i);
+            crate::VGA.print_str(&alloc::format!("Enabled hpet irq {}\r\n", i));
         }
+        self.set_channel_interrupt(0, 100000000);
+    }
+
+    fn set_channel_interrupt(&self, chan: u8, ticks: u64) {
+        if chan >= self.internal.num_channels {
+            return;
+        }
+        let mut this = self.internal.registers.sync_access();
+        this.channels[chan as usize].comparator = this.counter + ticks;
+        this.channels[chan as usize].config |= 4;
+    }
+
+    fn handle_interrupt(s: &Arc<HpetInternal>) {
+        loop {}
     }
 }
 

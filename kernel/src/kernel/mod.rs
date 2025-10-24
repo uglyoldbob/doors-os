@@ -304,13 +304,17 @@ pub trait SystemTrait {
         &self,
         irq: u8,
         handler: F,
-    );
+    ) -> bool;
+    /// Unregister an irq handler
+    unsafe fn unregister_irq_handler(&self, irq: u8);
+    /// Unregister an irq handler
+    unsafe fn unregister_exception_handler(&self, exception: u8);
     /// Register an exception handler
     fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         exception: u8,
         handler: F,
-    );
+    ) -> bool;
     /// Enable IRQ
     fn enable_irq(&self, irq: u8);
     /// Disable IRQ
@@ -365,7 +369,8 @@ impl SystemTrait for NullSystem {
         &self,
         _irq: u8,
         _handler: F,
-    ) {
+    ) -> bool {
+        false
     }
     fn enable_irq(&self, _irq: u8) {}
     fn disable_irq(&self, _irq: u8) {}
@@ -380,11 +385,16 @@ impl SystemTrait for NullSystem {
         None
     }
 
+    unsafe fn unregister_exception_handler(&self, _exception: u8) {}
+
+    unsafe fn unregister_irq_handler(&self, _irq: u8) {}
+
     fn register_exception_handler<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
         &self,
         _exception: u8,
         _handler: F,
-    ) {
+    ) -> bool {
+        false
     }
 
     fn create_process(&self, _b: &object::File) -> Result<(), ()> {

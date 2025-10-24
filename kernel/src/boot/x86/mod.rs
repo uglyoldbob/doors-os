@@ -836,9 +836,10 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     .unwrap();
                 let vaddr = crate::slice_address(unsafe { vm.as_ref() });
                 crate::VGA.print_str(&alloc::format!(
-                    "Initializing HPET with {} channels at {:x}, v{:x}\r\n",
+                    "Initializing HPET with {} channels at {:x}, {}, v{:x}\r\n",
                     info.num_comparators + 1,
                     info.base_address,
+                    info.clock_tick_unit,
                     vaddr
                 ));
                 boot::PAGING_MANAGER
@@ -846,6 +847,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     .map_addresses_read_write(vaddr, info.base_address, 0x1000)
                     .unwrap();
                 let hpet = crate::modules::timer::hpet::Hpet::new(vaddr, info.num_comparators + 1);
+                hpet.test();
                 let mut timers = crate::kernel::TIMERS.sync_lock();
                 timers.register_timer(hpet.into());
             }
