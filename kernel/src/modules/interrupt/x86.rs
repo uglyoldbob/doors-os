@@ -178,13 +178,21 @@ impl IoApic {
         let com = IrqGuardedInner::new(crate::IrqNumbers::None, true, false, |_| {}, |_| {});
         let r = i.read_register(1);
         let max = (r >> 16) + 1;
-        crate::VGA.print_str(&alloc::format!("IOAPIC HAS {} entries with {:x}\r\n", max, r));
+        crate::VGA.print_str(&alloc::format!(
+            "IOAPIC HAS {} entries with {:x}\r\n",
+            max,
+            r
+        ));
         let mut s = Self {
             inner: IrqGuarded::new(i, &com),
             overrides: BTreeMap::new(),
         };
         for x in 0..max {
-            s.map_irq(InterruptMode::Logical { apic_id: 0 }, x as u8, 32 + x as u8);
+            s.map_irq(
+                InterruptMode::Physical { processors: 0 },
+                x as u8,
+                32 + x as u8,
+            );
         }
         s
     }
@@ -219,7 +227,11 @@ impl IoApic {
     pub fn register_override(&mut self, irq: u8, sys_irq: u32) {
         if irq as u32 != sys_irq {
             self.overrides.insert(irq, sys_irq);
-            self.map_irq(InterruptMode::Logical { apic_id: 0 }, irq, 32+sys_irq as u8);
+            self.map_irq(
+                InterruptMode::Physical { processors: 0 },
+                irq,
+                32 + sys_irq as u8,
+            );
         }
     }
 
@@ -276,8 +288,9 @@ impl IoApicInner {
             last_register: 3,
             num_irq: 24,
         };
-        let num_irq = 1 + ((s.read_register(1) >> 16) & 0xFF) as u8;
-        s.num_irq = num_irq;
+        let r = s.read_register(1);
+        let num_irq = (r >> 16) + 1;
+        s.num_irq = num_irq as u8;
         s
     }
 }
