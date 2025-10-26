@@ -90,7 +90,13 @@ impl Hpet {
         }
         let irqnums = crate::IrqNumbers::Many(irqs.clone());
         let com = IrqGuardedInner::new(irqnums, false, true, |_| {}, |_| {});
-        r.config |= 1;
+        loop {
+            r.config = r.config | 1;
+            crate::VGA.print_str(&alloc::format!("HPET CONFIG {:x}\r\n", r.config));
+            if (r.config & 1) != 0 {
+                break;
+            }
+        }
         let s = HpetInternal {
             registers: IrqGuarded::new(r, &com),
             num_channels,
@@ -111,7 +117,20 @@ impl Hpet {
             sys.enable_irq(*i);
             crate::VGA.print_str(&alloc::format!("Enabled hpet irq {}\r\n", i));
         }
-        self.set_channel_interrupt(0, 100000000);
+        let t = self.internal.registers.sync_access().counter;
+        crate::VGA.print_str(&alloc::format!("HPET COUNT AT {}\r\n", t));
+        let mut a = 0;
+        let mut b;
+        loop {
+            let s = self.internal.registers.sync_access();
+            b = s.counter;
+            if b != t {
+                break;
+            }
+            a += 1;
+        }
+        crate::VGA.print_str(&alloc::format!("HPET COUNT AT {} took {} iterations to hit {}\r\n", t, a, b));
+        self.set_channel_interrupt(0, 1000000);
     }
 
     fn set_channel_interrupt(&self, chan: u8, ticks: u64) {
