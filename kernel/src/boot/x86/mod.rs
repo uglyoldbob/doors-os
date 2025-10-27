@@ -849,7 +849,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
                 let hpet = crate::modules::timer::hpet::Hpet::new(vaddr, info.num_comparators + 1);
                 hpet.test();
                 let mut timers = crate::kernel::TIMERS.sync_lock();
-                timers.register_timer(hpet.into());
+                timers.replace_pit(hpet.into());
             }
         }
         if let Some(acpi) = this.acpi.take() {

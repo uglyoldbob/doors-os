@@ -99,7 +99,8 @@ impl LocalApic {
 
     #[cfg(target_arch = "x86")]
     fn get_base() -> usize {
-        todo!()
+        let a = unsafe { x86::msr::rdmsr(x86::msr::IA32_APIC_BASE) };
+        a as usize
     }
 
     /// Register the io apic with the local apic

@@ -50,8 +50,12 @@ const _HPET_SIZE_CHECKER: [u8; 0x100 + 0x20 * 32] = [0; core::mem::size_of::<Hpe
 
 struct HpetInternal {
     registers: crate::IrqGuarded<&'static mut HpetRegisters>,
+    /// irq numbers
+    irqs: [u8; 32],
     /// The number of channels present for the hpet
     num_channels: u8,
+    /// Period in femtoseconds
+    period: u32,
 }
 
 /// The main struct for the hpet implementation
@@ -65,6 +69,8 @@ impl Hpet {
     pub fn new(addr: usize, num_channels: u8) -> Self {
         let r = unsafe { &mut *(addr as *mut HpetRegisters) };
         let mut irqs = Vec::with_capacity(32);
+        let mut irq_values = [0; 32];
+        let period = (r.general >> 32) as u32;
         for i in 0..num_channels {
             let creg = &mut r.channels[i as usize];
             let rcap = (creg.config >> 32) as u32;
@@ -83,6 +89,7 @@ impl Hpet {
                             i,
                             index
                         ));
+                        irq_values[i as usize] = index;
                         break;
                     }
                 }
@@ -97,9 +104,12 @@ impl Hpet {
                 break;
             }
         }
+        crate::VGA.print_str(&alloc::format!("HPET PERIOD IS {}\r\n", period));
         let s = HpetInternal {
             registers: IrqGuarded::new(r, &com),
+            irqs: irq_values,
             num_channels,
+            period,
         };
         let s = Self {
             internal: Arc::new(s),
@@ -129,17 +139,12 @@ impl Hpet {
             }
             a += 1;
         }
-        crate::VGA.print_str(&alloc::format!("HPET COUNT AT {} took {} iterations to hit {}\r\n", t, a, b));
-        self.set_channel_interrupt(0, 1000000);
-    }
-
-    fn set_channel_interrupt(&self, chan: u8, ticks: u64) {
-        if chan >= self.internal.num_channels {
-            return;
-        }
-        let mut this = self.internal.registers.sync_access();
-        this.channels[chan as usize].comparator = this.counter + ticks;
-        this.channels[chan as usize].config |= 4;
+        crate::VGA.print_str(&alloc::format!(
+            "HPET COUNT AT {} took {} iterations to hit {}\r\n",
+            t,
+            a,
+            b
+        ));
     }
 
     fn handle_interrupt(s: &Arc<HpetInternal>) {
@@ -150,12 +155,34 @@ impl Hpet {
 /// A single timer channel for the hpet timer
 pub struct HpetChannel {
     index: u8,
+    irq: u8,
+    internal: Arc<HpetInternal>,
 }
 
 #[async_trait::async_trait]
 impl super::ArbitraryTimerTrait for HpetChannel {
     fn delay_ms_sync(&self, ms: u32) {
-        todo!()
+        let counts = (ms as u64) * 1_000_000_000_000;
+        let ticks = counts / self.internal.period as u64;
+        crate::VGA.print_str(&alloc::format!(
+            "HPET NEEDS {} TICKS FOR {} ms\r\n",
+            ticks,
+            ms
+        ));
+        let mut this = self.internal.registers.sync_access();
+        let newval = this.counter + ticks;
+        this.channels[self.index as usize].comparator = newval;
+        if this.counter >= newval {
+            crate::VGA.print_str("HPET WONT TRIGGER IRQ\r\n");
+        }
+        this.channels[self.index as usize].config |= 4;
+        loop {
+            let curval = unsafe { core::ptr::read_volatile(&this.counter) };
+            //crate::VGA.print_str(&alloc::format!("HPET {}/{}\r\n", curval, newval));
+            if curval >= newval {
+                break;
+            }
+        }
     }
 
     fn delay_us_sync(&self, us: u32) {
@@ -173,15 +200,35 @@ impl super::TimerInstanceInnerTrait for HpetChannel {
     }
 
     fn get_guard_inner(&self) -> crate::IrqGuardedInner {
-        todo!()
+        IrqGuardedInner::new(
+            crate::IrqNumbers::Only1(self.irq),
+            false,
+            true,
+            |_| {},
+            |_| {},
+        )
     }
 
     fn hardware_interrupt(&self) -> u8 {
-        todo!()
+        self.irq
     }
 
     fn start_oneshot(&mut self) {
-        todo!()
+        let mut this = self.internal.registers.sync_access();
+        let ticks = 100000;
+        let newval = this.counter + ticks;
+        this.channels[self.index as usize].comparator = newval;
+        if this.counter >= newval {
+            crate::VGA.print_str("HPET WONT TRIGGER\r\n");
+        }
+        this.channels[self.index as usize].config |= 4;
+        loop {
+            let curval = this.counter;
+            crate::VGA.print_str(&alloc::format!("HPET {}/{}\r\n", curval, newval));
+            if curval >= newval {
+                break;
+            }
+        }
     }
 }
 
@@ -191,21 +238,38 @@ pub struct HpetTimerIterator<'a> {
     cur: u8,
     /// Maximum index
     max: u8,
+    /// internals
+    internal: Arc<HpetInternal>,
     /// phantom
     phantom: PhantomData<&'a usize>,
 }
 
 impl<'a> Iterator for HpetTimerIterator<'a> {
-    type Item = &'a mut super::TimerInstanceInner;
+    type Item = super::TimerInstanceInner;
     fn next(&mut self) -> Option<Self::Item> {
-        None
+        if self.cur < self.max {
+            let t = HpetChannel {
+                index: self.cur,
+                irq: self.internal.irqs[self.cur as usize],
+                internal: self.internal.clone(),
+            };
+            let r = Some(t.into());
+            self.cur += 1;
+            r
+        } else {
+            None
+        }
     }
 }
 
 impl super::TimerTrait for Hpet {
     fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstanceInner, super::TimerError> {
         if i < self.internal.num_channels {
-            let h = HpetChannel { index: i };
+            let h = HpetChannel {
+                index: i,
+                irq: self.internal.irqs[i as usize],
+                internal: self.internal.clone(),
+            };
             Ok(h.into())
         } else {
             Err(super::TimerError::InvalidTimerIndex)
@@ -216,6 +280,7 @@ impl super::TimerTrait for Hpet {
         super::TimerIterator::Hpet(HpetTimerIterator {
             cur: 0,
             max: self.internal.num_channels,
+            internal: self.internal.clone(),
             phantom: PhantomData,
         })
     }

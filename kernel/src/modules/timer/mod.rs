@@ -39,7 +39,7 @@ pub enum TimerIterator<'a> {
 }
 
 impl<'a> Iterator for TimerIterator<'a> {
-    type Item = &'a mut TimerInstanceInner;
+    type Item = TimerInstanceInner;
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Dummy(t) => t.next(),
@@ -93,12 +93,27 @@ pub async fn delay_ms_async(ms: u32) {
 /// Delay a specified number of milliseconds. This will eventually be deprecated and removed
 pub fn delay_ms_sync(ms: u32) {
     let mut timers = crate::kernel::TIMERS.sync_lock();
-    for t in timers.iter_mut() {
+    for (i, t) in timers.iter_mut().enumerate() {
+        crate::VGA.print_str(&alloc::format!(
+            "QUERY Timer {} supports arbitrary timing\r\n",
+            i
+        ));
         let mut t = t.sync_lock();
-        for tm in t.iter_mut() {
+        for (j, tm) in t.iter_mut().enumerate() {
             if let Some(tmm) = tm.supports_arbitrary_timing() {
+                crate::VGA.print_str(&alloc::format!(
+                    "Timer {},{} supports arbitrary timing\r\n",
+                    i,
+                    j
+                ));
                 tmm.delay_ms_sync(ms);
                 return;
+            } else {
+                crate::VGA.print_str(&alloc::format!(
+                    "Timer {},{} NOT SUPPORT arbitrary timing\r\n",
+                    i,
+                    j
+                ));
             }
         }
     }
@@ -223,7 +238,7 @@ pub struct DummyTimerIterator<'a> {
 }
 
 impl<'a> Iterator for DummyTimerIterator<'a> {
-    type Item = &'a mut TimerInstanceInner;
+    type Item = TimerInstanceInner;
     fn next(&mut self) -> Option<Self::Item> {
         None
     }

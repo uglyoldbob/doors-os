@@ -64,6 +64,12 @@ pub struct Pit {
     i: Option<PitInner>,
 }
 
+impl Drop for Pit {
+    fn drop(&mut self) {
+        crate::VGA.print_str("DROPPING PIT\r\n");
+    }
+}
+
 impl Default for Pit {
     fn default() -> Self {
         Self {

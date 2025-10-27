@@ -1,6 +1,7 @@
 //! This module contains x86 32-bit specific code relating to how the machine boots up.
 
 use crate::kernel;
+use crate::modules::interrupt::InterruptControllerTrait;
 use crate::LockedArc;
 use alloc::alloc::Allocator;
 use alloc::boxed::Box;
@@ -147,7 +148,7 @@ pub extern "x86-interrupt" fn page_fault_exception(_: u32, _code: u32) {
 
 /// The ending portion of an irq handler
 pub fn finish_irq(irqnum: u8) {
-    let p = super::INTERRUPT_CONTROLLER.read();
+    let p = crate::kernel::INTERRUPT_CONTROLLER.read();
     if let Some(p) = p.as_ref() {
         p.end_of_interrupt(irqnum)
     }
@@ -430,10 +431,15 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         &self,
         exception: u8,
         handler: F,
-    ) {
+    ) -> bool {
         let a = Box::new(handler);
         let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
-        irqs.replace(a);
+        irqs.replace(a).is_none()
+    }
+
+    unsafe fn unregister_exception_handler(&self, exception: u8) {
+        let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
+        irqs.take();
     }
 
     fn enable_interrupts(&self) {
@@ -446,7 +452,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
 
     fn enable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let p = super::INTERRUPT_CONTROLLER.read();
+            let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.enable_irq(irq)
             }
@@ -459,15 +465,20 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         &self,
         irq: u8,
         handler: F,
-    ) {
+    ) -> bool {
         let a = Box::new(handler);
         let mut irqs = super::IRQ_HANDLERS[irq as usize].sync_lock();
-        irqs.replace(a);
+        irqs.replace(a).is_none()
+    }
+
+    unsafe fn unregister_irq_handler(&self, irq: u8) {
+        let mut irqs = super::IRQ_HANDLERS[irq as usize].sync_lock();
+        irqs.take();
     }
 
     fn disable_irq(&self, irq: u8) {
         self.disable_interrupts_for(|| {
-            let p = super::INTERRUPT_CONTROLLER.read();
+            let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
                 p.disable_irq(irq)
             }

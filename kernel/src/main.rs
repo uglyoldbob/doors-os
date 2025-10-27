@@ -33,7 +33,7 @@ pub static doors_banner: &str =
     const_format::concatcp!("doors version ", env!("CARGO_PKG_VERSION"));
 
 /// A test program
-const TEST_PRG: &[u8] = include_bytes!("../../user/target/x86_64-unknown-doors/release/test2");
+const TEST_PRG: &[u8] = &[]; //include_bytes!("../../user/target/x86_64-unknown-doors/release/test2");
 
 doors_macros::use_doors_test!();
 
@@ -292,6 +292,7 @@ fn main() -> ! {
                     crate::VGA
                         .print_str_async(&alloc::format!("I am batman {}\r\n", i))
                         .await;
+                    crate::modules::timer::delay_ms_sync(1000);
                     executor::AsyncTask::yield_now().await;
                 }
             })

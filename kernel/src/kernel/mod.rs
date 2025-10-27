@@ -187,6 +187,27 @@ impl TimerHandler {
         Self { timerp: Vec::new() }
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    /// Replace the first pit found with the specified hpet timer
+    pub fn replace_pit(&mut self, hpet: crate::modules::timer::hpet::Hpet) {
+        let mut found_pit = None;
+        for (i, t) in self.timerp.iter_mut().enumerate() {
+            let mut t2 = t.sync_lock();
+            {
+                let t3: &mut crate::modules::timer::Timer = &mut t2;
+                if let crate::modules::timer::Timer::X86Pit(_pit) = t3 {
+                    found_pit = Some(i);
+                }
+            }
+        }
+        if let Some(i) = found_pit {
+            let a = self.timerp.get_mut(i).unwrap();
+            let mut pit = LockedArc::new(hpet.into());
+            core::mem::swap(a, &mut pit);
+            crate::VGA.print_str("Replaced the PIT with HPET\r\n");
+        }
+    }
+
     /// Get an interator over all of the timers
     pub fn iter_mut(&mut self) -> core::slice::IterMut<LockedArc<crate::modules::timer::Timer>> {
         self.timerp.iter_mut()
