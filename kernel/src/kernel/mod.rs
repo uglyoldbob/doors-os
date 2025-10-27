@@ -205,6 +205,7 @@ impl TimerHandler {
             let mut pit = LockedArc::new(hpet.into());
             core::mem::swap(a, &mut pit);
             crate::VGA.print_str("Replaced the PIT with HPET\r\n");
+            drop(pit);
         }
     }
 

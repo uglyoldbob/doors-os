@@ -2,7 +2,9 @@
 
 use core::marker::PhantomData;
 
-use crate::{boot::IOPORTS, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers};
+use crate::{
+    boot::IOPORTS, kernel::SystemTrait, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers,
+};
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
 
@@ -62,6 +64,14 @@ impl super::TimerInstanceInnerTrait for PitInner {
 pub struct Pit {
     /// protected data
     i: Option<PitInner>,
+}
+
+impl Pit {
+    /// Disable the pit
+    pub fn disable(&mut self) {
+        crate::VGA.print_str("DISABLING PIT IRQ\r\n");
+        unsafe { crate::SYSTEM.read().unregister_irq_handler(0) };
+    }
 }
 
 impl Drop for Pit {

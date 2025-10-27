@@ -434,7 +434,12 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     ) -> bool {
         let a = Box::new(handler);
         let mut irqs = super::EXCEPTION_HANDLERS[exception as usize].sync_lock();
-        irqs.replace(a).is_none()
+        if irqs.is_none() {
+            irqs.replace(a);
+            true
+        } else {
+            false
+        }
     }
 
     unsafe fn unregister_exception_handler(&self, exception: u8) {
@@ -468,7 +473,12 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
     ) -> bool {
         let a = Box::new(handler);
         let mut irqs = super::IRQ_HANDLERS[irq as usize].sync_lock();
-        irqs.replace(a).is_none()
+        if irqs.is_none() {
+            irqs.replace(a);
+            true
+        } else {
+            false
+        }
     }
 
     unsafe fn unregister_irq_handler(&self, irq: u8) {

@@ -123,7 +123,9 @@ impl Hpet {
         let sys = crate::SYSTEM.read();
         for i in &self.irqs {
             let s2 = self.internal.clone();
-            sys.register_irq_handler(*i, move || Self::handle_interrupt(&s2));
+            if !sys.register_irq_handler(*i, move || Self::handle_interrupt(&s2)) {
+                crate::VGA.print_str("HPET INTERRUPT ALREADY TAKEN?\r\n");
+            }
             sys.enable_irq(*i);
             crate::VGA.print_str(&alloc::format!("Enabled hpet irq {}\r\n", i));
         }
@@ -147,9 +149,7 @@ impl Hpet {
         ));
     }
 
-    fn handle_interrupt(s: &Arc<HpetInternal>) {
-        loop {}
-    }
+    fn handle_interrupt(s: &Arc<HpetInternal>) {}
 }
 
 /// A single timer channel for the hpet timer
@@ -175,7 +175,22 @@ impl super::ArbitraryTimerTrait for HpetChannel {
         if this.counter >= newval {
             crate::VGA.print_str("HPET WONT TRIGGER IRQ\r\n");
         }
-        this.channels[self.index as usize].config |= 4;
+        let config = this.channels[self.index as usize].config;
+        unsafe {
+            core::ptr::write_volatile(&mut this.channels[self.index as usize].config, config | 4)
+        };
+        crate::VGA.print_str(&alloc::format!(
+            "HPET CHANNEL CONFIG IS {:x}\r\n",
+            this.channels[self.index as usize].config
+        ));
+        crate::VGA.print_str(&alloc::format!(
+            "HPET GENERAL CONFIG IS {:x}\r\n",
+            this.config
+        ));
+        crate::VGA.print_str(&alloc::format!(
+            "HPET GENERAL ISR IS {:x}\r\n",
+            this.interrupt
+        ));
         loop {
             let curval = unsafe { core::ptr::read_volatile(&this.counter) };
             //crate::VGA.print_str(&alloc::format!("HPET {}/{}\r\n", curval, newval));
@@ -221,7 +236,10 @@ impl super::TimerInstanceInnerTrait for HpetChannel {
         if this.counter >= newval {
             crate::VGA.print_str("HPET WONT TRIGGER\r\n");
         }
-        this.channels[self.index as usize].config |= 4;
+        let config = this.channels[self.index as usize].config;
+        unsafe {
+            core::ptr::write_volatile(&mut this.channels[self.index as usize].config, config | 4)
+        };
         loop {
             let curval = this.counter;
             crate::VGA.print_str(&alloc::format!("HPET {}/{}\r\n", curval, newval));

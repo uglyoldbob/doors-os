@@ -3,7 +3,6 @@
 use core::marker::PhantomData;
 
 use crate::kernel::SystemTrait;
-use crate::modules::interrupt::InterruptControllerTrait;
 use crate::modules::serial::SerialTrait;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -15,7 +14,6 @@ use alloc::boxed::Box;
 #[cfg(target_arch = "x86_64")]
 pub use boot64 as boot;
 
-use spin::RwLock;
 #[cfg(target_arch = "x86_64")]
 use x86_64::instructions::port::{PortRead, PortWrite};
 
@@ -846,6 +844,18 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     .sync_lock()
                     .map_addresses_read_write(vaddr, info.base_address, 0x1000)
                     .unwrap();
+                {
+                    let mut timers = crate::kernel::TIMERS.sync_lock();
+                    for (i, t) in timers.iter_mut().enumerate() {
+                        let mut t2 = t.sync_lock();
+                        {
+                            let t3: &mut crate::modules::timer::Timer = &mut t2;
+                            if let crate::modules::timer::Timer::X86Pit(pit) = t3 {
+                                pit.disable();
+                            }
+                        }
+                    }
+                }
                 let hpet = crate::modules::timer::hpet::Hpet::new(vaddr, info.num_comparators + 1);
                 hpet.test();
                 let mut timers = crate::kernel::TIMERS.sync_lock();
