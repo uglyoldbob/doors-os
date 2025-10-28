@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use crate::{
-    modules::{gpio::GpioPinTrait, timer::TimerInstanceInnerTrait},
+    modules::{gpio::GpioPinTrait, timer::TimerInstanceTrait},
     LockedArc,
 };
 

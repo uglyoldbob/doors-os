@@ -39,7 +39,7 @@ pub enum TimerIterator<'a> {
 }
 
 impl<'a> Iterator for TimerIterator<'a> {
-    type Item = TimerInstanceInner;
+    type Item = TimerInstance;
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Dummy(t) => t.next(),
@@ -55,7 +55,7 @@ pub trait TimerTrait {
     /// Iterate over all timer channels
     fn iter_mut(&mut self) -> TimerIterator<'_>;
     /// Get an inner timer
-    fn get_timer_inner(&mut self, i: u8) -> Result<TimerInstanceInner, TimerError>;
+    fn get_timer_inner(&mut self, i: u8) -> Result<TimerInstance, TimerError>;
     /// Get a timer instance
     fn get_timer(&mut self, i: u8) -> Result<TimerInstance, TimerError> {
         let i = self.get_timer_inner(i)?;
@@ -122,21 +122,25 @@ pub fn delay_ms_sync(ms: u32) {
 
 /// The inner trait implemented by a single timer instance
 #[enum_dispatch::enum_dispatch]
-pub trait TimerInstanceInnerTrait {
+pub trait TimerInstanceTrait {
     /// Does the timer support arbitrary timing
     fn supports_arbitrary_timing(&self) -> Option<&dyn ArbitraryTimerTrait>;
     /// Start or restart a oneshot timer
     fn start_oneshot(&mut self);
+    /// Set the interval for the timer in milliseconds
+    fn set_interval(&mut self, interval: u16);
     /// Get the irq guard inner, used to construct an individual timer channel
     fn get_guard_inner(&self) -> IrqGuardedInner;
     /// Handle the hardware interrupt, and return which channel fired the interrupt
     fn hardware_interrupt(&self) -> u8;
+    /// register an interrupt handler for this specific timer channel, returns true if successful
+    fn register_handler(&mut self, f: Box<TimerCallback>) -> bool;
 }
 
 /// An enumeration the types of timer instances
 #[doors_macros::enum_module_filter]
-#[enum_dispatch::enum_dispatch(TimerInstanceInnerTrait)]
-pub enum TimerInstanceInner {
+#[enum_dispatch::enum_dispatch(TimerInstanceTrait)]
+pub enum TimerInstance {
     /// The pit timer instance for x86
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     X86PitTimer(x86::PitInner),
@@ -165,72 +169,11 @@ pub enum Timer {
 }
 
 /// The type for a callback function in the timer code
-type TimerCallback = dyn Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
+type TimerCallback = dyn Fn(IrqGuardedUse<TimerInstance, SafeForInterrupts>)
     + crate::Interrupt
     + Send
     + Sync
     + 'static;
-
-/// An instance of a timer channel
-pub struct TimerInstance {
-    /// The protected inner timer instance
-    inner: Arc<IrqGuarded<TimerInstanceInner>>,
-    /// The callback (will be moved to the [TimerInstanceInner] soon)
-    callback: Option<Arc<Box<TimerCallback>>>,
-}
-
-impl TimerInstance {
-    /// Get the inner instance as a reference
-    pub fn sync_use(&self) -> IrqGuardedUse<'_, TimerInstanceInner, NotSafeForInterrupts> {
-        self.inner.sync_access()
-    }
-
-    /// The interrupt handler for timers
-    #[inline(never)]
-    fn handle_interrupt(
-        this: &IrqGuarded<TimerInstanceInner>,
-        cb: &Option<Arc<Box<TimerCallback>>>,
-    ) {
-        let s = this.interrupt_access();
-        let _channel = s.hardware_interrupt();
-        doors_macros::todo_item!("Do something with the indicated channel");
-        if let Some(c) = cb {
-            c(s);
-        }
-    }
-
-    /// Register an interrupt handler
-    pub fn register_handler<
-        F: Fn(IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>)
-            + crate::Interrupt
-            + Send
-            + Sync
-            + 'static,
-    >(
-        &mut self,
-        f: F,
-    ) {
-        use crate::kernel::SystemTrait;
-        self.callback.replace(Arc::new(Box::new(f)));
-        let s2 = self.inner.clone();
-        let cb = self.callback.clone();
-        crate::SYSTEM
-            .read()
-            .register_irq_handler(self.inner.irqs().next().unwrap(), move || {
-                Self::handle_interrupt(&s2, &cb)
-            });
-    }
-}
-
-impl From<TimerInstanceInner> for TimerInstance {
-    fn from(value: TimerInstanceInner) -> Self {
-        let com = value.get_guard_inner();
-        Self {
-            inner: Arc::new(IrqGuarded::new(value, &com)),
-            callback: None,
-        }
-    }
-}
 
 /// An iterator over nothing
 pub struct DummyTimerIterator<'a> {
@@ -238,7 +181,7 @@ pub struct DummyTimerIterator<'a> {
 }
 
 impl<'a> Iterator for DummyTimerIterator<'a> {
-    type Item = TimerInstanceInner;
+    type Item = TimerInstance;
     fn next(&mut self) -> Option<Self::Item> {
         None
     }
@@ -254,7 +197,7 @@ impl Drop for DummyTimerInner {
     fn drop(&mut self) {}
 }
 
-impl TimerInstanceInnerTrait for DummyTimerInner {
+impl TimerInstanceTrait for DummyTimerInner {
     fn hardware_interrupt(&self) -> u8 {
         panic!();
     }
@@ -270,10 +213,18 @@ impl TimerInstanceInnerTrait for DummyTimerInner {
     fn get_guard_inner(&self) -> IrqGuardedInner {
         panic!();
     }
+
+    fn set_interval(&mut self, _interval: u16) {
+        panic!();
+    }
+
+    fn register_handler(&mut self, _f: Box<TimerCallback>) -> bool {
+        false
+    }
 }
 
 impl TimerTrait for DummyTimer {
-    fn get_timer_inner(&mut self, _i: u8) -> Result<TimerInstanceInner, TimerError> {
+    fn get_timer_inner(&mut self, _i: u8) -> Result<TimerInstance, TimerError> {
         Err(TimerError::TimerIsAlreadyUsed)
     }
 

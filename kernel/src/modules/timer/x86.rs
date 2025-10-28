@@ -2,8 +2,10 @@
 
 use core::marker::PhantomData;
 
+use alloc::boxed::Box;
+
 use crate::{
-    boot::IOPORTS, kernel::SystemTrait, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers,
+    boot::IOPORTS, kernel::SystemTrait, Arc, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers,
 };
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
@@ -16,6 +18,8 @@ pub struct PitInner {
     _chan2: IoPortRef<u8>,
     /// command
     command: IoPortRef<u8>,
+    /// The interrupt handler for channel0
+    handler0: Option<Arc<Box<super::TimerCallback>>>,
 }
 
 impl PitInner {
@@ -25,6 +29,7 @@ impl PitInner {
             chan0: IOPORTS.get_port(0x40)?,
             _chan2: IOPORTS.get_port(0x42)?,
             command: IOPORTS.get_port(0x43)?,
+            handler0: None,
         };
         s.command.port_write(0);
         s.chan0.port_write(255);
@@ -37,9 +42,26 @@ impl Drop for PitInner {
     fn drop(&mut self) {}
 }
 
-impl super::TimerInstanceInnerTrait for PitInner {
+impl super::TimerInstanceTrait for PitInner {
     fn hardware_interrupt(&self) -> u8 {
         0
+    }
+
+    fn register_handler(&mut self, f: Box<super::TimerCallback>) -> bool {
+        let h = Arc::new(f);
+        if self.handler0.is_none() {
+            self.handler0.replace(h);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn set_interval(&mut self, interval: u16) {
+        let interval = interval as u64 * 1193182;
+        let interval = interval / 1000;
+        self.chan0.port_write((interval & 0xff) as u8);
+        self.chan0.port_write(((interval >> 8) & 0xff) as u8);
     }
 
     fn supports_arbitrary_timing(&self) -> Option<&dyn super::ArbitraryTimerTrait> {
@@ -89,7 +111,7 @@ impl Default for Pit {
 }
 
 impl super::TimerTrait for Pit {
-    fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstanceInner, super::TimerError> {
+    fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstance, super::TimerError> {
         assert_eq!(i, 0);
         if let Some(t) = self.i.take() {
             Ok(t.into())

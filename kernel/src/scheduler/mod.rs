@@ -14,12 +14,12 @@ mod x86;
 #[cfg(target_arch = "x86")]
 use x86::*;
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use spin::RwLock;
 
 use crate::{
     kernel::SystemTrait,
-    modules::timer::{TimerInstance, TimerInstanceInner, TimerTrait},
+    modules::timer::{TimerInstance, TimerTrait},
     Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, IrqStreamReader, IrqStreamWriter,
     NotSafeForInterrupts, SafeForInterrupts, TaskId,
 };
@@ -228,9 +228,9 @@ impl Scheduler {
     #[inline(never)]
     fn handle_interrupt(
         this: &Arc<SchedulerProtected>,
-        mut timer: IrqGuardedUse<TimerInstanceInner, SafeForInterrupts>,
+        mut timer: IrqGuardedUse<TimerInstance, SafeForInterrupts>,
     ) {
-        use crate::modules::timer::TimerInstanceInnerTrait;
+        use crate::modules::timer::TimerInstanceTrait;
         let mut this = this.0.interrupt_access();
 
         loop {
@@ -283,7 +283,7 @@ impl Scheduler {
 
     /// Setup the timer and start scheduling tasks with the timer
     pub fn timer_setup(&self, stack_start: usize, stack_size: usize) {
-        use crate::modules::timer::TimerInstanceInnerTrait;
+        use crate::modules::timer::TimerInstanceTrait;
         let s2 = self.i.clone();
         let irqnums = self.i.0.irqs();
         for i in irqnums {
@@ -299,7 +299,10 @@ impl Scheduler {
             let timer = t.module(0);
             let mut t2 = timer.sync_lock();
             let mut t3 = t2.get_timer(0).unwrap();
-            t3.register_handler(move |timer| Self::handle_interrupt(&s2, timer));
+            t3.set_interval(10);
+            if !t3.register_handler(Box::new(move |timer| Self::handle_interrupt(&s2, timer))) {
+                crate::VGA.print_str("FAILED TO REGISTER SCHEDULER HANDLER\r\n");
+            }
             this.timer.replace(t3);
         }
         let irqnums = self.i.0.irqs();
@@ -307,8 +310,8 @@ impl Scheduler {
             crate::SYSTEM.read().enable_irq(i);
         }
         {
-            let this = self.i.0.sync_access();
-            this.timer.as_ref().unwrap().sync_use().start_oneshot();
+            let mut this = self.i.0.sync_access();
+            this.timer.as_mut().unwrap().start_oneshot();
         }
     }
 

@@ -157,6 +157,8 @@ pub struct HpetChannel {
     index: u8,
     irq: u8,
     internal: Arc<HpetInternal>,
+    handler: Option<Arc<Box<super::TimerCallback>>>,
+    interval: u64,
 }
 
 #[async_trait::async_trait]
@@ -209,9 +211,19 @@ impl super::ArbitraryTimerTrait for HpetChannel {
     }
 }
 
-impl super::TimerInstanceInnerTrait for HpetChannel {
+impl super::TimerInstanceTrait for HpetChannel {
     fn supports_arbitrary_timing(&self) -> Option<&dyn super::ArbitraryTimerTrait> {
         Some(self)
+    }
+
+    fn register_handler(&mut self, f: Box<super::TimerCallback>) -> bool {
+        let h = Arc::new(f);
+        if self.handler.is_none() {
+            self.handler = Some(h);
+            true
+        } else {
+            false
+        }
     }
 
     fn get_guard_inner(&self) -> crate::IrqGuardedInner {
@@ -226,6 +238,10 @@ impl super::TimerInstanceInnerTrait for HpetChannel {
 
     fn hardware_interrupt(&self) -> u8 {
         self.irq
+    }
+
+    fn set_interval(&mut self, interval: u16) {
+        self.interval = interval as u64;
     }
 
     fn start_oneshot(&mut self) {
@@ -263,13 +279,15 @@ pub struct HpetTimerIterator<'a> {
 }
 
 impl<'a> Iterator for HpetTimerIterator<'a> {
-    type Item = super::TimerInstanceInner;
+    type Item = super::TimerInstance;
     fn next(&mut self) -> Option<Self::Item> {
         if self.cur < self.max {
             let t = HpetChannel {
                 index: self.cur,
                 irq: self.internal.irqs[self.cur as usize],
                 internal: self.internal.clone(),
+                handler: None,
+                interval: 100,
             };
             let r = Some(t.into());
             self.cur += 1;
@@ -281,12 +299,14 @@ impl<'a> Iterator for HpetTimerIterator<'a> {
 }
 
 impl super::TimerTrait for Hpet {
-    fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstanceInner, super::TimerError> {
+    fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstance, super::TimerError> {
         if i < self.internal.num_channels {
             let h = HpetChannel {
                 index: i,
                 irq: self.internal.irqs[i as usize],
                 internal: self.internal.clone(),
+                handler: None,
+                interval: 100,
             };
             Ok(h.into())
         } else {
