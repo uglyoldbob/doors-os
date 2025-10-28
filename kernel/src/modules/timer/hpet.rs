@@ -56,6 +56,17 @@ struct HpetInternal {
     num_channels: u8,
     /// Period in femtoseconds
     period: u32,
+    /// The handlers for every possible channel
+    handlers: crate::IrqGuarded<[Option<Arc<Box<super::TimerCallback2>>>; 32]>,
+}
+
+impl HpetInternal {
+    /// Get the number of ticks that corresponds to the specified number of milliseconds
+    fn get_interval(&self, interval: u16) -> u64 {
+        let counts = (interval as u64) * 1_000_000_000_000;
+        let ticks = counts / self.period as u64;
+        ticks
+    }
 }
 
 /// The main struct for the hpet implementation
@@ -110,6 +121,7 @@ impl Hpet {
             irqs: irq_values,
             num_channels,
             period,
+            handlers: IrqGuarded::new([const { None }; 32], &com),
         };
         let s = Self {
             internal: Arc::new(s),
@@ -149,7 +161,20 @@ impl Hpet {
         ));
     }
 
-    fn handle_interrupt(s: &Arc<HpetInternal>) {}
+    fn handle_interrupt(s: &Arc<HpetInternal>) {
+        let intstat = s.registers.interrupt_access().interrupt;
+        let handlers = s.handlers.interrupt_access();
+        for i in 0..s.num_channels {
+            let val = 1 << i;
+            if (intstat & val) != 0 {
+                if let Some(h) = &handlers[i as usize] {
+                    h();
+                }
+                s.registers.interrupt_access().interrupt = 1 << i;
+                break;
+            }
+        }
+    }
 }
 
 /// A single timer channel for the hpet timer
@@ -157,12 +182,11 @@ pub struct HpetChannel {
     index: u8,
     irq: u8,
     internal: Arc<HpetInternal>,
-    handler: Option<Arc<Box<super::TimerCallback>>>,
     interval: u64,
 }
 
 #[async_trait::async_trait]
-impl super::ArbitraryTimerTrait for HpetChannel {
+impl super::ArbitraryTimerTrait for Arc<HpetChannel> {
     fn delay_ms_sync(&self, ms: u32) {
         let counts = (ms as u64) * 1_000_000_000_000;
         let ticks = counts / self.internal.period as u64;
@@ -195,7 +219,6 @@ impl super::ArbitraryTimerTrait for HpetChannel {
         ));
         loop {
             let curval = unsafe { core::ptr::read_volatile(&this.counter) };
-            //crate::VGA.print_str(&alloc::format!("HPET {}/{}\r\n", curval, newval));
             if curval >= newval {
                 break;
             }
@@ -211,40 +234,12 @@ impl super::ArbitraryTimerTrait for HpetChannel {
     }
 }
 
-impl super::TimerInstanceTrait for HpetChannel {
+impl super::TimerInstanceTrait for Arc<HpetChannel> {
     fn supports_arbitrary_timing(&self) -> Option<&dyn super::ArbitraryTimerTrait> {
         Some(self)
     }
 
-    fn register_handler(&mut self, f: Box<super::TimerCallback>) -> bool {
-        let h = Arc::new(f);
-        if self.handler.is_none() {
-            self.handler = Some(h);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn get_guard_inner(&self) -> crate::IrqGuardedInner {
-        IrqGuardedInner::new(
-            crate::IrqNumbers::Only1(self.irq),
-            false,
-            true,
-            |_| {},
-            |_| {},
-        )
-    }
-
-    fn hardware_interrupt(&self) -> u8 {
-        self.irq
-    }
-
-    fn set_interval(&mut self, interval: u16) {
-        self.interval = interval as u64;
-    }
-
-    fn start_oneshot(&mut self) {
+    fn start_oneshot(&self) {
         let mut this = self.internal.registers.sync_access();
         let ticks = 100000;
         let newval = this.counter + ticks;
@@ -286,9 +281,9 @@ impl<'a> Iterator for HpetTimerIterator<'a> {
                 index: self.cur,
                 irq: self.internal.irqs[self.cur as usize],
                 internal: self.internal.clone(),
-                handler: None,
                 interval: 100,
             };
+            let t = Arc::new(t);
             let r = Some(t.into());
             self.cur += 1;
             r
@@ -299,16 +294,27 @@ impl<'a> Iterator for HpetTimerIterator<'a> {
 }
 
 impl super::TimerTrait for Hpet {
-    fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstance, super::TimerError> {
+    fn get_timer(
+        &mut self,
+        i: u8,
+        ms: u16,
+        cb: Box<super::TimerCallback>,
+    ) -> Result<super::TimerInstance, super::TimerError> {
         if i < self.internal.num_channels {
+            let interval = self.internal.get_interval(ms);
             let h = HpetChannel {
                 index: i,
                 irq: self.internal.irqs[i as usize],
                 internal: self.internal.clone(),
-                handler: None,
-                interval: 100,
+                interval,
             };
-            Ok(h.into())
+            let h = Arc::new(h);
+            let h2: super::TimerInstance = h.into();
+            let h3 = h2.clone();
+            let mut c = self.internal.handlers.sync_access();
+            c[i as usize].replace(Arc::new(Box::new(move || cb(h3.clone()))));
+
+            Ok(h2)
         } else {
             Err(super::TimerError::InvalidTimerIndex)
         }

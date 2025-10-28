@@ -6,9 +6,7 @@ use alloc::boxed::Box;
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
 use crate::LockedArc;
-use crate::{
-    Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, NotSafeForInterrupts, SafeForInterrupts,
-};
+use crate::{Arc, IrqGuardedInner, IrqGuardedUse, SafeForInterrupts};
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
@@ -54,14 +52,13 @@ impl<'a> Iterator for TimerIterator<'a> {
 pub trait TimerTrait {
     /// Iterate over all timer channels
     fn iter_mut(&mut self) -> TimerIterator<'_>;
-    /// Get an inner timer
-    fn get_timer_inner(&mut self, i: u8) -> Result<TimerInstance, TimerError>;
-    /// Get a timer instance
-    fn get_timer(&mut self, i: u8) -> Result<TimerInstance, TimerError> {
-        let i = self.get_timer_inner(i)?;
-        let j = i.into();
-        Ok(j)
-    }
+    /// Get a timer channel
+    fn get_timer(
+        &mut self,
+        i: u8,
+        ms: u16,
+        cb: Box<TimerCallback>,
+    ) -> Result<TimerInstance, TimerError>;
 }
 
 /// Implemented by timers that can delay for arbitrary periods of time
@@ -126,29 +123,22 @@ pub trait TimerInstanceTrait {
     /// Does the timer support arbitrary timing
     fn supports_arbitrary_timing(&self) -> Option<&dyn ArbitraryTimerTrait>;
     /// Start or restart a oneshot timer
-    fn start_oneshot(&mut self);
-    /// Set the interval for the timer in milliseconds
-    fn set_interval(&mut self, interval: u16);
-    /// Get the irq guard inner, used to construct an individual timer channel
-    fn get_guard_inner(&self) -> IrqGuardedInner;
-    /// Handle the hardware interrupt, and return which channel fired the interrupt
-    fn hardware_interrupt(&self) -> u8;
-    /// register an interrupt handler for this specific timer channel, returns true if successful
-    fn register_handler(&mut self, f: Box<TimerCallback>) -> bool;
+    fn start_oneshot(&self);
 }
 
 /// An enumeration the types of timer instances
 #[doors_macros::enum_module_filter]
+#[derive(Clone)]
 #[enum_dispatch::enum_dispatch(TimerInstanceTrait)]
 pub enum TimerInstance {
     /// The pit timer instance for x86
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
-    X86PitTimer(x86::PitInner),
+    X86PitTimer(Arc<x86::PitChannel>),
     /// A single channel for the hpet timer
     #[doors_module = "hpet"]
-    HpetChannel(hpet::HpetChannel),
+    HpetChannel(Arc<hpet::HpetChannel>),
     /// A dummy timer inner instance
-    DummyInner(DummyTimerInner),
+    DummyInner(Arc<DummyTimerInner>),
 }
 
 /// An enumeration of all the types of timers
@@ -168,12 +158,11 @@ pub enum Timer {
     Dummy(DummyTimer),
 }
 
+/// The secondary type for a timer callback function
+type TimerCallback2 = dyn Fn() + crate::Interrupt + Send + Sync + 'static;
+
 /// The type for a callback function in the timer code
-type TimerCallback = dyn Fn(IrqGuardedUse<TimerInstance, SafeForInterrupts>)
-    + crate::Interrupt
-    + Send
-    + Sync
-    + 'static;
+type TimerCallback = dyn Fn(TimerInstance) + crate::Interrupt + Send + Sync + 'static;
 
 /// An iterator over nothing
 pub struct DummyTimerIterator<'a> {
@@ -197,34 +186,23 @@ impl Drop for DummyTimerInner {
     fn drop(&mut self) {}
 }
 
-impl TimerInstanceTrait for DummyTimerInner {
-    fn hardware_interrupt(&self) -> u8 {
-        panic!();
-    }
-
+impl TimerInstanceTrait for Arc<DummyTimerInner> {
     fn supports_arbitrary_timing(&self) -> Option<&dyn ArbitraryTimerTrait> {
         None
     }
 
-    fn start_oneshot(&mut self) {
+    fn start_oneshot(&self) {
         panic!();
-    }
-
-    fn get_guard_inner(&self) -> IrqGuardedInner {
-        panic!();
-    }
-
-    fn set_interval(&mut self, _interval: u16) {
-        panic!();
-    }
-
-    fn register_handler(&mut self, _f: Box<TimerCallback>) -> bool {
-        false
     }
 }
 
 impl TimerTrait for DummyTimer {
-    fn get_timer_inner(&mut self, _i: u8) -> Result<TimerInstance, TimerError> {
+    fn get_timer(
+        &mut self,
+        _i: u8,
+        _ms: u16,
+        _cb: Box<TimerCallback>,
+    ) -> Result<TimerInstance, TimerError> {
         Err(TimerError::TimerIsAlreadyUsed)
     }
 

@@ -5,7 +5,8 @@ use core::marker::PhantomData;
 use alloc::boxed::Box;
 
 use crate::{
-    boot::IOPORTS, kernel::SystemTrait, Arc, IoPortRef, IoReadWrite, IrqGuardedInner, IrqNumbers,
+    boot::IOPORTS, kernel::SystemTrait, Arc, IoPortRef, IoReadWrite, IrqGuarded, IrqGuardedInner,
+    IrqNumbers,
 };
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
@@ -19,7 +20,12 @@ pub struct PitInner {
     /// command
     command: IoPortRef<u8>,
     /// The interrupt handler for channel0
-    handler0: Option<Arc<Box<super::TimerCallback>>>,
+    handler0: Option<Arc<Box<super::TimerCallback2>>>,
+}
+
+/// a pit channel
+pub struct PitChannel {
+    inner: Arc<IrqGuarded<PitInner>>,
 }
 
 impl PitInner {
@@ -36,56 +42,39 @@ impl PitInner {
         s.chan0.port_write(255);
         Some(s)
     }
-}
 
-impl Drop for PitInner {
-    fn drop(&mut self) {}
-}
-
-impl super::TimerInstanceTrait for PitInner {
-    fn hardware_interrupt(&self) -> u8 {
-        0
-    }
-
-    fn register_handler(&mut self, f: Box<super::TimerCallback>) -> bool {
-        let h = Arc::new(f);
-        if self.handler0.is_none() {
-            self.handler0.replace(h);
-            true
-        } else {
-            false
-        }
-    }
-
+    /// set the interval in milliseconds
     fn set_interval(&mut self, interval: u16) {
         let interval = interval as u64 * 1193182;
         let interval = interval / 1000;
         self.chan0.port_write((interval & 0xff) as u8);
         self.chan0.port_write(((interval >> 8) & 0xff) as u8);
     }
+}
 
+impl Drop for PitInner {
+    fn drop(&mut self) {}
+}
+
+impl super::TimerInstanceTrait for Arc<PitChannel> {
     fn supports_arbitrary_timing(&self) -> Option<&dyn super::ArbitraryTimerTrait> {
         None
     }
 
-    fn get_guard_inner(&self) -> IrqGuardedInner {
-        IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {})
-    }
-
-    fn start_oneshot(&mut self) {
+    fn start_oneshot(&self) {
         let v = 65535u16;
         let v = v.to_le_bytes();
-
-        self.command.port_write(8);
-        self.chan0.port_write(v[0]);
-        self.chan0.port_write(v[1]);
+        let mut this = self.inner.sync_access();
+        this.command.port_write(8);
+        this.chan0.port_write(v[0]);
+        this.chan0.port_write(v[1]);
     }
 }
 
 /// The programmable interval timer for x86 hardware
 pub struct Pit {
     /// protected data
-    i: Option<PitInner>,
+    i: Option<Arc<IrqGuarded<PitInner>>>,
 }
 
 impl Pit {
@@ -104,17 +93,32 @@ impl Drop for Pit {
 
 impl Default for Pit {
     fn default() -> Self {
+        let p = PitInner::new().unwrap();
+        let com = IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {});
         Self {
-            i: Some(PitInner::new().unwrap()),
+            i: Some(Arc::new(IrqGuarded::new(p, &com))),
         }
     }
 }
 
 impl super::TimerTrait for Pit {
-    fn get_timer_inner(&mut self, i: u8) -> Result<super::TimerInstance, super::TimerError> {
+    fn get_timer(
+        &mut self,
+        i: u8,
+        ms: u16,
+        cb: Box<super::TimerCallback>,
+    ) -> Result<super::TimerInstance, super::TimerError> {
         assert_eq!(i, 0);
         if let Some(t) = self.i.take() {
-            Ok(t.into())
+            let h = PitChannel { inner: t.clone() };
+            let mut t2 = t.sync_access();
+            t2.set_interval(ms);
+            let h2 = Arc::new(h);
+            let h3: super::TimerInstance = h2.into();
+            let h4 = h3.clone();
+            t2.handler0
+                .replace(Arc::new(Box::new(move || cb(h4.clone()))));
+            Ok(h3)
         } else {
             Err(super::TimerError::TimerIsAlreadyUsed)
         }

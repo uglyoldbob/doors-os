@@ -226,10 +226,7 @@ impl Scheduler {
 
     /// The interrupt handler for the timer
     #[inline(never)]
-    fn handle_interrupt(
-        this: &Arc<SchedulerProtected>,
-        mut timer: IrqGuardedUse<TimerInstance, SafeForInterrupts>,
-    ) {
+    fn handle_interrupt(this: &Arc<SchedulerProtected>, timer: TimerInstance) {
         use crate::modules::timer::TimerInstanceTrait;
         let mut this = this.0.interrupt_access();
 
@@ -298,11 +295,13 @@ impl Scheduler {
             let mut t = crate::kernel::TIMERS.sync_lock();
             let timer = t.module(0);
             let mut t2 = timer.sync_lock();
-            let mut t3 = t2.get_timer(0).unwrap();
-            t3.set_interval(10);
-            if !t3.register_handler(Box::new(move |timer| Self::handle_interrupt(&s2, timer))) {
-                crate::VGA.print_str("FAILED TO REGISTER SCHEDULER HANDLER\r\n");
-            }
+            let t3 = t2
+                .get_timer(
+                    0,
+                    100,
+                    Box::new(move |timer| Self::handle_interrupt(&s2, timer)),
+                )
+                .unwrap();
             this.timer.replace(t3);
         }
         let irqnums = self.i.0.irqs();
