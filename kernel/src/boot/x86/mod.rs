@@ -834,7 +834,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     .unwrap();
                 let vaddr = crate::slice_address(unsafe { vm.as_ref() });
                 crate::VGA.print_str(&alloc::format!(
-                    "Initializing HPET with {} channels at {:x}, {}, v{:x}\r\n",
+                    "Initializing HPET with {} channels at {:x}, {}, v{}\r\n",
                     info.num_comparators + 1,
                     info.base_address,
                     info.clock_tick_unit,

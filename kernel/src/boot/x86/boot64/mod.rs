@@ -146,11 +146,13 @@ pub extern "x86-interrupt" fn irq1(_isf: InterruptStackFrame) {
 
 /// The irq2 handler
 pub extern "x86-interrupt" fn irq2(_isf: InterruptStackFrame) {
-    let mut handle = super::IRQ_HANDLERS[2].sync_lock();
-    if let Some(h2) = handle.as_mut() {
+    let handle = super::IRQ_HANDLERS[2].sync_lock();
+    let h3 = unsafe { handle.unsafe_destroy() };
+    let h3 = unsafe { h3.as_mut().unwrap() };
+    finish_irq(2);
+    if let Some(h2) = h3 {
         h2();
     }
-    finish_irq(2);
 }
 
 /// The irq3 handler
