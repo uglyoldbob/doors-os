@@ -19,7 +19,7 @@ use spin::RwLock;
 
 use crate::{
     kernel::SystemTrait,
-    modules::timer::{TimerInstance, TimerTrait},
+    modules::timer::{TimerInstance, TimerTrait, WeakTimerInstance},
     Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, IrqStreamReader, IrqStreamWriter,
     NotSafeForInterrupts, SafeForInterrupts, TaskId,
 };
@@ -226,13 +226,15 @@ impl Scheduler {
 
     /// The interrupt handler for the timer
     #[inline(never)]
-    fn handle_interrupt(this: &Arc<SchedulerProtected>, timer: TimerInstance) {
+    fn handle_interrupt(this: &Arc<SchedulerProtected>, timer: WeakTimerInstance) {
         use crate::modules::timer::TimerInstanceTrait;
         let mut this = this.0.interrupt_access();
 
         loop {
             if this.local_tasks.is_empty() {
-                timer.start_oneshot();
+                if let Some(t) = timer.upgrade() {
+                    t.start_oneshot();
+                }
                 drop(timer);
                 return;
             }
@@ -260,7 +262,9 @@ impl Scheduler {
                     }
                     core::mem::swap(&mut t.local_tasks[next_task_index], &mut t.cur_task);
                     drop(this);
-                    timer.start_oneshot();
+                    if let Some(t) = timer.upgrade() {
+                        t.start_oneshot();
+                    }
                     drop(timer);
                     return unsafe { Context::thread_restore(&new_context) };
                 }
@@ -299,7 +303,9 @@ impl Scheduler {
                 .get_timer(
                     0,
                     100,
-                    Box::new(move |timer| Self::handle_interrupt(&s2, timer)),
+                    crate::modules::timer::TimerCallbackWithUsage::Multiple(Arc::new(Box::new(
+                        move |timer| Self::handle_interrupt(&s2, timer),
+                    ))),
                 )
                 .unwrap();
             this.timer.replace(t3);

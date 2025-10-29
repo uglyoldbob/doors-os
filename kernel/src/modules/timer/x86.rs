@@ -20,7 +20,7 @@ pub struct PitInner {
     /// command
     command: IoPortRef<u8>,
     /// The interrupt handler for channel0
-    handler0: Option<Arc<Box<super::TimerCallback2>>>,
+    handler0: super::TimerCallback2WithUsage,
 }
 
 /// a pit channel
@@ -35,7 +35,7 @@ impl PitInner {
             chan0: IOPORTS.get_port(0x40)?,
             _chan2: IOPORTS.get_port(0x42)?,
             command: IOPORTS.get_port(0x43)?,
-            handler0: None,
+            handler0: super::TimerCallback2WithUsage::None,
         };
         s.command.port_write(0);
         s.chan0.port_write(255);
@@ -106,7 +106,7 @@ impl super::TimerTrait for Pit {
         &mut self,
         i: u8,
         ms: u16,
-        cb: Box<super::TimerCallback>,
+        cb: super::TimerCallbackWithUsage,
     ) -> Result<super::TimerInstance, super::TimerError> {
         assert_eq!(i, 0);
         if let Some(t) = self.i.take() {
@@ -115,9 +115,23 @@ impl super::TimerTrait for Pit {
             t2.set_interval(ms);
             let h2 = Arc::new(h);
             let h3: super::TimerInstance = h2.into();
-            let h4 = h3.clone();
-            t2.handler0
-                .replace(Arc::new(Box::new(move || cb(h4.clone()))));
+            let h4 = h3.downgrade();
+            match cb {
+                super::TimerCallbackWithUsage::Single(a) => {
+                    if let Some(a) = a {
+                        t2.handler0 = super::TimerCallback2WithUsage::Single(Some(Arc::new(
+                            Box::new(move || a(h4.clone())),
+                        )));
+                    }
+                }
+                super::TimerCallbackWithUsage::Multiple(a) => {
+                    t2.handler0 =
+                        super::TimerCallback2WithUsage::Multiple(Arc::new(Box::new(move || {
+                            a(h4.clone())
+                        })));
+                }
+                super::TimerCallbackWithUsage::None => {}
+            }
             Ok(h3)
         } else {
             Err(super::TimerError::TimerIsAlreadyUsed)

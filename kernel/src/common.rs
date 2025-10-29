@@ -104,9 +104,25 @@ impl From<core::num::NonZero<usize>> for TaskId {
 /// A definition for an Arc. This allows traits to be defined for Arc.
 pub struct Arc<T>(alloc::sync::Arc<T>);
 
+/// The redefinition of Weak
+pub struct Weak<T>(alloc::sync::Weak<T>);
+
 impl<T> Interrupt for Arc<T> where T: Interrupt {}
 
 impl<T> Interrupt for Box<T> where T: Interrupt + ?Sized {}
+
+impl<T> Weak<T> {
+    /// The redefinition of upgrade
+    pub fn upgrade(&self) -> Option<Arc<T>> {
+        self.0.upgrade().map(|a| Arc(a))
+    }
+}
+
+impl<T> Clone for Weak<T> {
+    fn clone(&self) -> Self {
+        Weak(self.0.clone())
+    }
+}
 
 impl<T> Deref for Arc<T> {
     type Target = T;
@@ -125,6 +141,11 @@ impl<T> Arc<T> {
     /// Creates a new arc
     pub fn new(v: T) -> Self {
         Self(alloc::sync::Arc::new(v))
+    }
+
+    /// Downgrade to a weak pointer
+    pub fn downgrade(this: &Self) -> Weak<T> {
+        Weak(alloc::sync::Arc::downgrade(&this.0))
     }
 }
 

@@ -50,7 +50,8 @@ const _HPET_SIZE_CHECKER: [u8; 0x100 + 0x20 * 32] = [0; core::mem::size_of::<Hpe
 
 struct HpetData {
     registers: &'static mut HpetRegisters,
-    handlers: [Option<Arc<Box<super::TimerCallback2>>>; 32],
+    handlers: [super::TimerCallback2WithUsage; 32],
+    wakers: [Option<Waker>; 32],
     channels_used: u32,
 }
 
@@ -130,8 +131,9 @@ impl Hpet {
         crate::VGA.print_str(&alloc::format!("HPET PERIOD IS {}\r\n", period));
         let d = HpetData {
             registers: r,
-            handlers: [const { None }; 32],
+            handlers: [const { super::TimerCallback2WithUsage::None }; 32],
             channels_used: 0,
+            wakers: [const { None }; 32],
         };
         let s = HpetInternal {
             data: IrqGuarded::new(d, &com),
@@ -185,8 +187,11 @@ impl Hpet {
             let val = 1 << i;
             if (intstat & val) != 0 {
                 this.registers.interrupt = 1 << i;
+                if let Some(w) = this.wakers[i as usize].take() {
+                    w.wake();
+                }
                 let handlers = &mut this.handlers;
-                let h = handlers[i as usize].clone();
+                let h = handlers[i as usize].take();
                 drop(this);
                 if let Some(h) = h {
                     h();
@@ -208,16 +213,14 @@ pub struct HpetChannel {
 /// The future used for delaying a certain period of time, asynchronously
 struct HpetChannelFuture {
     index: u8,
-    irq: u8,
     internal: Arc<HpetInternal>,
     newval: u64,
-    waker: Option<Waker>,
 }
 
 impl core::future::Future for HpetChannelFuture {
     type Output = ();
     fn poll(
-        mut self: core::pin::Pin<&mut Self>,
+        self: core::pin::Pin<&mut Self>,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Self::Output> {
         let timer_done = {
@@ -228,8 +231,9 @@ impl core::future::Future for HpetChannelFuture {
         if timer_done {
             return core::task::Poll::Ready(());
         } else {
-            if self.waker.is_none() {
-                self.waker.replace(cx.waker().clone());
+            let mut this = self.internal.data.sync_access();
+            if this.wakers[self.index as usize].is_none() {
+                this.wakers[self.index as usize].replace(cx.waker().clone());
             }
             return core::task::Poll::Pending;
         }
@@ -241,6 +245,7 @@ impl Drop for HpetChannel {
         let mut this = self.internal.data.sync_access();
         let mut v = this.channels_used;
         v &= !(1 << self.index);
+        crate::VGA.print_str(&alloc::format!("TIMER USAGE IS NOW {:X}\r\n", v));
         this.channels_used = v;
     }
 }
@@ -312,14 +317,20 @@ impl super::ArbitraryTimerTrait for Arc<HpetChannel> {
             let this = &mut self.internal.data.sync_access().registers;
             let newval = this.counter + ticks;
             this.channels[self.index as usize].comparator = newval;
+            this.channels[self.index as usize].comparator = newval;
+            let config = this.channels[self.index as usize].config;
+            unsafe {
+                core::ptr::write_volatile(
+                    &mut this.channels[self.index as usize].config,
+                    config | 6,
+                )
+            };
             newval
         };
         let f = HpetChannelFuture {
             index: self.index,
-            irq: self.irq,
             newval,
             internal: self.internal.clone(),
-            waker: None,
         };
         f.await;
     }
@@ -370,7 +381,7 @@ impl super::TimerTrait for Hpet {
         &mut self,
         i: u8,
         ms: u16,
-        cb: Box<super::TimerCallback>,
+        cb: super::TimerCallbackWithUsage,
     ) -> Result<super::TimerInstance, super::TimerError> {
         if i < self.internal.num_channels {
             if ((self.internal.data.sync_access().channels_used >> i) & 1) == 0 {
@@ -383,12 +394,30 @@ impl super::TimerTrait for Hpet {
                 };
                 let h = Arc::new(h);
                 let h2: super::TimerInstance = h.into();
-                let h3 = h2.clone();
+                let h3 = h2.downgrade();
                 {
                     let c = &mut self.internal.data.sync_access().handlers;
-                    c[i as usize].replace(Arc::new(Box::new(move || cb(h3.clone()))));
+                    match cb {
+                        super::TimerCallbackWithUsage::Single(a) => {
+                            if let Some(a) = a {
+                                c[i as usize] = super::TimerCallback2WithUsage::Single(Some(
+                                    Arc::new(Box::new(move || a(h3.clone()))),
+                                ));
+                            }
+                        }
+                        super::TimerCallbackWithUsage::Multiple(a) => {
+                            c[i as usize] = super::TimerCallback2WithUsage::Multiple(Arc::new(
+                                Box::new(move || a(h3.clone())),
+                            ));
+                        }
+                        super::TimerCallbackWithUsage::None => {}
+                    }
                 }
                 self.internal.data.sync_access().channels_used |= 1 << i;
+                crate::VGA.print_str(&alloc::format!(
+                    "TIMER USAGE IS NOW2 {:X}\r\n",
+                    self.internal.data.sync_access().channels_used
+                ));
                 Ok(h2)
             } else {
                 Err(super::TimerError::TimerIsAlreadyUsed)

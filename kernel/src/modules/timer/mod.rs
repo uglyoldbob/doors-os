@@ -57,7 +57,7 @@ pub trait TimerTrait {
         &mut self,
         i: u8,
         ms: u16,
-        cb: Box<TimerCallback>,
+        cb: TimerCallbackWithUsage,
     ) -> Result<TimerInstance, TimerError>;
 }
 
@@ -72,19 +72,43 @@ pub trait ArbitraryTimerTrait {
     async fn delay_ms_async(&self, ms: u32);
 }
 
-/// Delay the specified number of milliseconds asynchronously.
-pub async fn delay_ms_async(ms: u32) {
+async fn get_async_timer(ms: u32) -> Option<TimerInstance> {
     let mut timers = crate::kernel::TIMERS.lock().await;
     for t in timers.iter_mut() {
         let mut t = t.lock().await;
         for tm in t.iter() {
-            let tmm = t.get_timer(tm, ms as u16, Box::new(|_| {}));
+            crate::VGA.print_str(&alloc::format!("ASYNC CHECKING TIMER {}\r\n", tm));
+            let tmm = t.get_timer(
+                tm,
+                ms as u16,
+                TimerCallbackWithUsage::Single(Some(Arc::new(Box::new(|_| {})))),
+            );
             if let Ok(tmm) = tmm {
-                if let Some(at) = tmm.supports_arbitrary_timing() {
-                    at.delay_ms_async(ms).await;
-                    return;
+                if let Some(_at) = tmm.supports_arbitrary_timing() {
+                    crate::VGA.print_str(&alloc::format!("ASYNC TIMER USAGE IS {}\r\n", tm));
+                    return Some(tmm);
+                } else {
+                    crate::VGA.print_str(&alloc::format!(
+                        "TIMER {} CANNOT DO ARBITRARY TIMING?\r\n",
+                        tm
+                    ));
                 }
+            } else {
+                crate::VGA.print_str(&alloc::format!("TIMER {} IS BUSY?\r\n", tm));
             }
+        }
+    }
+    None
+}
+
+/// Delay the specified number of milliseconds asynchronously.
+pub async fn delay_ms_async(ms: u32) {
+    if let Some(tm) = get_async_timer(ms).await {
+        if let Some(at) = tm.supports_arbitrary_timing() {
+            at.delay_ms_async(ms).await;
+            return;
+        } else {
+            crate::VGA.print_str("TIMER NO NO LONGER SUPPORTS ARBITRARY TIMING??\r\n");
         }
     }
     panic!()
@@ -93,15 +117,21 @@ pub async fn delay_ms_async(ms: u32) {
 /// Delay a specified number of milliseconds. This will eventually be deprecated and removed
 pub fn delay_ms_sync(ms: u32) {
     let mut timers = crate::kernel::TIMERS.sync_lock();
-    for (i, t) in timers.iter_mut().enumerate() {
+    for t in timers.iter_mut() {
         let mut t = t.sync_lock();
-        for (j, tm) in t.iter().enumerate() {
-            let tmm = t.get_timer(tm, ms as u16, Box::new(|_| {}));
+        for tm in t.iter() {
+            let tmm = t.get_timer(
+                tm,
+                ms as u16,
+                TimerCallbackWithUsage::Single(Some(Arc::new(Box::new(|_| {})))),
+            );
             if let Ok(tmm) = tmm {
                 if let Some(tmm) = tmm.supports_arbitrary_timing() {
                     tmm.delay_ms_sync(ms);
                     return;
                 }
+            } else {
+                crate::VGA.print_str(&alloc::format!("TIMER {} not available\r\n", tm));
             }
         }
     }
@@ -132,6 +162,42 @@ pub enum TimerInstance {
     DummyInner(Arc<DummyTimerInner>),
 }
 
+/// A weak timer reference
+#[doors_macros::enum_module_filter]
+#[derive(Clone)]
+pub enum WeakTimerInstance {
+    /// The pit timer instance for x86
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    X86PitTimer(crate::Weak<x86::PitChannel>),
+    /// A single channel for the hpet timer
+    #[doors_module = "hpet"]
+    HpetChannel(crate::Weak<hpet::HpetChannel>),
+    /// A dummy timer inner instance
+    DummyInner(crate::Weak<DummyTimerInner>),
+}
+
+impl WeakTimerInstance {
+    /// Upgrade the reference to a strong one if possible
+    pub fn upgrade(&self) -> Option<TimerInstance> {
+        match self {
+            Self::X86PitTimer(a) => a.upgrade().map(|a| a.into()),
+            Self::HpetChannel(a) => a.upgrade().map(|a| a.into()),
+            Self::DummyInner(a) => a.upgrade().map(|a| a.into()),
+        }
+    }
+}
+
+impl TimerInstance {
+    /// Produce a weak instance
+    pub fn downgrade(&self) -> WeakTimerInstance {
+        match self {
+            Self::X86PitTimer(a) => WeakTimerInstance::X86PitTimer(Arc::downgrade(a)),
+            Self::HpetChannel(a) => WeakTimerInstance::HpetChannel(Arc::downgrade(a)),
+            Self::DummyInner(a) => WeakTimerInstance::DummyInner(Arc::downgrade(a)),
+        }
+    }
+}
+
 /// An enumeration of all the types of timers
 #[doors_macros::enum_module_filter]
 #[enum_dispatch::enum_dispatch(TimerTrait)]
@@ -151,9 +217,39 @@ pub enum Timer {
 
 /// The secondary type for a timer callback function
 type TimerCallback2 = dyn Fn() + crate::Interrupt + Send + Sync + 'static;
-
 /// The type for a callback function in the timer code
-type TimerCallback = dyn Fn(TimerInstance) + crate::Interrupt + Send + Sync + 'static;
+type TimerCallback = dyn Fn(WeakTimerInstance) + crate::Interrupt + Send + Sync + 'static;
+
+/// A timer callback that defines how many times it should be called
+pub enum TimerCallback2WithUsage {
+    /// The callback is used one time then deleted
+    Single(Option<Arc<Box<TimerCallback2>>>),
+    /// The callback is used multiple times
+    Multiple(Arc<Box<TimerCallback2>>),
+    /// None
+    None,
+}
+
+/// A timer callback that defines how many times it should be called
+pub enum TimerCallbackWithUsage {
+    /// The callback is used one time then deleted
+    Single(Option<Arc<Box<TimerCallback>>>),
+    /// The callback is used multiple times
+    Multiple(Arc<Box<TimerCallback>>),
+    /// None
+    None,
+}
+
+impl TimerCallback2WithUsage {
+    /// Take the callback
+    pub fn take(&mut self) -> Option<Arc<Box<TimerCallback2>>> {
+        match self {
+            Self::Single(a) => a.take(),
+            Self::Multiple(a) => Some(a.clone()),
+            Self::None => None,
+        }
+    }
+}
 
 /// An iterator over nothing
 pub struct DummyTimerIterator {}
@@ -190,7 +286,7 @@ impl TimerTrait for DummyTimer {
         &mut self,
         _i: u8,
         _ms: u16,
-        _cb: Box<TimerCallback>,
+        _cb: TimerCallbackWithUsage,
     ) -> Result<TimerInstance, TimerError> {
         Err(TimerError::TimerIsAlreadyUsed)
     }
