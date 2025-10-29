@@ -178,7 +178,7 @@ impl Locked<SerialHandler> {
 /// Tracks all timers in the kernel
 pub struct TimerHandler {
     /// The timer providers
-    timerp: Vec<LockedArc<crate::modules::timer::Timer>>,
+    timerp: Vec<AsyncLockedArc<crate::modules::timer::Timer>>,
 }
 
 impl TimerHandler {
@@ -202,7 +202,7 @@ impl TimerHandler {
         }
         if let Some(i) = found_pit {
             let a = self.timerp.get_mut(i).unwrap();
-            let mut pit = LockedArc::new(hpet.into());
+            let mut pit = AsyncLockedArc::new(hpet.into());
             core::mem::swap(a, &mut pit);
             crate::VGA.print_str("Replaced the PIT with HPET\r\n");
             drop(pit);
@@ -210,17 +210,19 @@ impl TimerHandler {
     }
 
     /// Get an interator over all of the timers
-    pub fn iter_mut(&mut self) -> core::slice::IterMut<LockedArc<crate::modules::timer::Timer>> {
+    pub fn iter_mut(
+        &mut self,
+    ) -> core::slice::IterMut<AsyncLockedArc<crate::modules::timer::Timer>> {
         self.timerp.iter_mut()
     }
 
     /// Add a serial module to the system
     pub fn register_timer(&mut self, m: crate::modules::timer::Timer) {
-        self.timerp.push(LockedArc::new(m));
+        self.timerp.push(AsyncLockedArc::new(m));
     }
 
     /// Get a serial module
-    pub fn module(&mut self, i: usize) -> LockedArc<crate::modules::timer::Timer> {
+    pub fn module(&mut self, i: usize) -> AsyncLockedArc<crate::modules::timer::Timer> {
         self.timerp[i].clone()
     }
 }
@@ -297,8 +299,8 @@ lazy_static! {
     pub static ref SERIAL: Locked<SerialHandler> =
         Locked::new(SerialHandler::new());
     /// The list of all timers for the kernel
-    pub static ref TIMERS: Locked<TimerHandler> =
-        Locked::new(TimerHandler::new());
+    pub static ref TIMERS: AsyncLocked<TimerHandler> =
+        AsyncLocked::new(TimerHandler::new());
     /// The list of the displays for the kernel
     pub static ref DISPLAYS : Locked<DisplayHandler> =
         Locked::new(DisplayHandler::new());

@@ -27,17 +27,17 @@ pub enum TimerError {
 }
 
 /// An iterator over timer channels
-pub enum TimerIterator<'a> {
+pub enum TimerIterator {
     /// A dummy iterator
-    Dummy(DummyTimerIterator<'a>),
+    Dummy(DummyTimerIterator),
     /// hpet iterator
-    Hpet(hpet::HpetTimerIterator<'a>),
+    Hpet(hpet::HpetTimerIterator),
     /// The pit iterator
-    Pit(DummyTimerIterator<'a>),
+    Pit(DummyTimerIterator),
 }
 
-impl<'a> Iterator for TimerIterator<'a> {
-    type Item = TimerInstance;
+impl Iterator for TimerIterator {
+    type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Dummy(t) => t.next(),
@@ -51,7 +51,7 @@ impl<'a> Iterator for TimerIterator<'a> {
 #[enum_dispatch::enum_dispatch]
 pub trait TimerTrait {
     /// Iterate over all timer channels
-    fn iter_mut(&mut self) -> TimerIterator<'_>;
+    fn iter(&self) -> TimerIterator;
     /// Get a timer channel
     fn get_timer(
         &mut self,
@@ -74,13 +74,16 @@ pub trait ArbitraryTimerTrait {
 
 /// Delay the specified number of milliseconds asynchronously.
 pub async fn delay_ms_async(ms: u32) {
-    let mut timers = crate::kernel::TIMERS.sync_lock();
+    let mut timers = crate::kernel::TIMERS.lock().await;
     for t in timers.iter_mut() {
-        let mut t = t.sync_lock();
-        for tm in t.iter_mut() {
-            if let Some(tmm) = tm.supports_arbitrary_timing() {
-                tmm.delay_ms_async(ms).await;
-                return;
+        let mut t = t.lock().await;
+        for tm in t.iter() {
+            let tmm = t.get_timer(tm, ms as u16, Box::new(|_| {}));
+            if let Ok(tmm) = tmm {
+                if let Some(at) = tmm.supports_arbitrary_timing() {
+                    at.delay_ms_async(ms).await;
+                    return;
+                }
             }
         }
     }
@@ -91,26 +94,14 @@ pub async fn delay_ms_async(ms: u32) {
 pub fn delay_ms_sync(ms: u32) {
     let mut timers = crate::kernel::TIMERS.sync_lock();
     for (i, t) in timers.iter_mut().enumerate() {
-        crate::VGA.print_str(&alloc::format!(
-            "QUERY Timer {} supports arbitrary timing\r\n",
-            i
-        ));
         let mut t = t.sync_lock();
-        for (j, tm) in t.iter_mut().enumerate() {
-            if let Some(tmm) = tm.supports_arbitrary_timing() {
-                crate::VGA.print_str(&alloc::format!(
-                    "Timer {},{} supports arbitrary timing\r\n",
-                    i,
-                    j
-                ));
-                tmm.delay_ms_sync(ms);
-                return;
-            } else {
-                crate::VGA.print_str(&alloc::format!(
-                    "Timer {},{} NOT SUPPORT arbitrary timing\r\n",
-                    i,
-                    j
-                ));
+        for (j, tm) in t.iter().enumerate() {
+            let tmm = t.get_timer(tm, ms as u16, Box::new(|_| {}));
+            if let Ok(tmm) = tmm {
+                if let Some(tmm) = tmm.supports_arbitrary_timing() {
+                    tmm.delay_ms_sync(ms);
+                    return;
+                }
             }
         }
     }
@@ -165,12 +156,10 @@ type TimerCallback2 = dyn Fn() + crate::Interrupt + Send + Sync + 'static;
 type TimerCallback = dyn Fn(TimerInstance) + crate::Interrupt + Send + Sync + 'static;
 
 /// An iterator over nothing
-pub struct DummyTimerIterator<'a> {
-    phantom: PhantomData<&'a usize>,
-}
+pub struct DummyTimerIterator {}
 
-impl<'a> Iterator for DummyTimerIterator<'a> {
-    type Item = TimerInstance;
+impl Iterator for DummyTimerIterator {
+    type Item = u8;
     fn next(&mut self) -> Option<Self::Item> {
         None
     }
@@ -206,9 +195,7 @@ impl TimerTrait for DummyTimer {
         Err(TimerError::TimerIsAlreadyUsed)
     }
 
-    fn iter_mut(&mut self) -> TimerIterator<'_> {
-        TimerIterator::Dummy(DummyTimerIterator {
-            phantom: PhantomData,
-        })
+    fn iter(&self) -> TimerIterator {
+        TimerIterator::Dummy(DummyTimerIterator {})
     }
 }

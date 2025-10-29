@@ -124,9 +124,7 @@ impl super::TimerTrait for Pit {
         }
     }
 
-    fn iter_mut(&mut self) -> super::TimerIterator<'_> {
-        super::TimerIterator::Pit(super::DummyTimerIterator {
-            phantom: PhantomData,
-        })
+    fn iter(&self) -> super::TimerIterator {
+        super::TimerIterator::Pit(super::DummyTimerIterator {})
     }
 }

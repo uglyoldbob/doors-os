@@ -180,6 +180,13 @@ fn test_function() {
     }
 }
 
+async fn async_test_function() {
+    for i in 0..10 {
+        crate::VGA.print_str(&alloc::format!("Test async print {} with delay\r\n", i));
+        modules::timer::delay_ms_async(1000).await;
+    }
+}
+
 doors_macros::define_doors_test_runner!();
 
 /// This function runs the kernel tests
@@ -307,6 +314,7 @@ fn main() -> ! {
                 .task_terminator()
                 .await;
         });
+        let _ = executor.spawn(async_test_function());
         let ge = GlobalExecutor::new(executor);
         crate::kernel::EXECUTOR.write().replace(ge);
         crate::kernel::EXECUTOR.read().as_ref().unwrap().run()
