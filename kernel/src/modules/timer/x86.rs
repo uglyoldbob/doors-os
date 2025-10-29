@@ -1,12 +1,11 @@
 //! Code for x86 timers
 
-use core::marker::PhantomData;
-
 use alloc::boxed::Box;
 
 use crate::{
-    boot::IOPORTS, kernel::SystemTrait, Arc, IoPortRef, IoReadWrite, IrqGuarded, IrqGuardedInner,
-    IrqNumbers,
+    boot::IOPORTS,
+    kernel::{SoftwareInterruptTrait, SystemTrait},
+    Arc, IoPortRef, IoReadWrite, IrqGuarded, IrqGuardedInner, IrqNumbers,
 };
 
 doors_macros::todo_item!("Implement code for channel 2 of the pit, the speaker");
@@ -21,6 +20,8 @@ pub struct PitInner {
     command: IoPortRef<u8>,
     /// The interrupt handler for channel0
     handler0: super::TimerCallback2WithUsage,
+    /// The software interrupt handler
+    sint: Option<crate::kernel::SoftwareInterrupt>,
 }
 
 /// a pit channel
@@ -36,7 +37,9 @@ impl PitInner {
             _chan2: IOPORTS.get_port(0x42)?,
             command: IOPORTS.get_port(0x43)?,
             handler0: super::TimerCallback2WithUsage::None,
+            sint: None,
         };
+        s.sint = crate::SYSTEM.read().get_software_interrupt(|| loop {});
         s.command.port_write(0);
         s.chan0.port_write(255);
         s.chan0.port_write(255);
@@ -68,6 +71,12 @@ impl super::TimerInstanceTrait for Arc<PitChannel> {
         this.command.port_write(8);
         this.chan0.port_write(v[0]);
         this.chan0.port_write(v[1]);
+    }
+
+    fn manually_trigger(&self) {
+        if let Some(s) = &self.inner.sync_access().sint {
+            s.call();
+        }
     }
 }
 

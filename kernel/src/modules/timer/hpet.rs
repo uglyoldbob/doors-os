@@ -341,6 +341,10 @@ impl super::TimerInstanceTrait for Arc<HpetChannel> {
         Some(self)
     }
 
+    fn manually_trigger(&self) {
+        todo!();
+    }
+
     fn start_oneshot(&self) {
         let this = &mut self.internal.data.sync_access().registers;
         let ticks = self.interval;

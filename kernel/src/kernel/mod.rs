@@ -1,5 +1,8 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+pub mod x86;
+
 use crate::{AsyncLocked, AsyncLockedArc, Locked, LockedArc};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
@@ -339,6 +342,11 @@ pub trait SystemTrait {
         exception: u8,
         handler: F,
     ) -> bool;
+    /// Get a software interrupt
+    fn get_software_interrupt<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        h: F,
+    ) -> Option<SoftwareInterrupt>;
     /// Enable IRQ
     fn enable_irq(&self, irq: u8);
     /// Disable IRQ
@@ -409,6 +417,13 @@ impl SystemTrait for NullSystem {
         None
     }
 
+    fn get_software_interrupt<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        _h: F,
+    ) -> Option<SoftwareInterrupt> {
+        None
+    }
+
     unsafe fn unregister_exception_handler(&self, _exception: u8) {}
 
     unsafe fn unregister_irq_handler(&self, _irq: u8) {}
@@ -424,6 +439,33 @@ impl SystemTrait for NullSystem {
     fn create_process(&self, _b: &object::File) -> Result<(), ()> {
         Err(())
     }
+}
+
+/// The trait for calling software interrupts created by a system
+#[enum_dispatch::enum_dispatch]
+pub trait SoftwareInterruptTrait {
+    /// Call the software interrupt
+    fn call(&self);
+}
+
+/// An interrupt controller for the system
+#[enum_dispatch::enum_dispatch(SoftwareInterruptTrait)]
+pub enum SoftwareInterrupt {
+    #[cfg(target_arch = "x86")]
+    /// The x86 64 system code
+    X86_32(x86::SoftIrq),
+    #[cfg(target_arch = "x86_64")]
+    /// The x86 64 system code
+    X86_64(x86::SoftIrq),
+    /// A dummy do nothing system
+    Null(NullSoftIrq),
+}
+
+/// A null software interrupt that does nothing
+pub struct NullSoftIrq {}
+
+impl SoftwareInterruptTrait for NullSoftIrq {
+    fn call(&self) {}
 }
 
 use spin::RwLock;

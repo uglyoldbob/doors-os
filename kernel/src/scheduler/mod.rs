@@ -19,7 +19,7 @@ use spin::RwLock;
 
 use crate::{
     kernel::SystemTrait,
-    modules::timer::{TimerInstance, TimerTrait, WeakTimerInstance},
+    modules::timer::{TimerInstance, TimerInstanceTrait, TimerTrait, WeakTimerInstance},
     Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, IrqStreamReader, IrqStreamWriter,
     NotSafeForInterrupts, SafeForInterrupts, TaskId,
 };
@@ -335,6 +335,14 @@ impl Scheduler {
                     drop(t);
                 }
             });
+        }
+    }
+
+    /// Yield the current task
+    pub fn yield_task(&self) {
+        let this = self.i.0.sync_access();
+        if let Some(timer) = &this.timer {
+            timer.manually_trigger();
         }
     }
 

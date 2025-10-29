@@ -1,12 +1,10 @@
 //! Timer related code
 
-use core::marker::PhantomData;
-
 use alloc::boxed::Box;
 
+use crate::Arc;
 #[cfg(kernel_machine = "stm32f769i-disco")]
 use crate::LockedArc;
-use crate::{Arc, IrqGuardedInner, IrqGuardedUse, SafeForInterrupts};
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
@@ -145,6 +143,8 @@ pub trait TimerInstanceTrait {
     fn supports_arbitrary_timing(&self) -> Option<&dyn ArbitraryTimerTrait>;
     /// Start or restart a oneshot timer
     fn start_oneshot(&self);
+    /// Manually trigger the interrupt for the timer
+    fn manually_trigger(&self);
 }
 
 /// An enumeration the types of timer instances
@@ -277,6 +277,10 @@ impl TimerInstanceTrait for Arc<DummyTimerInner> {
     }
 
     fn start_oneshot(&self) {
+        panic!();
+    }
+
+    fn manually_trigger(&self) {
         panic!();
     }
 }
