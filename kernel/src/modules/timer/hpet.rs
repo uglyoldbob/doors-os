@@ -119,6 +119,7 @@ impl Hpet {
                 }
             }
         }
+        irqs.push(0);
         let irqnums = crate::IrqNumbers::Many(irqs.clone());
         let com = IrqGuardedInner::new(irqnums, false, true, |_| {}, |_| {});
         loop {
