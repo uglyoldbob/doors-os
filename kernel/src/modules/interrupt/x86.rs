@@ -1,10 +1,10 @@
 //! x86 or x64 interrupt code
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::collections::btree_map::BTreeMap;
 
 use crate::{
-    kernel::SystemTrait, modules::interrupt::InterruptControllerTrait, IoReadWrite, IrqGuarded,
-    IrqGuardedInner,
+    modules::interrupt::InterruptControllerTrait, IoReadWrite, IrqGuarded, IrqGuardedInner,
+    IrqGuardedUse,
 };
 
 #[repr(C)]
@@ -60,24 +60,46 @@ impl super::InterruptControllerTrait for LocalApic {
         self.regs.interrupt_access().registers[0x2c] = 0;
     }
 
-    fn enable_irq(&self, num: u8) {
+    fn enable_irq_sync(&self, num: u8) {
         if let Some(ioapic) = &self.ioapic {
             if let Some(sysirq) = ioapic.overrides.get(&num) {
                 let irq = *sysirq as u8;
-                ioapic.enable_irq(irq);
+                ioapic.enable_irq_sync(irq);
             } else {
-                ioapic.enable_irq(num);
+                ioapic.enable_irq_sync(num);
             }
         }
     }
 
-    fn disable_irq(&self, num: u8) {
+    fn enable_irq_interrupt(&self, num: u8) {
         if let Some(ioapic) = &self.ioapic {
             if let Some(sysirq) = ioapic.overrides.get(&num) {
                 let irq = *sysirq as u8;
-                ioapic.disable_irq(irq);
+                ioapic.enable_irq_interrupt(irq);
             } else {
-                ioapic.disable_irq(num);
+                ioapic.enable_irq_interrupt(num);
+            }
+        }
+    }
+
+    fn disable_irq_sync(&self, num: u8) {
+        if let Some(ioapic) = &self.ioapic {
+            if let Some(sysirq) = ioapic.overrides.get(&num) {
+                let irq = *sysirq as u8;
+                ioapic.disable_irq_sync(irq);
+            } else {
+                ioapic.disable_irq_sync(num);
+            }
+        }
+    }
+
+    fn disable_irq_interrupt(&self, num: u8) {
+        if let Some(ioapic) = &self.ioapic {
+            if let Some(sysirq) = ioapic.overrides.get(&num) {
+                let irq = *sysirq as u8;
+                ioapic.disable_irq_interrupt(irq);
+            } else {
+                ioapic.disable_irq_interrupt(num);
             }
         }
     }
@@ -112,11 +134,11 @@ impl LocalApic {
     pub fn register_pic(&mut self, pic: Pic) {
         for i in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] {
             if pic.is_irq_enabled(i) {
-                pic.disable_irq(i);
-                self.enable_irq(i);
+                pic.disable_irq_sync(i);
+                self.enable_irq_sync(i);
             }
         }
-        pic.disable_irq(2);
+        pic.disable_irq_sync(2);
         self.pic = Some(pic);
         self.regs.sync_access().registers[0x3c] |= 0x100;
         #[cfg(target_arch = "x86_64")]
@@ -236,30 +258,41 @@ impl IoApic {
         }
     }
 
-    /// Enable the specified irq
-    fn enable_irq(&self, irq: u8) {
-        let mut this = self.inner.interrupt_access();
+    /// common code for enabling an irq
+    #[inline(never)]
+    fn common_set_irq<T>(&self, irq: u8, val: bool, mut this: IrqGuardedUse<'_, IoApicInner, T>) {
         let mut data: u64 = 0;
         let o1 = this.read_register(0x10 + 2 * irq);
         let o2 = this.read_register(0x10 + 2 * irq + 1);
         data |= o1 as u64;
         data |= (o2 as u64) << 32;
         let mut entry = IoApicRedirection(data);
-        entry.set_mask(false);
+        entry.set_mask(val);
         this.write_register(0x10 + 2 * irq, entry.lower_half() as u32);
     }
 
+    /// Enable the specified irq
+    fn enable_irq_sync(&self, irq: u8) {
+        let this = self.inner.sync_access();
+        self.common_set_irq(irq, false, this);
+    }
+
+    /// Enable the specified irq from an interrupt
+    fn enable_irq_interrupt(&self, irq: u8) {
+        let this = self.inner.interrupt_access();
+        self.common_set_irq(irq, false, this);
+    }
+
     /// Disable the specified irq
-    fn disable_irq(&self, irq: u8) {
-        let mut this = self.inner.interrupt_access();
-        let mut data: u64 = 0;
-        let o1 = this.read_register(0x10 + 2 * irq);
-        let o2 = this.read_register(0x10 + 2 * irq + 1);
-        data |= o1 as u64;
-        data |= (o2 as u64) << 32;
-        let mut entry = IoApicRedirection(data);
-        entry.set_mask(true);
-        this.write_register(0x10 + 2 * irq, entry.lower_half() as u32);
+    fn disable_irq_sync(&self, irq: u8) {
+        let this = self.inner.sync_access();
+        self.common_set_irq(irq, true, this);
+    }
+
+    /// Disable the specified irq
+    fn disable_irq_interrupt(&self, irq: u8) {
+        let this = self.inner.interrupt_access();
+        self.common_set_irq(irq, true, this);
     }
 }
 
@@ -278,7 +311,7 @@ impl IoApicInner {
 
     fn write_register(&mut self, index: u8, val: u32) {
         self.switch_registers(index);
-        *self.data = val;
+        unsafe { core::ptr::write_volatile(self.data, val) };
     }
 
     /// Construct a new module wit the specified base address for registers
@@ -408,11 +441,19 @@ impl super::InterruptControllerTrait for Pic {
         self.pic_end_of_interrupt(num);
     }
 
-    fn enable_irq(&self, num: u8) {
+    fn enable_irq_sync(&self, num: u8) {
         self.pic_enable_irq(num);
     }
 
-    fn disable_irq(&self, num: u8) {
+    fn disable_irq_sync(&self, num: u8) {
+        self.pic_disable_irq(num);
+    }
+
+    fn enable_irq_interrupt(&self, num: u8) {
+        self.pic_enable_irq(num);
+    }
+
+    fn disable_irq_interrupt(&self, num: u8) {
         self.pic_disable_irq(num);
     }
 

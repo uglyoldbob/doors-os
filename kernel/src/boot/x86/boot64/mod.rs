@@ -588,7 +588,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         self.disable_interrupts_for(|| {
             let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
-                p.enable_irq(irq)
+                p.enable_irq_sync(irq)
             }
         });
     }
@@ -643,7 +643,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         self.disable_interrupts_for(|| {
             let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
-                p.disable_irq(irq)
+                p.disable_irq_sync(irq)
             }
         });
     }

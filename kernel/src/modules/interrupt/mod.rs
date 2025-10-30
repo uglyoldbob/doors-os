@@ -8,10 +8,14 @@ pub mod x86;
 pub trait InterruptControllerTrait {
     /// Indicate end of interrupt to the controller
     fn end_of_interrupt(&self, num: u8);
-    /// enable the specified irq
-    fn enable_irq(&self, num: u8);
-    /// disable the specified irq
-    fn disable_irq(&self, num: u8);
+    /// enable the specified irq from a non-interrupt context
+    fn enable_irq_sync(&self, num: u8);
+    /// disable the specified irq from a non-interrupt context
+    fn disable_irq_sync(&self, num: u8);
+    /// enable the specified irq from an interrupt context
+    fn enable_irq_interrupt(&self, num: u8);
+    /// disable the specified irq from an interrupt context
+    fn disable_irq_interrupt(&self, num: u8);
     /// Is the specified irq enabled?
     fn is_irq_enabled(&self, irq: u8) -> bool;
 }

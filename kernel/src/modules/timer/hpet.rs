@@ -1,7 +1,7 @@
 //! For the hpet (high performance timer) - normally found in x86 platforms
 
 use alloc::{boxed::Box, vec::Vec};
-use core::{marker::PhantomData, task::Waker};
+use core::task::Waker;
 
 use crate::{kernel::SystemTrait, Arc, IrqGuarded, IrqGuardedInner};
 
@@ -253,39 +253,24 @@ impl Drop for HpetChannel {
 impl Arc<HpetChannel> {
     /// Delay the specified number of ticks, synchronously
     fn delay_ticks(&self, ticks: u64) {
-        let this = &mut self.internal.data.sync_access().registers;
-        let newval = this.counter + ticks;
-        this.channels[self.index as usize].comparator = newval;
-        if this.counter >= newval {
-            crate::VGA.print_str("HPET WONT TRIGGER IRQ\r\n");
-        }
-        crate::VGA.print_str(&alloc::format!(
-            "HPET CHANNEL CONFIG IS {:x}\r\n",
-            this.channels[self.index as usize].config
-        ));
-        crate::VGA.print_str(&alloc::format!(
-            "HPET GENERAL CONFIG IS {:x}\r\n",
-            this.config
-        ));
-        crate::VGA.print_str(&alloc::format!(
-            "HPET GENERAL COUNTER IS {}/{}\r\n",
-            this.counter,
-            newval,
-        ));
-        crate::VGA.print_str(&alloc::format!(
-            "HPET GENERAL IRQSTAT IS {}\r\n",
-            this.interrupt,
-        ));
+        let newval = {
+            let this = &mut self.internal.data.sync_access().registers;
+            let newval = this.counter + ticks;
+            this.channels[self.index as usize].comparator = newval;
+            newval
+        };
         loop {
-            let curval = unsafe { core::ptr::read_volatile(&this.counter) };
+            let curval = {
+                let a = self.internal.data.sync_access();
+                let b = unsafe { core::ptr::read_volatile(&a.registers.counter) };
+                drop(a);
+                b
+            };
             if curval >= newval {
                 break;
             }
+            crate::scheduler::yield_task();
         }
-        crate::VGA.print_str(&alloc::format!(
-            "HPET GENERAL COUNTER IS {}\r\n",
-            this.counter
-        ));
     }
 }
 
@@ -342,7 +327,9 @@ impl super::TimerInstanceTrait for Arc<HpetChannel> {
     }
 
     fn manually_trigger(&self) {
-        todo!();
+        let this = &mut self.internal.data.sync_access().registers;
+        let newval = this.counter;
+        this.channels[self.index as usize].comparator = newval + 100;
     }
 
     fn start_oneshot(&self) {

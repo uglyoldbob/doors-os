@@ -177,6 +177,7 @@ async fn keyboard_test() {
 fn test_function() {
     for _ in 0..10 {
         crate::VGA.print_str("Test print from a separate thread\r\n");
+        scheduler::yield_task();
     }
 }
 

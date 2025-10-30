@@ -342,7 +342,9 @@ impl Scheduler {
     pub fn yield_task(&self) {
         let this = self.i.0.sync_access();
         if let Some(timer) = &this.timer {
-            timer.manually_trigger();
+            let t = timer.clone();
+            drop(this);
+            t.manually_trigger();
         }
     }
 
@@ -358,5 +360,12 @@ impl Scheduler {
     pub fn print(&self) {
         let this = self.i.0.sync_access();
         this.print();
+    }
+}
+
+/// Yield the rest of the current slice of time for the current task
+pub fn yield_task() {
+    if let Some(s) = SCHEDULER.read().as_ref() {
+        s.yield_task();
     }
 }
