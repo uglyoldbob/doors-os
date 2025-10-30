@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::task::Waker;
 
-use crate::{kernel::SystemTrait, Arc, IrqGuarded, IrqGuardedInner};
+use crate::{Arc, IrqGuarded, IrqGuardedInner, kernel::SystemTrait, modules::interrupt::InterruptControllerTrait};
 
 #[repr(C)]
 struct HpetChannelRegisters {
@@ -100,28 +100,30 @@ impl Hpet {
             let rcap = (creg.config >> 32) as u32;
             crate::VGA.print_str(&alloc::format!("HPET CHANNEL {} CONFIG {:x}\r\n", i, rcap));
             for index in 1..24 {
-                if crate::SYSTEM.read().register_irq_handler(index, || {}) {
-                    if !irqs.contains(&index) {
-                        irqs.push(index);
-                    }
-                    unsafe {
-                        crate::SYSTEM.read().unregister_irq_handler(index);
-                    }
-                    if ((rcap >> index) & 1) != 0 {
-                        crate::VGA.print_str(&alloc::format!(
-                            "HPET CHANNEL {} USE IRQ {}\r\n",
-                            i,
-                            index
-                        ));
-                        irq_values[i as usize] = index;
-                        break;
+                if let Some(irqnum) = crate::kernel::INTERRUPT_CONTROLLER.read().as_ref().unwrap().lookup_irq_with_channel(index) {
+                    if crate::SYSTEM.read().register_irq_handler(irqnum, || {}) {
+                        unsafe {
+                            crate::SYSTEM.read().unregister_irq_handler(irqnum);
+                        }
+                        if ((rcap >> index) & 1) != 0 {
+                            if !irqs.contains(&irqnum) {
+                                irqs.push(irqnum);
+                            }
+                            crate::VGA.print_str(&alloc::format!(
+                                "HPET CHANNEL {} USE IRQ {}\r\n",
+                                i,
+                                irqnum
+                            ));
+                            irq_values[i as usize] = irqnum;
+                            break;
+                        }
                     }
                 }
             }
         }
-        irqs.push(0);
+        irqs.push(2);
         let irqnums = crate::IrqNumbers::Many(irqs.clone());
-        let com = IrqGuardedInner::new(irqnums, false, true, |_| {}, |_| {});
+        let com = IrqGuardedInner::new(irqnums, true, true, |_| {}, |_| {});
         loop {
             r.config = r.config | 1;
             crate::VGA.print_str(&alloc::format!("HPET CONFIG {:x}\r\n", r.config));
@@ -263,9 +265,7 @@ impl Arc<HpetChannel> {
         loop {
             let curval = {
                 let a = self.internal.data.sync_access();
-                let b = unsafe { core::ptr::read_volatile(&a.registers.counter) };
-                drop(a);
-                b
+                unsafe { core::ptr::read_volatile(&a.registers.counter) }
             };
             if curval >= newval {
                 break;

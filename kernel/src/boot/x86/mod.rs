@@ -3,6 +3,7 @@
 use core::marker::PhantomData;
 
 use crate::kernel::SystemTrait;
+use crate::modules::interrupt::InterruptController;
 use crate::modules::serial::SerialTrait;
 use crate::IoReadWrite;
 use crate::Locked;
@@ -846,7 +847,7 @@ impl crate::LockedArc<boot::X86System<'_>> {
                     .unwrap();
                 {
                     let mut timers = crate::kernel::TIMERS.sync_lock();
-                    for (i, t) in timers.iter_mut().enumerate() {
+                    for t in timers.iter_mut() {
                         let mut t2 = t.sync_lock();
                         {
                             let t3: &mut crate::modules::timer::Timer = &mut t2;
@@ -860,6 +861,13 @@ impl crate::LockedArc<boot::X86System<'_>> {
                 hpet.test();
                 let mut timers = crate::kernel::TIMERS.sync_lock();
                 timers.replace_pit(hpet.into());
+            }
+
+            {
+                let l = crate::kernel::INTERRUPT_CONTROLLER.read();
+                if let Some(InterruptController::Apic(l)) = l.as_ref() {
+                    l.print();
+                }
             }
         }
         if let Some(acpi) = this.acpi.take() {

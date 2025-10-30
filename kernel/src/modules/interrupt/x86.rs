@@ -71,6 +71,19 @@ impl super::InterruptControllerTrait for LocalApic {
         }
     }
 
+    fn lookup_irq_with_channel(&self, channel: u8) -> Option<u8> {
+        if let Some(ioapic) = &self.ioapic {
+            for a in &ioapic.overrides {
+                if *a.1 == channel as u32 {
+                    return Some(*a.0);
+                }
+            }
+            Some(channel)
+        } else {
+            None
+        }
+    }
+
     fn enable_irq_interrupt(&self, num: u8) {
         if let Some(ioapic) = &self.ioapic {
             if let Some(sysirq) = ioapic.overrides.get(&num) {
@@ -151,6 +164,30 @@ impl LocalApic {
         }
     }
 
+    /// print the irq enable disable map
+    pub fn print(&self) {
+        if let Some(ioapic) = &self.ioapic {
+            for i in 0..24 {
+                if let Some(sysirq) = ioapic.overrides.get(&i) {
+                    let irq = *sysirq as u8;
+                    crate::VGA.print_str(&alloc::format!(
+                        "IRQ {} manipulates entry {} -> {}\r\n",
+                        i,
+                        irq,
+                        ioapic.get_mapping(irq)
+                    ));
+                } else {
+                    crate::VGA.print_str(&alloc::format!(
+                        "IRQ {} manipulates entry {} -> {}\r\n",
+                        i,
+                        i,
+                        ioapic.get_mapping(i)
+                    ));
+                }
+            }
+        }
+    }
+
     /// construct a new self
     pub fn new() -> Self {
         let paddr = Self::get_base();
@@ -220,7 +257,20 @@ impl IoApic {
         s
     }
 
+    /// Get the mapping for the irq
+    fn get_mapping(&self, irq: u8) -> u8 {
+        let mut this = self.inner.sync_access();
+        let mut data: u64 = 0;
+        let o1 = this.read_register(0x10 + 2 * irq);
+        let o2 = this.read_register(0x10 + 2 * irq + 1);
+        data |= o1 as u64;
+        data |= (o2 as u64) << 32;
+        let entry = IoApicRedirection(data);
+        entry.vector()
+    }
+
     fn map_irq(&mut self, mode: InterruptMode, irq: u8, dest: u8) {
+        crate::VGA.print_str(&alloc::format!("IOAPIC MAT {} to {}\r\n", irq, dest));
         let mut this = self.inner.interrupt_access();
         let mut data: u64 = 0;
         let o1 = this.read_register(0x10 + 2 * irq);
@@ -252,7 +302,7 @@ impl IoApic {
             self.overrides.insert(irq, sys_irq);
             self.map_irq(
                 InterruptMode::Physical { processors: 0 },
-                irq as u8,
+                sys_irq as u8,
                 32 + irq as u8,
             );
         }
@@ -455,6 +505,10 @@ impl super::InterruptControllerTrait for Pic {
 
     fn disable_irq_interrupt(&self, num: u8) {
         self.pic_disable_irq(num);
+    }
+
+    fn lookup_irq_with_channel(&self, channel: u8) -> Option<u8> {
+        Some(channel)
     }
 
     fn is_irq_enabled(&self, irq: u8) -> bool {

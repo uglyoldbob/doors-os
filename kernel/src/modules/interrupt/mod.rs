@@ -18,6 +18,8 @@ pub trait InterruptControllerTrait {
     fn disable_irq_interrupt(&self, num: u8);
     /// Is the specified irq enabled?
     fn is_irq_enabled(&self, irq: u8) -> bool;
+    /// Lookup irq with channel id, retrieves the proper irq to use
+    fn lookup_irq_with_channel(&self, channel: u8) -> Option<u8>;
 }
 
 /// An interrupt controller for the system

@@ -21,7 +21,7 @@ use crate::{
     kernel::SystemTrait,
     modules::timer::{TimerInstance, TimerInstanceTrait, TimerTrait, WeakTimerInstance},
     Arc, IrqGuarded, IrqGuardedInner, IrqGuardedUse, IrqNumbers, IrqStreamReader, IrqStreamWriter,
-    NotSafeForInterrupts, SafeForInterrupts, TaskId,
+    NotSafeForInterrupts, TaskId,
 };
 
 doors_macros::todo_item!("Create a guard page for stack");
@@ -328,8 +328,11 @@ impl Scheduler {
 
     /// Start the task terminator
     pub async fn task_terminator(&self) {
-        let mut this = self.i.0.sync_access();
-        if let Some(mut tk) = this.task_killer.take() {
+        let tk = {
+            let mut this = self.i.0.sync_access();
+            this.task_killer.take()
+        };
+        if let Some(mut tk) = tk {
             let _ = crate::executor::spawn(async move {
                 while let Some(t) = tk.next().await {
                     drop(t);
@@ -340,11 +343,18 @@ impl Scheduler {
 
     /// Yield the current task
     pub fn yield_task(&self) {
-        let this = self.i.0.sync_access();
-        if let Some(timer) = &this.timer {
-            let t = timer.clone();
-            drop(this);
-            t.manually_trigger();
+        let t = {
+            let this = self.i.0.sync_access();
+            if let Some(timer) = &this.timer {
+                let t = timer.clone();
+                Some(t)
+            }
+            else {
+                None
+            }
+        };
+        if let Some(timer) = t {
+            timer.manually_trigger();
         }
     }
 

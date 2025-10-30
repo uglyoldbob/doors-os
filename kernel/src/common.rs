@@ -924,8 +924,9 @@ impl<'a, T, U> DerefMut for IrqGuardedUse<'a, T, U> {
 impl<'a, T, U> Drop for IrqGuardedUse<'a, T, U> {
     fn drop(&mut self) {
         let sys = crate::SYSTEM.read();
-        let a = self.val.take();
-        drop(a);
+        {
+            self.val.take();
+        }
         for i in self.r.irqnums.iter() {
             (self.r.unlock)(i);
         }
