@@ -3,7 +3,10 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::task::Waker;
 
-use crate::{Arc, IrqGuarded, IrqGuardedInner, kernel::SystemTrait, modules::interrupt::InterruptControllerTrait};
+use crate::{
+    kernel::SystemTrait, modules::interrupt::InterruptControllerTrait, Arc, IrqGuarded,
+    IrqGuardedInner,
+};
 
 #[repr(C)]
 struct HpetChannelRegisters {
@@ -100,7 +103,12 @@ impl Hpet {
             let rcap = (creg.config >> 32) as u32;
             crate::VGA.print_str(&alloc::format!("HPET CHANNEL {} CONFIG {:x}\r\n", i, rcap));
             for index in 1..24 {
-                if let Some(irqnum) = crate::kernel::INTERRUPT_CONTROLLER.read().as_ref().unwrap().lookup_irq_with_channel(index) {
+                if let Some(irqnum) = crate::kernel::INTERRUPT_CONTROLLER
+                    .read()
+                    .as_ref()
+                    .unwrap()
+                    .lookup_irq_with_channel(index)
+                {
                     if crate::SYSTEM.read().register_irq_handler(irqnum, || {}) {
                         unsafe {
                             crate::SYSTEM.read().unregister_irq_handler(irqnum);
@@ -327,10 +335,11 @@ impl super::TimerInstanceTrait for Arc<HpetChannel> {
         Some(self)
     }
 
+    #[inline(never)]
     fn manually_trigger(&self) {
         let this = &mut self.internal.data.sync_access().registers;
         let newval = this.counter;
-        this.channels[self.index as usize].comparator = newval + 100;
+        this.channels[self.index as usize].comparator = newval + self.internal.get_interval_us(100);
     }
 
     fn start_oneshot(&self) {

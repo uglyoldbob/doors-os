@@ -205,6 +205,7 @@ impl Scheduler {
             let mut this = self.i.0.sync_access();
             this.cur_task.1.status = TaskStatus::Completed;
         }
+        self.yield_task();
         loop {
             crate::idle();
         }
@@ -348,8 +349,7 @@ impl Scheduler {
             if let Some(timer) = &this.timer {
                 let t = timer.clone();
                 Some(t)
-            }
-            else {
+            } else {
                 None
             }
         };
