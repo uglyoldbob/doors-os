@@ -8,6 +8,7 @@ Building has been tested on both windows and linux (ubuntu).
 
 *Requirements to build*
 * Rust
+* rustup toolchain add nightly
 * rustup component add llvm-tools
 * cargo install cargo-binutils
 
@@ -15,10 +16,14 @@ Building has been tested on both windows and linux (ubuntu).
 * xorriso
 * mtools
 * virtualbox-dkms
+* python (to build the rust compiler)
+* ninja-build (to build the rust compiler)
+* libssl-dev (to build the rust compiler)
 * (optional) libpcap-dev
+* * rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
 
 *Optional to build*
-* Cmake
+* cmake
 
 *Optional for testing*
 * qemu

@@ -25,7 +25,8 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "aml"
 version = "0.16.4"
-source = "git+https://github.com/uglyoldbob/acpi.git#0d1f99a2084a41b75b3678fca172f6360bd3e3e7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4f8cba7d4260ea05671dda81029f6f718b54402a4ec926a0d9a41bdbb96b415"
 dependencies = [
  "bit_field",
  "bitvec",
@@ -100,11 +101,12 @@ checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
 
 [[package]]
 name = "bitvec"
-version = "1.1.0"
-source = "git+https://github.com/uglyoldbob/bitvec.git#77da742c6803199819b855bcd69dc208c097b7e4"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bc2832c24239b0141d5674bb9174f9d68a8b5b3f2753311927c172ca46f7e9c"
 dependencies = [
  "funty",
- "radium",
+ "radium 0.7.0",
  "tap",
  "wyz",
 ]
@@ -432,7 +434,7 @@ dependencies = [
  "multiboot2",
  "object",
  "pin-project",
- "radium",
+ "radium 1.1.1",
  "raw-cpuid 11.6.0",
  "serde",
  "spin",
@@ -612,6 +614,12 @@ checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "radium"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "radium"

@@ -295,14 +295,6 @@ pub struct Acpi {
 }
 
 impl aml::Handler for boot::AmlHandler {
-    fn sleep(&self, _milliseconds: u64) {
-        todo!()
-    }
-
-    fn stall(&self, _microseconds: u64) {
-        todo!()
-    }
-
     fn read_u8(&self, _address: usize) -> u8 {
         crate::VGA.print_str("r1\r\n");
         todo!()

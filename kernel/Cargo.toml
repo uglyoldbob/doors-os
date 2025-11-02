@@ -36,7 +36,7 @@ doors_macros = { path = "../doors_macros", version = "0.1.0" }
 
 [target.'cfg(target_arch = "x86")'.dependencies]
 acpi = { version = "6.0.1" }
-aml = { git = "https://github.com/uglyoldbob/acpi.git", version = "0.16.4" }
+aml = { version = "0.16.4" }
 raw-cpuid = "11.0.1"
 x86 = { version = "0.52.0" }
 x86_64 = {git = "https://github.com/rust-osdev/x86_64.git", version = "0.15.2", default-features=false, features = ["abi_x86_interrupt", "asm_const", "instructions", "const_fn"] }
@@ -44,7 +44,7 @@ multiboot2 = "0.23.1"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 acpi = { version = "6.0.1" }
-aml = { git = "https://github.com/uglyoldbob/acpi.git", version = "0.16.4" }
+aml = { version = "0.16.4" }
 raw-cpuid = "11.0.1"
 x86_64 = {git = "https://github.com/rust-osdev/x86_64.git", version = "0.15.2", default-features=false, features = ["abi_x86_interrupt", "asm_const", "instructions", "const_fn"] }
 multiboot2 = "0.23.1"
