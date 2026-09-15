@@ -29,28 +29,28 @@ impl Mux1 {
 
 impl super::ClockRefTrait for Mux1 {
     fn enable_clock(&self) {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux1();
         let i = if v { 1 } else { 0 };
         self.clocks[i].enable_clock();
     }
 
     fn disable_clock(&self) {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux1();
         let i = if v { 1 } else { 0 };
         self.clocks[i].disable_clock();
     }
 
     fn clock_is_ready(&self) -> bool {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux1();
         let i = if v { 1 } else { 0 };
         self.clocks[i].clock_is_ready()
     }
 
     fn clock_frequency(&self) -> Option<u64> {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux1();
         drop(rcc);
         let i = if v { 1 } else { 0 };
@@ -60,7 +60,7 @@ impl super::ClockRefTrait for Mux1 {
 
 impl super::ClockMuxTrait for Mux1 {
     fn select(&self, i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_mux1(i > 0);
     }
 }
@@ -89,14 +89,14 @@ impl Divider1 {
     /// Set the divider
     /// TODO impose the frequency limit at runtime
     pub fn set_divider(&self, d: u32) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_divider1(d);
     }
 }
 
 impl super::ClockRefTrait for Divider1 {
     fn clock_frequency(&self) -> Option<u64> {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let fin = rcc.get_divider1();
         drop(rcc);
         self.iclk.clock_frequency().map(|f| f as u64 / fin as u64)
@@ -122,17 +122,17 @@ pub struct PllMain {
 
 impl super::ClockProviderTrait for PllMain {
     fn enable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_main_pll(true);
     }
 
     fn disable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_main_pll(false);
     }
 
     fn clock_is_ready(&self, _i: usize) -> bool {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.main_pll_locked()
     }
 
@@ -167,13 +167,13 @@ impl PllMain {
 
     /// Set the multiplier for the pll
     fn set_multiplier(&self, m: u32) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_multiplier1(m);
     }
 
     /// Get the multiplier for the pll
     fn get_multiplier(&self) -> u32 {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.get_multiplier1()
     }
 }
@@ -191,13 +191,13 @@ impl super::PllTrait for PllMain {
     }
 
     fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, super::PllDividerErr> {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_main_pll_divisor(i, d as u8);
         Ok(rcc.get_main_pll_divisor(i) as u32)
     }
 
     fn get_post_divider(&self, i: usize) -> u32 {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.get_main_pll_divisor(i) as u32
     }
 
@@ -244,25 +244,25 @@ impl MuxSysClk {
 
 impl super::ClockRefTrait for MuxSysClk {
     fn enable_clock(&self) {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux_sysclk();
         self.clocks[v as usize].enable_clock();
     }
 
     fn disable_clock(&self) {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux_sysclk();
         self.clocks[v as usize].disable_clock();
     }
 
     fn clock_is_ready(&self) -> bool {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux_sysclk();
         self.clocks[v as usize].clock_is_ready()
     }
 
     fn clock_frequency(&self) -> Option<u64> {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         let v = rcc.get_mux_sysclk();
         drop(rcc);
         self.clocks[v as usize].clock_frequency()
@@ -271,7 +271,7 @@ impl super::ClockRefTrait for MuxSysClk {
 
 impl super::ClockMuxTrait for MuxSysClk {
     fn select(&self, i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_mux_sysclk(i as u8);
     }
 }
@@ -299,30 +299,30 @@ impl PllTwo {
 
     /// Set the multiplier for the pll
     fn set_multiplier(&self, m: u32) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_multiplier2(m);
     }
 
     /// Get the multiplier for the pll
     fn get_multiplier(&self) -> u32 {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.get_multiplier2()
     }
 }
 
 impl super::ClockProviderTrait for PllTwo {
     fn enable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_second_pll(true);
     }
 
     fn disable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_second_pll(false);
     }
 
     fn clock_is_ready(&self, _i: usize) -> bool {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.second_pll_locked()
     }
 
@@ -356,13 +356,13 @@ impl super::PllTrait for PllTwo {
     }
 
     fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, super::PllDividerErr> {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_second_pll_divisor(i, d as u8);
         Ok(rcc.get_second_pll_divisor(i) as u32)
     }
 
     fn get_post_divider(&self, i: usize) -> u32 {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.get_second_pll_divisor(i) as u32
     }
 
@@ -408,30 +408,30 @@ impl PllThree {
 
     /// Set the multiplier for the pll
     fn set_multiplier(&self, m: u32) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_multiplier3(m);
     }
 
     /// Get the multiplier for the pll
     fn get_multiplier(&self) -> u32 {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.get_multiplier3()
     }
 }
 
 impl super::ClockProviderTrait for PllThree {
     fn enable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_third_pll(true);
     }
 
     fn disable_clock(&self, _i: usize) {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_third_pll(false);
     }
 
     fn clock_is_ready(&self, _i: usize) -> bool {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.third_pll_locked()
     }
 
@@ -465,13 +465,13 @@ impl super::PllTrait for PllThree {
     }
 
     fn set_post_divider(&self, i: usize, d: u32) -> Result<u32, super::PllDividerErr> {
-        let mut rcc = self.rcc.lock();
+        let mut rcc = self.rcc.sync_lock();
         rcc.set_third_pll_divisor(i, d as u8);
         Ok(rcc.get_third_pll_divisor(i) as u32)
     }
 
     fn get_post_divider(&self, i: usize) -> u32 {
-        let rcc = self.rcc.lock();
+        let rcc = self.rcc.sync_lock();
         rcc.get_third_pll_divisor(i) as u32
     }
 
@@ -581,7 +581,7 @@ impl ClockTree {
 
 impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
     fn run_closure<T>(&self, i: u8, c: &dyn Fn(&mut super::Pll) -> T) -> Option<T> {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         Some(match i {
             0 => c(&mut s.pllmain),
             1 => c(&mut s.pll2),
@@ -593,7 +593,7 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
     }
 
     fn get_pll_reference(&self, i: u8) -> Option<super::Pll> {
-        let s = self.lock();
+        let s = self.sync_lock();
         match i {
             0 => Some(s.pllmain.clone()),
             1 => Some(s.pll2.clone()),
@@ -603,7 +603,7 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
     }
 
     fn get_clock_mux(&self, i: u32) -> Option<super::ClockMux> {
-        let s = self.lock();
+        let s = self.sync_lock();
         match i {
             0 => Some(s.mux1.clone()),
             1 => Some(s.sysmux.clone()),
@@ -614,8 +614,8 @@ impl super::PllProviderTrait for crate::LockedArc<ClockTree> {
 
 impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
     fn disable_clock(&self, i: usize) {
-        let s = self.lock();
-        let mut rcc = s.rcc.lock();
+        let s = self.sync_lock();
+        let mut rcc = s.rcc.sync_lock();
         let d = i / 32;
         let dr = i % 32;
         match (d, dr) {
@@ -647,8 +647,8 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
     }
 
     fn enable_clock(&self, i: usize) {
-        let s = self.lock();
-        let mut rcc = s.rcc.lock();
+        let s = self.sync_lock();
+        let mut rcc = s.rcc.sync_lock();
         let d = i / 32;
         let dr = i % 32;
         match (d, dr) {
@@ -680,8 +680,8 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
     }
 
     fn clock_is_ready(&self, i: usize) -> bool {
-        let s = self.lock();
-        let rcc = s.rcc.lock();
+        let s = self.sync_lock();
+        let rcc = s.rcc.sync_lock();
         let d = i / 32;
         let dr = i % 32;
         match (d, dr) {
@@ -698,12 +698,12 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
     }
 
     fn clock_frequency(&self, i: usize) -> Option<u64> {
-        let s = self.lock();
+        let s = self.sync_lock();
         let d = i / 32;
         let dr = i % 32;
         let usart =
             |rcc: &LockedArc<crate::modules::reset::stm32f769::Module<'static>>, id, _apb| {
-                let rcc = rcc.lock();
+                let rcc = rcc.sync_lock();
                 let smux = rcc.get_usart_mux(id);
                 drop(rcc);
                 match smux {
@@ -733,7 +733,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (0, 1) => s.oscint.clock_frequency(),
             (0, 2) => {
                 let sysclk = s.sysmux.clock_frequency();
-                let rcc = s.rcc.lock();
+                let rcc = s.rcc.sync_lock();
                 let divider = rcc.get_ahb_divider();
                 sysclk.map(|f| f / divider as u64)
             }
@@ -744,7 +744,7 @@ impl super::ClockProviderTrait for crate::LockedArc<ClockTree> {
             (4, 30) => usart(&s.rcc, 6, 0),
             (4, 31) => usart(&s.rcc, 7, 0),
             (5, 0) => {
-                let rcc = s.rcc.lock();
+                let rcc = s.rcc.sync_lock();
                 let apb_prescaler = rcc.get_apb2_prescaler() as u64;
                 let mux = rcc.get_timer_mux();
                 drop(rcc);

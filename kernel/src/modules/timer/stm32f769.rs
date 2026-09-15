@@ -112,8 +112,12 @@ impl TimerGroup {
 }
 
 impl super::TimerTrait for LockedArc<TimerGroup> {
-    fn get_timer(&mut self, i: u8) -> Result<super::TimerInstance, super::TimerError> {
-        let mut s = self.lock();
+    fn iter(&self) -> TimerIterator {
+        todo!()
+    }
+
+    fn get_timer(&mut self, i: u8, ms: u16, cb: TimerCallWithUsage) -> Result<super::TimerInstance, super::TimerError> {
+        let mut s = self.sync_lock();
         let check = 1u8 << i;
         if (s.clocks_used & check) == 0 {
             s.clocks_used |= check;
@@ -183,6 +187,18 @@ impl Timer {
 }
 
 impl super::TimerInstanceTrait for LockedArc<Timer> {
+    fn supports_arbitrary_timing(&self) -> Option<&dyn super::ArbitraryTimerTrait> {
+        todo!()
+    }
+
+    fn start_oneshot(&self) {
+        todo!()
+    }
+
+    fn manually_trigger(&self) {
+        todo!()
+    }
+
     fn delay_us(&self, us: u32) {
         let s = self.lock();
         let mut t = s.timer.lock();

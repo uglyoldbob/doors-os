@@ -180,7 +180,9 @@ impl WeakTimerInstance {
     /// Upgrade the reference to a strong one if possible
     pub fn upgrade(&self) -> Option<TimerInstance> {
         match self {
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
             Self::X86PitTimer(a) => a.upgrade().map(|a| a.into()),
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
             Self::HpetChannel(a) => a.upgrade().map(|a| a.into()),
             Self::DummyInner(a) => a.upgrade().map(|a| a.into()),
         }
@@ -191,7 +193,9 @@ impl TimerInstance {
     /// Produce a weak instance
     pub fn downgrade(&self) -> WeakTimerInstance {
         match self {
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
             Self::X86PitTimer(a) => WeakTimerInstance::X86PitTimer(Arc::downgrade(a)),
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
             Self::HpetChannel(a) => WeakTimerInstance::HpetChannel(Arc::downgrade(a)),
             Self::DummyInner(a) => WeakTimerInstance::DummyInner(Arc::downgrade(a)),
         }

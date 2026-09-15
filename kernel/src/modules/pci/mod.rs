@@ -1454,9 +1454,12 @@ impl PciFunctionDriverTrait for DummyPciFunctionDriver {
 pub async fn setup_pci() {
     let pci = crate::modules::pci::x86::Pci::new();
     if let Some(pci) = pci {
-        let mut pci = crate::modules::pci::Pci::X86Pci(pci);
-        pci.setup().await;
-        crate::modules::pci::pci_register_drivers().await;
-        pci.driver_setup().await;
+        #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+        {
+            let mut pci = crate::modules::pci::Pci::X86Pci(pci);
+            pci.setup().await;
+            crate::modules::pci::pci_register_drivers().await;
+            pci.driver_setup().await;
+        }
     }
 }

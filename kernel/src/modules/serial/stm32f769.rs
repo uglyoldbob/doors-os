@@ -50,9 +50,47 @@ impl Usart {
 }
 
 impl super::SerialTrait for LockedArc<Usart> {
+    fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {
+        Err(())
+    }
+
+    fn sync_flush(&self) {
+    }
+
+    fn try_read(&self) -> Option<u8> {
+        todo!()
+    }
+
+    fn sync_read_byte(&self) -> u8 {
+        todo!()
+    }
+
+    fn read_stream(&self) -> impl futures::Stream<Item = u8> {
+        futures::stream::empty()
+    }
+
+    fn stop_async(&self) {
+        todo!()
+    }
+
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
+    async fn transmit(&self, data: &[u8]) {
+        todo!()
+    }
+
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
+    async fn transmit_str(&self, data: &str) {
+        todo!()
+    }
+
+    #[cfg_attr(feature = "backtrace", doors_macros::framed)]
+    async fn flush(&self) {
+        todo!()
+    }
+
     fn setup(&self, rate: u32) -> Result<(), ()> {
         use crate::modules::clock::ClockRefTrait;
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         for up in &mut s.pins {
             if let Some(p) = up {
                 use crate::modules::gpio::GpioPinTrait;
@@ -76,7 +114,7 @@ impl super::SerialTrait for LockedArc<Usart> {
     }
 
     fn sync_transmit(&self, data: &[u8]) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
 
         s.regs.enable_tx();
         while !s.regs.tx_empty() {}
@@ -88,7 +126,7 @@ impl super::SerialTrait for LockedArc<Usart> {
     }
 
     fn sync_transmit_str(&self, data: &str) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
 
         s.regs.enable_tx();
         while !s.regs.tx_empty() {}

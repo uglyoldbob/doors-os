@@ -25,9 +25,9 @@ pub struct MipiDsiConfig {
 /// A dcs packet structure that can be sent directly over mipi-dsi
 pub struct DcsPacket<'a> {
     /// The packet header
-    _header: [u8; 4],
+    header: [u8; 4],
     /// The optional packet data
-    _data: Option<&'a [u8]>,
+    data: Option<&'a [u8]>,
 }
 
 /// The types of dcs commands, contained within the data portion of a dcs command instead of the header.
@@ -97,11 +97,11 @@ pub struct DcsCommand<'a> {
     /// The command type
     kind: DcsHeaderCommandType,
     /// Flags that alter the behavior of the command
-    _flags: DcsCommandFlags,
+    flags: DcsCommandFlags,
     /// The data to send
     send: &'a [u8],
     /// An optional reference for receiving data in response to a command
-    _recv: Option<&'a mut [u8]>,
+    recv: Option<&'a mut [u8]>,
 }
 
 impl<'a> DcsCommand<'a> {
@@ -125,9 +125,9 @@ impl<'a> DcsCommand<'a> {
         Ok(Self {
             channel,
             kind,
-            _flags: flags,
+            flags: flags,
             send: data,
-            _recv: None,
+            recv: None,
         })
     }
 
@@ -148,9 +148,9 @@ impl<'a> DcsCommand<'a> {
         Ok(Self {
             channel,
             kind,
-            _flags: flags,
+            flags: flags,
             send: data,
-            _recv: Some(dout),
+            recv: Some(dout),
         })
     }
 
@@ -173,8 +173,8 @@ impl<'a> DcsCommand<'a> {
             None
         };
         Ok(DcsPacket {
-            _header: header,
-            _data: data,
+            header: header,
+            data: data,
         })
     }
 }

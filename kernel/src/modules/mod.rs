@@ -7,6 +7,7 @@ pub mod input;
 pub mod interrupt;
 pub mod isa;
 pub mod memory;
+#[doors_macros::module_builtin_attr(pci, "true")]
 pub mod pci;
 pub mod power;
 pub mod reset;
@@ -57,6 +58,7 @@ impl ModuleTrait for Test {
     fn do_something(&self) {}
 }
 
+#[doors_macros::module_builtin_attr(pci, "true")]
 use pci::{
     BarSpace, ConfigurationSpaceEnum, PciBus, PciConfigurationSpace, PciDevice, PciFunction,
     PciFunctionDriverTrait,

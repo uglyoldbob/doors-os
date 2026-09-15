@@ -46,6 +46,7 @@ pub use common::*;
 
 pub mod boot;
 pub use boot::mem2::*;
+#[doors_macros::config_check_equals_attr(gdbstub, "true")]
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;

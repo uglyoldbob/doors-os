@@ -308,7 +308,7 @@ pub extern "C" fn _start() -> ! {
         unsafe { core::slice::from_raw_parts(ramload as *mut u8, start_bss - 0x2002_0000) };
     ram.clone_from_slice(ram_data);
 
-    let mut h = super::HEAP_MANAGER.lock();
+    let mut h = super::HEAP_MANAGER.sync_lock();
     if end_bss < 0x2007_c000 {
         let a = core::mem::align_of::<memory::HeapNode>() - 1;
         let end = if (end_bss & a) > 0 {
@@ -348,7 +348,7 @@ pub extern "C" fn _start() -> ! {
     //let power = unsafe { crate::modules::power::stm32f769::Power::new(0x4000_7000) };
     //set vos for main power? (with power object)
 
-    let mut r = rcc_mod.lock();
+    let mut r = rcc_mod.sync_lock();
     r.apb_dividers(4, 2);
     r.set_hse_bypass(true);
     drop(r);
@@ -363,11 +363,11 @@ pub extern "C" fn _start() -> ! {
     //setup all three main pll of the system
 
     //setup the mco clock output
-    let mut r = rcc_mod.lock();
+    let mut r = rcc_mod.sync_lock();
     r.set_mco1_pll();
     drop(r);
 
-    let mut c = ctree.lock();
+    let mut c = ctree.sync_lock();
     c.mux1_select(1); //select the external oscillator
     c.divider1_set(25); //divide down to a 1 mhz clock
     drop(c);
@@ -390,7 +390,7 @@ pub extern "C" fn _start() -> ! {
 
     fic.set_wait_states(6);
 
-    let mut c = ctree.lock();
+    let mut c = ctree.sync_lock();
     c.main_mux_select(2); //use the pll as the sysclk
     drop(c);
 
@@ -429,7 +429,7 @@ pub extern "C" fn _start() -> ! {
     });
 
     {
-        let mut gpio = crate::kernel::GPIO.lock();
+        let mut gpio = crate::kernel::GPIO.sync_lock();
         gpio.register_gpios(ga.into());
         gpio.register_gpios(gb.into());
         gpio.register_gpios(gc.into());
@@ -445,22 +445,22 @@ pub extern "C" fn _start() -> ! {
     }
 
     //Setup the clocks of the usart to be the sysclock
-    let mut r = rcc_mod.lock();
+    let mut r = rcc_mod.sync_lock();
     for i in 0..7 {
         r.set_usart_mux(i, 1);
     }
     drop(r);
 
     {
-        let mut gpio = crate::kernel::GPIO.lock();
+        let mut gpio = crate::kernel::GPIO.sync_lock();
         let mg = gpio.module(0);
         drop(gpio);
-        let gpioa = mg.lock();
+        let gpioa = mg.sync_lock();
         let uart_tx = gpioa.get_pin(9);
         let uart_rx = gpioa.get_pin(10);
         drop(gpioa);
 
-        let mut serials = crate::kernel::SERIAL.lock();
+        let mut serials = crate::kernel::SERIAL.sync_lock();
         serials.register_serial(
             LockedArc::new(unsafe {
                 crate::modules::serial::stm32f769::Usart::new(
@@ -552,24 +552,19 @@ pub extern "C" fn _start() -> ! {
             )
         };
         let timer = crate::modules::timer::Timer::Stm32f769(LockedArc::new(timer));
-        let mut timers = crate::kernel::TIMERS.lock();
+        let mut timers = crate::kernel::TIMERS.sync_lock();
         timers.register_timer(timer);
     }
 
     {
         use crate::modules::serial::SerialTrait;
-        let mut serials = crate::kernel::SERIAL.lock();
-        let serial = serials.module(0);
-        drop(serials);
+        let mut serials = crate::kernel::SERIAL.sync_lock();
         let s = serial.lock();
         let serial_setup = s.setup(115200);
         drop(s);
         if serial_setup.is_ok() {
-            let mut v = crate::VGA.lock();
-            v.replace(TextDisplay::SerialDisplay(
-                crate::modules::video::VideoOverSerial::new(serial),
-            ));
-            drop(v);
+            let a = crate::modules::video::VideoOverSerial::new(serial);
+            crate::common::VGA.sync_replace(Some(t));
         }
     }
 
@@ -578,7 +573,7 @@ pub extern "C" fn _start() -> ! {
         unsafe { crate::modules::memory::stm32f769::SdramController::new(0xa000_0000, fmc_clock) };
     let sdram = fmc.setup_sdram();
     {
-        let mut hm = super::HEAP_MANAGER.lock();
+        let mut hm = super::HEAP_MANAGER.sync_lock();
         hm.init(1, sdram.as_ptr() as usize, sdram.len());
     }
 
@@ -589,12 +584,12 @@ pub extern "C" fn _start() -> ! {
     {
         ltdc_clock.enable_clock(2);
 
-        let mut gpio = crate::kernel::GPIO.lock();
+        let mut gpio = crate::kernel::GPIO.sync_lock();
         let mj = gpio.module(9);
         let mi = gpio.module(8);
         drop(gpio);
-        let gpioi = mi.lock();
-        let gpioj = mj.lock();
+        let gpioi = mi.sync_lock();
+        let gpioj = mj.sync_lock();
 
         let lcd_backlight = gpioi.get_pin(14).unwrap();
         let lcd_reset = gpioj.get_pin(15);

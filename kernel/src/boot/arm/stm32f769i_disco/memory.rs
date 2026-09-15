@@ -225,12 +225,12 @@ impl HeapManager {
 
 unsafe impl core::alloc::GlobalAlloc for Locked<HeapManager> {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         let layout2 = layout.align_to(HeapNode::NODEALIGN).unwrap();
         alloc.run_alloc(layout2)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let mut alloc = self.lock();
+        let mut alloc = self.sync_lock();
         let layout2 = layout.align_to(HeapNode::NODEALIGN).unwrap();
         alloc.run_dealloc(ptr, layout2);
     }

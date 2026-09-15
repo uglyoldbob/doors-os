@@ -126,7 +126,7 @@ impl super::MipiDsiDcsTrait for DcsProvider {
         &mut self,
         cmd: &mut super::DcsCommand<'a>,
     ) -> Result<(), super::DcsCommandError> {
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let packet = cmd.build_packet();
         if packet.is_err() {
             return Err(super::DcsCommandError::InvalidPacket);
@@ -273,12 +273,12 @@ impl super::MipiDsiTrait for Module {
         panel: Option<super::DsiPanel>,
     ) -> Result<super::super::Display, super::DsiEnableError> {
         if let Some(reset) = &self.reset_gpio {
-            let mut reset = reset.lock();
+            let mut reset = reset.sync_lock();
             reset.set_output();
             reset.write_output(true);
         }
         self.cc.enable_clock(5 * 32 + 27);
-        let mut ltdc = self.ltdc.lock();
+        let mut ltdc = self.ltdc.sync_lock();
         ltdc.enable_clock();
 
         let mut resolutions: Vec<ScreenResolution> = Vec::new();
@@ -329,7 +329,7 @@ impl super::MipiDsiTrait for Module {
         let val = 4_000_000_000 / config.link_speed;
         self.set_dphy_link(val);
 
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
 
         internals.write(0x400 / 4, 0);
         internals.write(0x400 / 4, 10);
@@ -422,7 +422,7 @@ impl super::MipiDsiTrait for Module {
         crate::modules::clock::ClockProvider::enable_clock(&pll_provider, 0);
         while !crate::modules::clock::ClockProvider::clock_is_ready(&pll_provider, 0) {}
 
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
 
         internals.write(0xa0 / 4, 0xf);
 
@@ -434,14 +434,7 @@ impl super::MipiDsiTrait for Module {
         }
 
         {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_ms(&timer, 40);
+            delay_ms_sync(40);
         }
 
         internals.write(1, 0);
@@ -469,7 +462,7 @@ impl super::MipiDsiTrait for Module {
                 }
             }
         }
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
 
         internals.write(1, 0);
         internals.write(0x34 / 4, 0);
@@ -498,12 +491,12 @@ impl super::MipiDsiTrait for Module {
                 super::super::SimpleRamFramebuffer::new(2, 4, 8),
             ))
         };
-        fb.print_address();
+        //fb.print_address();
         Ok(fb)
     }
 
     fn disable(&self) {
-        let ltdc = self.ltdc.lock();
+        let ltdc = self.ltdc.sync_lock();
         ltdc.disable_clock();
         drop(ltdc);
         self.cc.disable_clock(4 * 32 + 27);
@@ -536,7 +529,7 @@ impl Module {
     }
 
     fn get_input_divider(&self) -> u32 {
-        let internals = self.internals.lock();
+        let internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let val = (v >> 11) & 0xF;
         if val == 0 {
@@ -548,7 +541,7 @@ impl Module {
 
     /// Set the vco multiplier of the pll
     fn set_multiplier(&self, d: u32) {
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = (v & !0x1FC) | ((d as u32 & 0x7F) << 2);
         internals.write(268, newval);
@@ -556,14 +549,14 @@ impl Module {
 
     /// Get the vco multiplier of the pll
     fn get_multiplier(&self) -> u32 {
-        let internals = self.internals.lock();
+        let internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         (v >> 2) & 0x7F
     }
 
     /// Enable the voltage regulator
     fn enable_regulator(&self) {
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v | (1 << 24);
         internals.write(268, newval);
@@ -571,14 +564,14 @@ impl Module {
 
     /// is the regulator ready
     fn regulator_ready(&self) -> bool {
-        let internals = self.internals.lock();
+        let internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[259]) };
         (v & (1 << 12)) != 0
     }
 
     /// Set the dphy link speed
     fn set_dphy_link(&self, nv: u64) {
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[262]) };
         let newval = (v & !0x3F) | (nv as u32 & 0x3F);
         internals.write(262, newval);
@@ -588,7 +581,7 @@ impl Module {
 impl crate::modules::clock::ClockProviderTrait for Module {
     /// Enable the pll
     fn enable_clock(&self, _i: usize) {
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v | 1;
         internals.write(268, newval);
@@ -596,14 +589,14 @@ impl crate::modules::clock::ClockProviderTrait for Module {
 
     /// Disable the pll
     fn disable_clock(&self, _i: usize) {
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = v & !1;
         internals.write(268, newval);
     }
 
     fn clock_is_ready(&self, _i: usize) -> bool {
-        let internals = self.internals.lock();
+        let internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[259]) };
         (v & 1 << 8) != 0
     }
@@ -648,7 +641,7 @@ impl crate::modules::clock::PllTrait for Module {
         } else {
             return Err(PllDividerErr::UnknownInputFrequency);
         }
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = (v & !0x7800) | (d & 0xF) << 11;
         internals.write(268, newval);
@@ -677,7 +670,7 @@ impl crate::modules::clock::PllTrait for Module {
             return Err(PllDividerErr::UnknownInputFrequency);
         }
 
-        let mut internals = self.internals.lock();
+        let mut internals = self.internals.sync_lock();
         let v = unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) };
         let newval = (v & !0x30000) | (divider as u32) << 2;
         internals.write(268, newval);
@@ -685,7 +678,7 @@ impl crate::modules::clock::PllTrait for Module {
     }
 
     fn get_post_divider(&self, _i: usize) -> u32 {
-        let internals = self.internals.lock();
+        let internals = self.internals.sync_lock();
         let d = (unsafe { core::ptr::read_volatile(&internals.regs.regs[268]) } >> 16) & 3;
         match d {
             0 => 2,

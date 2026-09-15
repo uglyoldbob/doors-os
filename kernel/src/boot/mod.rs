@@ -1,5 +1,6 @@
 //! This module contains architecture specific boot code.
 
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 use crate::boot::x86::boot::PAGING_MANAGER;
 
 /// The trait for memory managers that need to ensure that virtual memory is mapped to real physical memory.

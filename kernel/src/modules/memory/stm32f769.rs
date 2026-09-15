@@ -67,19 +67,19 @@ impl SdramController {
         use crate::modules::gpio::GpioTrait;
         self.clock.enable_clock();
 
-        let mut gpio = crate::kernel::GPIO.lock();
+        let mut gpio = crate::kernel::GPIO.sync_lock();
         let gd = gpio.module(3);
         let ge = gpio.module(4);
         let gf = gpio.module(5);
         let gg = gpio.module(6);
         let gh = gpio.module(7);
         let gi = gpio.module(8);
-        let gpiod = gd.lock();
-        let gpioe = ge.lock();
-        let gpiof = gf.lock();
-        let gpiog = gg.lock();
-        let gpioh = gh.lock();
-        let gpioi = gi.lock();
+        let gpiod = gd.sync_lock();
+        let gpioe = ge.sync_lock();
+        let gpiof = gf.sync_lock();
+        let gpiog = gg.sync_lock();
+        let gpioh = gh.sync_lock();
+        let gpioi = gi.sync_lock();
 
         //setup the fmc pins for sdram
 
@@ -198,10 +198,10 @@ impl SdramController {
 
         {
             use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
+            let mut timers = crate::kernel::TIMERS.sync_lock();
             let tp = timers.module(0);
             drop(timers);
-            let mut tpl = tp.lock();
+            let mut tpl = tp.sync_lock();
             let timer = tpl.get_timer(0).unwrap();
             drop(tpl);
             crate::modules::timer::TimerInstanceTrait::delay_us(&timer, 200);

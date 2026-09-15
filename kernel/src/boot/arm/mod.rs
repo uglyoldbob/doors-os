@@ -12,23 +12,6 @@ pub fn get_panic_message(panic: &dyn core::any::Any) -> Option<&str> {
         .or_else(|| panic.downcast_ref::<&str>().map(core::ops::Deref::deref))
 }
 
-/// The panic handler
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    doors_macros2::kernel_print!("PANIC AT THE DISCO!\r\n");
-    if let Some(t) = info.location() {
-        let f = t.file();
-        let maxlen = f.len();
-        for i in (0..maxlen).step_by(70) {
-            let tmax = if i + 70 < maxlen { i + 70 } else { maxlen };
-            doors_macros2::kernel_print!("{}\r\n", &f[i..tmax]);
-        }
-        doors_macros2::kernel_print!(" LINE {}\r\n", t.line());
-    }
-    doors_macros2::kernel_print!("PANIC SOMEWHERE ELSE!\r\n");
-    loop {}
-}
-
 /// The heap for the kernel. This global allocator is responsible for the majority of dynamic memory in the kernel.
 #[global_allocator]
 static HEAP_MANAGER: Locked<hardware::memory::HeapManager> =

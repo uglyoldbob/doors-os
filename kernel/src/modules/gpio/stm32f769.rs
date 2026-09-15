@@ -29,22 +29,22 @@ impl Drop for GpioPin {
 
 impl super::GpioPinTrait for GpioPin {
     fn set_output(&mut self) {
-        let mut gpio = self.gpioref.lock();
+        let mut gpio = self.gpioref.sync_lock();
         gpio.set_output(self.i as usize);
     }
 
     fn write_output(&mut self, v: bool) {
-        let mut gpio = self.gpioref.lock();
+        let mut gpio = self.gpioref.sync_lock();
         gpio.write_output(self.i as usize, v);
     }
 
     fn set_alternate(&mut self, mode: u8) {
-        let mut gpio = self.gpioref.lock();
+        let mut gpio = self.gpioref.sync_lock();
         gpio.set_alternate(self.i as usize, mode as u32);
     }
 
     fn set_speed(&mut self, speed: u8) {
-        let mut gpio = self.gpioref.lock();
+        let mut gpio = self.gpioref.sync_lock();
         gpio.set_speed(self.i as usize, speed as u32);
     }
 }
@@ -64,7 +64,7 @@ pub struct Gpio {
 impl LockedArc<Gpio> {
     /// Return a pin to the gpio provider
     fn return_pin(&self, p: &GpioPin) {
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         let mask = 1 << p.i;
         if (s.used & mask) != 0 {
             s.used &= !mask;
@@ -154,7 +154,7 @@ impl Gpio {
 impl super::GpioTrait for LockedArc<Gpio> {
     fn get_pin(&self, i: usize) -> Option<super::GpioPin> {
         assert!(i < 16);
-        let mut s = self.lock();
+        let mut s = self.sync_lock();
         let mask = 1 << i;
         if (s.used & mask) != 0 {
             return None;
