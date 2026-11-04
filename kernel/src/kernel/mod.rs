@@ -1,5 +1,8 @@
 //! This is where the kernel structures are defined and where the code for interacting with them lives.
 
+#[cfg(target_arch = "arm")]
+pub mod arm;
+
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod x86;
 
@@ -367,6 +370,9 @@ pub trait SystemTrait {
 #[derive(Clone)]
 #[enum_dispatch::enum_dispatch(SystemTrait)]
 pub enum System {
+    #[cfg(target_arch = "arm")]
+    /// The cortex-m based stm32 system code
+    Stm32f769(crate::kernel::arm::Stm32System),
     #[cfg(target_arch = "x86")]
     /// The x86 64 system code
     X86_32(LockedArc<crate::boot::x86::boot32::X86System<'static>>),

@@ -28,6 +28,9 @@ pub enum TimerError {
 pub enum TimerIterator {
     /// A dummy iterator
     Dummy(DummyTimerIterator),
+    /// The stm32f769 iterator
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    Stm32f769(stm32f769::TimerIterator),
     /// hpet iterator
     #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     Hpet(hpet::HpetTimerIterator),
@@ -41,7 +44,11 @@ impl Iterator for TimerIterator {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Dummy(t) => t.next(),
+            #[cfg(kernel_machine = "stm32f769i-disco")]
+            Self::Stm32f769(t) => t.next(),
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Self::Hpet(t) => t.next(),
+            #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
             Self::Pit(t) => t.next(),
         }
     }
@@ -154,6 +161,9 @@ pub trait TimerInstanceTrait {
 #[derive(Clone)]
 #[enum_dispatch::enum_dispatch(TimerInstanceTrait)]
 pub enum TimerInstance {
+    /// The stm32f769 basic timer instance
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    BasicStm327f69Timer(Arc<stm32f769::Timer>),
     /// The pit timer instance for x86
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     X86PitTimer(Arc<x86::PitChannel>),
@@ -168,6 +178,9 @@ pub enum TimerInstance {
 #[doors_macros::enum_module_filter]
 #[derive(Clone)]
 pub enum WeakTimerInstance {
+    /// The stm32f769 basic timer instance
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    BasicStm327f69Timer(crate::Weak<stm32f769::Timer>),
     /// The pit timer instance for x86
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     X86PitTimer(crate::Weak<x86::PitChannel>),
@@ -182,6 +195,8 @@ impl WeakTimerInstance {
     /// Upgrade the reference to a strong one if possible
     pub fn upgrade(&self) -> Option<TimerInstance> {
         match self {
+            #[cfg(kernel_machine = "stm32f769i-disco")]
+            Self::BasicStm327f69Timer(a) => a.upgrade().map(|a| a.into()),
             #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
             Self::X86PitTimer(a) => a.upgrade().map(|a| a.into()),
             #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
@@ -195,6 +210,8 @@ impl TimerInstance {
     /// Produce a weak instance
     pub fn downgrade(&self) -> WeakTimerInstance {
         match self {
+            #[cfg(kernel_machine = "stm32f769i-disco")]
+            Self::BasicStm327f69Timer(a) => WeakTimerInstance::BasicStm327f69Timer(Arc::downgrade(a)),
             #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
             Self::X86PitTimer(a) => WeakTimerInstance::X86PitTimer(Arc::downgrade(a)),
             #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]

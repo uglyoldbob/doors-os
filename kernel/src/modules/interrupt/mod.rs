@@ -1,5 +1,8 @@
 //! This module is for code that directly handles interrupt mechanisms.
 
+#[cfg(target_arch = "arm")]
+pub mod arm;
+
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod x86;
 
@@ -25,6 +28,9 @@ pub trait InterruptControllerTrait {
 /// An interrupt controller for the system
 #[enum_dispatch::enum_dispatch(InterruptControllerTrait)]
 pub enum InterruptController {
+    /// The arm cortex-m nested vectored interrupt controller
+    #[cfg(target_arch = "arm")]
+    Nvic(arm::Nvic),
     /// The x86 local apic
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     Apic(x86::LocalApic),

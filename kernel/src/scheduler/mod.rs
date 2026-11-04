@@ -13,6 +13,10 @@ use x86_64::*;
 mod x86;
 #[cfg(target_arch = "x86")]
 use x86::*;
+#[cfg(target_arch = "arm")]
+mod arm;
+#[cfg(target_arch = "arm")]
+use arm::*;
 
 use alloc::{boxed::Box, vec::Vec};
 use spin::RwLock;
@@ -187,7 +191,12 @@ pub struct Scheduler {
 impl Scheduler {
     /// Construct a new scheduler
     pub fn new(id: TaskId) -> Self {
+        #[cfg(not(target_arch = "arm"))]
         let com = IrqGuardedInner::new(IrqNumbers::Only1(0), false, true, |_| {}, |_| {});
+        // On arm the scheduling tick arrives on a real nvic line that the legacy irq 0 trick
+        // cannot mask, so all interrupts must be disabled to guard the scheduler instead.
+        #[cfg(target_arch = "arm")]
+        let com = IrqGuardedInner::new(IrqNumbers::None, true, false, |_| {}, |_| {});
         let i = IrqGuarded::new(InnerScheduler::new(id, &com), &com);
         Self {
             i: Arc::new(SchedulerProtected(i)),

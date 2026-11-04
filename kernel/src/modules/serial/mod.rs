@@ -1,6 +1,9 @@
 //! Serial port related code
 
 #[cfg(kernel_machine = "stm32f769i-disco")]
+use crate::LockedArc;
+
+#[cfg(kernel_machine = "stm32f769i-disco")]
 pub mod stm32f769;
 
 #[cfg(kernel_machine = "pc64")]

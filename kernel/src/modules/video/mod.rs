@@ -414,7 +414,7 @@ impl TextDisplayTrait for FramebufferTextMode<pixels::Palette<u8>> {
                 let pixel: crate::modules::video::pixels::Palette<u8> =
                     crate::modules::video::pixels::Palette::new(
                         0x11,
-                        crate::modules::video::vga::DEFAULT_PALETTE,
+                        crate::modules::video::pixels::DEFAULT_PALETTE,
                     );
                 self.fb.write_pixel(x, y, pixel);
             }

@@ -55,10 +55,13 @@ impl super::SerialTrait for LockedArc<Usart> {
     }
 
     fn sync_flush(&self) {
+        let s = self.sync_lock();
+        while !s.regs.tx_empty() {}
     }
 
     fn try_read(&self) -> Option<u8> {
-        todo!()
+        // Read interrupts are not enabled, so nothing is ever buffered
+        None
     }
 
     fn sync_read_byte(&self) -> u8 {
@@ -70,22 +73,24 @@ impl super::SerialTrait for LockedArc<Usart> {
     }
 
     fn stop_async(&self) {
-        todo!()
+        // There is not currently an async mode for the stm32 serial ports
     }
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn transmit(&self, data: &[u8]) {
-        todo!()
+        // There is not currently an async mode for the stm32 serial ports, so this falls
+        // back to the synchronous transmission
+        self.sync_transmit(data);
     }
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn transmit_str(&self, data: &str) {
-        todo!()
+        self.sync_transmit_str(data);
     }
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&self) {
-        todo!()
+        Self::sync_flush(self);
     }
 
     fn setup(&self, rate: u32) -> Result<(), ()> {

@@ -286,14 +286,20 @@ pub extern "C" fn nmi_handler() {
     loop {}
 }
 
-/// The default interrupt handler
-pub extern "C" fn default_handler() {
-    loop {}
-}
+/// The default interrupt handler. All entries of the vector table point at the shared
+/// interrupt dispatcher that looks up registered handlers based on the exception number.
+pub use crate::modules::interrupt::arm::default_handler;
 
 /// The entry point of the kernel
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    // Enable full access to the floating point unit registers, the interrupt entry stub
+    // always saves and restores the callee saved floating point registers.
+    unsafe {
+        core::ptr::write_volatile(0xe000_ed88 as *mut u32, 0xf0_0000);
+        core::arch::asm!("dsb", "isb");
+    }
+
     let start_bss = unsafe { &START_OF_BSS } as *const u8 as usize;
     let end_bss = unsafe { &END_OF_BSS } as *const u8 as usize;
     let bss = unsafe { core::slice::from_raw_parts_mut(start_bss as *mut u8, end_bss - start_bss) };
@@ -320,6 +326,15 @@ pub extern "C" fn _start() -> ! {
         h.init(0, end, 0x2007_c000 - end);
     }
     drop(h);
+
+    // Install the nvic as the interrupt controller and the real system implementation for
+    // this board.
+    crate::kernel::INTERRUPT_CONTROLLER.write().replace(
+        crate::modules::interrupt::InterruptController::Nvic(
+            crate::modules::interrupt::arm::Nvic::new(),
+        ),
+    );
+    *crate::SYSTEM.write() = kernel::System::Stm32f769(kernel::arm::Stm32System::new());
 
     let osc32 = crate::modules::clock::FixedClock::new(None);
     let oscmain = crate::modules::clock::FixedClock::new(Some(25_000_000));
@@ -558,13 +573,17 @@ pub extern "C" fn _start() -> ! {
 
     {
         use crate::modules::serial::SerialTrait;
-        let mut serials = crate::kernel::SERIAL.sync_lock();
-        let s = serials.sync_lock();
-        let serial_setup = s.setup(115200);
-        drop(s);
-        if serial_setup.is_ok() {
-            let a = crate::modules::video::VideoOverSerial::new(serial);
-            crate::common::VGA.sync_replace(Some(t));
+        if let Some(s) = crate::kernel::SERIAL.take_device(0) {
+            let serial_setup = s.setup(115200);
+            if serial_setup.is_ok() {
+                let t = s.convert(
+                    |a| a.make_text_display(),
+                    |_t| {
+                        // The console is never returned to the handler
+                    },
+                );
+                crate::common::VGA.sync_replace(Some(t));
+            }
         }
     }
 

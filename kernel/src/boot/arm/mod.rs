@@ -24,43 +24,31 @@ use crate::IoReadWrite;
 
 impl IoReadWrite<u8> for IoPortRef<u8> {
     fn port_read(&mut self) -> u8 {
-        unsafe {
-            core::ptr::read_volatile(self.r as *const u8)
-        }
+        unsafe { core::ptr::read_volatile(self.r as *const u8) }
     }
 
     fn port_write(&mut self, val: u8) {
-        unsafe {
-            core::ptr::write_volatile(self.r as *mut u8, val)
-        }
+        unsafe { core::ptr::write_volatile(self.r as *mut u8, val) }
     }
 }
 
 impl IoReadWrite<u16> for IoPortRef<u16> {
     fn port_read(&mut self) -> u16 {
-        unsafe {
-            core::ptr::read_volatile(self.r as *const u16)
-        }
+        unsafe { core::ptr::read_volatile(self.r as *const u16) }
     }
 
     fn port_write(&mut self, val: u16) {
-        unsafe {
-            core::ptr::write_volatile(self.r as *mut u16, val)
-        }
+        unsafe { core::ptr::write_volatile(self.r as *mut u16, val) }
     }
 }
 
 impl IoReadWrite<u32> for IoPortRef<u32> {
     fn port_read(&mut self) -> u32 {
-        unsafe {
-            core::ptr::read_volatile(self.r as *const u32)
-        }
+        unsafe { core::ptr::read_volatile(self.r as *const u32) }
     }
 
     fn port_write(&mut self, val: u32) {
-        unsafe {
-            core::ptr::write_volatile(self.r as *mut u32, val)
-        }
+        unsafe { core::ptr::write_volatile(self.r as *mut u32, val) }
     }
 }
 
@@ -98,12 +86,11 @@ impl IoPortArray<'_> {
 }
 
 /// 'Doesn't' Keep track of all io ports on the system.
-pub struct IoPortManager {
-}
+pub struct IoPortManager {}
 
 impl Locked<IoPortManager> {
     /// Try to get a single port from the system
-    pub fn get_port<T>(&self, base: u16) -> Option<IoPortRef<T>> {
+    pub fn get_port<T>(&self, base: u32) -> Option<IoPortRef<T>> {
         Some(IoPortRef {
             r: base,
             _marker: core::marker::PhantomData,
@@ -111,7 +98,7 @@ impl Locked<IoPortManager> {
     }
 
     /// Try to get some io ports from the system.
-    pub fn get_ports(&self, base: u16, quantity: u16) -> Option<IoPortArray<'_>> {
+    pub fn get_ports(&self, base: u32, quantity: u32) -> Option<IoPortArray<'_>> {
         Some(IoPortArray {
             base,
             quantity,
@@ -120,8 +107,7 @@ impl Locked<IoPortManager> {
     }
 
     /// Returns a list of port previously obtained fromm the manager
-    fn return_ports(&self, ports: &mut IoPortArray) {
-    }
+    fn return_ports(&self, ports: &mut IoPortArray) {}
 }
 
 impl Default for IoPortManager {
@@ -133,8 +119,7 @@ impl Default for IoPortManager {
 impl IoPortManager {
     /// Create a new io port manager. All ports are assumed to be unused initially.
     pub const fn new() -> Self {
-        Self {
-        }
+        Self {}
     }
 }
 

@@ -196,61 +196,25 @@ impl SdramController {
         let val = (1 << 4) | 1;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
 
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.sync_lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.sync_lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_us(&timer, 200);
-        }
+        sdram_delay_us(200);
         self.sdram_wait_until_not_busy();
 
         //precharge bank
         let val = (1 << 4) | 2;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_us(&timer, 100);
-        }
+        sdram_delay_us(100);
         self.sdram_wait_until_not_busy();
 
         // auto-refresh command with 8 auto-refresh cycles
         let val = (1 << 4) | 3 | 7 << 5;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_us(&timer, 100);
-        }
+        sdram_delay_us(100);
         self.sdram_wait_until_not_busy();
 
         //load mode register with cas latency
         let val = (1 << 4) | 4 | (control.cas_latency as u32) << 13;
         unsafe { core::ptr::write_volatile(&mut self.regs[(0x150) / 4], val) };
-        {
-            use crate::modules::timer::TimerTrait;
-            let mut timers = crate::kernel::TIMERS.lock();
-            let tp = timers.module(0);
-            drop(timers);
-            let mut tpl = tp.lock();
-            let timer = tpl.get_timer(0).unwrap();
-            drop(tpl);
-            crate::modules::timer::TimerInstanceTrait::delay_us(&timer, 100);
-        }
+        sdram_delay_us(100);
         self.sdram_wait_until_not_busy();
 
         //normal mode command
@@ -263,6 +227,18 @@ impl SdramController {
 
         unsafe { core::slice::from_raw_parts_mut(0xc000_0000 as *mut u8, 16 * 1024 * 1024) }
     }
+}
+
+/// Perform a delay in microseconds during sdram setup using the registered timer module
+fn sdram_delay_us(us: u32) {
+    use crate::modules::timer::{TimerCallbackWithUsage, TimerInstanceTrait, TimerTrait};
+    let mut timers = crate::kernel::TIMERS.sync_lock();
+    let tp = timers.module(0);
+    drop(timers);
+    let mut tpl = tp.sync_lock();
+    let timer = tpl.get_timer(0, 1, TimerCallbackWithUsage::None).unwrap();
+    drop(tpl);
+    timer.supports_arbitrary_timing().unwrap().delay_us_sync(us);
 }
 
 /// Data specific to the stm32 flash memory controller sdram control register

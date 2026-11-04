@@ -21,13 +21,28 @@ pub enum VirtualMemoryMapper<'a> {
     /// The 32 bit x86 variant
     #[cfg(target_arch = "x86")]
     X86Mapper(x86::boot::memory::VirtualMemoryMapper<'a>),
+    /// A mapper that does nothing, for hardware without a memory management unit
     #[cfg(kernel_machine = "stm32f769i-disco")]
     NullMapper(NullMapper<'a>),
 }
 
+/// A mapper that does nothing, used on hardware without a memory management unit
 #[cfg(kernel_machine = "stm32f769i-disco")]
 struct NullMapper<'a> {
-    _m: core::marker::PhantomData<'a>,
+    _m: core::marker::PhantomData<&'a ()>,
+}
+
+#[cfg(kernel_machine = "stm32f769i-disco")]
+impl VirtualMemoryMapperTrait for NullMapper<'_> {
+    fn allocate_physical_pages(&self, _virt: usize, _len: usize) -> Result<(), ()> {
+        // There is no mmu, all addresses are already physical addresses
+        Ok(())
+    }
+
+    fn unallocate_physical_pages(&self, _virt: usize, _len: usize) -> Result<(), ()> {
+        // There is no mmu, all addresses are already physical addresses
+        Ok(())
+    }
 }
 
 cfg_if::cfg_if! {

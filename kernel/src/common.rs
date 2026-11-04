@@ -24,6 +24,12 @@ pub fn nop() {
     x86_64::instructions::nop();
 }
 
+/// Do nothing
+#[cfg(target_arch = "arm")]
+pub fn nop() {
+    unsafe { core::arch::asm!("nop") };
+}
+
 /// Code to idle the system
 #[cfg(target_arch = "x86_64")]
 pub fn idle() {
@@ -34,6 +40,24 @@ pub fn idle() {
 #[cfg(target_arch = "x86")]
 pub fn idle() {
     unsafe { x86::halt() };
+}
+
+/// Code to idle the system
+#[cfg(target_arch = "arm")]
+pub fn idle() {
+    unsafe { core::arch::asm!("wfi", options(nomem, preserves_flags)) };
+}
+
+/// Code to conditionally idle the system based on a closure
+#[cfg(target_arch = "arm")]
+pub fn idle_if(mut f: impl FnMut() -> bool) {
+    // On cortex-m a pending enabled interrupt will still wake a wfi even when PRIMASK is set,
+    // so disabling interrupts before the check closes the race without missing a wake.
+    crate::SYSTEM.read().disable_interrupts();
+    if f() {
+        unsafe { core::arch::asm!("wfi", options(nomem, preserves_flags)) };
+    }
+    crate::SYSTEM.read().enable_interrupts();
 }
 
 /// Code to conditionally idle the system based on a closure

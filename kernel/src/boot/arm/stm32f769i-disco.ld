@@ -10,7 +10,10 @@ SECTIONS
 {
   .vector_table :
   {
-    LONG(0x2007ffff);
+    // The initial stack pointer, the top of the dedicated ram2 stack region. This must stay
+    // 8 byte aligned, the cortex-m core faults on the push instructions that an unaligned
+    // stack pointer would produce.
+    LONG(0x20080000);
     LONG(_start);
     . = ALIGN(4);
     KEEP(*(.isr_vector)) /* Startup code */

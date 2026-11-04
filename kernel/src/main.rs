@@ -98,6 +98,10 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         unsafe {
             core::arch::asm!("hlt");
         }
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            core::arch::asm!("wfi", options(nomem, preserves_flags));
+        }
     }
 }
 
@@ -165,7 +169,13 @@ async fn keyboard_test() {
         crate::VGA.print_str_async("Running spawn test\r\n").await;
     });
     let p = crate::common::KEYBOARD.read();
-    let k = p.as_ref().unwrap();
+    let k = match p.as_ref() {
+        Some(k) => k,
+        None => {
+            // Machines without a keyboard simply skip this test
+            return;
+        }
+    };
     let mut s = k.read_stream();
     while let Some(a) = s.next().await {
         crate::VGA

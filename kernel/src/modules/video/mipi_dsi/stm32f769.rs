@@ -434,7 +434,7 @@ impl super::MipiDsiTrait for Module {
         }
 
         {
-            delay_ms_sync(40);
+            crate::modules::timer::delay_ms_sync(40);
         }
 
         internals.write(1, 0);
