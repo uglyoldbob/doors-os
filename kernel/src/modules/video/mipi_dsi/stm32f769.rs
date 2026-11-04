@@ -304,16 +304,16 @@ impl super::MipiDsiTrait for Module {
             Ok(_) => {}
             Err(e) => match e {
                 PllVcoSetError::FrequencyOutOfRange => {
-                    doors_macros2::kernel_print!("out of range\r\n")
+                    crate::VGA.print_str(&alloc::format!("out of range\r\n"))
                 }
                 PllVcoSetError::UnknownInputFrequency => {
-                    doors_macros2::kernel_print!("unknown input frequency\r\n")
+                    crate::VGA.print_str(&alloc::format!("unknown input frequency\r\n"))
                 }
                 PllVcoSetError::CannotHitFrequency => {
-                    doors_macros2::kernel_print!("cannot hit target frequency\r\n")
+                    crate::VGA.print_str(&alloc::format!("cannot hit target frequency\r\n"))
                 }
                 PllVcoSetError::InputFrequencyOutOfRange => {
-                    doors_macros2::kernel_print!("input out of range\r\n")
+                    crate::VGA.print_str(&alloc::format!("input out of range\r\n"))
                 }
             },
         }
@@ -477,11 +477,11 @@ impl super::MipiDsiTrait for Module {
         drop(internals);
 
         let fb = if let Some(resolution) = &resolution {
-            doors_macros2::kernel_print!(
+            crate::VGA.print_str(&alloc::format!(
                 "Reserving {}x{} bytes for framebuffer\r\n",
                 resolution.width,
                 resolution.height
-            );
+            ));
             let num = 4 * resolution.width as usize * resolution.height as usize;
             super::super::Display::Framebuffer(super::super::Framebuffer::SimpleRam(
                 super::super::SimpleRamFramebuffer::new(resolution.width, resolution.height, num),

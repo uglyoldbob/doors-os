@@ -95,13 +95,13 @@ impl HeapManager {
     /// Initialize the specified heap with an address and size
     pub fn init(&mut self, i: usize, addr: usize, size: usize) {
         if self.head[i].is_none() {
-            doors_macros2::kernel_print!("Initing with {:x} bytes memory\r\n", size);
+            crate::VGA.print_str(&alloc::format!("Initing with {:x} bytes memory\r\n", size));
             let mut nn = unsafe { NonNull::new_unchecked(&mut *(addr as *mut HeapNode)) };
             unsafe { nn.as_mut() }.next = None;
             unsafe { nn.as_mut() }.size = size;
             self.head[i] = Some(nn);
         } else {
-            doors_macros2::kernel_print!("NOT Initing with {:x} bytes memory\r\n", size);
+            crate::VGA.print_str(&alloc::format!("NOT Initing with {:x} bytes memory\r\n", size));
         }
     }
 
@@ -109,13 +109,13 @@ impl HeapManager {
     pub fn print(&self) {
         for head in &self.head {
             if let Some(mut r) = head {
-                doors_macros2::kernel_print!("head: {:p}\r\n", r);
+                crate::VGA.print_str(&alloc::format!("head: {:p}\r\n", r));
                 loop {
-                    doors_macros2::kernel_print!(
+                    crate::VGA.print_str(&alloc::format!(
                         "heap node is size {:x} {:x}\r\n",
                         unsafe { &*r.as_ptr() }.size,
                         unsafe { &*r.as_ptr() }.next_address() - 1
-                    );
+                    ));
 
                     if let Some(nr) = unsafe { r.as_mut() }.next {
                         r = nr;
@@ -124,7 +124,7 @@ impl HeapManager {
                     }
                 }
             } else {
-                doors_macros2::kernel_print!("Heap is empty\r\n");
+                crate::VGA.print_str(&alloc::format!("Heap is empty\r\n"));
             }
         }
     }
@@ -193,15 +193,15 @@ impl HeapManager {
                         (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                     }
                 } else {
-                    doors_macros2::kernel_print!("A free node will exist before the placement\r\n");
+                    crate::VGA.print_str(&alloc::format!("A free node will exist before the placement\r\n"));
                     if (unsafe { best.as_ref() }.size - ha.size_needed)
                         < core::mem::size_of::<HeapNode>()
                     {
-                        doors_macros2::kernel_print!("The end of the block will be used\r\n");
+                        crate::VGA.print_str(&alloc::format!("The end of the block will be used\r\n"));
                     } else {
-                        doors_macros2::kernel_print!(
+                        crate::VGA.print_str(&alloc::format!(
                             "There will be blank space at the end of the block\r\n"
-                        );
+                        ));
                     }
                     self.print();
                     unimplemented!();

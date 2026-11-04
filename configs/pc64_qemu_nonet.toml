@@ -1,0 +1,27 @@
+kernel_machine = "x86_64-unknown-none"
+user_machine = "x86_64-unknown-doors"
+kernel_path = "x86_64-unknown-none"
+disassembly = true
+
+[kernel_config]
+machine_name = "pc64"
+acpi = true
+gdbstub = false
+mm_debug = false
+test = false
+network = false
+modules = ["hpet"]
+
+[disk.unique.Cd]
+kernel_path = "./build/iso/boot/kernel"
+
+[disk.common]
+output = "cd64.iso"
+disk_label = "DoorsOS"
+config_files = [["grub2.lst", "./build/iso/boot/grub/grub.cfg"]]
+
+[target.config]
+net_devs = []
+serial_ports = [0, 2]
+
+[target.emulator.Qemu]

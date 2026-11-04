@@ -479,8 +479,10 @@ pub enum TextDisplay {
     /// A serial port used for displaying text
     SerialDisplay(VideoOverSerial),
     /// X86 vga hardware operated in text mode
+    #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     X86VgaTextMode(text::X86VgaTextMode),
     /// X86 vga hardware operated in graphics mode
+    #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     X86VgaGraphicsMode(vga::X86VgaWithFont<pixels::Palette<u8>>),
     /// Paletted framebuffer
     FramebufferTextPalette(FramebufferTextMode<pixels::Palette<u8>>),

@@ -1,10 +1,12 @@
 //! Kernel modules belong in this module. A lot of the enums will have a dummy provider so that the code will compile.
 
 pub mod clock;
+#[doors_macros::module_builtin_attr(pci, "true")]
 pub mod dummy;
 pub mod gpio;
 pub mod input;
 pub mod interrupt;
+#[doors_macros::module_builtin_attr(pci, "true")]
 pub mod isa;
 pub mod memory;
 #[doors_macros::module_builtin_attr(pci, "true")]
@@ -24,9 +26,11 @@ pub mod network;
 pub trait DeviceTrait {}
 
 /// A generic device in the kernel
+#[doors_macros::enum_module_filter]
 #[enum_dispatch::enum_dispatch(DeviceTrait)]
 pub enum Device {
     /// A single function of a pci device
+    #[doors_module = "pci"]
     PciFunction(pci::PciFunction),
 }
 
@@ -65,6 +69,7 @@ use pci::{
 };
 
 /// Represents a device driver for a pci function
+#[doors_macros::module_builtin_attr(pci, "true")]
 #[doors_macros::enum_module_filter]
 #[derive(Clone)]
 #[doors_macros::vec_builder]

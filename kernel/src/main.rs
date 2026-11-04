@@ -45,6 +45,7 @@ use core::str::FromStr;
 pub use common::*;
 
 pub mod boot;
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub use boot::mem2::*;
 #[doors_macros::config_check_equals_attr(gdbstub, "true")]
 pub mod gdbstub;
@@ -213,7 +214,8 @@ fn main() -> ! {
                 .as_ref()
                 .unwrap()
                 .spawn_thread(test_function);
-            if doors_macros::config_check_equals!(gdbstub, "true") {
+            #[doors_macros::config_check_equals_attr(gdbstub, "true")]
+            {
                 scheduler::SCHEDULER
                     .read()
                     .as_ref()
@@ -278,6 +280,7 @@ fn main() -> ! {
                 }
             })
             .unwrap();
+        #[doors_macros::module_builtin_attr(pci, "true")]
         executor
             .spawn(async {
                 modules::pci::setup_pci().await;

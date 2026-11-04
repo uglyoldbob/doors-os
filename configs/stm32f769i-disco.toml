@@ -1,0 +1,28 @@
+kernel_machine = "thumbv7em-none-eabihf"
+user_machine = "x86_64-unknown-doors"
+kernel_path = "thumbv7em-none-eabihf"
+disassembly = true
+
+[kernel_config]
+machine_name = "stm32f769i-disco"
+acpi = false
+gdbstub = false
+mm_debug = false
+test = false
+network = false
+modules = []
+
+[disk.unique.Network]
+tftp_relative = ""
+
+[disk.common]
+output = "./netboot"
+disk_label = "DoorsOS"
+config_files = []
+grub_config = "grub2pxe.lst"
+
+[target.config]
+net_devs = []
+serial_ports = []
+
+[target.emulator.None]

@@ -29,8 +29,10 @@ pub enum TimerIterator {
     /// A dummy iterator
     Dummy(DummyTimerIterator),
     /// hpet iterator
+    #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     Hpet(hpet::HpetTimerIterator),
     /// The pit iterator
+    #[cfg(any(kernel_machine = "pc32", kernel_machine = "pc64"))]
     Pit(DummyTimerIterator),
 }
 

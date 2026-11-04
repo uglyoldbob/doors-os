@@ -21,11 +21,21 @@ pub enum VirtualMemoryMapper<'a> {
     /// The 32 bit x86 variant
     #[cfg(target_arch = "x86")]
     X86Mapper(x86::boot::memory::VirtualMemoryMapper<'a>),
+    #[cfg(kernel_machine = "stm32f769i-disco")]
+    NullMapper(NullMapper<'a>),
+}
+
+#[cfg(kernel_machine = "stm32f769i-disco")]
+struct NullMapper<'a> {
+    _m: core::marker::PhantomData<'a>,
 }
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "arm")] {
         pub mod arm;
+        pub use arm::IoPortManager;
+        pub use arm::IoPortRef;
+        pub use arm::IoPortArray;
     } else if #[cfg(any(target_arch = "x86_64", target_arch = "x86"))] {
         pub mod multiboot;
         pub mod x86;

@@ -559,7 +559,7 @@ pub extern "C" fn _start() -> ! {
     {
         use crate::modules::serial::SerialTrait;
         let mut serials = crate::kernel::SERIAL.sync_lock();
-        let s = serial.lock();
+        let s = serials.sync_lock();
         let serial_setup = s.setup(115200);
         drop(s);
         if serial_setup.is_ok() {
