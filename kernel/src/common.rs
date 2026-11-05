@@ -220,6 +220,12 @@ impl<A> LockedArc<A> {
         self.inner.sync_lock()
     }
 
+    /// Attempt to lock the contained mutex without spinning. Used by interrupt handlers that
+    /// share a lock with thread code that may be running on the interrupted context.
+    pub fn try_sync_lock(&self) -> Option<MutexGuard<'_, A>> {
+        self.inner.try_sync_lock()
+    }
+
     /// Replace the contents of the protected instance with another instance of the thing
     pub fn replace(&self, r: A) {
         let mut s = self.inner.sync_lock();
@@ -292,6 +298,10 @@ pub struct AsyncLockedMutexGuard<'a, A: ?Sized> {
     data: *mut A,
     /// The wakers for the mutex
     wakers: alloc::sync::Arc<crossbeam::queue::ArrayQueue<futures::task::Waker>>,
+    /// True when this guard was acquired synchronously. A synchronous acquisition spins, so it
+    /// counts towards the preempt count of the holder; an asynchronous acquisition parks on a
+    /// waker instead and may legitimately be held while the holder is not running.
+    sync: bool,
 }
 
 unsafe impl<A: ?Sized + Send> Sync for AsyncLocked<A> {}
@@ -322,6 +332,7 @@ impl<'a, A> core::future::Future for AsyncLockedMutexGuardFuture<'a, A> {
                 lock: &self.inner.lock,
                 data: unsafe { &mut *self.inner.data.get() },
                 wakers: self.inner.wakers.clone(),
+                sync: false,
             })
         } else {
             let _ = self.inner.wakers.push(cx.waker().clone());
@@ -348,10 +359,12 @@ impl<A> AsyncLocked<A> {
                 .compare_exchange(false, true, Ordering::Acquire, Ordering::SeqCst)
                 .is_ok()
             {
+                PREEMPT_COUNT.fetch_add(1, Ordering::Relaxed);
                 break AsyncLockedMutexGuard {
                     lock: &self.lock,
                     data: unsafe { &mut *self.data.get() },
                     wakers: self.wakers.clone(),
+                    sync: true,
                 };
             }
         }
@@ -399,11 +412,31 @@ impl<T: ?Sized> DerefMut for AsyncLockedMutexGuard<'_, T> {
 impl<T: ?Sized> Drop for AsyncLockedMutexGuard<'_, T> {
     /// The dropping of the MutexGuard will release the lock it was created from.
     fn drop(&mut self) {
+        if self.sync {
+            PREEMPT_COUNT.fetch_sub(1, Ordering::Relaxed);
+        }
         self.lock.store(false, Ordering::SeqCst);
         while let Some(w) = self.wakers.pop() {
             w.wake();
         }
     }
+}
+
+/// The number of spin locks the currently running context holds. The scheduler refuses to
+/// switch away from a context with a non-zero count: a descheduled spin lock holder can never
+/// release the lock, and every spin waiter would wedge forever (one of those waiters is the
+/// timer interrupt handler itself, which would take the whole system down with it).
+static PREEMPT_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+/// The number of spin locks the current context is holding.
+pub fn preempt_get() -> usize {
+    PREEMPT_COUNT.load(Ordering::Relaxed)
+}
+
+/// Set the spin lock count of the current context. Only used when switching between contexts,
+/// where the count must follow the context being restored.
+pub fn preempt_set(count: usize) {
+    PREEMPT_COUNT.store(count, Ordering::Relaxed);
 }
 
 /// A wrapper structure that allows for a thing to be wrapped with a mutex.
@@ -438,8 +471,11 @@ impl<'a, T> MutexGuard<'a, T> {
     ///
     /// Be sure you know what you are doing!
     pub unsafe fn unsafe_destroy(self) -> *mut T {
+        PREEMPT_COUNT.fetch_sub(1, Ordering::Relaxed);
         self.guard.store(false, Ordering::Release);
-        self.data
+        let d = self.data;
+        core::mem::forget(self);
+        d
     }
 }
 
@@ -447,6 +483,7 @@ impl<T> !Send for MutexGuard<'_, T> {}
 
 impl<T> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
+        PREEMPT_COUNT.fetch_sub(1, Ordering::Relaxed);
         self.guard.store(false, Ordering::Release);
     }
 }
@@ -484,12 +521,33 @@ impl<A> Locked<A> {
                 .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
                 .is_ok()
             {
+                PREEMPT_COUNT.fetch_add(1, Ordering::Relaxed);
                 break MutexGuard {
                     guard: &self.lock,
                     data: unsafe { &mut *self.inner.get() },
                 };
             }
             doors_macros::todo_item!("Do something with the thread scheduler here");
+        }
+    }
+
+    /// Attempt to lock the mutex without spinning, returning None if it is currently held.
+    /// Interrupt handlers that share a lock with thread code must use this instead of
+    /// [`Locked::sync_lock`]; the interrupted thread may be the lock holder and can never
+    /// release it while the handler spins.
+    pub fn try_sync_lock(&self) -> Option<MutexGuard<'_, A>> {
+        if self
+            .lock
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            PREEMPT_COUNT.fetch_add(1, Ordering::Relaxed);
+            Some(MutexGuard {
+                guard: &self.lock,
+                data: unsafe { &mut *self.inner.get() },
+            })
+        } else {
+            None
         }
     }
 

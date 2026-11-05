@@ -383,10 +383,15 @@ pub struct FramebufferTextMode<P: 'static> {
     /// The font reference to use for printing text to the frambuffer
     font: &'static Font<P>,
     /// The horizontal position of the cursor in pixels
-    cursor_x: u8,
+    cursor_x: u16,
     /// The vertical position of the cursor in pixels
-    cursor_y: u8,
+    cursor_y: u16,
 }
+
+/// The horizontal resolution in pixels the text console renders into
+const FRAMEBUFFER_WIDTH: u16 = 480;
+/// The vertical resolution in pixels the text console renders into
+const FRAMEBUFFER_HEIGHT: u16 = 800;
 
 impl<P> FramebufferTextMode<P>
 where
@@ -439,25 +444,44 @@ where
     P: Sync + Send,
 {
     fn print_char(&mut self, d: char) {
-        let a = FontTrait::lookup_symbol(self.font, d);
-        if let Some(_a) = a {
-            for i in 0..10 {
-                for j in 0..10 {
-                    let p = 0xffffffff;
-                    let p = FullColor::<u32>::new(p);
-                    crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
-                        "Print pixel {} {}\r\n",
-                        self.cursor_x as u16 + i,
-                        self.cursor_y as u16 + j
-                    ));
-                    self.fb
-                        .write_pixel(self.cursor_x as u16 + i, self.cursor_y as u16 + j, p);
-                }
-            }
-            crate::VGA.print_str("Done printing char\r\n");
-            self.cursor_x += 5;
+        // Handle newlines and wrapping before looking up the glyph. The vertical advance
+        // matches the 20 pixel rasterization size used when the font table was generated.
+        const LINE_HEIGHT: u16 = 20;
+        const CHAR_SPACING: u16 = 2;
+        if d == '\n' {
+            self.cursor_x = 0;
+            self.cursor_y += LINE_HEIGHT;
+            return;
         }
-        todo!();
+        let Some(glyph) = FontTrait::lookup_symbol(self.font, d) else {
+            return;
+        };
+        // The coverage bitmap only covers the bounds rectangle of the glyph.
+        let w = (glyph.bounds_xmax - glyph.bounds_xmin) as u16;
+        let h = (glyph.bounds_ymax - glyph.bounds_ymin) as u16;
+        // Wrap to the next line if this character would run off the right edge.
+        if self.cursor_x + w > FRAMEBUFFER_WIDTH {
+            self.cursor_x = 0;
+            self.cursor_y += LINE_HEIGHT;
+        }
+        for y in 0..h {
+            for x in 0..w {
+                let index = (y * w + x) as usize;
+                let Some(&coverage) = glyph.data.get(index) else {
+                    continue;
+                };
+                if coverage < 128 {
+                    continue;
+                }
+                let px = self.cursor_x + x;
+                let py = self.cursor_y + y;
+                if px >= FRAMEBUFFER_WIDTH || py >= FRAMEBUFFER_HEIGHT {
+                    continue;
+                }
+                self.fb.write_pixel(px, py, FullColor::<u32>::new(0x00ff_ffff));
+            }
+        }
+        self.cursor_x += w + CHAR_SPACING;
     }
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]

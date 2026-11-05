@@ -238,6 +238,17 @@ impl Scheduler {
     #[inline(never)]
     fn handle_interrupt(this: &Arc<SchedulerProtected>, timer: WeakTimerInstance) {
         use crate::modules::timer::TimerInstanceTrait;
+        // Never preempt a context that currently holds a spin lock. A descheduled lock holder
+        // can never release the lock, and every spin waiter would then wedge forever, which
+        // includes the timer interrupt handler itself. Just re-arm the tick and try again on
+        // the next interrupt, by which time the lock will normally have been released.
+        if crate::common::preempt_get() > 0 {
+            if let Some(t) = timer.upgrade() {
+                t.start_oneshot();
+            }
+            drop(timer);
+            return;
+        }
         let mut this = this.0.interrupt_access();
 
         loop {
@@ -267,6 +278,7 @@ impl Scheduler {
                     };
                     let mut old_context = Context::default();
                     unsafe { Context::thread_save(&mut old_context) };
+                    old_context.preempt = crate::common::preempt_get();
                     if t.cur_task.1.context.replace(old_context).is_some() {
                         Self::panic(3);
                     }
@@ -276,6 +288,7 @@ impl Scheduler {
                         t.start_oneshot();
                     }
                     drop(timer);
+                    crate::common::preempt_set(new_context.preempt);
                     return unsafe { Context::thread_restore(&new_context) };
                 }
                 TaskStatus::Completed => {

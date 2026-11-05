@@ -29,6 +29,8 @@ impl PageTableData {
 pub struct Context {
     /// esp register
     pub esp: u32,
+    /// The spin lock nesting count of this context
+    pub preempt: usize,
 }
 
 /// The context for a thread that lives on the stack
@@ -150,7 +152,7 @@ impl Context {
         );
     }
 
-    /// Saves thread context that is not already on the stack, and the thread stack pointer    
+    /// Saves thread context that is not already on the stack, and the thread stack pointer
     #[unsafe(naked)]
     pub(crate) unsafe extern "C" fn thread_save(m: &mut Context) {
         naked_asm!(

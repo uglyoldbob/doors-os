@@ -47,6 +47,10 @@ pub struct Context {
     /// The stack pointer of the saved context, pointing at the callee saved register block
     /// that the shared interrupt entry stub pushed
     pub sp: u32,
+    /// The spin lock nesting count of this context. Saved and restored with the context so a
+    /// context that yields voluntarily while holding a spin lock doesn't corrupt the count of
+    /// whichever context runs next.
+    pub preempt: usize,
 }
 
 /// The context for a thread that lives on the stack

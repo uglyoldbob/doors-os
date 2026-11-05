@@ -42,6 +42,8 @@ pub struct Context {
     pub rsp: u64,
     /// r13 register
     pub r13: u64,
+    /// The spin lock nesting count of this context
+    pub preempt: usize,
 }
 
 /// The context for a thread that lives on the stack

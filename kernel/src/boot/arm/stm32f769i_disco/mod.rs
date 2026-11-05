@@ -316,7 +316,9 @@ pub extern "C" fn _start() -> ! {
 
     let mut h = super::HEAP_MANAGER.sync_lock();
     if end_bss < 0x2007_c000 {
-        let a = core::mem::align_of::<memory::HeapNode>() - 1;
+        // The allocator keeps its node headers and its allocations aligned to the node size, so
+        // the heap has to start on that alignment as well.
+        let a = memory::HeapNode::NODEALIGN - 1;
         let end = if (end_bss & a) > 0 {
             let m = end_bss & !a;
             m + a + 1
@@ -335,6 +337,8 @@ pub extern "C" fn _start() -> ! {
         ),
     );
     *crate::SYSTEM.write() = kernel::System::Stm32f769(kernel::arm::Stm32System::new());
+    // Report hard faults on the console instead of silently spinning in the generic dispatcher.
+    crate::modules::interrupt::arm::register_hardfault_diagnostics();
 
     let osc32 = crate::modules::clock::FixedClock::new(None);
     let oscmain = crate::modules::clock::FixedClock::new(Some(25_000_000));

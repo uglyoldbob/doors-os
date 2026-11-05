@@ -9,6 +9,31 @@ use crate::{Arc, LockedArc};
 /// The number of capture/compare channels supported by the advanced control timers
 const CHANNELS: usize = 6;
 
+/// Compare counts per channel last programmed by [`Timer::start_oneshot`]. The interrupt handler
+/// needs this to re-arm a channel after bailing out, and it cannot take the group lock to read it
+/// from the instance that owns the channel.
+static TICK_COUNTS: [core::sync::atomic::AtomicU32; CHANNELS] =
+    [const { core::sync::atomic::AtomicU32::new(0) }; CHANNELS];
+
+/// Bitmask of channels that are driven by an interrupt (programmed by [`Timer::start_oneshot`]).
+/// Only these may be re-armed by the interrupt handler; channels used for polled delays are armed
+/// and consumed by their owner and must not be touched.
+static TICK_ARMED: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// Word indices (register byte offset / 4) in the advanced timer register block, used for the
+/// lock-free access from the interrupt handler. See [`Registers`]; note for example that the
+/// status register lives at offset 0x10, so its index is 4.
+mod reg {
+    /// Control register 1 (offset 0x00)
+    pub const CR1: usize = 0;
+    /// DMA/interrupt enable register (offset 0x0c)
+    pub const DIER: usize = 0x0c / 4;
+    /// Status register (offset 0x10)
+    pub const SR: usize = 0x10 / 4;
+    /// Counter register (offset 0x24)
+    pub const CNT: usize = 0x24 / 4;
+}
+
 /// The register set for an advanced control timer (tim1/tim8)
 struct Registers {
     regs: [u32; 64],
@@ -47,6 +72,10 @@ pub struct TimerGroup {
     irq_registered: bool,
     /// The interrupt number for the capture compare interrupt of this timer
     irq: u8,
+    /// Base address of the register block. The interrupt handler needs to touch the hardware
+    /// without holding the group lock, so it cannot reach the register block through
+    /// [`TimerGroup::regs`].
+    base: u32,
     /// The input clock to the timer.
     clock: crate::modules::clock::ClockRef,
     /// The callbacks for each of the channels
@@ -66,6 +95,7 @@ impl TimerGroup {
             configured: false,
             irq_registered: false,
             irq,
+            base: addr,
             clock,
             callbacks: core::array::from_fn(|_| super::TimerCallback2WithUsage::None),
             instances: core::array::from_fn(|_| None),
@@ -184,19 +214,90 @@ impl TimerGroup {
         (v & (1 << bit)) != 0
     }
 
-    /// Sets the ccr for the specified timer
-    fn set_ccr(&mut self, i: u8, val: u16) {
-        let reg = match i {
+    /// The capture compare register for a channel
+    fn ccr_reg(i: u8) -> usize {
+        match i {
             0..=3 => 13 + i as usize,
             4..=5 => 18 + i as usize,
             _ => panic!("Invalid timer"),
-        };
-        unsafe { core::ptr::write_volatile(&mut self.regs.regs[reg], val as u32) };
+        }
     }
 
-    /// The interrupt handler for the capture compare interrupt of this timer group
-    pub fn handle_interrupt(s: &LockedArc<TimerGroup>) {
-        let mut g = s.sync_lock();
+    /// Sets the ccr for the specified timer
+    fn set_ccr(&mut self, i: u8, val: u16) {
+        unsafe {
+            core::ptr::write_volatile(&mut self.regs.regs[Self::ccr_reg(i)], val as u32);
+        }
+    }
+
+    /// Consume the compare flags that raised this interrupt and re-arm the channels they belong
+    /// to, all without taking the group lock.
+    ///
+    /// The handler cannot leave the flags set when it bails out because the group lock is held: a
+    /// set flag keeps the interrupt line asserted, so the NVIC re-enters this handler at the very
+    /// first instruction boundary after the exception return. The interrupted context is starved
+    /// at exactly the instruction that would release the lock, so the lock is never released and
+    /// the system wedges in an interrupt storm. Clearing the flag and re-arming the compare for
+    /// the next period instead lets the interrupted context run to completion and retries the
+    /// tick one period later.
+    ///
+    /// The new compare value has to be programmed before the flag is cleared: the counter is
+    /// parked on the compare value that produced this interrupt, so clearing first lets the
+    /// hardware set the flag again (and re-assert the interrupt line) before the new compare
+    /// value lands.
+    ///
+    /// Channels used for polled delays have their interrupt disabled, so their flags are left for
+    /// their owner to consume. Channels 5 and 6 are skipped because the advanced timers do not
+    /// have compare registers for them at the offsets [`TimerGroup::ccr_reg`] computes.
+    /// Programming a compare here can race with a holder that is reprogramming the shared
+    /// prescaler; the worst case is one mistimed tick.
+    ///
+    /// # Safety
+    ///
+    /// `base` must be the register block of the timer group this interrupt came from.
+    unsafe fn rearm_from_irq(base: u32) {
+        let regs = base as *mut u32;
+        let sr = core::ptr::read_volatile(regs.add(reg::SR));
+        let dier = core::ptr::read_volatile(regs.add(reg::DIER));
+        let fired = sr & dier;
+        let armed = TICK_ARMED.load(core::sync::atomic::Ordering::Relaxed);
+        let cnt = core::ptr::read_volatile(regs.add(reg::CNT)) & 0xFFFF;
+        for i in 0..4u8 {
+            let bit = 1u32 << Self::cc_bit(i);
+            if fired & bit == 0 || armed & bit == 0 {
+                continue;
+            }
+            let counts = TICK_COUNTS[i as usize].load(core::sync::atomic::Ordering::Relaxed);
+            if counts == 0 {
+                continue;
+            }
+            core::ptr::write_volatile(
+                regs.add(Self::ccr_reg(i)),
+                cnt.wrapping_add(counts) & 0xFFFF,
+            );
+            // The counter must be running for the new compare to ever be reached. A holder may
+            // have stopped the group while the interrupt was pending.
+            let cr1 = core::ptr::read_volatile(regs.add(reg::CR1));
+            core::ptr::write_volatile(regs.add(reg::CR1), cr1 | 1);
+        }
+        // Clear the flags that produced this interrupt. Only the flags whose interrupt is enabled
+        // are included, so the flags of polled delays stay with their owner.
+        core::ptr::write_volatile(regs.add(reg::SR), !fired);
+    }
+
+    /// The interrupt handler for the capture compare interrupt of this timer group.
+    ///
+    /// `base` is [`TimerGroup::base`]; it is passed in because the handler has to reach the
+    /// hardware on the path where the group lock is unavailable.
+    pub fn handle_interrupt(s: &LockedArc<TimerGroup>, base: u32) {
+        // The interrupt may fire while an interrupted thread is holding this exact lock (for
+        // example while polling a delay). That thread can never release the lock while this
+        // handler waits on it, so bail out, and hand the retry back to the hardware rather than
+        // relying on the pending interrupt to re-enter this handler.
+        let Some(mut g) = s.try_sync_lock() else {
+            unsafe { Self::rearm_from_irq(base) };
+            return;
+        };
         let sr = unsafe { core::ptr::read_volatile(&g.regs.regs[4]) };
         for i in 0..CHANNELS as u8 {
             let bit = 1u32 << Self::cc_bit(i);
@@ -273,6 +374,7 @@ impl super::TimerTrait for LockedArc<TimerGroup> {
         };
         let irq_registered = s.irq_registered;
         let irq = s.irq;
+        let base = s.base;
         drop(s);
         if !irq_registered {
             let mut s2 = self.sync_lock();
@@ -280,7 +382,7 @@ impl super::TimerTrait for LockedArc<TimerGroup> {
             drop(s2);
             let group = self.clone();
             let sys = crate::SYSTEM.read();
-            sys.register_irq_handler(irq, move || TimerGroup::handle_interrupt(&group));
+            sys.register_irq_handler(irq, move || TimerGroup::handle_interrupt(&group, base));
             sys.enable_irq(irq);
         }
         Ok(instance)
@@ -304,6 +406,10 @@ impl Drop for Timer {
         t.release_channel(self.index);
         t.callbacks[self.index as usize] = super::TimerCallback2WithUsage::None;
         t.instances[self.index as usize] = None;
+        TICK_ARMED.fetch_and(
+            !(1u32 << TimerGroup::cc_bit(self.index)),
+            core::sync::atomic::Ordering::Relaxed,
+        );
     }
 }
 
@@ -431,6 +537,13 @@ impl super::TimerInstanceTrait for Arc<Timer> {
         t.clear_compare(self.index);
         t.set_ccie(self.index, true);
         t.start_timer();
+        // Publish the period so the interrupt handler can re-arm this channel when it has to
+        // bail out without the group lock.
+        TICK_COUNTS[self.index as usize].store(counts as u32, core::sync::atomic::Ordering::Relaxed);
+        TICK_ARMED.fetch_or(
+            1u32 << TimerGroup::cc_bit(self.index),
+            core::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     fn manually_trigger(&self) {

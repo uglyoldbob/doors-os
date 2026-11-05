@@ -56,6 +56,41 @@ pub fn unregister_handler(num: usize) {
     sys.enable_interrupts();
 }
 
+/// Register a hard fault handler that reports the faulting context on the console. Without
+/// this a hard fault lands in the generic dispatch, finds no handler, and silently spins.
+pub fn register_hardfault_diagnostics() {
+    register_handler(
+        3,
+        Box::new(|| {
+            // The hardware frame sits above everything the entry stub pushed, see
+            // [`default_handler`] for the frame layout.
+            let sp = unsafe { core::ptr::read_volatile(&DOORS_IRQ_CTX) };
+            let hw = (sp + 104) as *const u32;
+            let r0 = unsafe { core::ptr::read_volatile(hw) };
+            let lr = unsafe { core::ptr::read_volatile(hw.add(5)) };
+            let pc = unsafe { core::ptr::read_volatile(hw.add(6)) };
+            let psr = unsafe { core::ptr::read_volatile(hw.add(7)) };
+            let cfsr = unsafe { core::ptr::read_volatile(0xE000_ED28 as *const u32) };
+            let hfsr = unsafe { core::ptr::read_volatile(0xE000_ED2C as *const u32) };
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "\r\nHARDFAULT! pc {:x} lr {:x} psr {:x}\r\n",
+                pc,
+                lr,
+                psr
+            ));
+            crate::VGA.print_fixed_str(doors_macros2::fixed_string_format!(
+                "HFSR {:x} CFSR {:x} r0 {:x}\r\n",
+                hfsr,
+                cfsr,
+                r0
+            ));
+            loop {
+                core::hint::spin_loop();
+            }
+        }),
+    );
+}
+
 /// The rust side of interrupt dispatch. Called from the naked [`default_handler`] entry with
 /// the raw exception number read out of ipsr.
 #[no_mangle]

@@ -28,7 +28,7 @@ pub struct HeapNode {
 
 impl HeapNode {
     /// The required alignment for nodes and allocations based on the size of a node
-    const NODEALIGN: usize = core::mem::size_of::<HeapNode>().next_power_of_two();
+    pub const NODEALIGN: usize = core::mem::size_of::<HeapNode>().next_power_of_two();
 
     /// Return the address that is immediately after this block of memory
     fn next_address(&self) -> usize {
@@ -94,14 +94,13 @@ impl HeapManager {
 
     /// Initialize the specified heap with an address and size
     pub fn init(&mut self, i: usize, addr: usize, size: usize) {
+        // This runs before the heap exists and always while the heap lock is held, so it must
+        // not print. Printing allocates, which would recursively lock the heap and hang.
         if self.head[i].is_none() {
-            crate::VGA.print_str(&alloc::format!("Initing with {:x} bytes memory\r\n", size));
             let mut nn = unsafe { NonNull::new_unchecked(&mut *(addr as *mut HeapNode)) };
             unsafe { nn.as_mut() }.next = None;
             unsafe { nn.as_mut() }.size = size;
             self.head[i] = Some(nn);
-        } else {
-            crate::VGA.print_str(&alloc::format!("NOT Initing with {:x} bytes memory\r\n", size));
         }
     }
 
@@ -193,18 +192,38 @@ impl HeapManager {
                         (unsafe { best.as_ref() }.start() + ha.pre_align) as *mut u8
                     }
                 } else {
-                    crate::VGA.print_str(&alloc::format!("A free node will exist before the placement\r\n"));
-                    if (unsafe { best.as_ref() }.size - ha.size_needed)
-                        < core::mem::size_of::<HeapNode>()
-                    {
-                        crate::VGA.print_str(&alloc::format!("The end of the block will be used\r\n"));
+                    // The alignment padding in front of the placement is large enough to hold a
+                    // node header, so the padding is recycled as a free block of its own. This
+                    // overwrites the header of the best fit block, so everything still needed
+                    // out of it is read out before anything is written. Nothing can be printed
+                    // here because printing allocates and the heap lock is held by the caller.
+                    let block_start = unsafe { best.as_ref() }.start();
+                    let rest = unsafe { best.as_ref() }.next;
+                    let tail = unsafe { best.as_ref() }.size - ha.size_needed;
+                    let mut front =
+                        unsafe { NonNull::<HeapNode>::new_unchecked(block_start as *mut HeapNode) };
+                    if tail >= core::mem::size_of::<HeapNode>() {
+                        let mut node = unsafe {
+                            NonNull::<HeapNode>::new_unchecked(
+                                (block_start + ha.size_needed) as *mut HeapNode,
+                            )
+                        };
+                        unsafe {
+                            node.as_mut().size = tail;
+                            node.as_mut().next = rest;
+                            front.as_mut().size = ha.pre_align;
+                            front.as_mut().next = Some(node);
+                        }
                     } else {
-                        crate::VGA.print_str(&alloc::format!(
-                            "There will be blank space at the end of the block\r\n"
-                        ));
+                        // Not enough room is left behind the placement for another node, that
+                        // slack is given up.
+                        unsafe {
+                            front.as_mut().size = ha.pre_align;
+                            front.as_mut().next = rest;
+                        }
                     }
-                    self.print();
-                    unimplemented!();
+                    *best_fit_link = Some(front);
+                    (block_start + ha.pre_align) as *mut u8
                 };
                 r
             } else {
