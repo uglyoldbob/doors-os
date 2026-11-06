@@ -47,7 +47,7 @@ pub use common::*;
 pub mod boot;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub use boot::mem2::*;
-#[doors_macros::config_check_equals_attr(gdbstub, "true")]
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod gdbstub;
 pub mod kernel;
 pub mod modules;
