@@ -12,6 +12,26 @@ struct LocalApicRegisters {
     registers: [u32; 256],
 }
 
+impl LocalApicRegisters {
+    /// Reads one local apic register.
+    ///
+    /// The registers are memory mapped device state rather than normal memory,
+    /// so every access has to be volatile: a plain load can be elided, merged
+    /// with an earlier one, or served from a value the compiler already kept in
+    /// a register, and none of that is visible to the hardware.
+    #[inline]
+    fn read_reg(&mut self, index: usize) -> u32 {
+        unsafe { core::ptr::read_volatile(&mut self.registers[index]) }
+    }
+
+    /// Writes one local apic register, see [`Self::read_reg`] for why this has
+    /// to be volatile.
+    #[inline]
+    fn write_reg(&mut self, index: usize, val: u32) {
+        unsafe { core::ptr::write_volatile(&mut self.registers[index], val) };
+    }
+}
+
 bitfield::bitfield! {
     /// The data used to configure an entry in the ioapic
     struct IoApicRedirection(u64);
@@ -57,7 +77,9 @@ pub struct LocalApic {
 
 impl super::InterruptControllerTrait for LocalApic {
     fn end_of_interrupt(&self, _num: u8) {
-        self.regs.interrupt_access().registers[0x2c] = 0;
+        // Register 0x2c is the end of interrupt register, writing any value clears the
+        // in service bit, so this store must never be optimized away.
+        self.regs.interrupt_access().write_reg(0x2c, 0);
     }
 
     fn enable_irq_sync(&self, num: u8) {
@@ -153,7 +175,11 @@ impl LocalApic {
         }
         pic.disable_irq_sync(2);
         self.pic = Some(pic);
-        self.regs.sync_access().registers[0x3c] |= 0x100;
+        // Register 0x3c is the spurious interrupt register, bit 8 enables the local apic.
+        let mut regs = self.regs.sync_access();
+        let svr = regs.read_reg(0x3c);
+        regs.write_reg(0x3c, svr | 0x100);
+        drop(regs);
         #[cfg(target_arch = "x86_64")]
         {
             let mut bv = x86_64::registers::model_specific::ApicBase::read();
@@ -347,16 +373,26 @@ impl IoApic {
 }
 
 impl IoApicInner {
+    /// Selects the register that later [`Self::read_register`]/[`Self::write_register`]
+    /// calls operate on.
+    ///
+    /// The index register and the data window are two independent MMIO
+    /// locations, so the compiler is free to treat accesses to them as
+    /// non-aliasing. Every access here therefore has to be volatile (never
+    /// elided, merged or reordered away) *and* the selection must be published
+    /// before the data window is touched, which volatile accesses alone do not
+    /// guarantee.
     fn switch_registers(&mut self, index: u8) {
         if self.last_register != index {
             self.last_register = index;
-            *self.reg_sel = index;
+            unsafe { core::ptr::write_volatile(self.reg_sel, index) };
+            core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
         }
     }
 
     fn read_register(&mut self, index: u8) -> u32 {
         self.switch_registers(index);
-        *self.data
+        unsafe { core::ptr::read_volatile(self.data) }
     }
 
     fn write_register(&mut self, index: u8, val: u32) {

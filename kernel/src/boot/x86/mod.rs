@@ -268,7 +268,9 @@ fn serial_interrupts() {
     let sys = crate::SYSTEM.read().clone();
     if let Some(s) = crate::kernel::SERIAL.take_device(0) {
         s.sync_transmit_str("About to enable async mode for serial port 0\r\n");
-        s.enable_async(sys.clone()).unwrap();
+        if s.enable_async(sys.clone()).is_err() {
+            s.sync_transmit_str("Unable to wire the irq for serial port 0, using polling\r\n");
+        }
         let t = s.convert(
             |a| a.make_text_display(),
             move |_t| {
@@ -280,7 +282,9 @@ fn serial_interrupts() {
     if true {
         if let Some(s) = crate::kernel::SERIAL.take_device(1) {
             s.sync_transmit_str("About to enable async mode for serial port 1\r\n");
-            s.enable_async(sys.clone()).unwrap();
+            if s.enable_async(sys.clone()).is_err() {
+                s.sync_transmit_str("Unable to wire the irq for serial port 1, using polling\r\n");
+            }
         }
     }
 }

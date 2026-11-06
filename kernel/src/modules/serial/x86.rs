@@ -24,6 +24,9 @@ const TX_BUFFER_SIZE: usize = 1024;
 const RX_BUFFER_SIZE: usize = 1024;
 /// the number of wakers to store for each queue
 const NUM_WAKERS: usize = 32;
+/// How often (in iterations of the synchronous tx wait loops) the tx interrupt is re armed to
+/// recover an edge the interrupt controller may have missed.
+const TX_REARM_INTERVAL: u64 = 1 << 16;
 
 /// An x86 serial port
 pub struct X86SerialPort(Arc<X86SerialPortInternal>);
@@ -156,10 +159,6 @@ impl X86SerialPort {
     fn enable_rx_interrupt(&self) {
         if self.0.interrupts.load(Ordering::SeqCst) {
             let p = self.0.base.access();
-            let _: u8 = p.port(0).port_read();
-            let _: u8 = p.port(5).port_read();
-            let _: u8 = p.port(2).port_read();
-            let _: u8 = p.port(6).port_read();
             let mut ie = p.port(1);
             let v: u8 = ie.port_read();
             ie.port_write(v | 1);
@@ -183,12 +182,27 @@ impl X86SerialPort {
 }
 
 impl Arc<X86SerialPortInternal> {
-    /// Enable the tx interrupt, used when sending data over the serial port
-    fn enable_tx_interrupt(&self) {
-        if self.interrupts.load(Ordering::SeqCst) && !self.tx_enabled.load(Ordering::SeqCst) {
+    /// Enable the tx interrupt, used when sending data over the serial port.
+    ///
+    /// When `rearm` is set the ier bit is also cleared before it is set again. The uart only
+    /// drives its interrupt output while a condition is pending, so an edge can be swallowed
+    /// (the irq is masked at the controller while the line is asserted, or the legacy pic is
+    /// replaced by the ioapic while a transmission is in flight) and an edge triggered
+    /// controller will then never deliver it, leaving the tx queue waiting for an interrupt
+    /// that never comes. Toggling the bit makes the uart drop and re assert the line, which
+    /// gives the controller the transition it is waiting for.
+    fn enable_tx_interrupt(&self, rearm: bool) {
+        if self.interrupts.load(Ordering::SeqCst)
+            && (rearm || !self.tx_enabled.load(Ordering::SeqCst))
+        {
+            // The guard keeps interrupts off so that the handler cannot run between the two
+            // writes below.
             let p = self.base.access();
             let mut ie = p.port(1);
             let v: u8 = ie.port_read();
+            if rearm {
+                ie.port_write(v & !2);
+            }
             ie.port_write(v | 2);
             self.tx_enabled.store(true, Ordering::SeqCst);
         }
@@ -270,27 +284,59 @@ impl super::SerialTrait for X86SerialPort {
         };
         crate::SYSTEM.read().disable_irq(irqnum);
         self.0.base.interrupt_access().port(1).port_write(0u8);
+        // The uart is no longer armed to produce tx interrupts, so a later enable_async must
+        // not believe the tx interrupt is still turned on.
+        self.0.tx_enabled.store(false, Ordering::SeqCst);
     }
 
     fn enable_async(&self, sys: crate::kernel::System) -> Result<(), ()> {
         use crate::kernel::SystemTrait;
         let irqnum = { self.0.irq };
+        // Start from a known state with the uart interrupt output turned off. An edge created
+        // while the interrupt controller still has this irq masked is lost for good (the ioapic
+        // entry for a com port is edge triggered), so nothing may assert the irq line until the
+        // irq is really wired up.
         {
-            let s2 = self.0.clone();
-            sys.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2));
+            let p = self.0.base.access();
+            p.port(1).port_write(0u8);
+            p.port(4).port_write(0x03u8);
+        }
+        self.0.tx_enabled.store(false, Ordering::SeqCst);
+        self.0.interrupts.store(false, Ordering::SeqCst);
+        // Throw away anything already waiting in the receiver and read the status registers so
+        // that no interrupt is left latched in the uart. The bound keeps a stuck receive line
+        // from wedging us here.
+        for _ in 0..RX_BUFFER_SIZE {
+            if !self.0.can_receive() {
+                break;
+            }
+            self.0.force_receive();
         }
         {
-            self.0
-                .base
-                .interrupt_access()
-                .port(4)
-                .port_write(0x03u8 | 8u8);
-            self.0.interrupts.store(true, Ordering::SeqCst);
-        };
-        let _stat: u8 = self.0.base.interrupt_access().port(2).port_read();
-        let _stat: u8 = self.0.base.interrupt_access().port(5).port_read();
-        self.enable_rx_interrupt();
+            let p = self.0.base.access();
+            let _stat: u8 = p.port(2).port_read();
+            let _lsr: u8 = p.port(5).port_read();
+            let _msr: u8 = p.port(6).port_read();
+        }
+        // Wire the irq before anything is allowed to request interrupt driven tx or rx.
+        let s2 = self.0.clone();
+        if !sys.register_irq_handler(irqnum, move || X86SerialPort::handle_interrupt(&s2)) {
+            // Another device already owns this irq (com1/com3 and com2/com4 share them), so
+            // nothing would service this port's interrupts. Stay in polling mode rather than
+            // arming an irq that will never drain the tx queue.
+            return Err(());
+        }
         sys.enable_irq(irqnum);
+        // Only now is it safe to announce that interrupt driven operation is available.
+        self.0.interrupts.store(true, Ordering::SeqCst);
+        self.enable_rx_interrupt();
+        // Kick off anything that was left in the queue while the port was in polling mode.
+        if !self.0.tx_queue.access().is_empty() {
+            self.0.enable_tx_interrupt(true);
+        }
+        // Turn the uart interrupt output on last so that any condition that is already pending
+        // produces a fresh edge that the now unmasked controller will see.
+        self.0.base.access().port(4).port_write(0x03u8 | 8u8);
         Ok(())
     }
 
@@ -304,15 +350,21 @@ impl super::SerialTrait for X86SerialPort {
             self.0.itx.store(true, Ordering::SeqCst);
             let mut ienabled = false;
             for c in data.iter() {
-                while txq.interrupt_access().is_full() {}
+                let mut spins: u64 = 0;
+                while txq.interrupt_access().is_full() {
+                    // Something has to keep the drain alive: if the interrupt controller never
+                    // delivered the edge this queue would stay full forever.
+                    self.0.enable_tx_interrupt(spins % TX_REARM_INTERVAL == 0);
+                    spins += 1;
+                }
                 txq.access().push(*c).unwrap();
                 if true {
-                    self.0.enable_tx_interrupt();
+                    self.0.enable_tx_interrupt(false);
                     ienabled = true;
                 }
             }
             if !ienabled {
-                self.0.enable_tx_interrupt();
+                self.0.enable_tx_interrupt(false);
             }
             self.0.itx.store(false, Ordering::SeqCst);
         }
@@ -325,12 +377,16 @@ impl super::SerialTrait for X86SerialPort {
     fn sync_flush(&self) {
         let i = self.0.interrupts.load(Ordering::SeqCst);
         if i {
+            let mut spins: u64 = 0;
             loop {
                 let empty = self.0.tx_queue.interrupt_access().is_empty();
                 if empty {
                     break;
                 }
-                self.0.enable_tx_interrupt();
+                // Re arm periodically so a tx edge that never reached the controller cannot
+                // leave this flush waiting forever.
+                self.0.enable_tx_interrupt(spins % TX_REARM_INTERVAL == 0);
+                spins += 1;
             }
         }
     }
@@ -349,7 +405,12 @@ impl super::SerialTrait for X86SerialPort {
 
     #[cfg_attr(feature = "backtrace", doors_macros::framed)]
     async fn flush(&self) {
+        let mut spins: u64 = 0;
         while !self.0.tx_queue.access().is_empty() {
+            // Nothing else guarantees the queue keeps draining here, so make sure the uart is
+            // still going to interrupt for whatever is left in it.
+            self.0.enable_tx_interrupt(spins % TX_REARM_INTERVAL == 0);
+            spins += 1;
             executor::AsyncTask::yield_now().await;
         }
     }
@@ -399,17 +460,18 @@ impl Future for AsyncWriter<'_> {
                         }
                     } else {
                         let _ = tx_wakers.access().push(cx.waker().clone());
+                        self.s.enable_tx_interrupt(true);
                         break core::task::Poll::Pending;
                     }
                 } else if interrupt_enable {
-                    self.s.enable_tx_interrupt();
+                    self.s.enable_tx_interrupt(true);
                     break core::task::Poll::Ready(());
                 } else {
                     break core::task::Poll::Ready(());
                 }
             } else {
                 let _ = tx_wakers.access().push(cx.waker().clone());
-                self.s.enable_tx_interrupt();
+                self.s.enable_tx_interrupt(true);
                 break core::task::Poll::Pending;
             }
         };
