@@ -447,6 +447,23 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         irqs.take();
     }
 
+    fn get_software_interrupt<F: FnMut() + Send + Sync + crate::Interrupt + 'static>(
+        &self,
+        h: F,
+    ) -> Option<kernel::SoftwareInterrupt> {
+        for i in (0..224).rev() {
+            let mut handle = super::IRQ_HANDLERS[i as usize].sync_lock();
+            if handle.is_none() {
+                let h = Box::new(h);
+                *handle = Some(h);
+                return Some(kernel::SoftwareInterrupt::X86_32(
+                    crate::kernel::x86::SoftIrq { irq: i },
+                ));
+            }
+        }
+        None
+    }
+
     fn enable_interrupts(&self) {
         unsafe { x86::irq::enable() };
     }
@@ -459,7 +476,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         self.disable_interrupts_for(|| {
             let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
-                p.enable_irq(irq)
+                p.enable_irq_sync(irq)
             }
         });
     }
@@ -490,7 +507,7 @@ impl crate::kernel::SystemTrait for LockedArc<X86System<'_>> {
         self.disable_interrupts_for(|| {
             let p = crate::kernel::INTERRUPT_CONTROLLER.read();
             if let Some(p) = p.as_ref() {
-                p.disable_irq(irq)
+                p.disable_irq_sync(irq)
             }
         });
     }

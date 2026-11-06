@@ -679,7 +679,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("\tBYPRODUCTS symbols/symbols.json\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND ./dwarf2json/dwarf2json linux --elf ./kernel/target/{}/release/kernel > ./symbols/symbols.json\n",
-            target
+            self.kernel_path
         ));
         cmakelists.push_str(")\n");
 
@@ -703,9 +703,19 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tdisassemble\n");
         cmakelists.push_str("\tDEPENDS kernel\n");
-        cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
-        cmakelists.push_str("\tBYPRODUCTS ../disassemble.txt\n");
-        cmakelists.push_str(&format!("\tCOMMAND cargo objdump --release --target {} --bin kernel -q -- -d > ../disassemble.txt\n", target));
+        if target.ends_with(".json") {
+            // cargo objdump is unable to load custom `.json` target specs, so
+            // disassemble the built binary directly instead.
+            cmakelists.push_str("\tBYPRODUCTS ./disassemble.txt\n");
+            cmakelists.push_str(&format!(
+                "\tCOMMAND rust-objdump -d ./kernel/target/{}/release/kernel > ./disassemble.txt\n",
+                self.kernel_path
+            ));
+        } else {
+            cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
+            cmakelists.push_str("\tBYPRODUCTS ../disassemble.txt\n");
+            cmakelists.push_str(&format!("\tCOMMAND cargo objdump --release --target {} --bin kernel -q -- -d > ../disassemble.txt\n", target));
+        }
         cmakelists.push_str(")\n");
     }
 

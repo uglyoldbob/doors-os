@@ -29,6 +29,7 @@ runner = 'probe-rs run --chip stm32f769iitx'
 
 [unstable]
 build-std = ["core", "alloc"]
+json-target-spec = true
 
 [build]
 rustflags = [
