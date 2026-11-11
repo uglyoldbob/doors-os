@@ -691,6 +691,31 @@ impl Drop for generic_memory::PciMemory {
     }
 }
 
+impl Drop for generic_memory::DmaPage {
+    fn drop(&mut self) {
+        let layout =
+            core::alloc::Layout::from_size_align(self.size(), core::mem::size_of::<Page>())
+                .unwrap();
+        unsafe {
+            super::VIRTUAL_MEMORY_ALLOCATOR.deallocate(
+                core::ptr::NonNull::new_unchecked(self.virt() as *mut u8),
+                layout,
+            )
+        };
+        {
+            let mut mm = super::PAGING_MANAGER.sync_lock();
+            mm.unmap_mapped_pages(self.virt(), self.size());
+        }
+        unsafe {
+            core::alloc::Allocator::deallocate(
+                &super::PAGE_ALLOCATOR,
+                core::ptr::NonNull::new_unchecked(self.phys() as *mut u8),
+                layout,
+            )
+        };
+    }
+}
+
 impl<T: Default> generic_memory::DmaMemory<T> {
     /// Construct a new self
     pub fn new() -> Result<Self, core::alloc::AllocError> {

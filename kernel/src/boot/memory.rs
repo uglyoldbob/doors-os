@@ -160,7 +160,109 @@ impl<T> core::ops::DerefMut for DmaMemory<T> {
     }
 }
 
+/// A page of RAM that is contiguous in physical memory and mapped into the kernel address space.
+///
+/// A device that is programmed with a base address and a length reads and writes that range
+/// directly, with no knowledge of the page table, so descriptor rings and packet buffers must live
+/// in memory that is contiguous in *physical* memory. Memory from the regular heap does not
+/// qualify: the heap maps each of its pages to an independently allocated page frame, so a heap
+/// allocation is only contiguous virtually.
+///
+/// A single page frame is contiguous by construction, which is enough for a ring of 16 byte
+/// descriptors and for one ethernet frame per buffer. Drivers that need more than one contiguous
+/// page need a run based allocator in the physical memory manager first.
+///
+/// The memory is shared with a device. Anything the device writes must be read through volatile
+/// accesses (see [DmaPage::ptr]); a plain reference would let the compiler cache the value.
+pub struct DmaPage {
+    /// The starting address for virtual memory address space
+    virt: usize,
+    /// The starting address for physical memory address space
+    phys: usize,
+    /// The size in bytes
+    size: usize,
+}
+
+impl DmaPage {
+    /// Allocate a new DMA page.
+    ///
+    /// The physical page frame comes straight from the physical memory manager and the kernel
+    /// mapping is page aligned, which gives more than enough alignment for descriptor rings.
+    /// The memory is not zeroed; the caller must initialize anything the device is allowed to
+    /// read.
+    pub fn new() -> Result<Self, core::alloc::AllocError> {
+        let page_size = core::mem::size_of::<super::Page>();
+        // The physical memory manager hands out page frames as pointers. Take one frame and leak
+        // the box that owns it; the frame is returned to the allocator in Drop.
+        let phys = {
+            let page: Box<MaybeUninit<super::Page>, _> =
+                Box::new_uninit_in(&super::super::PAGE_ALLOCATOR);
+            let page = unsafe { page.assume_init() };
+            crate::address(Box::leak(page))
+        };
+        let layout = core::alloc::Layout::from_size_align(page_size, page_size)
+            .map_err(|_| core::alloc::AllocError)?;
+        let virt = super::super::VIRTUAL_MEMORY_ALLOCATOR.allocate(layout)?;
+        let va = unsafe { virt.as_ref() }.as_ptr() as usize;
+        let mut mm = super::super::PAGING_MANAGER.sync_lock();
+        match mm.map_addresses_read_write(va, phys, page_size) {
+            Ok(()) => Ok(Self {
+                virt: va,
+                phys,
+                size: page_size,
+            }),
+            Err(()) => Err(core::alloc::AllocError),
+        }
+    }
+
+    /// The region as a raw pointer to `T`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `size_of::<T>()` fits in the page. Reads and writes of memory the
+    /// device also touches must be volatile, through this pointer.
+    pub fn ptr<T>(&self) -> *mut T {
+        self.virt as *mut T
+    }
+
+    /// The region as bytes.
+    ///
+    /// Only read data through this that the device has already handed over (for example after the
+    /// write back of a descriptor observed with a volatile read), never status or lengths.
+    pub fn bytes(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self.virt as *const u8, self.size) }
+    }
+
+    /// The region as mutable bytes. Only write data through this that the device has not been
+    /// given yet.
+    pub fn bytes_mut(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut(self.virt as *mut u8, self.size) }
+    }
+
+    /// Get the size of the memory area in bytes
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    /// Get the starting physical address for the region
+    pub fn phys(&self) -> usize {
+        self.phys
+    }
+
+    /// Get the starting virtual address for the region
+    pub fn virt(&self) -> usize {
+        self.virt
+    }
+}
+
 /// Used to store an array of items for dma
+///
+/// # Warning
+///
+/// The physical address of the region is looked up from the first virtual address only. The region
+/// can therefore only be handed to a device if it fits within one page and does not straddle a
+/// page boundary; a larger region is not contiguous in physical memory and the device will read
+/// and write page frames belonging to somebody else. New code should use [DmaPage] instead.
 pub struct DmaMemorySlice<T> {
     /// The starting address for virtual memory address space
     virt: usize,
