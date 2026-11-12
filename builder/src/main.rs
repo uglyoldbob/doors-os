@@ -331,7 +331,7 @@ impl DiskBuilderTrait for CdConfiguration {
         cmakelists: &mut String,
         common: &DiskImageConfigurationCommon,
         kernel_path: &str,
-        _local: &LocalConfiguration,
+        local: &LocalConfiguration,
     ) -> Result<Disk, String> {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tboot_disk\n");
@@ -341,7 +341,9 @@ impl DiskBuilderTrait for CdConfiguration {
             common.output.to_str().unwrap()
         ));
         if cfg!(target_os = "windows") {
-            cmakelists.push_str("\tCOMMAND rmdir /s /q .\\\\build\\\\iso\n");
+            // cmake -E is used for the whole recipe: `rmdir` fails when build/iso does not exist
+            // yet, which happens on every clean tree.
+            cmakelists.push_str("\tCOMMAND ${CMAKE_COMMAND} -E rm -rf ./build/iso\n");
         } else {
             cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
         }
@@ -351,12 +353,15 @@ impl DiskBuilderTrait for CdConfiguration {
         pa.push("boot");
         pa.push("grub");
         if cfg!(target_os = "windows") {
-            cmakelists.push_str(&format!("\tCOMMAND mkdir {:?}\n", pa,));
+            cmakelists.push_str(&format!(
+                "\tCOMMAND ${{CMAKE_COMMAND}} -E make_directory {}\n",
+                pa.display().to_string().replace('\\', "/"),
+            ));
             cmakelists.push_str(
-                "\tCOMMAND copy grub2.lst .\\\\build\\\\iso\\\\boot\\\\grub\\\\grub.cfg\n",
+                "\tCOMMAND ${CMAKE_COMMAND} -E copy grub2.lst ./build/iso/boot/grub/grub.cfg\n",
             );
             cmakelists.push_str(&format!(
-                "\tCOMMAND copy .\\\\kernel\\\\target\\\\{}\\\\release\\\\kernel .\\\\build\\\\iso\\\\boot\\\\kernel\n",
+                "\tCOMMAND ${{CMAKE_COMMAND}} -E copy ./kernel/target/{}/release/kernel ./build/iso/boot/kernel\n",
                 kernel_path
             ));
         } else {
@@ -371,22 +376,40 @@ impl DiskBuilderTrait for CdConfiguration {
         cmakelists.push_str("\tCOMMAND rust-strip ./build/iso/boot/kernel\n");
         for (fname, dest) in common.get_config_files() {
             if cfg!(target_os = "windows") {
-                cmakelists.push_str(&format!("\tCOMMAND copy {:?} {:?}\n", fname, dest));
+                cmakelists.push_str(&format!(
+                    "\tCOMMAND ${{CMAKE_COMMAND}} -E copy {:?} {:?}\n",
+                    fname, dest
+                ));
             } else {
                 cmakelists.push_str(&format!("\tCOMMAND cp {:?} {:?}\n", fname, dest));
             }
         }
 
         if cfg!(target_os = "windows") {
-            cmakelists
-                .push_str("\tCOMMAND cargo +nightly run --bin imager -- --iso-path=build/iso\n");
-        /*
-        cmakelists.push_str(&format!(
-            "\tCOMMAND {} createiso --import-iso grub-skeleton.iso -o {} --name-setup=iso9660 ./boot/kernel=./build/iso/boot/kernel --volid=\"{}\"\n",
-            LocalConfiguration::escape_path(&local.vboximg_path()),
-            LocalConfiguration::escape_path(&common.output),
-            common.disk_label
-        )); */
+            // The image imager writes is the el torito boot catalogue, so without it the resulting
+            // iso is not bootable. There is no grub on windows to generate one.
+            let eltorito = local.grub_eltorito.clone().expect(
+                "Local configuration is missing grub_eltorito, the grub boot image used for cd images on windows",
+            );
+            cmakelists.push_str(&format!(
+                "\tCOMMAND ${{CMAKE_COMMAND}} -E copy {} ./build/iso/grub-eltorito.img\n",
+                LocalConfiguration::escape_path(&eltorito)
+            ));
+            // The el torito image is only a small core; it loads the rest of grub (normal.mod,
+            // verifiers.mod, the partition and filesystem modules, ...) from boot/grub/i386-pc
+            // inside the image, exactly like grub-mkrescue does on linux.
+            let modules = local.grub_modules.clone().expect(
+                "Local configuration is missing grub_modules, the directory with the grub i386-pc modules used for cd images on windows",
+            );
+            cmakelists.push_str(&format!(
+                "\tCOMMAND ${{CMAKE_COMMAND}} -E copy_directory {} ./build/iso/boot/grub/i386-pc\n",
+                LocalConfiguration::escape_path(&modules)
+            ));
+            cmakelists.push_str(&format!(
+                "\tCOMMAND cargo +nightly run --bin imager -- --iso-path=build/iso --output={} --volid=\"{}\"\n",
+                LocalConfiguration::escape_path(&common.output),
+                common.disk_label
+            ));
         } else if cfg!(target_os = "linux") {
             cmakelists.push_str(&format!(
                 "\tCOMMAND grub-mkrescue -o {} build/iso -- -volid \"{}\"\n",
@@ -397,7 +420,7 @@ impl DiskBuilderTrait for CdConfiguration {
             panic!();
         }
         if cfg!(target_os = "windows") {
-            cmakelists.push_str("\tCOMMAND rmdir /s /q .\\\\build\\\\iso\n");
+            cmakelists.push_str("\tCOMMAND ${CMAKE_COMMAND} -E rm -rf ./build/iso\n");
         } else {
             cmakelists.push_str("\tCOMMAND rm -rf ./build/iso\n");
         }
@@ -487,6 +510,13 @@ pub struct LocalConfiguration {
     pub tftp_base: Option<std::path::PathBuf>,
     /// where to find the files for the grub command to make the netboot image
     grub_source: std::path::PathBuf,
+    /// The grub el torito boot image copied into cd images on windows, where there is no grub
+    /// command to build one
+    grub_eltorito: Option<std::path::PathBuf>,
+    /// Directory holding the grub modules (`normal.mod`, `part_msdos.mod`, ...) that the el torito
+    /// boot image loads at runtime. On windows there is no grub to install them, so the cd image
+    /// recipe copies this directory into `boot/grub/i386-pc` of the staged tree.
+    grub_modules: Option<std::path::PathBuf>,
     /// The target for the local system
     target: String,
 }
@@ -537,6 +567,8 @@ impl Default for LocalConfiguration {
             ],
             tftp_base: Some(PathBuf::from_str("./example/tftp/base").unwrap()),
             grub_source: PathBuf::from_str("./example/grub/source").unwrap(),
+            grub_eltorito: Some(PathBuf::from_str("./example/grub/grub-eltorito.img").unwrap()),
+            grub_modules: Some(PathBuf::from_str("./example/grub/i386-pc").unwrap()),
         }
     }
 }
@@ -655,7 +687,7 @@ impl DoorsConfiguration {
         cmakelists.push_str("add_custom_target(\n");
         cmakelists.push_str("\tkernel\n");
         cmakelists.push_str("\tWORKING_DIRECTORY ./kernel\n");
-        cmakelists.push_str("\tDEPENDS user ready_kernel\n");
+        cmakelists.push_str("\tDEPENDS ready_kernel\n");
         cmakelists.push_str("\tBYPRODUCTS target\n");
         cmakelists.push_str(&format!(
             "\tCOMMAND cargo +nightly build --release --target {} --bin kernel\n",

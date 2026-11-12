@@ -184,6 +184,20 @@ impl syn::parse::Parse for ConfigCheckValue {
     }
 }
 
+struct ModuleRequires {
+    driver: syn::Ident,
+    required: syn::Ident,
+}
+
+impl syn::parse::Parse for ModuleRequires {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let driver = syn::Ident::parse(input)?;
+        syn::token::Comma::parse(input)?;
+        let required = syn::Ident::parse(input)?;
+        Ok(Self { driver, required })
+    }
+}
+
 struct ConfigCheckBlock {
     ident: syn::Ident,
     block: syn::Block,
@@ -386,6 +400,33 @@ pub fn module_builtin(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     let block = f.block;
     if val {
         quote!(#block).into()
+    } else {
+        quote!().into()
+    }
+}
+
+/// Emit a compile error when a module that needs another module is enabled without it
+///
+/// Takes the module that has the requirement, then the module it requires. Both are entries of the
+/// `modules` list in the kernel configuration. Nothing is emitted unless the first module is
+/// enabled and the second one is missing.
+#[proc_macro]
+pub fn module_requires(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let f = parse_macro_input!(input as ModuleRequires);
+    let check = {
+        let m = KERNEL_CONFIG.lock().unwrap();
+        m.as_ref().map(|a| {
+            a.modules.contains(&f.driver.to_string())
+                && !a.modules.contains(&f.required.to_string())
+        })
+    };
+    let missing = check.unwrap();
+    if missing {
+        let msg = format!(
+            "The `{}` module requires the `{}` module. Add `{}` to the `modules` list in the kernel configuration",
+            f.driver, f.required, f.required
+        );
+        quote!(compile_error!(#msg);).into()
     } else {
         quote!().into()
     }

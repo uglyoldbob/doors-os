@@ -51,6 +51,11 @@ use crate::{
     IrqStreamReader, IrqStreamWriter, Locked,
 };
 
+/// The pro1000 is a pci device, so the driver cannot be built without the pci module. Without it
+/// the module gate in [crate::modules] removes `crate::modules::pci` entirely, which would otherwise
+/// only show up as a set of unresolved imports.
+doors_macros::module_requires!(intelpro1000, pci);
+
 /// Log a message only when extra kernel logging is enabled.
 ///
 /// Only usable from async functions, and only outside of interrupt context.
@@ -682,6 +687,13 @@ impl TxBuffers {
     fn desc(&self, index: usize) -> *mut TxBuffer {
         unsafe { self.descs.ptr::<TxBuffer>().add(index) }
     }
+
+    /// The write back status the device left in the descriptor at the specified index
+    fn desc_status(&self, index: usize) -> u8 {
+        // SAFETY: index is bounded by count(), which was checked against the descriptor page size
+        // when the ring was constructed.
+        unsafe { core::ptr::read_volatile(&(*self.desc(index)).status) }
+    }
 }
 
 /// The internal data for the network card, used in interrupt and non-interrupt contexts
@@ -1198,19 +1210,21 @@ impl IntelPro1000Device {
             // The upper layers leave the source address empty.
             buffer[6..12].copy_from_slice(&source[..6]);
         }
-        let desc = txbufs.desc(index);
-        // SAFETY: index is within the ring. The device is not given the descriptor until the tail
-        // pointer is written below, and the previous transmission of this slot completed before
-        // this function returned.
-        unsafe {
-            core::ptr::write_volatile(&mut (*desc).length, len as u16);
-            core::ptr::write_volatile(&mut (*desc).cso, 0);
-            core::ptr::write_volatile(
-                &mut (*desc).cmd,
-                (TxCmdFlags::EOP | TxCmdFlags::IFCS | TxCmdFlags::RS).bits() as u8,
-            );
-            core::ptr::write_volatile(&mut (*desc).status, 0);
-            core::ptr::write_volatile(&mut (*desc).special, 0);
+        {
+            let desc = txbufs.desc(index);
+            // SAFETY: index is within the ring. The device is not given the descriptor until the
+            // tail pointer is written below, and the previous transmission of this slot completed
+            // before this function returned.
+            unsafe {
+                core::ptr::write_volatile(&mut (*desc).length, len as u16);
+                core::ptr::write_volatile(&mut (*desc).cso, 0);
+                core::ptr::write_volatile(
+                    &mut (*desc).cmd,
+                    (TxCmdFlags::EOP | TxCmdFlags::IFCS | TxCmdFlags::RS).bits() as u8,
+                );
+                core::ptr::write_volatile(&mut (*desc).status, 0);
+                core::ptr::write_volatile(&mut (*desc).special, 0);
+            }
         }
         // The buffer and descriptor must reach memory before the device is told about them.
         core::sync::atomic::compiler_fence(Ordering::SeqCst);
@@ -1225,7 +1239,14 @@ impl IntelPro1000Device {
         self.txbufindex = next;
         let mut tries = 0;
         loop {
-            let status = unsafe { core::ptr::read_volatile(&(*desc).status) };
+            // The descriptor is looked up again on every pass instead of holding the pointer over
+            // the yield below. A raw pointer is not `Send`, and this future is spawned onto a
+            // scheduler that can resume it on another core.
+            let status = self
+                .txbufs
+                .as_ref()
+                .ok_or(SendError::NotInitialized)?
+                .desc_status(index);
             if (status & DESC_STATUS_DD) != 0 {
                 return Ok(());
             }
