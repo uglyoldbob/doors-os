@@ -10,7 +10,7 @@ gdbstub = true
 mm_debug = false
 test = false
 network = false
-modules = ["hpet", "intelpro1000"]
+modules = ["hpet", "pci", "intelpro1000"]
 
 [disk.unique.Network]
 tftp_relative = ""
